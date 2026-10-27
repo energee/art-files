@@ -1,0 +1,65 @@
+{
+  "cancelState": {
+    "save": {
+      "phase": "cancelled",
+      "calls": 2,
+      "writes": [
+        {
+          "name": "audit-snapshot.label",
+          "base64": "UEsDBBQAAAAIAKS5Wl27daSj+AAAANcBAAAKAAAAbGFiZWwuanNvbmWRwU7DMAyG73uKKrsy1LV0mrghEAKJ8zggDl7jaRFpMznuAKG+O7HbapWWS2R/zm/n998iy8whUAO8Q4outOY+K28k20BkpFebEgY663gVmTDGVZHnRiuwhb1HuwNy0HJMhR+fCs7gO5RY5FPcQoNCNcrGrJKD814aLJ/Lx6ftoDsiD79Iwhpk8N7Vc5hGCV+iaZa5nmv4Nr3/PjrGa/7uLB8TX1cz1J1OSDVEkWbqcIYYf1jkHjoKBOvCjKjXWz+eqvZAdbA62bbK82pdbjZFcSfFvXoTzkjk7Nyey5vJmcnacQrNSp9BYtjMi2t1nstWbgdgFv0/UEsBAhQAFAAAAAgApLlaXbt1pKP4AAAA1wEAAAoAAAAAAAAAAAAAAAAAAAAAAGxhYmVsLmpzb25QSwUGAAAAAAEAAQA4AAAAIAEAAAAA",
+          "mode": "delay"
+        }
+      ],
+      "closed": 1
+    },
+    "name": "After Snapshot",
+    "dirty": "Close After Snapshot (unsaved changes)"
+  },
+  "failState": {
+    "save": {
+      "phase": "writing",
+      "calls": 3,
+      "writes": [
+        {
+          "name": "audit-snapshot.label",
+          "base64": "UEsDBBQAAAAIAKS5Wl27daSj+AAAANcBAAAKAAAAbGFiZWwuanNvbmWRwU7DMAyG73uKKrsy1LV0mrghEAKJ8zggDl7jaRFpMznuAKG+O7HbapWWS2R/zm/n998iy8whUAO8Q4outOY+K28k20BkpFebEgY663gVmTDGVZHnRiuwhb1HuwNy0HJMhR+fCs7gO5RY5FPcQoNCNcrGrJKD814aLJ/Lx6ftoDsiD79Iwhpk8N7Vc5hGCV+iaZa5nmv4Nr3/PjrGa/7uLB8TX1cz1J1OSDVEkWbqcIYYf1jkHjoKBOvCjKjXWz+eqvZAdbA62bbK82pdbjZFcSfFvXoTzkjk7Nyey5vJmcnacQrNSp9BYtjMi2t1nstWbgdgFv0/UEsBAhQAFAAAAAgApLlaXbt1pKP4AAAA1wEAAAoAAAAAAAAAAAAAAAAAAAAAAGxhYmVsLmpzb25QSwUGAAAAAAEAAQA4AAAAIAEAAAAA",
+          "mode": "delay"
+        },
+        {
+          "name": "failed-destination.label",
+          "base64": "UEsDBBQAAAAIALq5Wl0x1azB/gAAAN0BAAAKAAAAbGFiZWwuanNvbmWRQUvEMBCF7/srSvbqSra1y+JNFFHwJqwH8TDbTGkwTUoyXRXpf99k2rKFzSXMfC8vk5f/VZaJ2vkW6IA+aGfFfVbcpG4LgdC/qtgQ0CtNm0AeQ9jkUgpWoIWjQXUAr8FSiMLPLwYnMD2mOtnH2kKLiXKVTV0mtTYmXbB+Lh6f9qPvhAz8oU+sRQJjdLWEcRT3nTzFWvK6hm/z+Z9GE17zD62oiXxbLlDfdegrCMmafI8LRPhLye6hjrFk7xa60DgSk2DgnZ8ftUfwlVM8376UstwWu12e3yXxwAm5E3qv1TKky5k5nzngaRbupntGi/F/XrTlqS5/czsCsRrOUEsBAhQAFAAAAAgAurlaXTHVrMH+AAAA3QEAAAoAAAAAAAAAAAAAAAAAAAAAAGxhYmVsLmpzb25QSwUGAAAAAAEAAQA4AAAAJgEAAAAA",
+          "mode": "fail"
+        }
+      ],
+      "closed": 1
+    },
+    "name": "After Snapshot",
+    "dirty": "Close After Snapshot (unsaved changes)",
+    "error": true
+  },
+  "finalSaveState": {
+    "save": {
+      "phase": "closed",
+      "calls": 3,
+      "writes": [
+        {
+          "name": "audit-snapshot.label",
+          "base64": "UEsDBBQAAAAIAKS5Wl27daSj+AAAANcBAAAKAAAAbGFiZWwuanNvbmWRwU7DMAyG73uKKrsy1LV0mrghEAKJ8zggDl7jaRFpMznuAKG+O7HbapWWS2R/zm/n998iy8whUAO8Q4outOY+K28k20BkpFebEgY663gVmTDGVZHnRiuwhb1HuwNy0HJMhR+fCs7gO5RY5FPcQoNCNcrGrJKD814aLJ/Lx6ftoDsiD79Iwhpk8N7Vc5hGCV+iaZa5nmv4Nr3/PjrGa/7uLB8TX1cz1J1OSDVEkWbqcIYYf1jkHjoKBOvCjKjXWz+eqvZAdbA62bbK82pdbjZFcSfFvXoTzkjk7Nyey5vJmcnacQrNSp9BYtjMi2t1nstWbgdgFv0/UEsBAhQAFAAAAAgApLlaXbt1pKP4AAAA1wEAAAoAAAAAAAAAAAAAAAAAAAAAAGxhYmVsLmpzb25QSwUGAAAAAAEAAQA4AAAAIAEAAAAA",
+          "mode": "delay"
+        },
+        {
+          "name": "failed-destination.label",
+          "base64": "UEsDBBQAAAAIALq5Wl0x1azB/gAAAN0BAAAKAAAAbGFiZWwuanNvbmWRQUvEMBCF7/srSvbqSra1y+JNFFHwJqwH8TDbTGkwTUoyXRXpf99k2rKFzSXMfC8vk5f/VZaJ2vkW6IA+aGfFfVbcpG4LgdC/qtgQ0CtNm0AeQ9jkUgpWoIWjQXUAr8FSiMLPLwYnMD2mOtnH2kKLiXKVTV0mtTYmXbB+Lh6f9qPvhAz8oU+sRQJjdLWEcRT3nTzFWvK6hm/z+Z9GE17zD62oiXxbLlDfdegrCMmafI8LRPhLye6hjrFk7xa60DgSk2DgnZ8ftUfwlVM8376UstwWu12e3yXxwAm5E3qv1TKky5k5nzngaRbupntGi/F/XrTlqS5/czsCsRrOUEsBAhQAFAAAAAgAurlaXTHVrMH+AAAA3QEAAAoAAAAAAAAAAAAAAAAAAAAAAGxhYmVsLmpzb25QSwUGAAAAAAEAAQA4AAAAJgEAAAAA",
+          "mode": "fail"
+        },
+        {
+          "name": "audit-snapshot.label",
+          "base64": "UEsDBBQAAAAIALq5Wl0x1azB/gAAAN0BAAAKAAAAbGFiZWwuanNvbmWRQUvEMBCF7/srSvbqSra1y+JNFFHwJqwH8TDbTGkwTUoyXRXpf99k2rKFzSXMfC8vk5f/VZaJ2vkW6IA+aGfFfVbcpG4LgdC/qtgQ0CtNm0AeQ9jkUgpWoIWjQXUAr8FSiMLPLwYnMD2mOtnH2kKLiXKVTV0mtTYmXbB+Lh6f9qPvhAz8oU+sRQJjdLWEcRT3nTzFWvK6hm/z+Z9GE17zD62oiXxbLlDfdegrCMmafI8LRPhLye6hjrFk7xa60DgSk2DgnZ8ftUfwlVM8376UstwWu12e3yXxwAm5E3qv1TKky5k5nzngaRbupntGi/F/XrTlqS5/czsCsRrOUEsBAhQAFAAAAAgAurlaXTHVrMH+AAAA3QEAAAoAAAAAAAAAAAAAAAAAAAAAAGxhYmVsLmpzb25QSwUGAAAAAAEAAQA4AAAAJgEAAAAA",
+          "mode": "delay"
+        }
+      ],
+      "closed": 2
+    },
+    "dirty": "Close After Snapshot"
+  }
+}

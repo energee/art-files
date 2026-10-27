@@ -1,0 +1,5 @@
+$ rustc --version
+exit=0
+--- stdout ---
+rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)
+--- stderr ---

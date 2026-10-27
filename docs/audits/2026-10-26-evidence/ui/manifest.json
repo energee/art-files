@@ -1,0 +1,26 @@
+{
+  "execution_revision": "eac33714bbfbc7df704fb4959d32ab7a0793cb1b",
+  "F7": {
+    "path": "/tmp/label-lab-audit-2026-10-26/ui/fixtures/stress-200.master",
+    "sha256": "fdf98e0db264c53e86e0a0f4d3019b083f718edbf61c552268742b0038348ef7",
+    "bytes": 60266,
+    "layers": 215,
+    "text_layers": 209,
+    "source": "synthetic clone of print-cli F3 with 200 deterministic text layers",
+    "target": "measure startup/selection/edit/view/memory; no approved latency budget"
+  },
+  "F1_ui": {
+    "master": "shipped Lolev",
+    "origin": "fresh dedicated Chrome profile at http://127.0.0.1:5197",
+    "viewport": [
+      1440,
+      1000,
+      1
+    ]
+  },
+  "routing_png": {
+    "path": "/tmp/label-lab-audit-2026-10-26/print-cli/fixtures/dark.png",
+    "sha256": "1f51d198a77f21667c8fee245fc2bf7c8215196ee61a01764d65cd99ebe44f7a"
+  },
+  "fixture_correction": "Initial synthetic lines omitted required fill; parser rejected before document change. Added required fill/layer before performance execution."
+}

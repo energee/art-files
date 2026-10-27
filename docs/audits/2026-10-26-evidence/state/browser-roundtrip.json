@@ -1,0 +1,8 @@
+{
+  "source": "actual StateNative toolResult output",
+  "observations": [
+    "{\n  writes: [ { name: 'audit-aurora.label', length: 300, head: [ 80, 75, 3, 4 ] } ],\n  title: 'Audit Aurora'\n}",
+    "{ tabs: [ 'Audit Aurora', 'Audit Aurora' ] }",
+    "{ active: [ 'Audit Aurora' ], text: 'Audit Aurora' }"
+  ]
+}

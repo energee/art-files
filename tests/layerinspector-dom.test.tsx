@@ -385,6 +385,14 @@ describe("LayerInspector style", () => {
     expect(onChange).toHaveBeenLastCalledWith({ style: { fill: "#112233" } });
   });
 
+  it("gives fill and enabled stroke controls distinct accessible names", () => {
+    render(text({ style: { ...STYLE, stroke: "#000000" } }));
+    expect($("#name-fill")!.getAttribute("aria-label")).toBe("Fill color");
+    expect(byLabel("Pick fill color")).not.toBeNull();
+    expect($("#name-stroke-color")!.getAttribute("aria-label")).toBe("Stroke color");
+    expect(byLabel("Pick stroke color")).not.toBeNull();
+  });
+
   it("the plate toggle emits { style: { layer } }", () => {
     const { onChange } = render(text());
     click(byLabel("Metallic")!);

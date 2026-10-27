@@ -1,0 +1,13 @@
+All commands ran from /Users/tedslesinski/Repos/art-files at execution revision eac33714bbfbc7df704fb4959d32ab7a0793cb1b.
+
+F2: npm run -s generate -- fixtures/shipped.master fixtures/shipped-values.json outputs/f2 --asset background=fixtures/dark.png --asset mask=fixtures/mask.png --format pdf (exit 0)
+Blank values: npm run -s generate -- fixtures/shipped.master fixtures/blank-barcode.json outputs/blank-values --format pdf (exit 1)
+Disabled barcode: npm run -s generate -- fixtures/disabled.master fixtures/shipped-values.json outputs/disabled --format pdf (exit 0)
+Expanded reference: npm run -s generate -- fixtures/expanded.master fixtures/shipped-values.json outputs/expanded --set name=123 (exit 0)
+Corrupt check: npm run -s generate -- fixtures/shipped.master fixtures/shipped-values.json --check --asset background=fixtures/corrupt.png (exit 0)
+Corrupt full: npm run -s generate -- fixtures/shipped.master fixtures/shipped-values.json outputs/corrupt-full --asset background=fixtures/corrupt.png (exit 1)
+Dormant label: npm run -s generate -- --master fixtures/shipped.master --label fixtures/dormant.label --out outputs/dormant --format pdf (exit 0)
+Optional clear: npm run -s generate -- --master fixtures/shipped.master --label fixtures/optional-clear.label --out outputs/optional-clear --format pdf (exit 0)
+Write destination: printf x > outputs/write-target; npm run -s generate -- fixtures/shipped.master fixtures/shipped-values.json outputs/write-target (exit 1; EEXIST mkdir)
+
+For all paths, fixtures= /tmp/label-lab-audit-2026-10-26/print-cli/fixtures and outputs= /tmp/label-lab-audit-2026-10-26/print-cli/outputs.

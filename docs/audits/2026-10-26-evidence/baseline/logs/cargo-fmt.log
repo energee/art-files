@@ -1,0 +1,7 @@
+$ cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cwd=/Users/tedslesinski/Repos/art-files
+exit=0
+elapsed_seconds=0.445
+timed_out=False
+--- stdout ---
+--- stderr ---

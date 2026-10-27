@@ -1,0 +1,20 @@
+{
+  "text": "Style",
+  "focusVisible": true,
+  "outline": "rgb(153, 200, 255) none 1px",
+  "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(96, 165, 250) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+  "color": "rgb(236, 236, 241)",
+  "bg": "rgba(0, 0, 0, 0)",
+  "parentBg": "rgba(0, 0, 0, 0)",
+  "pressed": "false",
+  "rect": {
+    "x": 6.5,
+    "y": 250.25,
+    "width": 218.625,
+    "height": 22.75,
+    "top": 250.25,
+    "right": 225.125,
+    "bottom": 273,
+    "left": 6.5
+  }
+}

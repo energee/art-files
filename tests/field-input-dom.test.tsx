@@ -34,7 +34,7 @@ function typeHex(input: HTMLInputElement, typed: string) {
 function mountColor() {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host); const change = vi.fn();
-  act(() => root.render(createElement(ColorField, { value: "#000000", onChange: change })));
+  act(() => root.render(createElement(ColorField, { label: "Fill", value: "#000000", onChange: change })));
   const input = host.querySelector("input")!;
   return { input, change, done: () => { act(() => root.unmount()); host.remove(); } };
 }
@@ -71,8 +71,8 @@ it("keeps focus in the swatch row when the last swatch is deleted", async () => 
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   try {
-    act(() => root.render(createElement(ColorField, { value: "#000000", onChange: vi.fn() })));
-    const trigger = host.querySelector('[aria-label="Pick color"]') as HTMLButtonElement;
+    act(() => root.render(createElement(ColorField, { label: "Fill", value: "#000000", onChange: vi.fn() })));
+    const trigger = host.querySelector('[aria-label="Pick fill color"]') as HTMLButtonElement;
     await act(async () => {
       for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
         trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
@@ -102,8 +102,8 @@ it("deletes one saved swatch per Delete press, not on auto-repeat", async () => 
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   try {
-    act(() => root.render(createElement(ColorField, { value: "#ffffff", onChange: vi.fn() })));
-    const trigger = host.querySelector('[aria-label="Pick color"]') as HTMLButtonElement;
+    act(() => root.render(createElement(ColorField, { label: "Fill", value: "#ffffff", onChange: vi.fn() })));
+    const trigger = host.querySelector('[aria-label="Pick fill color"]') as HTMLButtonElement;
     await act(async () => {
       for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
         trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));

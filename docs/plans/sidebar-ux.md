@@ -20,6 +20,8 @@ One PR, branch `feat/sidebar-ux`. Each task starts with its failing test.
 | 10 | "Text logo" has the image icon | Skip: the icon is by kind, and that layer is an image. Renaming layers is data, not UI |
 | 11 | Grab cursor over every name | Default pointer; `grabbing` only while pressed |
 
+2026-10-27 accessibility correction (#545): the dropped name ring made an unselected keyboard target invisible. Restore the keyboard-only focus ring, independently of the unchanged selected-row tint; pointer focus still adds no selection decoration. This supersedes only the no-name-focus-ring decision above.
+
 ## Tasks (sequential: two files, shared tests)
 
 1. **Selection highlight** — `src/components/LayerList.tsx`. Test first in

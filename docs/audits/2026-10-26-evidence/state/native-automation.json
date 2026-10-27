@@ -1,0 +1,15 @@
+{
+  "system_events_query": {
+    "command": "osascript -e tell application System Events to get UI elements enabled",
+    "outcome": "timed out after20s"
+  },
+  "trusted_check": {
+    "command": "swift -e import ApplicationServices; print(AXIsProcessTrusted())",
+    "stdout": "false",
+    "exit": 0
+  },
+  "source_app": "src-tauri/target/release/bundle/macos/Label Lab.app",
+  "source_revision": "eac33714bbfbc7df704fb4959d32ab7a0793cb1b",
+  "version": "0.1.108",
+  "coverage": "build and process launch only; no visual/native-dialog certification"
+}

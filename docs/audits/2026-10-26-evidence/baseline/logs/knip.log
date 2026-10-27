@@ -1,0 +1,7 @@
+$ npx --yes knip@6.38.0
+cwd=/Users/tedslesinski/Repos/art-files
+exit=0
+elapsed_seconds=3.488
+timed_out=False
+--- stdout ---
+--- stderr ---

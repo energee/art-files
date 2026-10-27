@@ -1,0 +1,6 @@
+$ git status --short
+exit=0
+--- stdout ---
+UU .agents/ledger.md
+?? docs/audits/2026-10-26-audit-plan.md
+--- stderr ---

@@ -1,0 +1,29 @@
+{
+  "save": {
+    "phase": "closed",
+    "calls": 1,
+    "writes": [
+      {
+        "name": "audit-snapshot.label",
+        "base64": "UEsDBBQAAAAIAKS5Wl27daSj+AAAANcBAAAKAAAAbGFiZWwuanNvbmWRwU7DMAyG73uKKrsy1LV0mrghEAKJ8zggDl7jaRFpMznuAKG+O7HbapWWS2R/zm/n998iy8whUAO8Q4outOY+K28k20BkpFebEgY663gVmTDGVZHnRiuwhb1HuwNy0HJMhR+fCs7gO5RY5FPcQoNCNcrGrJKD814aLJ/Lx6ftoDsiD79Iwhpk8N7Vc5hGCV+iaZa5nmv4Nr3/PjrGa/7uLB8TX1cz1J1OSDVEkWbqcIYYf1jkHjoKBOvCjKjXWz+eqvZAdbA62bbK82pdbjZFcSfFvXoTzkjk7Nyey5vJmcnacQrNSp9BYtjMi2t1nstWbgdgFv0/UEsBAhQAFAAAAAgApLlaXbt1pKP4AAAA1wEAAAoAAAAAAAAAAAAAAAAAAAAAAGxhYmVsLmpzb25QSwUGAAAAAAEAAQA4AAAAIAEAAAAA",
+        "mode": "delay"
+      }
+    ],
+    "closed": 1
+  },
+  "text": "After Snapshot",
+  "tabs": [
+    "After Snapshot"
+  ],
+  "closeLabels": [
+    "Close After Snapshot (unsaved changes)",
+    "Close inspector"
+  ],
+  "regions": [
+    "",
+    "",
+    "",
+    "",
+    ""
+  ]
+}

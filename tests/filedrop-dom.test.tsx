@@ -187,6 +187,23 @@ it("drops a rejection once a different file is loaded", async () => {
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
+it.each(["Texture", "Metallic mask", "Image"])(
+  "names the %s browse action in empty and loaded states without an interactive drop well",
+  (label) => {
+    const props = { label, accept: { "image/png": [".png"] }, onFile: vi.fn() };
+    act(() => root.render(createElement(FileDrop, props)));
+    const emptyWell = container.querySelector(`[${FILE_DROP_ATTR}]`)!;
+    expect(emptyWell.getAttribute("role")).toBe("presentation");
+    expect(emptyWell.getAttribute("tabindex")).toBeNull();
+    expect(container.querySelector(`[aria-label="Browse ${label}"]`)).not.toBeNull();
+
+    act(() => root.render(createElement(FileDrop, { ...props, fileName: "asset.png", onClear: vi.fn() })));
+    const loadedWell = container.querySelector(`[${FILE_DROP_ATTR}]`)!;
+    expect(Array.from(loadedWell.querySelectorAll(":scope > button")).map((button) => button.getAttribute("aria-label")))
+      .toEqual([`Browse ${label}`, `Remove ${label}`]);
+  },
+);
+
 // #426: the X clears at once, so the well says how to get the file back —
 // the caller's own undo when it returns one (texture/mask live outside
 // history), otherwise the history's ⌘Z.
@@ -231,7 +248,7 @@ describe("FileDrop remove cue (#426)", () => {
     expect(container.querySelector('[role="status"]')!.textContent).toContain("Ctrl+Z brings it back");
   });
 
-  it("keeps keyboard focus in the well across the X and its Undo", () => {
+  it("keeps keyboard focus on Browse across the X and its Undo", () => {
     const onClear = vi.fn(() => vi.fn());
     act(() => root.render(createElement(FileDrop, { ...props, onClear })));
     clickRemove();
@@ -239,14 +256,14 @@ describe("FileDrop remove cue (#426)", () => {
     // The X unmounted with the file; focus went to its Undo, not <body>.
     expect(document.activeElement?.textContent).toBe("Undo");
     act(() => (document.activeElement as HTMLButtonElement).click());
-    expect(document.activeElement?.hasAttribute(FILE_DROP_ATTR)).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Browse Texture");
   });
 
-  it("returns focus to the well when the clear has no undo of its own", () => {
+  it("returns focus to Browse when the clear has no undo of its own", () => {
     const onClear = vi.fn();
     act(() => root.render(createElement(FileDrop, { ...props, onClear })));
     clickRemove();
-    expect(document.activeElement?.hasAttribute(FILE_DROP_ATTR)).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Browse Texture");
   });
 
   it("drops the note once a file is loaded again", () => {
