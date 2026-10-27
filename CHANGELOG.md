@@ -4,7 +4,10 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.109] - 2026-10-27
+
+### Changed
+- **Image wells have a Browse button.** Texture, Metallic mask and custom image slots now open the file picker from a named **Browse** button; drop a file anywhere on the well as before. Clicking the well itself no longer opens the picker.
 
 ### Fixed
 - **Blank and disabled barcodes no longer block export.** Clearing a label's barcode or switching its layer off now follows the same rule as a blank or disabled master barcode. Enabled, nonblank invalid codes still block export, including references and variant overrides.
