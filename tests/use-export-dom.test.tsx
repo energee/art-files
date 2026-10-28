@@ -1,8 +1,6 @@
 // @vitest-environment happy-dom
-// use-export-dom.test.tsx — useExport's PDF pair export against a faked save
-// dialog: a successful pair, a failure on the second file, a
-// user cancel, and that a successful export clears only the build error it
-// set itself — an unrelated asset/master/menu error survives (#473).
+// use-export-dom.test.tsx — useExport's combined print PDF and explicitly
+// requested legacy PDF pair against a faked save dialog.
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -51,11 +49,11 @@ async function mount() {
 
 beforeEach(() => { save.next = []; save.names = []; });
 
-it("saves both PDFs and notes them", async () => {
+it("saves one combined print PDF and notes it", async () => {
   const root = await mount();
   await act(async () => { await api.buildFull(); });
-  expect(save.names).toEqual(["beer.pdf", "beer-mask.pdf"]);
-  expect(api.exportNote).toBe("Saved beer.pdf, beer-mask.pdf.");
+  expect(save.names).toEqual(["beer.pdf"]);
+  expect(api.exportNote).toBe("Saved beer.pdf.");
   expect(buildError).toBe("");
   act(() => root.unmount());
 });
@@ -63,11 +61,11 @@ it("saves both PDFs and notes them", async () => {
 it("reports the first file saved and the second that failed", async () => {
   const root = await mount();
   save.next = [async () => ({ name: "beer.pdf", bytes: new Uint8Array() }), async () => { throw new Error("disk full"); }];
-  await act(async () => { await api.buildFull(); });
+  await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("Saved beer.pdf. Could not save beer-mask.pdf: disk full");
   expect(api.exportNote).toBe("");
   // The failure is the export's own message, so the next good export clears it.
-  await act(async () => { await api.buildFull(); });
+  await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("");
   act(() => root.unmount());
 });
@@ -75,7 +73,7 @@ it("reports the first file saved and the second that failed", async () => {
 it("notes a cancelled save", async () => {
   const root = await mount();
   save.next = [async () => null];
-  await act(async () => { await api.buildFull(); });
+  await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("Note: Export cancelled before saving beer.pdf.");
   expect(save.names).toEqual(["beer.pdf"]);
   act(() => root.unmount());
@@ -84,13 +82,13 @@ it("notes a cancelled save", async () => {
 it("clears its own error on success but keeps an unrelated one (#473)", async () => {
   const root = await mount();
   save.next = [async () => null];
-  await act(async () => { await api.buildFull(); });
+  await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("Note: Export cancelled before saving beer.pdf.");
-  await act(async () => { await api.buildFull(); });
+  await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("");
 
   act(() => setError("Could not load image: bad.png"));
-  await act(async () => { await api.buildFull(); });
+  await act(async () => { await api.buildFull({}, "pair"); });
   expect(api.exportNote).toBe("Saved beer.pdf, beer-mask.pdf.");
   expect(buildError).toBe("Could not load image: bad.png");
   act(() => root.unmount());

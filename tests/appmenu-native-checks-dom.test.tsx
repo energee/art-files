@@ -21,7 +21,7 @@ const native = vi.hoisted(() => {
       native.items.set(item.id, item);
       return item;
     }
-    async close() {}
+    async close() { if (native.items.get(this.id) === this) native.items.delete(this.id); }
     async setEnabled() {}
     async setText(text: string) { this.text = text; }
     async setAsAppMenu() { return null; }
@@ -198,4 +198,34 @@ it("installs Save Master… under its plain title and shows the command's varian
     await act(async () => { root.unmount(); });
     container.remove();
   }
+});
+
+it("rebuilds the native export menu when legacy PDF commands become available or disappear", async () => {
+  native.items.clear();
+  const root = createRoot(document.createElement("div"));
+  const ran: string[] = [];
+  const render = async (legacy: boolean) => {
+    await act(async () => {
+      root.render(createElement(AppMenu, {
+        actions: actionsIn(APP_MENUS).filter((entry) => legacy || !entry.optional).map((entry) => ({
+          id: entry.id, label: entry.text, run: () => { ran.push(entry.id); },
+        })),
+        checked: {}, onNativeError: (message) => { throw new Error(message); },
+        onCheckForUpdates: () => undefined,
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  };
+  try {
+    await render(false);
+    expect(native.items.has("export-pdf")).toBe(true);
+    for (const id of ["export-both", "export-art", "export-mask"]) expect(native.items.has(id)).toBe(false);
+    await render(true);
+    for (const id of ["export-pdf", "export-both", "export-art", "export-mask"]) expect(native.items.has(id)).toBe(true);
+    native.items.get("export-mask")!.action!();
+    expect(ran).toEqual(["export-mask"]);
+    await render(false);
+    expect(native.items.has("export-both")).toBe(false);
+    expect(native.items.has("export-pdf")).toBe(true);
+  } finally { await act(async () => { root.unmount(); }); }
 });

@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **One PDF with a White Ink spot layer.** Export PDF (`⌘E`) now saves the artwork and an outlined, overprinting **White Ink** separation in one file. Inspect it in Acrobat's Output Preview with Overprint Preview enabled; viewers without overprint preview can show magenta and white over the art. **Settings → Two-file PDF export (art + mask)** reveals the unchanged paired and individual PDF exports. Headless generation uses the same single PDF by default; `--two-file` keeps the old pair. PSDs are unchanged. Printer proof approval is still required.
+
 ### Changed
 - **Interface library patch updates.** Tauri JS 2.12.4 and its dialog and file-system plugins, React 19.3.1, Lucide icons 1.61, react-dropzone 20.1.4 and zxing-wasm 3.1.6, plus newer build tooling; no change in behaviour.
 - **Settings… is where Mac apps keep it.** On macOS it moved from Edit to the **Label Lab** menu, under Check for Updates…, and it has a shortcut everywhere: `⌘,` (`Ctrl+,` on Windows and Linux, where it stays under Edit).
@@ -23,8 +26,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Esc keeps what you typed on the preview.** Pressing Esc while editing text in place on the preview now finishes the edit and keeps your typing, like Enter or a click away (and like Figma and Illustrator). Before, Esc threw the typing away. `⌘Z` still takes the whole edit back in one step, and a new Style typed this way joins the master's choices once.
 - **One unit for every length, remembered.** Pick Inches, Millimetres, Points or Pixels once, in the ruler corner or the new View → Units menu, and the rulers, the inspector's X / Y / width / height / gap / wrap / module / QR size fields, the move and resize badge on the canvas and the margin inset all use it. It is remembered between sessions. Type size and letter spacing stay in points, and stroke width in pixels at 600 DPI.
 - **Renaming in the inspector commits when you finish.** The layer name box now renames on Enter or when you click away, as one undo step, and Esc puts the old name back, the same as renaming a Layers row. It used to rename (and add an undo step) on every keystroke.
-- **Re-exporting asks nothing.** The first Export PDFs (or PSDs) in a tab opens the save dialog in the `.label`'s folder, named after it. After that, `⌘E` (or `⇧⌘E`) rewrites the same files with no dialog, and the header names both. The mask is always written beside the art file as `{name}-mask.pdf` (or `.psd`) without a dialog of its own, replacing any old mask. **File → Export → Export PDFs As… / Export PSDs As…** choose a new place. Saving the label under a new name (Save Label As…) makes the next export ask again, so it can never overwrite the previous beer's files.
-- **PDF export no longer waits for the preview.** Export PDFs is available as soon as a label opens; the "(rendering…)" note is gone.
+- **Re-exporting asks nothing.** The first PDF or PSD export in a tab opens the save dialog beside the `.label`, named after it; later exports of that kind rewrite the remembered destination without a dialog. **Export PDF As… / Export PSDs As…** choose a new place. Optional paired exports write the mask beside the art file without a second desktop dialog, replacing the pair together. Print PDF, legacy PDF pair and PSD destinations are remembered separately. Save Label As… makes the next export ask again.
+- **PDF export no longer waits for the preview.** Export PDF is available as soon as a label opens; the "(rendering…)" note is gone.
 - **`⌘E` on an invalid label shows what's wrong.** While export is blocked, `⌘E` and `⇧⌘E` select the first invalid layer, as clicking the header's reason does, instead of doing nothing.
 
 ### Removed
@@ -33,7 +36,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Controls that did nothing or repeated another.** Background and Metallic mask no longer offer Lock (in the inspector or the right-click menu); they can't be dragged, so it changed nothing. **Tint raster** shows only for PNG/JPEG art, since SVG art already takes the fill. The selected row's Rename (pencil) button is gone: use the inspector's name box, double-click the row, or right-click → Rename. The inspector's "Content" heading is gone; the field's own caption (Text, Code, Link, Texture…) names it.
 - **The DPI readout in the status bar.** Change it in Settings → PSD resolution.
 - **Settings → Appearance.** Choose System, Light or Dark from View → Appearance or the `⌘K` palette.
-- **Single-plate exports.** File → Export and the palette keep **Export PDFs** (`⌘E`) and **Export PSDs** (`⇧⌘E`), which write the art and mask together; Export Artwork / Mask PDF and PSD are gone.
+- **Single-plate PSD exports.** Export PSDs (`⇧⌘E`) writes both plates. The legacy paired and single-plate PDF commands are hidden by default behind the Two-file PDF export setting.
 - **“Up to date” in the status bar.** The status bar shows the updater only while it is checking, has an update, is installing, needs a restart or failed; Check for Updates… still says when you're up to date.
 - **The resting drop hint under the preview.** Dragging an image over the window still shows the background and metallic-mask drop zones.
 

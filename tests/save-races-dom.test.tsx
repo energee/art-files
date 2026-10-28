@@ -37,13 +37,13 @@ afterEach(async () => {
   vi.restoreAllMocks();
   localStorage.clear();
 });
-async function mount(fileToOpen: FileToOpen | null = null) {
+async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   const onMeta = vi.fn();
   const props = {
     active: true, fileToOpen, onOpenSettled: vi.fn(), onMeta, saveSlot,
-    render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(), onOpenProject: vi.fn(),
+    render: { ...DEFAULT_RENDER, twoFilePdfExport }, onRenderChange: vi.fn(), onOpenProject: vi.fn(),
     onNewTab: vi.fn(), onCloseTab: vi.fn(), onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
   };
   await act(async () => root.render(createElement(DocumentEditor, props)));
@@ -210,12 +210,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
   it(`${extension}: cancelling artwork stops the pair (#254)`, async () => {
     const { pick } = picker();
     pick.mockRejectedValueOnce(new DOMException("Cancelled", "AbortError"));
-    await mount();
-    // The PDF command is enabled only after the debounced preview setup.
-    await vi.waitFor(async () => {
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
-      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
-    });
+    await mount(null, true);
     await act(async () => {
       menu.actions.find((c) => c.id === command)!.run();
       await vi.waitFor(() => expect(pick).toHaveBeenCalled(), { timeout: 4000 });
@@ -230,12 +225,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
     let writes = 0;
     const { pick, handle } = picker(async () => { if (++writes === 2) throw new Error("Disk full"); });
     handle.name = `renamed-art.${extension}`;
-    await mount();
-    // The PDF command is enabled only after the debounced preview setup.
-    await vi.waitFor(async () => {
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
-      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
-    });
+    await mount(null, true);
     await act(async () => {
       menu.actions.find((c) => c.id === command)!.run();
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
@@ -252,11 +242,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
     const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
       { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) }));
     vi.stubGlobal("showSaveFilePicker", pick);
-    await mount();
-    await vi.waitFor(async () => {
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
-      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
-    });
+    await mount(null, true);
     // A confirmation, not an error: announced politely, through a status
     // region that exists before the note lands (one mounted already holding
     // its text isn't announced).
@@ -293,11 +279,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
       return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
     });
     vi.stubGlobal("showSaveFilePicker", pick);
-    await mount();
-    await vi.waitFor(async () => {
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
-      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
-    });
+    await mount(null, true);
     await act(async () => {
       menu.actions.find((c) => c.id === command)!.run();
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(1), { timeout: 4000 });
@@ -308,7 +290,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
     });
     // Let the export finish, then check it confirmed nothing.
-    await vi.waitFor(() => expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false));
+    await vi.waitFor(() => expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(false));
     expect(document.body.textContent).not.toContain("Saved ");
   });
 }

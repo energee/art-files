@@ -19,18 +19,18 @@ import { lolevMaster } from "../src/model/lolevLayers";
 import { applyDiff, exportBase, foldLabelScale, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
-import { buildArtPdf, buildMaskPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
+import { buildArtPdf, buildMaskPdf, buildPrintPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { createMissingGlyphCheck, describeCodepoints } from "../src/textheight";
 import type { Style } from "../src/types";
 
 export const USAGE =
   "usage: npm run generate -- [master.master] [values.json|-] <outDir> " +
-  "[--variant id] [--asset layerId=path] [--set id=value] [--format pdf|psd|all] [--label file.label]\n" +
+  "[--variant id] [--asset layerId=path] [--set id=value] [--format pdf|psd|all] [--two-file] [--label file.label]\n" +
   "       npm run generate -- [master.master] [values.json|-] --check [same flags; writes nothing]\n" +
   "       npm run generate -- [master.master] --inspect\n" +
   "       npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
-  "[--collab-left=file] [--collab-center=file]";
+  "[--collab-left=file] [--collab-center=file] [--two-file]";
 
 /** Which plates to write. A closed union, so "nothing" is unrepresentable
  *  and a run can never exit 0 having written zero files. */
@@ -47,6 +47,7 @@ export type GenerateArgs =
       configPath?: string;
       collabLeft?: string;
       collabCenter?: string;
+      twoFile: boolean;
     }
   | {
       mode: "inspect";
@@ -66,10 +67,11 @@ export type GenerateArgs =
       assets: Record<string, string>;
       set: Record<string, string>;
       format: FormatSet;
+      twoFile: boolean;
     };
 
 const KNOWN_FLAGS = new Set([
-  "inspect", "check", "master", "values", "label", "out", "variant", "asset", "set", "format",
+  "inspect", "check", "two-file", "master", "values", "label", "out", "variant", "asset", "set", "format",
   "collab-left", "collab-center",
 ]);
 
@@ -85,7 +87,7 @@ function kv(flag: string, raw: string): [string, string] {
 }
 
 /** Parse argv into a generate / inspect / legacy job. `--flag value` and
- *  `--flag=value` both work; `--inspect` and `--check` are bare switches.
+ *  `--flag=value` both work; `--inspect`, `--check`, and `--two-file` are bare switches.
  *  Throws USAGE on anything malformed. */
 export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const positional: string[] = [];
@@ -95,6 +97,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const set: Record<string, string> = {};
   let inspect = false;
   let check = false;
+  let twoFile = false;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -102,10 +105,11 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     const eq = a.indexOf("=");
     const name = eq >= 0 ? a.slice(2, eq) : a.slice(2);
     if (!KNOWN_FLAGS.has(name)) throw new Error(`unknown flag --${name}\n${USAGE}`);
-    if (name === "inspect" || name === "check") {
+    if (name === "inspect" || name === "check" || name === "two-file") {
       if (eq >= 0) throw new Error(`--${name} does not take a value\n${USAGE}`);
       if (name === "inspect") inspect = true;
-      else check = true;
+      else if (name === "check") check = true;
+      else twoFile = true;
       continue;
     }
     const value = eq >= 0 ? a.slice(eq + 1) : argv[++i];
@@ -124,7 +128,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const rest = positional.filter((p) => p !== masterPath);
 
   if (inspect) {
-    if (check || singles.values || singles.label || singles.out || rest.length
+    if (check || twoFile || singles.values || singles.label || singles.out || rest.length
       || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
       || singles["collab-left"] || singles["collab-center"])
       throw new Error(USAGE);
@@ -166,6 +170,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
       assets,
       set,
       format: singles.format ? parseFormat(singles.format) : "all",
+      twoFile,
       ...(check ? { check: true as const } : {}),
     };
   }
@@ -179,6 +184,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     ...(configPath ? { configPath } : {}),
     ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
     ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
+    twoFile,
   };
 }
 
@@ -323,6 +329,8 @@ export interface GenerateInput {
   overrides?: LabelFile["overrides"];
   extraImages: Record<string, { name: string; bytes: Uint8Array }>;
   format: FormatSet;
+  /** Preserve the pre-#569 art + mask PDF pair instead of a print PDF. */
+  twoFile?: boolean;
   assetRoot: string;
 }
 
@@ -565,12 +573,24 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     logoSvg, guides: guideLines(input.master), custom: planCustom,
   });
   const pdfAssets: Assets = { fonts, fontFamilies, title, images };
+  const maskPng = decoded[PAGE_ART_ID.mask];
+  const printAssets: Assets = maskPng ? {
+    ...pdfAssets,
+    maskPixels: {
+      data: new Uint8ClampedArray(maskPng.data.buffer, maskPng.data.byteOffset, maskPng.data.byteLength),
+      width: maskPng.width,
+      height: maskPng.height,
+    },
+  } : pdfAssets;
   const psdAssets: PsdAssets = { fonts, fontFamily: defaultFamily, images: psdImages };
   const psdOpts = { layers: resolved.layers };
   const builds: [string, () => Promise<Uint8Array>][] = [];
-  if (wantsPdf(input.format)) builds.push(
-    [`${stem}.pdf`, () => buildArtPdf(plan, pdfAssets)],
-    [`${stem}-mask.pdf`, () => buildMaskPdf(plan, pdfAssets)]);
+  if (wantsPdf(input.format)) {
+    if (input.twoFile) builds.push(
+      [`${stem}.pdf`, () => buildArtPdf(plan, pdfAssets)],
+      [`${stem}-mask.pdf`, () => buildMaskPdf(plan, pdfAssets)]);
+    else builds.push([`${stem}.pdf`, () => buildPrintPdf(plan, printAssets)]);
+  }
   if (wantsPsd(input.format)) builds.push(
     [`${stem}.psd`, () => buildPsd(plan, psdAssets, "art", psdOpts)],
     [`${stem}-mask.psd`, () => buildPsd(plan, psdAssets, "mask", psdOpts)]);
@@ -601,9 +621,12 @@ function parseValuesJson(text: string): unknown {
   }
 }
 
-function outputNames(stem: string, format: FormatSet): string[] {
+function outputNames(stem: string, format: FormatSet, twoFile: boolean): string[] {
   const names: string[] = [];
-  if (wantsPdf(format)) names.push(`${stem}.pdf`, `${stem}-mask.pdf`);
+  if (wantsPdf(format)) {
+    names.push(`${stem}.pdf`);
+    if (twoFile) names.push(`${stem}-mask.pdf`);
+  }
   if (wantsPsd(format)) names.push(`${stem}.psd`, `${stem}-mask.psd`);
   return names;
 }
@@ -676,6 +699,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       overrides: converted.label.overrides,
       extraImages,
       format: "all",
+      twoFile: args.twoFile,
       assetRoot,
     });
     const outDir = resolve(io.cwd, args.outDir);
@@ -767,7 +791,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       if (missing.length) errors.push(`${l.id}: cannot print ${describeCodepoints(missing)} in ${FONT_FAMILIES[family].label}`);
     }
     const stem = exportBase(resolved.layers);
-    for (const name of outputNames(stem, args.format)) {
+    for (const name of outputNames(stem, args.format, args.twoFile)) {
       if (dests.has(name)) errors.push(`duplicate output file "${name}"`);
       dests.add(name);
     }
@@ -787,7 +811,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     if (!p) continue;
     results.push(await buildLabel({
       master, masterAssets, values: p.values, enabledVariants: p.variants,
-      overrides: p.overrides, extraImages: p.extraImages, format: args.format, assetRoot,
+      overrides: p.overrides, extraImages: p.extraImages, format: args.format,
+      twoFile: args.twoFile, assetRoot,
     }));
   }
   // parseGenerateArgs guarantees an outDir whenever check is off.

@@ -8,8 +8,8 @@ Read this file first; follow the pointers below only when you need them.
 Lolev beer label generator: a local Vite + TypeScript web app (with a Node headless
 harness, `npm run generate`, that fills a `.master` from layer-id JSON — the old
 texture/mask/config argv still works) turning art and beer info into print-ready
-600-DPI PDFs — label art plus a white-ink layer where
-blue = white ink and white = knockout. Operator guide is the Fumadocs site in
+PDFs — one print file with artwork and an overprinting `White Ink` spot layer,
+or an optional art/mask pair (blue = white ink, white = knockout). Operator guide is the Fumadocs site in
 `docs-site/`. Node ecosystem, React + shadcn/ui editor.
 
 - Build: `npm run build`

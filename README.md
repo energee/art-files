@@ -1,7 +1,8 @@
 # Label Lab
 
-You fill a master. Label Lab writes the two PDFs the printer wants: the art,
-and a white-ink plate where **blue = white ink** and **white = knockout**.
+You fill a master. Label Lab writes one print PDF with artwork and an
+overprinting **White Ink** spot layer. An optional two-file export retains
+the art/mask pair (**blue = white ink**, **white = knockout**).
 It also exports editable Photoshop files.
 
 **How to use the whole app:** [`docs-site/content/docs`](docs-site/content/docs),
@@ -24,6 +25,9 @@ npm run lint           # eslint: react-hooks rules, zero warnings
 npx knip@6.38.0        # dead code (CI runs it after the tests)
 npm run build          # production bundle (vite build)
 ```
+
+PDF regression tests require Poppler and Ghostscript (`brew install poppler
+ghostscript` on macOS). CI installs both before running the suite.
 
 `npm run strokecap` opens the dev-only stroke magnifier, `tools/strokecap.html`,
 through the Vite dev server (the page needs it; opening the file directly fails).
@@ -48,7 +52,7 @@ The app outputs RGB. Before sending to the printer:
 
 ```bash
 brew install ghostscript   # once
-tools/to-cmyk.sh LABRADORITE.pdf LABRADORITE-mask.pdf
+tools/to-cmyk.sh LUPULA.pdf
 ```
 
 ## Layout

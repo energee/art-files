@@ -24,6 +24,22 @@ describe("npm run generate working directory (#104)", () => {
       expect(p.status).toBe(0);
       expect(existsSync(join(caller, "out", "probe.pdf"))).toBe(true);
       expect(existsSync(join(repo, "out", "probe.pdf"))).toBe(false);
+      expect(existsSync(join(caller, "out", "probe-mask.pdf"))).toBe(false);
+    } finally {
+      rmSync(caller, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("--two-file keeps the art and mask PDF pair", () => {
+    const caller = mkdtempSync(join(tmpdir(), "generate-two-file-"));
+    try {
+      writeFileSync(join(caller, "probe-values.json"), JSON.stringify({ name: "Probe", barcode: "850051366224" }));
+      const p = spawnSync(tsx, [script, "--values", "probe-values.json", "--out", "out", "--format", "pdf", "--two-file"], {
+        cwd: repo, env: { ...process.env, INIT_CWD: caller }, encoding: "utf8",
+      });
+      expect(p.status).toBe(0);
+      expect(existsSync(join(caller, "out", "probe.pdf"))).toBe(true);
+      expect(existsSync(join(caller, "out", "probe-mask.pdf"))).toBe(true);
     } finally {
       rmSync(caller, { recursive: true, force: true });
     }

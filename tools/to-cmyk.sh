@@ -1,7 +1,7 @@
 #!/bin/sh
-# to-cmyk.sh — convert the generated RGB PDFs to CMYK for the printer.
+# to-cmyk.sh — convert RGB artwork to CMYK while retaining the White Ink spot.
 # Requires Ghostscript: brew install ghostscript
-# Usage: tools/to-cmyk.sh Label.pdf Label-mask.pdf ...
+# Usage: tools/to-cmyk.sh Label.pdf (or legacy Label.pdf Label-mask.pdf)
 # Writes <name>-cmyk.pdf next to each input.
 set -eu
 command -v gs >/dev/null || { echo "ghostscript not found: brew install ghostscript" >&2; exit 1; }

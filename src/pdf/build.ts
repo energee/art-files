@@ -1,4 +1,4 @@
-// build.ts — builds the two deliverable PDFs with pdf-lib from a DISPLAY LIST
+// build.ts — builds the combined print PDF and optional art/mask PDF pair.
 // (planLayers.ts's PlacedLayer[], which the caller plans from the resolved
 // v3 layers — App or scripts/generate.ts). drawItems walks the list in draw
 // order once per mode: in "art" mode elements draw with their fill color
@@ -16,6 +16,9 @@ import {
   PDFFont,
   PDFPage,
   degrees,
+  drawImage,
+  drawRectangle,
+  drawSvgPath,
   grayscale,
   popGraphicsState,
   pushGraphicsState,
@@ -29,9 +32,11 @@ import {
   TextRenderingMode,
   translate,
   type Color,
+  type PDFOperator,
+  type PDFRef,
   type Rotation,
 } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit";
+import fontkit, { type Font } from "@pdf-lib/fontkit";
 import type { FontFamilyId } from "../fontCatalog";
 import type { Fill } from "../types";
 import { bridgeOffsets } from "../strokes";
@@ -40,6 +45,9 @@ import { pageDrawsOn, type PlacedLayer, type PlacedPage } from "../planLayers";
 import * as L from "../layout";
 import { describeCodepoints, VARIATION_SELECTOR } from "../textheight";
 import { version } from "../../package.json";
+import { openFont } from "../fontkit";
+import { outlineText } from "./outline";
+import { embedWhiteInkMask, registerWhiteInk, whiteFill, whiteStroke } from "./whiteInk";
 
 /** An image asset's source: vector text (already planned as `paths` items by
  *  planLayers, so this backend never draws it) or raster bytes, embedded
@@ -59,6 +67,9 @@ export interface Assets {
    *  prints. For the two page roles the fallbacks are the old ones — no
    *  background bytes = bare stock, no mask bytes = the white-ink flood. */
   images?: Record<string, CollabImage | null | undefined>;
+  /** Decoded uploaded mask for the spot-color image in a combined PDF.
+   *  Decoding belongs to the app/CLI boundary, not this DOM-free builder. */
+  maskPixels?: { data: Uint8ClampedArray; width: number; height: number };
   /** The label's display name for the PDF's document title. */
   title?: string;
 }
@@ -82,9 +93,10 @@ function fillColor(fill: Fill) {
   return c.r === c.g && c.g === c.b ? grayscale(c.r) : toRgb(c);
 }
 
-/** Mask-mode paint for an element: knockout (white) or white-ink (blue). */
+/** One mask decision shared by the RGB plate and the spot-color pass. */
+const maskTint = (layer: "metallic" | "white"): 0 | 1 => layer === "white" ? 1 : 0;
 function maskColor(layer: "metallic" | "white") {
-  return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
+  return maskTint(layer) ? toRgb(L.COLORS.maskBlue) : toRgb(L.COLORS.white);
 }
 
 /** An element's paint for the plate: its fill on the art plate, its plate
@@ -435,5 +447,101 @@ export async function buildMaskPdf(items: readonly PlacedLayer[], assets: Assets
   shiftForBleed(page);
   drawItems(page, fonts, items, embedded, "mask");
   doc.setTitle(`${assets.title ?? "Label"} white-ink layer`);
+  return doc.save();
+}
+
+/** The same mask geometry, painted only in the printer's spot color.
+ *  Builders supply the PDF geometry; replace their known placeholder gray
+ *  operators before pushing them, never rewriting a serialized content stream. */
+function drawWhiteInk(
+  page: PDFPage, items: readonly PlacedLayer[], assets: Assets, embedded: Embedded,
+  mask: PDFRef | undefined,
+) {
+  const placeholder = grayscale(0);
+  const paint = (ops: PDFOperator[], tint: 0 | 1) => {
+    for (const op of ops) {
+      const text = op.toString();
+      if (text === "0 g") page.pushOperators(...whiteFill(tint));
+      else if (text === "0 G") page.pushOperators(...whiteStroke(tint));
+      else page.pushOperators(op);
+    }
+  };
+  const rect = (x: number, y: number, w: number, h: number, tint: 0 | 1, stroke = 0) =>
+    paint(drawRectangle({
+      x, y, width: w, height: h, color: placeholder,
+      borderColor: stroke ? placeholder : undefined, borderWidth: 2 * stroke,
+      rotate: degrees(0), xSkew: degrees(0), ySkew: degrees(0),
+    }), tint);
+  const paths = (ds: readonly string[], x: number, y: number, tint: 0 | 1, stroke = 0) => {
+    for (const d of ds) paint(drawSvgPath(d, {
+      x, y, scale: 1, color: placeholder,
+      borderColor: stroke ? placeholder : undefined, borderWidth: 2 * stroke,
+    }), tint);
+  };
+  // Each font face is opened at most once per pass, including custom families.
+  const faces = new Map<Uint8Array, Font>();
+  const font = (face: Face, family?: FontFamilyId) => {
+    const pack = family ? assets.fontFamilies?.[family] : assets.fonts;
+    if (!pack) throw new Error(`Missing PDF font family: ${family}`);
+    const bytes = pack[face];
+    let fk = faces.get(bytes);
+    if (!fk) { fk = openFont(bytes); faces.set(bytes, fk); }
+    return fk;
+  };
+  if (!mask) withoutBleedShift(page, () => rect(0, 0, L.PAGE.w, L.PAGE.h, 1));
+  for (const r of items) {
+    if (r.kind === "text") {
+      const ds = outlineText(font(r.face, r.fontFamily), r);
+      if (r.stroke) paths(ds, 0, L.PAGE.h, maskTint(r.stroke.layer), r.stroke.w);
+      paths(ds, 0, L.PAGE.h, maskTint(r.layer));
+    } else if (r.kind === "paths") {
+      if (r.stroke) paths(r.paths, r.x, y(r.y), maskTint(r.stroke.layer), r.stroke.w);
+      paths(r.paths, r.x, y(r.y), maskTint(r.layer));
+    } else if (r.kind === "page") {
+      if (!pageDrawsOn(r, "mask") || !mask) continue;
+      const name = page.node.newXObject("WhiteMask", mask);
+      withoutBleedShift(page, () => page.pushOperators(...drawImage(name, {
+        x: r.x, y: y(r.y + r.h), width: r.w, height: r.h,
+        rotate: degrees(0), xSkew: degrees(0), ySkew: degrees(0),
+      })));
+    } else if (r.kind === "image") {
+      if (r.asset && embedded.has(r.asset)) rect(r.x, y(r.y + r.h), r.w, r.h, 1);
+    } else {
+      const digits = r.digits.map((d) => outlineText(font("regular"), {
+        kind: "text", id: r.id, text: d.text, face: "regular", size: r.textSize,
+        x: digitStartX(d, r.rotated), y: d.y, rotated: r.rotated,
+        fill: r.fill, layer: r.fillLayer,
+        w: d.w, tracking: 0, stroke: null,
+      }));
+      if (r.S > 0 && r.stroke !== "none") {
+        const tint = maskTint(r.strokeLayer);
+        for (const b of r.geo.bars) rect(b.x, y(b.yTop + b.h), b.w, b.h, tint, r.S);
+        for (const ds of digits) paths(ds, 0, L.PAGE.h, tint, r.S);
+      }
+      const tint = maskTint(r.fillLayer);
+      for (const b of r.geo.bars) rect(b.x, y(b.yTop + b.h), b.w, b.h, tint);
+      for (const ds of digits) paths(ds, 0, L.PAGE.h, tint);
+    }
+  }
+}
+
+/** One print file: unchanged art followed by an outlined, overprinting White Ink OCG. */
+export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
+  const { doc, page, fonts } = await newDoc(assets);
+  const embedded = await embedRasters(doc, items, assets, "art");
+  shiftForBleed(page);
+  drawItems(page, fonts, items, embedded, "art");
+  const white = registerWhiteInk(doc, page);
+  const uploaded = items.some((r) => r.kind === "page" && r.role === "mask" && assets.images?.[r.asset]);
+  let mask: PDFRef | undefined;
+  if (uploaded) {
+    if (!assets.maskPixels) throw new Error("Decoded mask pixels are required for the print PDF.");
+    const { data, width, height } = assets.maskPixels;
+    mask = embedWhiteInkMask(doc, data, width, height);
+  }
+  page.pushOperators(...white.begin);
+  drawWhiteInk(page, items, assets, embedded, mask);
+  page.pushOperators(...white.end);
+  doc.setTitle(`${assets.title ?? "Label"} label`);
   return doc.save();
 }

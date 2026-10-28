@@ -3,6 +3,7 @@
 // presents it). The theme lives in View → Appearance and the ⌘K palette.
 import { LABEL_SHORT_IN, LABEL_WIDE_IN } from "@/layout";
 import { BLEED_DRAG_STEP_IN, BLEED_STEP_IN, displayBleedIn, type RenderSettings as Settings } from "@/settings";
+import { Switch } from "@/components/ui/switch";
 import { ScrubField } from "./ScrubField";
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
@@ -21,6 +22,15 @@ export function RenderSettings({ value, onChange }: { value: Settings; onChange:
       <ScrubField id="doc-bleed" label="Bleed" unit={'"'} value={displayBleedIn(value.bleedIn)}
         min={0} max={0.5} step={BLEED_STEP_IN} dragStep={BLEED_DRAG_STEP_IN}
         onChange={(bleedIn) => set({ bleedIn })} />
+      <div className="flex items-start justify-between gap-3">
+        <label htmlFor="two-file-pdf" className="flex flex-col gap-1">
+          <span>Two-file PDF export (art + mask)</span>
+          <span className="text-xs text-muted-foreground">Show the legacy separate art and mask PDF exports.</span>
+        </label>
+        <Switch id="two-file-pdf" nativeButton render={<button type="button" />}
+          aria-label="Two-file PDF export (art + mask)" checked={value.twoFilePdfExport}
+          onCheckedChange={(twoFilePdfExport) => set({ twoFilePdfExport: twoFilePdfExport === true })} />
+      </div>
     </Group>
     <Group title="Can preview">
       <ScrubField id="doc-corner-radius" label="Corner radius" unit={'"'}

@@ -37,6 +37,7 @@ import type { Fill } from "../types";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import type { Font } from "@pdf-lib/fontkit";
 import { openFont } from "../fontkit";
+import { glyphPaths } from "../pdf/outline";
 import * as L from "../layout";
 import type { Face, PlacedBarcode, PlacedPaths, PlacedText } from "../plan";
 import type { CollabImage } from "../pdf/build";
@@ -311,113 +312,28 @@ function svgToPaths(d: string, dx: number, dy: number): BezierPath[] {
   return out;
 }
 
-/** One digit group's glyph outlines as closed bezier subpaths in label
- *  points, algebraically reproducing one of the two placements
- *  PlacedBarcode.rotated selects between (see that field's own doc) instead
- *  of via an affine layer transform (ag-psd shape layers have none — only
- *  type layers do).
- *
- *  A font-local point is (u, v): u runs along the baseline from the string's
- *  start (font's normal +x advance direction, in points, already scaled by
- *  size/unitsPerEm), v is height above the baseline (font's +y, ascenders
- *  positive).
- *
- *  `rotated` (the template barcode): composing pdf-lib's CCW 90 degree
- *  rotation about the PDF-space anchor with the PDF page's y-flip back into
- *  layout.ts's top-left/y-down space reduces to: label = (anchorX - v,
- *  anchorY - u) (see `pdf/build.ts`'s `drawBarcode`). `anchorX` is the digit
- *  column's fixed baseline x (every digit group shares one, see planLayers'
- *  rotated barcode `emit`); `anchorY` is the label-space Y the string's start lands at,
- *  already the value the old text layer used as `baseline`
- *  (`geo.bottom - d.center * geo.mod + measure(d.text) / 2`).
- *
- *  `!rotated` (every custom barcode layer, Task 3): ordinary horizontal
- *  placement, no rotation — label = (anchorX + u, anchorY - v). `anchorX` is
- *  the run's LEFT edge (the plan hands back the run's center, see
- *  PlacedBarcode's own doc — callers subtract half the measured width);
- *  `anchorY` is the baseline.
- *
- *  TrueType glyphs are quadratic (fontkit emits `quadraticCurveTo`, never
- *  cubic) — svgToPaths cannot be reused here, its regex only understands
- *  M/L/C/Z and would silently swallow a Q's numbers into the previous
- *  command. Elevation to cubic is exact: C1 = P0 + 2/3(Q-P0),
- *  C2 = P2 + 2/3(Q-P2); this still holds after either (u,v)->label map above
- *  because both maps are affine, and affine maps preserve the barycentric
- *  combination the elevation formula is built from. */
+/** PSD adapter for the shared raw-advance glyph walker. Barcode groups have
+ * no tracking, and ag-psd's BezierPath is structurally the neutral outline. */
 export function digitGroupPaths(
-  font: Pick<Font, "unitsPerEm" | "layout">,
+  font: Pick<Font, "unitsPerEm" | "glyphsForString">,
   text: string,
   size: number,
   rotated: boolean,
   anchorX: number,
   anchorY: number,
 ): { paths: BezierPath[]; bbox: { minX: number; maxX: number; minY: number; maxY: number } } {
-  const run = font.layout(text);
-  const scale = size / font.unitsPerEm;
-  const out: BezierPath[] = [];
-  const bbox = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
-  const track = (p: Pt) => {
-    bbox.minX = Math.min(bbox.minX, p[0]);
-    bbox.maxX = Math.max(bbox.maxX, p[0]);
-    bbox.minY = Math.min(bbox.minY, p[1]);
-    bbox.maxY = Math.max(bbox.maxY, p[1]);
+  const { paths, bbox } = glyphPaths(font, text, size, rotated, anchorX, anchorY);
+  return {
+    paths: paths.map(({ knots }) => ({
+      open: false,
+      fillRule: "even-odd",
+      knots: knots.map(({ points }) => ({
+        linked: false,
+        points: [pos(points[0]), pos(points[1]), pos(points[2]), pos(points[3]), pos(points[4]), pos(points[5])],
+      })),
+    })),
+    bbox,
   };
-  let uCum = 0;
-  for (let i = 0; i < run.glyphs.length; i++) {
-    const glyph = run.glyphs[i];
-    const pos = run.positions[i];
-    const u0 = uCum + pos.xOffset * scale;
-    const v0 = pos.yOffset * scale;
-    const toLabel = rotated
-      ? (fx: number, fy: number): Pt => [anchorX - (v0 + fy * scale), anchorY - (u0 + fx * scale)]
-      : (fx: number, fy: number): Pt => [anchorX + (u0 + fx * scale), anchorY - (v0 + fy * scale)];
-    let pts: { a: Pt; in?: Pt; out?: Pt }[] = [];
-    let last: Pt = [0, 0];
-    const flush = () => {
-      if (pts.length >= 2) out.push(closed(pts.map((p) => knot(p.in ?? p.a, p.a, p.out ?? p.a))));
-      pts = [];
-    };
-    for (const c of glyph.path.commands) {
-      if (c.command === "moveTo") {
-        flush();
-        last = toLabel(c.args[0], c.args[1]);
-        pts.push({ a: last });
-        track(last);
-      } else if (c.command === "lineTo") {
-        last = toLabel(c.args[0], c.args[1]);
-        pts.push({ a: last });
-        track(last);
-      } else if (c.command === "quadraticCurveTo") {
-        const q = toLabel(c.args[0], c.args[1]);
-        const end = toLabel(c.args[2], c.args[3]);
-        const c1: Pt = [last[0] + (2 / 3) * (q[0] - last[0]), last[1] + (2 / 3) * (q[1] - last[1])];
-        const c2: Pt = [end[0] + (2 / 3) * (q[0] - end[0]), end[1] + (2 / 3) * (q[1] - end[1])];
-        pts[pts.length - 1].out = c1;
-        pts.push({ a: end, in: c2 });
-        track(q);
-        track(end);
-        last = end;
-      } else if (c.command === "bezierCurveTo") {
-        const c1 = toLabel(c.args[0], c.args[1]);
-        const c2 = toLabel(c.args[2], c.args[3]);
-        const end = toLabel(c.args[4], c.args[5]);
-        pts[pts.length - 1].out = c1;
-        pts.push({ a: end, in: c2 });
-        track(c1);
-        track(c2);
-        track(end);
-        last = end;
-      } else if (c.command === "closePath") {
-        flush();
-      }
-    }
-    flush();
-    // The raw advance, not pos.xAdvance: the PDF's drawText emits no
-    // kerning, so a kerned advance would shift these digits off the PDF's
-    // for a kern-table font like Barlow Condensed (#86).
-    uCum += glyph.advanceWidth * scale;
-  }
-  return { paths: out, bbox };
 }
 
 /** One vector layer. `stroke`/`strokePt` (width in points) become the same
