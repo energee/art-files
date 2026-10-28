@@ -39,7 +39,7 @@ function render(text: string) {
   act(() => {
     root.render(createElement(PreviewCompare, {
       canvasRender: source, layers: [layer(text)], editLayerOf: (l) => l, selected: [],
-      onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCancel: vi.fn(),
+      onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCommit: vi.fn(), onEditCancel: vi.fn(),
       onDrag: vi.fn(), onDragCancel: vi.fn(), onResize: vi.fn(), onEditSession: vi.fn(),
       cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN,
     }));

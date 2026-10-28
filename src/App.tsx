@@ -50,7 +50,7 @@ import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/re
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -2466,12 +2466,13 @@ export const DocumentEditor = memo(function DocumentEditor({
               selected={selected}
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit
-              // feedback, folded into one undo step per session.
+              // feedback, folded into one undo step per session. Keystrokes
+              // learn no choice (every prefix would join the list); the
+              // session's final value is learned once, on commit, inside
+              // that same undo step.
               onEditUppercase={(id, uppercase, first) => patch(id, { style: { uppercase } }, !first)}
-              onEditText={(id, lines, first) => {
-                const layer = drawLayers.find((l) => l.id === id);
-                if (layer) setContent(layer, lines, !first);
-              }}
+              onEditText={(id, lines, first) => edit((d) => setContentIn(d, id, lines, false), !first)}
+              onEditCommit={(id) => edit((d) => learnValueIn(d, id), true)}
               onEditCancel={() => { undo(); setDirty(beforeTextEdit.current.dirty); setEdited(beforeTextEdit.current.edited); }}
               onDrag={onDrag}
               onResize={onResize}

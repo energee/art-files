@@ -107,6 +107,11 @@ export const PreviewCompare = forwardRef<
      *  new lines. `first` is true on the session's opening keystroke; App
      *  uses it to fold the whole session into one undo step. */
     onEditText: (id: string, lines: TextLine[], first: boolean) => void;
+    /** An in-place session that changed something ended WITHOUT Escape —
+     *  Enter, click-away, or the preview going away. Called once, after the
+     *  last onEditText; App learns the final value into the layer's choices
+     *  here, never per keystroke (the sidebar picker's commit rule). */
+    onEditCommit: (id: string) => void;
     onEditUppercase: (id: string, uppercase: boolean, first: boolean) => void;
     /** Escape mid-session: App undoes the session's single step. Never
      *  called when nothing was typed. */
@@ -149,7 +154,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
+    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditCommit, onEditUppercase, onEditCancel, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -402,10 +407,17 @@ export const PreviewCompare = forwardRef<
   useEffect(() => { if (!canvasRender) setEditing(null); }, [canvasRender]);
 
   // Report the open session so App can skip the layer from the render for
-  // its duration. One effect covers every open/close path.
+  // its duration, and COMMIT the one that just ended if it changed anything
+  // (Escape clears `edited`, so a cancel commits nothing). One effect covers
+  // every open/close path.
+  const openSession = useRef<string | null>(null);
   useEffect(() => {
+    const ended = openSession.current;
+    openSession.current = editing;
+    if (ended && ended !== editing && edited.current) onEditCommit(ended);
     onEditSession(editing);
-    // onEditSession is a useState setter in App — identity-stable.
+    // onEditSession is a useState setter in App — identity-stable; this
+    // render's onEditCommit already sees the session's last keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
@@ -429,7 +441,7 @@ export const PreviewCompare = forwardRef<
     const id = hitOf(e);
     const layer = id ? layers.find((l) => l.id === id) : undefined;
     if (!id || !layer || layer.kind !== "text" || !canvasRender) return;
-    if (!layer.input) {
+    if (!layer.input && !layer.choices?.length) {
       // Anchor the pill over the layer's box, mapped page → viewport px off
       // the same rect the click math uses. Captured once, because the pill
       // portals to <body>: App's CSS zoom can't scale it there.
@@ -632,8 +644,9 @@ export const PreviewCompare = forwardRef<
       {/* IN-PLACE editor — the one editor every text layer gets. The render
           source skips the layer for the session (see onEditSession), so the
           editor's styled text IS the layer while you type. Rich layers get
-          the lines field with its pill toolbar; a number/code layer the plain
-          box (InPlacePlainField), turned with the text for a rotated layer. */}
+          the lines field with its pill toolbar; a number/code layer, or one
+          with choices, the plain box (InPlacePlainField), turned with the
+          text for a rotated layer. */}
       {editing && editLayer?.kind === "text" && editBox && canvasRender && (() => {
         const layer = editLayer;
         const b = editBox;
@@ -644,9 +657,12 @@ export const PreviewCompare = forwardRef<
         };
         const close = (cancel: boolean) => {
           if (cancel && edited.current) onEditCancel();
+          if (cancel) edited.current = false;
           setEditing(null);
         };
-        if (!layer.input) {
+        // A layer with choices gets the plain box, as the sidebar's picker
+        // field is one plain line (TextEditor's PlainLineField rule).
+        if (!layer.input && !layer.choices?.length) {
           return (
             <InPlaceRichField
               layer={layer}
