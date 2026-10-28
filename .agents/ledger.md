@@ -707,6 +707,15 @@ no status, no attempts, no delta.
 - release: binary-impacting; Changed bullets under [Unreleased], no version bump
 - evidence: 12 new/changed assertions red on the parent's src (export-pair-dialog, app-ux-commands, tauri-capabilities), green after; full `npx vitest run --maxWorkers=2` 159 files / 1681 tests, tsc, lint, knip 6.38.0, npm run build, check-release vs origin/ux/shell-trim pass. Runtime-scope persistence read in tauri-plugin-dialog 2.8.3 `save` (fs_scope.allow_file, in memory). Not driven in the native app (real dialogs, silent rewrite).
 
+## 2026-10-28 new-application-icon
+- finding: user supplied replacement LabelLab.icns and label-lab-icon.svg.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ main (uncommitted working tree)
+- delta: replaced src-tauri/app-icon.svg with the supplied vector, regenerated existing platform icon variants with Tauri CLI, and installed the supplied macOS ICNS unchanged. Existing favicon and touch-icon links consume the refreshed PNGs.
+- evidence: npm run tauri -- icon src-tauri/app-icon.svg succeeded; generated icon.png visually inspected; npm run build passed and emitted updated favicon/touch PNGs; node scripts/check-release.mjs origin/main passed; cmp confirmed SVG and ICNS match supplied originals byte-for-byte. Installed desktop/Dock appearance not exercised.
+- release: binary-impacting; Changed bullet queued under Unreleased, version unchanged. Cosmetic change alone does not warrant cutting a release.
+
 ## 2026-10-28 issue-569-white-ink-pdf
 - finding: [user request] #569 — replace the default art/mask PDF pair with one print PDF carrying the printer's White Ink spot separation.
 - status: implemented; human proof gates remain open
