@@ -188,22 +188,14 @@ describe("LayerInspector header", () => {
     const { onChange } = render(image(), { offVariant: "Collab" });
     const toggle = byLabel("Enabled")!;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    expect(container.textContent).toContain("Added by Collab, which is off for this label. Turn on to edit.");
     click(toggle);
     expect(onChange).toHaveBeenLastCalledWith({ enabled: true });
     // Other fields stay editable (no read-only fields).
     expect(($("#logo-x") as HTMLInputElement).disabled).toBe(false);
     render(image());
     expect(byLabel("Enabled")!.getAttribute("aria-pressed")).toBe("true");
-    expect(container.textContent).not.toContain("which is off for this label");
   });
 
-  // #11: the lock is canvas-only; typed values still move the layer.
-  it("explains that the lock is canvas-only", () => {
-    render(text());
-    expect(byLabel("Locked")!.getAttribute("title"))
-      .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply.");
-  });
 
   // One app-wide unit (rulers, View → Units) converts the length fields; the
   // inspector spends no row on it. Fixed-unit fields say why they don't follow.

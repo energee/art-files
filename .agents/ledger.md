@@ -743,3 +743,12 @@ no status, no attempts, no delta.
 - evidence: Chromium screenshot at 1280x900 inspected; actual pointer targets measured 24x24px, unchanged control coordinates across hide/show, lock/unlock and selection changes, and selected-row-only trash verified. Final npm run build (including TypeScript), npm run lint and node scripts/check-release.mjs origin/main pass on ux/casual-ui-copy with these uncommitted changes; existing build chunk-size advisory remains.
 - evidence: PR isolation in .agents/worktrees/layer-controls-about @ ux/layer-controls-about, based on ux/casual-ui-copy (PR #574): 69 tests across six layer/menu/capability suites, npm run build, npm run lint, and release metadata vs origin/ux/casual-ui-copy pass. Unrelated copy work remains on the parent branch.
 - release: binary-impacting; no version bump or publication. Presentation-only refinement; no standalone release recommended.
+
+## 2026-10-28 pr-575-wording-assertions
+- finding: user-reported CI job 122686763646 in run 40649740014 failed four assertions pinned to wording changed by parent PR #574.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/layer-controls-about @ ux/layer-controls-about
+- delta: removed obsolete off-variant explanation, master-margin description and save-status wording assertions (including paired negative checks); retained variant activation, selection, margin lock/unlock and direct-save behavior coverage. Removed the purely wording-based canvas-lock tooltip test rather than pinning replacement copy. No runtime code changed.
+- evidence: the linked CI log supplies failing-before evidence; did not rerun to confirm the reported failures. After npm ci --ignore-scripts supplied the isolated worktree's own dependencies, npm test passes 160 files / 1690 tests with Vitest 5.0.5. TypeScript, lint and release metadata vs origin/ux/casual-ui-copy also pass. An earlier run using ancestor dependencies lacked worktree-local CLI binaries and hit an art-test race; the clean-dependency full run passes both.
+- release: this follow-up is test-only, non-binary-impacting; existing application Unreleased notes and version remain unchanged.
