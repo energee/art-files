@@ -706,3 +706,13 @@ no status, no attempts, no delta.
 - delta: replaced src-tauri/app-icon.svg with the supplied vector, regenerated existing platform icon variants with Tauri CLI, and installed the supplied macOS ICNS unchanged. Existing favicon and touch-icon links consume the refreshed PNGs.
 - evidence: npm run tauri -- icon src-tauri/app-icon.svg succeeded; generated icon.png visually inspected; npm run build passed and emitted updated favicon/touch PNGs; node scripts/check-release.mjs origin/main passed; cmp confirmed SVG and ICNS match supplied originals byte-for-byte. Installed desktop/Dock appearance not exercised.
 - release: binary-impacting; Changed bullet queued under Unreleased, version unchanged. Cosmetic change alone does not warrant cutting a release.
+
+## 2026-10-28 casual-ui-copy
+- finding: user requested less em-dash-heavy UI copy and more casual descriptions.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: rewrote layer/override/ruler/zoom tooltips, master-save descriptions and notices, updater descriptions, and SVG/barcode/import warnings as shorter conversational sentences. Kept technical limits and consequences intact. Left comments, artwork content, missing-value dash, recent-file name separator, and internal PSD diagnostic unchanged.
+- evidence: npm run build and node scripts/check-release.mjs origin/main passed. Browser smoke at localhost:5173 observed new layer power/zoom titles and opened ruler settings; screenshot confirmed the new margin description fits the popover. Desktop-only updater states and native save dialogs not visually exercised. Copy-only changes; no new tests or behavior changes.
+- release: binary-impacting; Changed bullet queued under Unreleased, version unchanged.
+

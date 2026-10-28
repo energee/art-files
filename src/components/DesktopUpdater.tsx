@@ -285,7 +285,7 @@ export function DesktopUpdater(props: {
   // The two clickable status-bar states share one button; only icon and label differ.
   const barAction = status.kind === "available" ? { Icon: Download, label: "Update available", version: status.version }
     : status.kind === "installed" ? { Icon: RotateCw, label: "Restart to finish", version: status.version }
-    : status.kind === "error" ? { Icon: Download, label: "Update failed — try again", version: undefined }
+    : status.kind === "error" ? { Icon: Download, label: "Update failed. Try again", version: undefined }
     : null;
   const releasedOn = status.kind === "available" && status.date
     ? ` · Released ${shortDate(status.date)}`
@@ -330,16 +330,16 @@ export function DesktopUpdater(props: {
           </DialogTitle>
           <DialogDescription className={status.kind === "error" ? "text-destructive-text" : undefined}>
             {status.kind === "available" && `${status.currentVersion} → ${status.version}${releasedOn}`}
-            {status.kind === "installed" && `Label Lab ${status.version} is installed and starts the next time the app opens.`}
-            {status.kind === "downloading" && "The download is in progress; the status bar shows how far along it is."}
+            {status.kind === "installed" && `Label Lab ${status.version} is ready. Restart when you're ready to use it.`}
+            {status.kind === "downloading" && "Downloading your update. Follow along in the status bar."}
             {status.kind === "checking" && (
               <span className="flex items-center gap-2">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" aria-hidden />
-                Looking for the latest signed release…
+                Checking for a new version…
               </span>
             )}
-            {status.kind === "current" && "You already have the newest available version."}
-            {status.kind === "disabled" && "Automatic updates are unavailable in this build. Install an official release to receive updates."}
+            {status.kind === "current" && "You're all set. This is the latest version."}
+            {status.kind === "disabled" && "This build can't check for updates. Install an official release to get them."}
             {status.kind === "error" && status.message}
           </DialogDescription>
         </DialogHeader>

@@ -289,7 +289,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               <span
                 role="img"
                 aria-label={`${row.variantOverridden.name} changes this layer`}
-                title={`${row.variantOverridden.name} changes this layer — resetting edits the master file`}
+                title={`${row.variantOverridden.name} changes this layer. Resetting changes the master file.`}
                 className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
               />
             )}
@@ -302,7 +302,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               />
             )}
             {invalid && (
-              <span role="img" aria-label="Invalid value" title="Invalid value — export is blocked"
+              <span role="img" aria-label="Invalid value" title="Fix this value before exporting"
                 className="size-1.5 shrink-0 rounded-full bg-destructive" />
             )}
           </SidebarMenuButton>
@@ -346,7 +346,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             aria-label={`${name}: enabled`}
             aria-pressed={!inactive}
             data-state={inactive ? "off" : "on"}
-            title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
+            title={inactive ? "Turn on this layer and its variant" : "Turn off this layer"}
             // Ink strength = on: on is full ink, off the row's muted ink even
             // under the pointer, so switching a layer off always lightens it.
             className={cn(control(inactive || isSelected),

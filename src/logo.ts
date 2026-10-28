@@ -124,8 +124,8 @@ function shapeToPath(name: string, tag: string): string {
       return `M ${n("x1")} ${n("y1")} L ${n("x2")} ${n("y2")}`;
     default:
       throw new Error(
-        `Logo SVG uses <${name}>, which can't be placed — convert it to plain paths ` +
-        "(outline text, expand/unlink clones, remove embedded images) and re-export.",
+        `This SVG uses <${name}>, which we can't place. Convert it to plain paths ` +
+        "(outline text, expand/unlink clones, remove embedded images), then export it again.",
       );
   }
 }
