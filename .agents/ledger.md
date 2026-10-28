@@ -743,7 +743,7 @@ no status, no attempts, no delta.
 
 ## 2026-10-28 pr-573-simplify-review-proofs
 - finding: [user request] run simplify and code-review on #573; attach actual PDFs for testing.
-- status: implemented; final verification in progress
+- status: done (review corrections and PDF packet; Acrobat/printer proof gates remain open)
 - attempts: 1/3
 - attempted-in: .agents/worktrees/white-ink-pdf @ feat/white-ink-pdf, starting at 817d132
 - delta: simplified duplicate one-file PDF build/save/error handling into one lifecycle while retaining print destination memory and always-prompted legacy plates. Two independent reviewer slices identified five actionable findings; all corrected.
@@ -756,4 +756,7 @@ no status, no attempts, no delta.
 - evidence: actual Chrome editor exports through the simplified lifecycle saved one 281652-byte print PDF, one 71255-byte art PDF and one 71370-byte mask PDF, with expected saved-file notices and no browser errors. Only the picker/write boundary captured bytes; real application builders ran.
 - evidence: seven actual PDFs generated under tests/fixtures/print-pdf/: Lupula combined/art/mask/CMYK and type-transparency combined/art/mask. Sample beer data is explicitly marked not for production. All have one page; each combined file, including the CMYK conversion, retains White Ink OCG/separation and fill/stroke overprint. The transparency proof has an alpha soft mask. Lupula art and type mask rasters were visually inspected.
 - evidence: actual proof PDFs passed Ghostscript tiffsep. Transparency proof process plates differ at 188 edge samples each, with zero interior differences; White Ink column densities measure 100.0%, 74.9%, 50.2%, 0.0%. Generic CMYK conversion is not printer-profile approval.
-- release: binary-impacting corrections covered by the updated Unreleased feature note; proof PDFs/tests are non-binary-impacting. Version unchanged at 0.1.109; no merge, release or printer certification.
+- evidence: default npm test completed 161/164 files but hit four unchanged 5-second deadlines in pdf-print-build (2), generate (1) and close-save-master (1). No assertion failure was reported. Full-suite scheduling experiment uses --maxWorkers=2; timeouts and repository configuration remain unchanged. Contention is a hypothesis, not a measured independent defect.
+- delta: merged updated parent ux/export-memory e7eb126c into b9b808e1; resolved the additive ledger-only conflict by preserving the icon and White Ink histories. Published the source corrections and all seven proof PDFs; the primary GitHub raw download resolves to a real one-page PDF.
+- evidence: final verification at b9b808e1 on feat/white-ink-pdf passes npx tsc --noEmit, zero-warning npm run lint, npm test -- --maxWorkers=2 (164 files / 1730 tests, unchanged timeouts), npm run build, knip 6.38.0, release metadata against parent e7eb126c, and docs production build (48 pages). Happy-dom AbortError teardown diagnostics, Vite chunk-size and docs metadataBase warnings remain visible. No application source changes after these checks.
+- release: binary-impacting corrections covered by the updated Unreleased feature note; proof PDFs/tests are non-binary-impacting. Version unchanged at 0.1.109; no main-branch merge, release or printer certification.
