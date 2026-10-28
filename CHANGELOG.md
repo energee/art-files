@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **Release builds are ready for code signing.** Once the Apple Developer ID and Azure Trusted Signing credentials are added to the release setup, published Mac builds are signed and notarized (no Gatekeeper warning) and the Windows installer is signed (no SmartScreen warning). Until then builds are signed exactly as before.
+
 ## [0.1.109] - 2026-10-27
 
 ### Changed
