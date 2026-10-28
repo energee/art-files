@@ -72,11 +72,12 @@ export function useExport({
   const exportStale = () => { exportFresh.current = false; setExportNote(""); };
   // The art file each desktop pair export last wrote, by extension: the
   // next export of that kind rewrites it and its `-mask` sibling with no
-  // dialog. In memory, per tab (each tab runs its own editor); a tab that
-  // opens another document forgets them (forgetExportPaths). The dialog
-  // plugin added each path to the fs scope when it was chosen, for the rest
-  // of the session, so the rewrite is allowed.
-  const exportPaths = useRef<Partial<Record<"pdf" | "psd", string>>>({});
+  // dialog. In memory, per tab (each tab runs its own editor), and only for
+  // the .label path (`label`) they were chosen under; a tab that opens
+  // another document forgets them (forgetExportPaths). The dialog plugin
+  // added each path to the fs scope when it was chosen, for the rest of the
+  // session, so the rewrite is allowed.
+  const exportPaths = useRef<{ label?: string | null; pdf?: string; psd?: string }>({});
   const forgetExportPaths = () => { exportPaths.current = {}; };
 
   // Revoking immediately can abort a large download, so each URL lives until
@@ -159,7 +160,11 @@ export function useExport({
       const pair = await build();
       // The art file: the remembered one, written with no dialog unless
       // `ask`; otherwise the dialog opens on it, or beside the tab's .label
-      // under its name, or (neither) on the bare export name.
+      // under its name, or (neither) on the bare export name. Memory belongs
+      // to the .label path it was chosen under: once that changes (Save
+      // Label As, a first save) it is dropped, so ⌘E can never rewrite the
+      // previous beer's PDFs.
+      if (exportPaths.current.label !== (labelPath ?? null)) exportPaths.current = { label: labelPath ?? null };
       const remembered = exportPaths.current[extension];
       const artTarget = ask ? undefined : remembered;
       const artName = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, `.${extension}`)

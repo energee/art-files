@@ -140,6 +140,19 @@ it("forgets the remembered file when the tab opens another document", async () =
   tab.unmount();
 }, 30000);
 
+it("asks again once the label's own path changes (Save Label As), never rewriting the old beer's PDFs", async () => {
+  save.mockResolvedValueOnce("/print/Lupula.pdf").mockResolvedValueOnce("/print/Haze.pdf");
+  const tab = await mountExport();
+  await tab.exportPdfs({ labelPath: "/labels/Lupula.label" });
+  writeFile.mockClear();
+  // Same tab, same document — but saved under a new name.
+  await tab.exportPdfs({ labelPath: "/labels/Haze.label" });
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: "/labels/Haze.pdf" }));
+  expect(writes()).toEqual(["/print/Haze.pdf", "/print/Haze-mask.pdf"]);
+  tab.unmount();
+}, 30000);
+
 it("names the mask with the export's own extension, whatever the art file was called", async () => {
   save.mockResolvedValue("/labels/Renamed");
   const tab = await mountExport();
