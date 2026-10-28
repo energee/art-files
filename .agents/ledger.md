@@ -752,3 +752,10 @@ no status, no attempts, no delta.
 - delta: removed obsolete off-variant explanation, master-margin description and save-status wording assertions (including paired negative checks); retained variant activation, selection, margin lock/unlock and direct-save behavior coverage. Removed the purely wording-based canvas-lock tooltip test rather than pinning replacement copy. No runtime code changed.
 - evidence: the linked CI log supplies failing-before evidence; did not rerun to confirm the reported failures. After npm ci --ignore-scripts supplied the isolated worktree's own dependencies, npm test passes 160 files / 1690 tests with Vitest 5.0.5. TypeScript, lint and release metadata vs origin/ux/casual-ui-copy also pass. An earlier run using ancestor dependencies lacked worktree-local CLI binaries and hit an art-test race; the clean-dependency full run passes both.
 - release: this follow-up is test-only, non-binary-impacting; existing application Unreleased notes and version remain unchanged.
+
+## 2026-10-28 pr-575-unused-menu-export
+- finding: user-reported Knip failure: MAC_MENUS remained exported after its only external consumer, a wording/layout test, was removed.
+- status: done
+- delta: made MAC_MENUS module-private and removed its obsolete exported-for-tests comment; the native menu still uses the same table.
+- evidence: in .agents/worktrees/layer-controls-about @ fix/575-menu-export, npx --yes knip@6.38.0 passes with no findings; 28 menu tests, TypeScript and release metadata vs origin/ux/casual-ui-copy pass. LSP references unavailable (no server); repository search found only the local declaration and native menu consumer.
+- release: export-only cleanup, no user-visible behavior change; existing Unreleased notes suffice, version unchanged.

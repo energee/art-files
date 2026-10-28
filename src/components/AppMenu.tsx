@@ -206,8 +206,8 @@ export const APP_MENUS: SubmenuEntry[] = [
 
 /** The Mac menu bar's table: Settings… (and its separator) leave Edit for
  *  the application menu, where macOS puts it (#551; macApplicationMenu).
- *  Windows, Linux and the in-window menu keep APP_MENUS. Exported for tests. */
-export const MAC_MENUS: SubmenuEntry[] = APP_MENUS.map((menu) => ({
+ *  Windows, Linux and the in-window menu keep APP_MENUS. */
+const MAC_MENUS: SubmenuEntry[] = APP_MENUS.map((menu) => ({
   ...menu,
   items: menu.items.filter((e) => !("id" in e && (e.id === "settings" || e.id === "edit-settings"))),
 }));
