@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTranslation } from "@/i18n";
 
 /** The field's per-line shape: the three toolbar flags plus the line's text
  *  with its inline run markers left in. `white` is the line's white-ink
@@ -518,16 +519,17 @@ export function TextToolbarButtons(props: {
   onUppercase?: (uppercase: boolean) => void;
 }) {
   const { caret, toggle, toggleHeader } = props;
+  const { t } = useTranslation();
   return (
     <>
-      <ToolbarToggle label="Toggle header" tip="Header" pressed={caret.header} onPress={toggleHeader}>
+      <ToolbarToggle label={t("Toggle header")} tip={t("Header")} pressed={caret.header} onPress={toggleHeader}>
         <HeaderIcon />
       </ToolbarToggle>
-      <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
+      <ToolbarToggle label={t("Toggle bold")} tip={t("Bold")} pressed={caret.bold} onPress={() => toggle("bold")}>
         <Bold />
       </ToolbarToggle>
       {props.onUppercase && (
-        <ToolbarToggle label="Toggle uppercase" tip="Uppercase entire text layer"
+        <ToolbarToggle label={t("Toggle uppercase")} tip={t("Uppercase entire text layer")}
           pressed={props.uppercase ?? false} onPress={() => props.onUppercase!(!props.uppercase)}>
           <CaseUpper />
         </ToolbarToggle>
@@ -536,7 +538,7 @@ export function TextToolbarButtons(props: {
           colour, hence the explicit label — Droplet alone reads ambiguously
           next to a colour swatch. */}
       <ToolbarToggle
-        label="Toggle white ink underlay" tip="White ink underlay"
+        label={t("Toggle white ink underlay")} tip={t("White ink underlay")}
         pressed={caret.white} onPress={() => toggle("white")}
       >
         <Droplet />
@@ -607,6 +609,7 @@ export function ChoiceBox(props: {
   invalid?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const { id, value, choices, onCommit, placeholder, invalid } = props;
   const [draft, setDraft] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
@@ -665,7 +668,7 @@ export function ChoiceBox(props: {
           }
         }} />
       {open && (shown.length > 0 || novel) && (
-        <ul role="listbox" aria-label={`${id} choices`}
+        <ul role="listbox" aria-label={t("{{id}} choices", { id })}
           className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
           {shown.map((c, i) => (
             <li key={c.value} role="option" data-choice aria-selected={i === active}
@@ -681,7 +684,7 @@ export function ChoiceBox(props: {
               onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
               className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
                 active === shown.length ? "bg-accent" : "hover:bg-accent")}>
-              Use “{typed.trim()}”
+              {t("Use “{{value}}”", { value: typed.trim() })}
             </li>
           )}
         </ul>

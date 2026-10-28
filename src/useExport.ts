@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import { saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
 import { useOwnedError } from "@/useOwnedError";
+import { t } from "@/i18n";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
@@ -103,7 +104,7 @@ export function useExport({
    *  dialog. */
   async function saveVia(bytes: Uint8Array, name: string, type: string, target?: FileTarget) {
     const extension = name.slice(name.lastIndexOf(".") + 1);
-    const description = `${extension.toUpperCase()} file`;
+    const description = t("{{format}} file", { format: extension.toUpperCase() });
     return await saveThrough(bytes, {
       name, type, target, filter: { name: description, extensions: [extension] },
       types: [{ description, accept: { [type]: [`.${extension}`] } }],
@@ -182,7 +183,9 @@ export function useExport({
         const target = index ? maskPath : artTarget;
         const result = await saveVia(bytes, pending, type, target ? { path: target } : undefined);
         if (!result) {
-          exportError.set(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
+          exportError.set(saved.length
+            ? t("Note: Saved {{files}}. Export cancelled before saving {{file}}.", { files: saved.join(", "), file: pending })
+            : t("Note: Export cancelled before saving {{file}}.", { file: pending }));
           return;
         }
         saved.push(result.name);
@@ -192,9 +195,11 @@ export function useExport({
         }
       }
       exportError.clear();
-      if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
+      if (exportFresh.current) setExportNote(t("Saved {{files}}.", { files: saved.join(", ") }));
     } catch (error) {
-      exportError.set(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
+      exportError.set(saved.length
+        ? t("Saved {{files}}. Could not save {{file}}: {{error}}", { files: saved.join(", "), file: pending, error: errMsg(error) })
+        : t("Could not save {{file}}: {{error}}", { file: pending, error: errMsg(error) }));
     } finally {
       exportRunning.current = false;
       setExporting(null);
@@ -260,15 +265,15 @@ export function useExport({
       const target = !request.ask && remembered ? { path: remembered } : undefined;
       const result = await saveVia(bytes, name, "application/pdf", target);
       if (!result) {
-        exportError.set(`Note: Export cancelled before saving ${name}.`);
+        exportError.set(t("Note: Export cancelled before saving {{file}}.", { file: name }));
         return;
       }
       if (mode === "print" && result.target && "path" in result.target)
         exportPaths.current.printPdf = result.target.path;
       exportError.clear();
-      if (exportFresh.current) setExportNote(`Saved ${result.name}.`);
+      if (exportFresh.current) setExportNote(t("Saved {{files}}.", { files: result.name }));
     } catch (error) {
-      exportError.set(`Could not save ${name}: ${errMsg(error)}`);
+      exportError.set(t("Could not save {{file}}: {{error}}", { file: name, error: errMsg(error) }));
     } finally {
       exportRunning.current = false;
       setExporting(null);

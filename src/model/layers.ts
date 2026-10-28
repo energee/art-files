@@ -16,6 +16,7 @@ import type { Anchor } from "./position";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import { deepMerge, type DeepPartial } from "./merge";
 import { normalizeHex } from "../layout";
+import { t } from "@/i18n";
 
 /** Asset ids the page-art slots (texture / mask) ride under in every image
  *  map the PDF and PSD builders key on. Shared by the app and the CLI so a
@@ -277,7 +278,7 @@ export interface LabelFile {
   dormant?: { values: Record<string, LayerValue>; variants: string[]; variantOrder?: string[] };
 }
 
-function fail(msg: string): never { throw new Error(`Invalid master file: ${msg}`); }
+function fail(message: string): never { throw new Error(t("Invalid master file: {{message}}", { message })); }
 
 const KINDS = new Set<LayerKind>(["text", "image", "barcode", "qr"]);
 const SYMBOLOGIES = new Set<Symbology>(["upc-a", "ean-13", "code-128"]);
@@ -294,21 +295,21 @@ function styleProblem(s: Record<string, unknown>, complete: boolean): string | u
   for (const key of ["fill", "stroke"]) {
     const v = s[key];
     if (v == null) {
-      if (key === "fill" && complete) return "is missing fill";
+      if (key === "fill" && complete) return t("is missing fill");
       continue;
     }
     if (v === "none") continue;
     const hex = typeof v === "string" ? normalizeHex(v) : undefined;
-    if (!hex) return `has ${key} ${JSON.stringify(v)}, which is not a hex colour`;
+    if (!hex) return t("has {{key}} {{value}}, which is not a hex colour", { key, value: JSON.stringify(v) });
     if (!/^#[0-9a-f]{6}$/i.test(v as string)) s[key] = hex;
   }
   for (const key of ["layer", "strokeLayer"]) {
     const v = s[key];
     if (v == null) {
-      if (key === "layer" && complete) return "is missing layer";
+      if (key === "layer" && complete) return t("is missing layer");
       continue;
     }
-    if (!PLATES.has(v as string)) return `has ${key} ${JSON.stringify(v)}, which is not white or metallic`;
+    if (!PLATES.has(v as string)) return t("has {{key}} {{value}}, which is not white or metallic", { key, value: JSON.stringify(v) });
   }
   return undefined;
 }
@@ -319,9 +320,9 @@ function styleProblem(s: Record<string, unknown>, complete: boolean): string | u
  *  like styleProblem, so the stored diff is what prints. */
 export function patchProblem(p: Record<string, unknown>): string | undefined {
   if (p.style != null) {
-    if (typeof p.style !== "object" || Array.isArray(p.style)) return "has a style that is not an object";
+    if (typeof p.style !== "object" || Array.isArray(p.style)) return t("has a style that is not an object");
     const s = styleProblem(p.style as Record<string, unknown>, false);
-    if (s) return `style ${s}`;
+    if (s) return t("style {{problem}}", { problem: s });
   }
   return p.lines == null ? undefined : linesProblem(p.lines);
 }
@@ -329,84 +330,77 @@ export function patchProblem(p: Record<string, unknown>): string | undefined {
 /** What is wrong with a text layer's lines (or a stored value of lines), or
  *  undefined: each needs string text and a complete, printable style. */
 export function linesProblem(lines: unknown): string | undefined {
-  if (!Array.isArray(lines)) return "has lines that are not a list";
+  if (!Array.isArray(lines)) return t("has lines that are not a list");
   for (const [i, ln] of lines.entries()) {
     if (!ln || typeof ln !== "object" || typeof (ln as { text?: unknown }).text !== "string")
-      return `has line ${i + 1} whose text is not a string`;
+      return t("has line {{line}} whose text is not a string", { line: i + 1 });
     const problem = styleProblem(ln as Record<string, unknown>, true);
-    if (problem) return `has line ${i + 1} that ${problem}`;
+    if (problem) return t("has line {{line}} that {{problem}}", { line: i + 1, problem });
   }
   return undefined;
 }
 
+const layerMessage = (context: string, id: unknown, detail: string) =>
+  t("{{context}} layer \"{{id}}\" {{detail}}", { context, id, detail });
+
 export function validateLayer(l: Layer, ctx: string): void {
-  if (!l || typeof l !== "object") fail(`${ctx} layer is not an object`);
-  if (!l.id || typeof l.id !== "string") fail(`${ctx} layer missing id`);
-  if (!l.name || typeof l.name !== "string") fail(`${ctx} layer "${l.id}" missing name`);
-  if (!KINDS.has(l.kind)) fail(`${ctx} layer "${l.id}" has unknown kind "${l.kind}"`);
-  if (typeof l.enabled !== "boolean") fail(`${ctx} layer "${l.id}" missing enabled`);
-  if (typeof l.x !== "number") fail(`${ctx} layer "${l.id}" missing x`);
-  if (!ANCHORS.has(l.anchor)) fail(`${ctx} layer "${l.id}" has unknown anchor "${l.anchor}"`);
+  if (!l || typeof l !== "object") fail(t("{{context}} layer is not an object", { context: ctx }));
+  if (!l.id || typeof l.id !== "string") fail(t("{{context}} layer missing id", { context: ctx }));
+  const detail = (message: string) => layerMessage(ctx, l.id, message);
+  if (!l.name || typeof l.name !== "string") fail(detail(t("missing name")));
+  if (!KINDS.has(l.kind)) fail(detail(t("has unknown kind \"{{kind}}\"", { kind: l.kind })));
+  if (typeof l.enabled !== "boolean") fail(detail(t("missing enabled")));
+  if (typeof l.x !== "number") fail(detail(t("missing x")));
+  if (!ANCHORS.has(l.anchor)) fail(detail(t("has unknown anchor \"{{anchor}}\"", { anchor: l.anchor })));
   const y = l.y as unknown;
   const relOk = !!y && typeof y === "object"
     && typeof (y as RelativeY).below === "string" && typeof (y as RelativeY).gap === "number";
-  if (typeof y !== "number" && !relOk) fail(`${ctx} layer "${l.id}" has invalid y`);
-  if (l.guideX !== undefined && !["none", "left", "center", "right"].includes(l.guideX))
-    fail(`${ctx} layer "${l.id}" has invalid guideX`);
-  if (l.guideY !== undefined && !["none", "top", "middle", "bottom"].includes(l.guideY))
-    fail(`${ctx} layer "${l.id}" has invalid guideY`);
-  if (guideOf(l.guideY) && typeof y !== "number")
-    fail(`${ctx} layer "${l.id}" cannot bind to both a guide and a layer`);
+  if (typeof y !== "number" && !relOk) fail(detail(t("has invalid y")));
+  if (l.guideX !== undefined && !["none", "left", "center", "right"].includes(l.guideX)) fail(detail(t("has invalid guideX")));
+  if (l.guideY !== undefined && !["none", "top", "middle", "bottom"].includes(l.guideY)) fail(detail(t("has invalid guideY")));
+  if (guideOf(l.guideY) && typeof y !== "number") fail(detail(t("cannot bind to both a guide and a layer")));
   if (l.binding != null) {
     const b = l.binding;
-    if (!b || typeof b !== "object" || typeof b.to !== "string" || !b.to
-      || !["top", "left", "right", "bottom"].includes(b.side) || !Number.isFinite(b.gap))
-      fail(`${ctx} layer "${l.id}" has invalid binding`);
-    if (typeof y !== "number") fail(`${ctx} layer "${l.id}" has two layer bindings`);
+    if (!b || typeof b !== "object" || typeof b.to !== "string" || !b.to || !["top", "left", "right", "bottom"].includes(b.side) || !Number.isFinite(b.gap)) fail(detail(t("has invalid binding")));
+    if (typeof y !== "number") fail(detail(t("has two layer bindings")));
     const guide = b.side === "left" || b.side === "right" ? l.guideX : l.guideY;
-    if (guideOf(guide)) fail(`${ctx} layer "${l.id}" cannot bind to both a guide and a layer on the same axis`);
+    if (guideOf(guide)) fail(detail(t("cannot bind to both a guide and a layer on the same axis")));
   }
-  if (l.rotation !== undefined && l.rotation !== 0 && l.rotation !== 90)
-    fail(`${ctx} layer "${l.id}" has invalid rotation`);
+  if (l.rotation !== undefined && l.rotation !== 0 && l.rotation !== 90) fail(detail(t("has invalid rotation")));
+  const typed = (kind: string, message: string) => layerMessage(kind, l.id, message);
   if (l.kind === "text") {
-    if (l.fontFamily !== undefined && !Object.hasOwn(FONT_FAMILIES, l.fontFamily))
-      fail(`text layer "${l.id}" has unknown font family "${l.fontFamily}"`);
-    if (!Array.isArray(l.lines)) fail(`text layer "${l.id}" missing lines`);
+    if (l.fontFamily !== undefined && !Object.hasOwn(FONT_FAMILIES, l.fontFamily)) fail(typed("text", t("has unknown font family \"{{family}}\"", { family: l.fontFamily })));
+    if (!Array.isArray(l.lines)) fail(typed("text", t("missing lines")));
     const lines = linesProblem(l.lines);
-    if (lines) fail(`${ctx} layer "${l.id}" ${lines}`);
-    if (typeof l.size !== "number") fail(`text layer "${l.id}" missing size`);
-    if (!["left", "center", "right", "justify"].includes(l.align)) fail(`text layer "${l.id}" has invalid align`);
-    if (l.symbology !== undefined && !SYMBOLOGIES.has(l.symbology))
-      fail(`text layer "${l.id}" has unknown symbology "${l.symbology}"`);
+    if (lines) fail(detail(lines));
+    if (typeof l.size !== "number") fail(typed("text", t("missing size")));
+    if (!["left", "center", "right", "justify"].includes(l.align)) fail(typed("text", t("has invalid align")));
+    if (l.symbology !== undefined && !SYMBOLOGIES.has(l.symbology)) fail(typed("text", t("has unknown symbology \"{{symbology}}\"", { symbology: l.symbology })));
   } else if (l.kind === "image") {
-    if (typeof l.asset !== "string") fail(`image layer "${l.id}" missing asset`);
-    if (typeof l.w !== "number") fail(`image layer "${l.id}" missing w`);
+    if (typeof l.asset !== "string") fail(typed("image", t("missing asset")));
+    if (typeof l.w !== "number") fail(typed("image", t("missing w")));
   } else if (l.kind === "barcode") {
-    if (!SYMBOLOGIES.has(l.symbology)) fail(`barcode layer "${l.id}" has unknown symbology "${l.symbology}"`);
-    if (typeof l.value !== "string") fail(`barcode layer "${l.id}" missing value`);
-    if (typeof l.h !== "number" || typeof l.moduleW !== "number") fail(`barcode layer "${l.id}" missing h/moduleW`);
-    if (l.solidBackground !== undefined && typeof l.solidBackground !== "boolean")
-      fail(`barcode layer "${l.id}" has invalid solidBackground`);
+    if (!SYMBOLOGIES.has(l.symbology)) fail(typed("barcode", t("has unknown symbology \"{{symbology}}\"", { symbology: l.symbology })));
+    if (typeof l.value !== "string") fail(typed("barcode", t("missing value")));
+    if (typeof l.h !== "number" || typeof l.moduleW !== "number") fail(typed("barcode", t("missing h/moduleW")));
+    if (l.solidBackground !== undefined && typeof l.solidBackground !== "boolean") fail(typed("barcode", t("has invalid solidBackground")));
   } else {
-    if (typeof l.value !== "string") fail(`qr layer "${l.id}" missing value`);
-    if (typeof l.size !== "number") fail(`qr layer "${l.id}" missing size`);
+    if (typeof l.value !== "string") fail(typed("qr", t("missing value")));
+    if (typeof l.size !== "number") fail(typed("qr", t("missing size")));
   }
   if (l.choices !== undefined) {
-    if (!Array.isArray(l.choices)) fail(`${ctx} layer "${l.id}" has invalid choices`);
+    if (!Array.isArray(l.choices)) fail(detail(t("has invalid choices")));
     for (const c of l.choices) {
-      if (!c || typeof c !== "object" || typeof c.value !== "string" || !c.value.trim())
-        fail(`${ctx} layer "${l.id}" has a choice with no value`);
-      if (c.title !== undefined && typeof c.title !== "string")
-        fail(`${ctx} layer "${l.id}" has a choice with an invalid title`);
+      if (!c || typeof c !== "object" || typeof c.value !== "string" || !c.value.trim()) fail(detail(t("has a choice with no value")));
+      if (c.title !== undefined && typeof c.title !== "string") fail(detail(t("has a choice with an invalid title")));
     }
     // Absent and [] are one state, so nothing downstream has to test both.
     if (l.choices.length === 0) delete (l as { choices?: Choice[] }).choices;
   }
-  if (l.title !== undefined && typeof l.title !== "string")
-    fail(`${ctx} layer "${l.id}" has an invalid title`);
-  if (!l.style || typeof l.style !== "object") fail(`${ctx} layer "${l.id}" missing style`);
+  if (l.title !== undefined && typeof l.title !== "string") fail(detail(t("has an invalid title")));
+  if (!l.style || typeof l.style !== "object") fail(detail(t("missing style")));
   const style = styleProblem(l.style as unknown as Record<string, unknown>, true);
-  if (style) fail(`${ctx} layer "${l.id}" style ${style}`);
+  if (style) fail(detail(t("style {{problem}}", { problem: style })));
 }
 
 /** Every `below` reference must name a layer in the list, an enabled layer
@@ -418,17 +412,13 @@ export function validateLayer(l: Layer, ctx: string): void {
 export function validateBindings(layers: Layer[], ctx: string, report: (msg: string) => never = fail): void {
   const byId = new Map(layers.map((l) => [l.id, l]));
   for (const l of layers) {
-    const seen = new Set<string>([l.id]);
-    let at = l;
-    let binding = bindingOf(at);
+    const seen = new Set<string>([l.id]); let at = l; let binding = bindingOf(at);
     while (binding) {
       const next = byId.get(binding.to);
-      if (!next) report(`${ctx} layer "${at.id}" is bound to missing layer "${binding.to}"`);
-      if (l.enabled && !next.enabled) report(`${ctx} layer "${l.id}" is bound to disabled layer "${next.id}"`);
-      if (seen.has(next.id)) report(`${ctx} layer "${l.id}" has a cyclic binding`);
-      seen.add(next.id);
-      at = next;
-      binding = bindingOf(at);
+      if (!next) report(layerMessage(ctx, at.id, t("is bound to missing layer \"{{target}}\"", { target: binding.to })));
+      if (l.enabled && !next.enabled) report(layerMessage(ctx, l.id, t("is bound to disabled layer \"{{target}}\"", { target: next.id })));
+      if (seen.has(next.id)) report(layerMessage(ctx, l.id, t("has a cyclic binding")));
+      seen.add(next.id); at = next; binding = bindingOf(at);
     }
   }
 }
@@ -463,44 +453,44 @@ export function foldScale(p: ScaledSize, base?: ScaledSize): void {
 
 export function parseMaster(json: unknown): Master {
   const m = json as Master;
-  if (!m || typeof m !== "object") fail("not an object");
-  if (m.formatVersion !== 3) fail("unsupported formatVersion (expected 3)");
-  if (!m.id || typeof m.id !== "string") fail("missing id");
-  if (!m.name || typeof m.name !== "string") fail("missing name");
+  if (!m || typeof m !== "object") fail(t("not an object"));
+  if (m.formatVersion !== 3) fail(t("unsupported formatVersion (expected 3)"));
+  if (!m.id || typeof m.id !== "string") fail(t("missing id"));
+  if (!m.name || typeof m.name !== "string") fail(t("missing name"));
   const p = m.physical;
   if (!p || [p.labelWidthIn, p.labelHeightIn, p.bleedIn, p.canDiameterIn].some((n) => typeof n !== "number"))
-    fail("missing or incomplete physical dimensions");
-  if (!m.guides || typeof m.guides !== "object") fail("missing guides");
-  if (!Array.isArray(m.layers)) fail("missing layers");
-  if (!Array.isArray(m.variants)) fail("missing variants");
+    fail(t("missing or incomplete physical dimensions"));
+  if (!m.guides || typeof m.guides !== "object") fail(t("missing guides"));
+  if (!Array.isArray(m.layers)) fail(t("missing layers"));
+  if (!Array.isArray(m.variants)) fail(t("missing variants"));
   const ids = new Set<string>();
   for (const l of m.layers) {
     validateLayer(l, "master");
-    if (ids.has(l.id)) fail(`duplicate layer id "${l.id}"`);
+    if (ids.has(l.id)) fail(t("duplicate layer id \"{{id}}\"", { id: l.id }));
     ids.add(l.id);
   }
   validateBindings(m.layers, "master");
   const vids = new Set<string>();
   for (const v of m.variants) {
-    if (!v.id || typeof v.id !== "string") fail("variant without id");
-    if (!v.name || typeof v.name !== "string") fail(`variant "${v.id}" missing name`);
-    if (vids.has(v.id)) fail(`duplicate variant id "${v.id}"`);
+    if (!v.id || typeof v.id !== "string") fail(t("variant without id"));
+    if (!v.name || typeof v.name !== "string") fail(t("variant \"{{id}}\" missing name", { id: v.id }));
+    if (vids.has(v.id)) fail(t("duplicate variant id \"{{id}}\"", { id: v.id }));
     vids.add(v.id);
-    if (!v.layers || typeof v.layers !== "object") fail(`variant "${v.id}" missing layers`);
+    if (!v.layers || typeof v.layers !== "object") fail(t("variant \"{{id}}\" missing layers", { id: v.id }));
     const merged = m.layers.map((l) => structuredClone(l));
     for (const [id, patch] of Object.entries(v.layers)) {
       if (!patch || typeof patch !== "object" || Array.isArray(patch))
-        fail(`variant "${v.id}" has invalid layer patch "${id}"`);
+        fail(t("variant \"{{variant}}\" has invalid layer patch \"{{id}}\"", { variant: v.id, id }));
       const problem = patchProblem(patch as Record<string, unknown>);
-      if (problem) fail(`variant "${v.id}" layer "${id}" ${problem}`);
+      if (problem) fail(t("variant \"{{variant}}\" layer \"{{id}}\" {{problem}}", { variant: v.id, id, problem }));
       const i = merged.findIndex((l) => l.id === id);
       const layer = i >= 0 ? deepMerge(merged[i], patch) : { ...patch, id } as Layer;
-      if (layer.id !== id) fail(`variant "${v.id}" cannot change layer id "${id}"`);
-      validateLayer(layer, `variant "${v.id}"`);
+      if (layer.id !== id) fail(t("variant \"{{variant}}\" cannot change layer id \"{{id}}\"", { variant: v.id, id }));
+      validateLayer(layer, t("variant \"{{id}}\"", { id: v.id }));
       if (i >= 0) merged[i] = layer;
       else merged.push(layer);
     }
-    validateBindings(merged, `variant "${v.id}"`);
+    validateBindings(merged, t("variant \"{{id}}\"", { id: v.id }));
   }
   // Older files' image scale. The variants fold against the master layers as
   // written, so they go first (see foldScale).

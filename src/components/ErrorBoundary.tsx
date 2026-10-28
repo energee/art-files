@@ -6,6 +6,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { t } from "@/i18n";
 
 interface State { error: Error | null }
 
@@ -26,17 +27,15 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     return (
       <div className="mx-auto mt-16 max-w-xl p-4">
         <Alert variant="destructive">
-          <AlertTitle>Label Lab hit an error it could not recover from</AlertTitle>
+          <AlertTitle>{t("Label Lab hit an error it could not recover from")}</AlertTitle>
           <AlertDescription>
             <p className="break-words font-mono text-xs">{error.message}</p>
             <p>
-              Reloading opens a fresh window. Files already saved to disk are
-              untouched; unsaved tabs are offered back after the reload
-              (changes from the last couple of seconds may be missing).
+              {t("Reloading opens a fresh window. Files already saved to disk are untouched; unsaved tabs are offered back after the reload (changes from the last couple of seconds may be missing).")}
             </p>
           </AlertDescription>
         </Alert>
-        <Button className="mt-4" onClick={() => location.reload()}>Reload Label Lab</Button>
+        <Button className="mt-4" onClick={() => location.reload()}>{t("Reload Label Lab")}</Button>
       </div>
     );
   }

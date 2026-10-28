@@ -8,6 +8,7 @@
 // same walk through unsaved tabs a quit gets — and stops if that is
 // cancelled.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "@/i18n";
 import { createPortal } from "react-dom";
 import { Download, RotateCw } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -118,6 +119,7 @@ export function DesktopUpdater(props: {
   /** Fires with the version once an update is installed and awaiting a relaunch. */
   onInstalled?: () => void;
 }) {
+  const { t } = useTranslation();
   const desktop = isTauri();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -262,7 +264,7 @@ export function DesktopUpdater(props: {
       props.onInstalled?.();
     } catch (error) {
       // The update stays held: Try again installs it again with one click.
-      setStatus({ kind: "error", message: `Could not install the update: ${errMsg(error)}`, install: true });
+      setStatus({ kind: "error", message: t("Could not install the update: {{error}}", { error: errMsg(error) }), install: true });
       setOpen(true);
     }
   };
@@ -276,19 +278,19 @@ export function DesktopUpdater(props: {
     try {
       await invoke("relaunch_app");
     } catch (error) {
-      setStatus({ kind: "error", message: `Could not restart: ${errMsg(error)}`, installed: version });
+      setStatus({ kind: "error", message: t("Could not restart: {{error}}", { error: errMsg(error) }), installed: version });
       setOpen(true);
     }
   };
 
   const pct = status.kind === "downloading" ? downloadPct(status.downloaded, status.total) : undefined;
   // The two clickable status-bar states share one button; only icon and label differ.
-  const barAction = status.kind === "available" ? { Icon: Download, label: "Update available", version: status.version }
-    : status.kind === "installed" ? { Icon: RotateCw, label: "Restart to finish", version: status.version }
-    : status.kind === "error" ? { Icon: Download, label: "Update failed. Try again", version: undefined }
+  const barAction = status.kind === "available" ? { Icon: Download, label: t("Update available"), version: status.version }
+    : status.kind === "installed" ? { Icon: RotateCw, label: t("Restart to finish"), version: status.version }
+    : status.kind === "error" ? { Icon: Download, label: t("Update failed. Try again"), version: undefined }
     : null;
   const releasedOn = status.kind === "available" && status.date
-    ? ` · Released ${shortDate(status.date)}`
+    ? ` · ${t("Released {{date}}", { date: shortDate(status.date) })}`
     : "";
   const busy = status.kind === "checking";
 
@@ -311,7 +313,7 @@ export function DesktopUpdater(props: {
       {desktop && props.statusHost && status.kind === "downloading" && createPortal(
         <span role="status" aria-live="polite" className="inline-flex items-center gap-2 px-2 text-xs text-muted-foreground">
           <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" aria-hidden />
-          {pct === 100 ? "Finishing…" : `Installing ${status.version}${pct === undefined ? "…" : ` · ${pct}%`}`}
+          {pct === 100 ? t("Finishing…") : t("Installing {{version}}", { version: `${status.version}${pct === undefined ? "…" : ` · ${pct}%`}` })}
         </span>,
         props.statusHost,
       )}
@@ -320,33 +322,33 @@ export function DesktopUpdater(props: {
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>
-            {status.kind === "available" && "Update available"}
-            {status.kind === "installed" && "Restart to finish updating"}
-            {status.kind === "downloading" && `Installing Label Lab ${status.version}`}
-            {status.kind === "checking" && "Checking for updates"}
-            {status.kind === "current" && "Label Lab is up to date"}
-            {status.kind === "disabled" && "Updates are not configured"}
-            {status.kind === "error" && "Update failed"}
+            {status.kind === "available" && t("Update available")}
+            {status.kind === "installed" && t("Restart to finish updating")}
+            {status.kind === "downloading" && t("Installing Label Lab {{version}}", { version: status.version })}
+            {status.kind === "checking" && t("Checking for updates")}
+            {status.kind === "current" && t("Label Lab is up to date")}
+            {status.kind === "disabled" && t("Updates are not configured")}
+            {status.kind === "error" && t("Update failed")}
           </DialogTitle>
           <DialogDescription className={status.kind === "error" ? "text-destructive-text" : undefined}>
-            {status.kind === "available" && `${status.currentVersion} → ${status.version}${releasedOn}`}
-            {status.kind === "installed" && `Label Lab ${status.version} is ready. Restart when you're ready to use it.`}
-            {status.kind === "downloading" && "Downloading your update. Follow along in the status bar."}
+            {status.kind === "available" && t("{{currentVersion}} → {{version}}{{releasedOn}}", { currentVersion: status.currentVersion, version: status.version, releasedOn })}
+            {status.kind === "installed" && t("Label Lab {{version}} is ready. Restart when you're ready to use it.", { version: status.version })}
+            {status.kind === "downloading" && t("Downloading your update. Follow along in the status bar.")}
             {status.kind === "checking" && (
               <span className="flex items-center gap-2">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" aria-hidden />
-                Checking for a new version…
+                {t("Checking for a new version…")}
               </span>
             )}
-            {status.kind === "current" && "You're all set. This is the latest version."}
-            {status.kind === "disabled" && "This build can't check for updates. Install an official release to get them."}
+            {status.kind === "current" && t("You're all set. This is the latest version.")}
+            {status.kind === "disabled" && t("This build can't check for updates. Install an official release to get them.")}
             {status.kind === "error" && status.message}
           </DialogDescription>
         </DialogHeader>
 
         {status.kind === "available" && status.body && (
           <div className="space-y-1.5">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">What's new</p>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{t("What's new")}</p>
             <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md bg-muted p-3 text-xs">
               {releaseNoteLines(status.body).map((line, i) => (
                 <p key={i} className={NOTE_CLASS[line.kind]}>
@@ -361,24 +363,24 @@ export function DesktopUpdater(props: {
 
         {status.kind === "available" && (
           <DialogFooter>
-            <Button variant="outline" onClick={dismiss}>Later</Button>
-            <Button onClick={() => void install()}>{INSTALL_EXITS_APP ? "Install and Restart" : "Install"}</Button>
+            <Button variant="outline" onClick={dismiss}>{t("Later")}</Button>
+            <Button onClick={() => void install()}>{t(INSTALL_EXITS_APP ? "Install and Restart" : "Install")}</Button>
           </DialogFooter>
         )}
         {status.kind === "installed" && (
           <DialogFooter>
-            <Button variant="outline" onClick={dismiss}>Later</Button>
-            <Button onClick={() => void restart(status.version)}>Restart Now</Button>
+            <Button variant="outline" onClick={dismiss}>{t("Later")}</Button>
+            <Button onClick={() => void restart(status.version)}>{t("Restart Now")}</Button>
           </DialogFooter>
         )}
         {(status.kind === "current" || status.kind === "disabled" || status.kind === "error" || status.kind === "downloading") && (
           <DialogFooter>
-            <Button onClick={dismiss}>Close</Button>
+            <Button onClick={dismiss}>{t("Close")}</Button>
             {status.kind === "error" && !status.installed && <Button onClick={() => {
               if (status.install) { void install(); return; }
               setStatus({ kind: "checking" });
               void performCheck().then((result) => present(result, true));
-            }}>Try again</Button>}
+            }}>{t("Try again")}</Button>}
           </DialogFooter>
         )}
       </DialogContent>

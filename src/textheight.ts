@@ -7,6 +7,7 @@ import type { TextLayer } from "./model/layers";
 import type { FontFamilyId } from "./fontCatalog";
 import { planText } from "./planLayers";
 import { openFont } from "./fontkit";
+import { t } from "@/i18n";
 
 export interface CharacterHeights { min: number; max: number; cpi: number }
 export type HeightMeasure = (layer: TextLayer) => CharacterHeights | null;
@@ -30,7 +31,7 @@ export function charactersPerInch(runs: readonly PlacedText[]): number {
   for (const line of lines.values()) {
     const width = line.end - line.start;
     if (line.count && (!Number.isFinite(width) || width <= 0))
-      throw new Error("Could not measure printed text width.");
+      throw new Error(t("Could not measure printed text width."));
     if (line.count) cpi = Math.max(cpi, line.count * 72 / width);
   }
   return cpi;
@@ -60,9 +61,9 @@ export function createHeightMeasure(bytes: Record<Face, Uint8Array>): HeightMeas
         // Punctuation and spaces are not letters/numerals. Keep shaped
         // ligatures, whose codePoints can contain more than one letter.
         if (!glyph.codePoints.some((cp) => /[\p{L}\p{N}]/u.test(String.fromCodePoint(cp)))) continue;
-        if (glyph.id === 0) throw new Error("A character is missing from the label font.");
+        if (glyph.id === 0) throw new Error(t("A character is missing from the label font."));
         const height = (glyph.bbox.maxY - glyph.bbox.minY) * run.size / font.unitsPerEm * 25.4 / 72;
-        if (!Number.isFinite(height) || height <= 0) throw new Error("Could not measure a printed character.");
+        if (!Number.isFinite(height) || height <= 0) throw new Error(t("Could not measure a printed character."));
         min = Math.min(min, height);
         max = Math.max(max, height);
       }
@@ -102,7 +103,7 @@ export function describeCodepoints(codepoints: readonly number[]): string {
 
 export function sizeForMinimum(size: number, currentMin: number, targetMm: number): number {
   if (![size, currentMin, targetMm].every((n) => Number.isFinite(n) && n > 0))
-    throw new Error("Character height must be a positive number.");
+    throw new Error(t("Character height must be a positive number."));
   // Round upward so a requested minimum is never rounded below its target.
   return Math.min(300, Math.max(1, Math.ceil((size * targetMm / currentMin - 1e-9) * 100) / 100));
 }

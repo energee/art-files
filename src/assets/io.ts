@@ -12,6 +12,7 @@ import { strToU8 } from "fflate";
 import type { LabelAsset, LabelAssets } from "@/labelfile";
 import type { CollabImage } from "@/pdf/build";
 import type { Rgba } from "@/psd/build";
+import { t } from "@/i18n";
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
  *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never
@@ -37,7 +38,7 @@ export type CustomFile = { image: CollabImage; name: string; previewUrl: string;
  *  decode/recolor/re-encode pipeline in this file. */
 async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   const blob = await new Promise<Blob>((res, rej) => canvas.toBlob(
-    (b) => b ? res(b) : rej(new Error(`Could not encode a ${canvas.width}×${canvas.height} image as PNG.`)),
+    (b) => b ? res(b) : rej(new Error(t("Could not encode a {{width}}×{{height}} image as PNG.", { width: canvas.width, height: canvas.height }))),
     "image/png"));
   return new Uint8Array(await blob.arrayBuffer());
 }

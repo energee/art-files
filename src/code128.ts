@@ -6,6 +6,7 @@
 // tests/code128.test.ts pins a published reference vector (also from that
 // article) against transcription errors.
 import type { UpcModules } from "./upc";
+import { t } from "@/i18n";
 
 // ponytail: code set B, or C only for an all-digit even-length payload —
 // no mid-string set switching; add optimal switching if labels ever need it.
@@ -42,9 +43,9 @@ const toModules = (widths: string): string =>
   [...widths].map((w, i) => (i % 2 === 0 ? "1" : "0").repeat(+w)).join("");
 
 export function validateCode128(value: string): { ok: boolean; error?: string } {
-  if (value.length === 0) return { ok: false, error: "Code 128 value is empty." };
+  if (value.length === 0) return { ok: false, error: t("Code 128 value is empty.") };
   if (!/^[\x20-\x7e]+$/.test(value))
-    return { ok: false, error: "Code 128 supports printable ASCII only." };
+    return { ok: false, error: t("Code 128 supports printable ASCII only.") };
   return { ok: true };
 }
 

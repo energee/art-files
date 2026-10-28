@@ -2,7 +2,8 @@ import { isMacOS } from "@/keys";
 // AppMenu.tsx — one File/Edit/Layer/View menu layout, rendered as shadcn chrome in
 // the browser and installed as the native application menu under Tauri. The
 // desktop menu also carries File → Open Recent, rebuilt from src/recent.ts.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation, t as translate } from "@/i18n";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
 import type {
@@ -89,10 +90,9 @@ type ActionEntry = {
 };
 type CheckAction = ActionEntry & { check: true };
 type SeparatorEntry = { kind: "separator"; id: string };
-type PredefinedEntry = {
-  kind: "predefined";
-  item: "Separator" | "Cut" | "Copy" | "Paste" | "SelectAll" | "Fullscreen";
-};
+type PredefinedEntry =
+  | { kind: "predefined"; item: "Separator" }
+  | { kind: "predefined"; item: "Cut" | "Copy" | "Paste" | "SelectAll" | "Fullscreen"; text: string };
 type SubmenuEntry = {
   kind: "submenu";
   id: string;
@@ -143,14 +143,14 @@ export const APP_MENUS: SubmenuEntry[] = [
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
       { kind: "action", id: "undo", text: "Undo", symbol: "arrow.uturn.backward" },
       { kind: "action", id: "redo", text: "Redo", symbol: "arrow.uturn.forward" },
-      // Both rows move to the application menu on the Mac (MAC_MENUS).
+      // Both rows move to the application menu on the Mac (useNativeMenu).
       { kind: "separator", id: "edit-settings" },
       { kind: "action", id: "settings", text: "Settings…", symbol: "gear" },
       { kind: "predefined", item: "Separator" },
-      { kind: "predefined", item: "Cut" },
-      { kind: "predefined", item: "Copy" },
-      { kind: "predefined", item: "Paste" },
-      { kind: "predefined", item: "SelectAll" },
+      { kind: "predefined", item: "Cut", text: "Cut" },
+      { kind: "predefined", item: "Copy", text: "Copy" },
+      { kind: "predefined", item: "Paste", text: "Paste" },
+      { kind: "predefined", item: "SelectAll", text: "Select All" },
     ],
   },
   {
@@ -207,19 +207,26 @@ export const APP_MENUS: SubmenuEntry[] = [
       // Ours rather than the row AppKit inserts on first open, which arrives
       // after menu_symbols.rs has run and so would stay without its icon.
       { kind: "predefined", item: "Separator" },
-      { kind: "predefined", item: "Fullscreen" },
+      { kind: "predefined", item: "Fullscreen", text: "Enter Full Screen" },
     ],
   },
 ];
 
-/** The Mac menu bar's table: Settings… (and its separator) leave Edit for
- *  the application menu, where macOS puts it (#551; macApplicationMenu).
- *  Windows, Linux and the in-window menu keep APP_MENUS. */
-const MAC_MENUS: SubmenuEntry[] = APP_MENUS.map((menu) => ({
-  ...menu,
-  items: menu.items.filter((e) => !("id" in e && (e.id === "settings" || e.id === "edit-settings"))),
-}));
-const SETTINGS_ROW = actionsIn(APP_MENUS).find((e) => e.id === "settings")!;
+type Translate = (key: string) => string;
+export function localizedMenus(t: Translate, entries: MenuEntry[] = APP_MENUS): SubmenuEntry[] {
+  return entries.filter((entry): entry is SubmenuEntry => entry.kind === "submenu").map((entry) => ({
+    ...entry,
+    text: t(entry.text),
+    items: entry.items.map((item): MenuEntry => {
+      if (item.kind === "submenu") return localizedMenus(t, [item])[0];
+      return "text" in item ? {
+        ...item,
+        text: t(item.text),
+        ...("keywords" in item && item.keywords ? { keywords: item.keywords.map((keyword) => t(keyword)) } : {}),
+      } : item;
+    }),
+  }));
+}
 
 function isCheckAction(entry: ActionEntry): entry is CheckAction {
   return !!entry.check;
@@ -364,6 +371,32 @@ async function closeResources(resources: NativeResource[]) {
   await Promise.allSettled(owned.map((resource) => resource.close()));
 }
 
+/** The native menu's own rows (About, Hide…, Quit), in the UI language. */
+type NativeMenuLabels = {
+  about: string;
+  services: string;
+  hide: string;
+  hideOthers: string;
+  showAll: string;
+  clearMenu: string;
+  quit: string;
+  help: string;
+  update: { check: string; restart: string };
+  fullScreen: [string, string];
+};
+const DEFAULT_NATIVE_MENU_LABELS: NativeMenuLabels = {
+  about: "About Label Lab",
+  services: "Services",
+  hide: "Hide Label Lab",
+  hideOthers: "Hide Others",
+  showAll: "Show All",
+  clearMenu: "Clear Menu",
+  quit: "Quit Label Lab",
+  help: "Help",
+  update: { check: "Check for Updates…", restart: "Restart to Update" },
+  fullScreen: ["Enter Full Screen", "Exit Full Screen"],
+};
+
 /** The macOS application menu. Quit is a custom item, not the predefined
  *  one: that sends NSApp `terminate:`, which exits without a window
  *  close-requested event, so ⌘Q skipped the unsaved-tabs prompt (#80).
@@ -376,18 +409,19 @@ export async function macApplicationMenu(
   checkForUpdates: () => void,
   quit: () => void,
   settings: NativeEntry,
+  labels: NativeMenuLabels = DEFAULT_NATIVE_MENU_LABELS,
 ) {
   const icon = await defaultWindowIcon();
   if (!icon) throw new Error("The bundled application icon is unavailable.");
   resources.push(icon);
   const definitions = [
-    { item: { About: { icon } } as const },
+    { item: { About: { icon } } as const, text: labels.about },
     { item: "Separator" as const },
-    { item: "Services" as const },
+    { item: "Services" as const, text: labels.services },
     { item: "Separator" as const },
-    { item: "Hide" as const },
-    { item: "HideOthers" as const },
-    { item: "ShowAll" as const },
+    { item: "Hide" as const, text: labels.hide },
+    { item: "HideOthers" as const, text: labels.hideOthers },
+    { item: "ShowAll" as const, text: labels.showAll },
     { item: "Separator" as const },
   ];
   const items: NativeEntry[] = await Promise.all(definitions.map(async (definition) => {
@@ -397,7 +431,7 @@ export async function macApplicationMenu(
   }));
   const updater = await api.IconMenuItem.new({
     id: "check-for-updates",
-    text: UPDATE_ITEM_TEXT.check,
+    text: labels.update.check,
     action: checkForUpdates,
     icon: "Refresh",
   });
@@ -409,7 +443,7 @@ export async function macApplicationMenu(
   items.splice(3, 0, settings, separator);
   const quitItem = await api.MenuItem.new({
     id: "quit",
-    text: "Quit Label Lab",
+    text: labels.quit,
     accelerator: "CmdOrCtrl+Q",
     action: quit,
   });
@@ -426,7 +460,11 @@ const recentRowsOf = new WeakMap<object, NativeEntry[]>();
 
 /** Open Recent's rows: one per remembered path (newest first), a separator,
  *  and Clear Menu — alone and disabled while the list is empty. */
-async function recentRows(api: MenuApi, resources: NativeResource[]): Promise<NativeEntry[]> {
+async function recentRows(
+  api: MenuApi,
+  resources: NativeResource[],
+  clearMenu: string,
+): Promise<NativeEntry[]> {
   const paths = recentLabels();
   const titles = recentTitles(paths);
   const rows: NativeEntry[] = await Promise.all(paths.map((path, i) => api.MenuItem.new({
@@ -437,7 +475,7 @@ async function recentRows(api: MenuApi, resources: NativeResource[]): Promise<Na
   })));
   if (paths.length) rows.push(await api.PredefinedMenuItem.new({ item: "Separator" }));
   rows.push(await api.MenuItem.new({
-    id: "recent-clear", text: "Clear Menu", enabled: paths.length > 0, action: clearRecent,
+    id: "recent-clear", text: clearMenu, enabled: paths.length > 0, action: clearRecent,
   }));
   resources.push(...rows);
   return rows;
@@ -450,20 +488,19 @@ async function nativeEntry(
   checked: CheckedState,
   run: (id: string) => void,
   resources: NativeResource[],
+  labels: NativeMenuLabels,
 ): Promise<NativeEntry> {
   if (entry.kind === "predefined" || entry.kind === "separator") {
     const item = await api.PredefinedMenuItem.new({
       item: entry.kind === "predefined" ? entry.item : "Separator",
-      // AppKit's own wording (muda says "Toggle Full Screen"); SYSTEM_ROWS
-      // gives this title its symbol.
-      ...(entry.kind === "predefined" && entry.item === "Fullscreen" ? { text: "Enter Full Screen" } : {}),
+      ...("text" in entry ? { text: entry.text } : {}),
     });
     resources.push(item);
     return item;
   }
   if (entry.kind === "submenu") {
     const items = await Promise.all(entry.items.map((item) =>
-      nativeEntry(api, item, commands, checked, run, resources)));
+      nativeEntry(api, item, commands, checked, run, resources, labels)));
     const submenu = await api.Submenu.new({
       id: entry.id,
       text: entry.text,
@@ -473,7 +510,7 @@ async function nativeEntry(
     return submenu;
   }
   if (entry.kind === "recent") {
-    const rows = await recentRows(api, resources);
+    const rows = await recentRows(api, resources, labels.clearMenu);
     const submenu = await api.Submenu.new({ id: entry.id, text: entry.text, items: rows });
     recentRowsOf.set(submenu, rows);
     resources.push(submenu);
@@ -499,11 +536,6 @@ async function nativeEntry(
   resources.push(item);
   return item;
 }
-
-/** Native-only rows with no in-window twin: the View menu's full-screen
- *  toggle, under both titles AppKit gives it. */
-const SYSTEM_ROWS: [string, string][] =
-  ["Enter Full Screen", "Exit Full Screen"].map((title) => [title, "viewfinder"]);
 
 /** Every row's title and SF Symbol, for menu_symbols.rs to set on the
  *  installed Mac menu. Titles are unique across APP_MENUS. Exported for tests. */
@@ -531,6 +563,7 @@ function useNativeMenu(
   onError: (message: string) => void,
   onCheckForUpdates: () => void,
   updateInstalled: boolean,
+  labels: NativeMenuLabels,
   menus: SubmenuEntry[],
 ) {
   const commandsRef = useRef(commands);
@@ -594,9 +627,15 @@ function useNativeMenu(
         // below would otherwise never reach the menu.
         const recentBuiltFrom = JSON.stringify(recentLabels());
         const native = (entry: MenuEntry) =>
-          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources);
-        // One filtered table for the rows and their symbols below.
-        const shown = isMacOS() ? visibleEntries(MAC_MENUS, commandsRef.current) as SubmenuEntry[] : menus;
+          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources, labels);
+        // One table for the rows and their symbols below. The Mac menu bar:
+        // Settings… (and its separator) leave Edit for the application menu,
+        // where macOS puts it (#551; macApplicationMenu). Windows and Linux
+        // keep the full table.
+        const shown = isMacOS() ? menus.map((menu) => ({
+          ...menu,
+          items: menu.items.filter((entry) => !("id" in entry && (entry.id === "settings" || entry.id === "edit-settings"))),
+        })) : menus;
         const roots = await Promise.all(shown.map(native));
         // On macOS the first submenu is the conventional application menu;
         // the browser renderer must not show it. Other desktop platforms put
@@ -606,16 +645,17 @@ function useNativeMenu(
           // onCloseRequested sweep prompts for unsaved tabs before exit.
           const quit = () => void import("@tauri-apps/api/window")
             .then((m) => m.getCurrentWindow().close())
-            .catch((error) => errorRef.current(`Could not quit: ${errMsg(error)}`));
+            .catch((error) => errorRef.current(translate("Could not quit: {{error}}", { error: errMsg(error) })));
+          const settings = actionsIn(menus).find((entry) => entry.id === "settings")!;
           roots.unshift(await macApplicationMenu(
-            api, resources, () => updateRef.current(), quit, await native(SETTINGS_ROW)));
+            api, resources, () => updateRef.current(), quit, await native(settings), labels));
         } else {
           const updater = await api.MenuItem.new({
-            id: "check-for-updates", text: UPDATE_ITEM_TEXT.check,
+            id: "check-for-updates", text: labels.update.check,
             action: () => updateRef.current(),
           });
           resources.push(updater);
-          const help = await api.Submenu.new({ id: "help-menu", text: "Help", items: [updater] });
+          const help = await api.Submenu.new({ id: "help-menu", text: labels.help, items: [updater] });
           resources.push(help);
           roots.push(help);
         }
@@ -630,7 +670,9 @@ function useNativeMenu(
         // The Tauri menu API only knows AppKit's old template icons; the SF
         // Symbols go on natively. A failure leaves the rows without icons.
         if (isMacOS()) {
-          await invoke("set_menu_symbols", { symbols: [...menuSymbols(shown), ...SYSTEM_ROWS] })
+          await invoke("set_menu_symbols", {
+            symbols: [...menuSymbols(shown), ...labels.fullScreen.map((title): [string, string] => [title, "viewfinder"])],
+          })
             .catch((error: unknown) => console.warn("menu symbols:", error));
         }
         if (!live) {
@@ -662,7 +704,7 @@ function useNativeMenu(
           // Closed rows leave the teardown list; recentRows adds the new ones.
           const gone = new Set<NativeResource>(old);
           resources.splice(0, resources.length, ...resources.filter((r) => !gone.has(r)));
-          const rows = await recentRows(api, resources);
+          const rows = await recentRows(api, resources, labels.clearMenu);
           // Torn down while the rows were made: the cleanup has already run.
           if (!live) return closeResources(resources);
           recentRowsOf.set(recent, rows);
@@ -671,7 +713,7 @@ function useNativeMenu(
         const queueRebuild = () => {
           // A teardown mid-rebuild closes the submenu under it; not an error.
           rebuilding = rebuilding.then(rebuild).catch((error) => {
-            if (live) errorRef.current(`Could not update the native menu: ${String(error)}`);
+            if (live) errorRef.current(translate("Could not update the native menu: {{error}}", { error: String(error) }));
           });
         };
         stopRecent = subscribeRecent(queueRebuild);
@@ -680,7 +722,7 @@ function useNativeMenu(
         setInstalled({ items: actionItems, shape: menuShape, isLive: () => live });
       } catch (error) {
         await closeResources(resources);
-        if (live) errorRef.current(`Could not install the native menu: ${errMsg(error)}`);
+        if (live) errorRef.current(translate("Could not install the native menu: {{error}}", { error: errMsg(error) }));
       }
     };
     nativeMenuInstalls = nativeMenuInstalls.then(install, install);
@@ -690,20 +732,20 @@ function useNativeMenu(
       stopRecent();
       void closeResources(resources);
     };
-  }, [desktop, menuShape]);
+  }, [desktop, menuShape, labels]);
 
   useEffect(() => {
     if (!installed?.isLive()) return;
     const item = installed.items.get("check-for-updates");
     if (!item) return;
-    const text = updateInstalled ? UPDATE_ITEM_TEXT.restart : UPDATE_ITEM_TEXT.check;
+    const text = updateInstalled ? labels.update.restart : labels.update.check;
     if (appliedState.current.get("check-for-updates:text") === text) return;
     appliedState.current.set("check-for-updates:text", text);
     if (!updateInstalled) return; // the item is created with the check label
     void item.setText(text).catch((error) => {
-      if (installed.isLive()) errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
+      if (installed.isLive()) errorRef.current(translate("Could not update the native menu: {{error}}", { error: errMsg(error) }));
     });
-  }, [installed, updateInstalled]);
+  }, [installed, updateInstalled, labels]);
 
   const snapshot = actionsIn(menus).map((entry) => ({
     id: entry.id,
@@ -740,7 +782,7 @@ function useNativeMenu(
     // Preserve render order across IPC: a slow prior update must never land
     // after a newer checked/disabled state.
     updateQueue.current = updateQueue.current.then(apply, apply).catch((error) => {
-      if (installed.isLive()) errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
+      if (installed.isLive()) errorRef.current(translate("Could not update the native menu: {{error}}", { error: errMsg(error) }));
     });
   // signature is the compact set of native-visible state; ordinary App
   // renders do not produce an IPC update per row. resync re-runs it after a native
@@ -757,8 +799,21 @@ export function AppMenu(props: {
   /** Relabels Check for Updates… to Restart to Update. */
   updateInstalled?: boolean;
 }) {
+  const { t } = useTranslation();
+  const labels = useMemo<NativeMenuLabels>(() => ({
+    about: t("About Label Lab"),
+    services: t("Services"),
+    hide: t("Hide Label Lab"),
+    hideOthers: t("Hide Others"),
+    showAll: t("Show All"),
+    clearMenu: t("Clear Menu"),
+    quit: t("Quit Label Lab"),
+    help: t("Help"),
+    update: { check: t(UPDATE_ITEM_TEXT.check), restart: t(UPDATE_ITEM_TEXT.restart) },
+    fullScreen: [t("Enter Full Screen"), t("Exit Full Screen")],
+  }), [t]);
   const commands = Object.fromEntries(props.actions.map((command) => [command.id, command]));
-  const menus = visibleEntries(APP_MENUS, commands) as SubmenuEntry[];
+  const menus = visibleEntries(localizedMenus(t), commands) as SubmenuEntry[];
   const desktop = isTauri();
   useNativeMenu(
     desktop,
@@ -767,6 +822,7 @@ export function AppMenu(props: {
     props.onNativeError,
     props.onCheckForUpdates,
     !!props.updateInstalled,
+    labels,
     menus,
   );
   // After hooks: throwing earlier for a missing command would skip useNativeMenu.

@@ -13,27 +13,21 @@
 // HMR).
 import { LABEL_EXT } from "@/labelfile";
 import { MASTER_EXT } from "@/model/files";
+import { t } from "@/i18n";
 
-/** One spelling of the dialog's file-type name, so the browser picker and
- *  the Tauri-native dialog can't drift apart. */
-const LABEL_DESC = "Label";
-const MASTER_DESC = "Label master";
-
-/** The .label file picker option, shared by open and save dialogs. */
-export const LABEL_TYPES = [
-  { description: LABEL_DESC, accept: { "application/zip": [LABEL_EXT] } },
+/** Localized picker options are created immediately before opening the dialog,
+ * so their native UI follows a language switch. */
+export const labelTypes = () => [
+  { description: t("Label"), accept: { "application/zip": [LABEL_EXT] } },
 ];
-/** LABEL_TYPES' Tauri-native twin, for the desktop open/save dialogs. */
-export const LABEL_FILTER = { name: LABEL_DESC, extensions: [LABEL_EXT.slice(1)] };
+export const labelFilter = () => ({ name: t("Label"), extensions: [LABEL_EXT.slice(1)] });
 
 /** The .master file picker option — a ZIP like .label since the 2026-08-29
- *  spec amendment (legacy JSON-only files still open by extension).
- *  Shared by Save Master / Save Master As / Open Master. */
-export const MASTER_TYPES = [
-  { description: MASTER_DESC, accept: { "application/zip": [MASTER_EXT] } },
+ * spec amendment (legacy JSON-only files still open by extension). */
+export const masterTypes = () => [
+  { description: t("Label master"), accept: { "application/zip": [MASTER_EXT] } },
 ];
-/** MASTER_TYPES' Tauri-native twin, for the desktop open/save dialogs. */
-export const MASTER_FILTER = { name: MASTER_DESC, extensions: [MASTER_EXT.slice(1)] };
+export const masterFilter = () => ({ name: t("Label master"), extensions: [MASTER_EXT.slice(1)] });
 
 export const savePicker = () => (window as {
   showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;

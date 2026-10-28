@@ -7,6 +7,7 @@ import { validateUpc, validateEan13 } from "../upc";
 import { validateCode128 } from "../code128";
 import type { Symbology } from "../barcode";
 import type { TextLayer } from "./layers";
+import { t } from "@/i18n";
 
 type Result = { ok: boolean; error?: string };
 const ok: Result = { ok: true };
@@ -15,25 +16,25 @@ const err = (error: string): Result => ({ ok: false, error });
 export function validateField(decl: FieldDecl, value: FieldValue): Result {
   switch (decl.kind) {
     case "text":
-      return typeof value === "string" ? ok : err("Expected text.");
+      return typeof value === "string" ? ok : err(t("Expected text."));
     case "number": {
       // Plain decimals only: Number() would also take "1e1", "0x10" and "6.",
       // which print as typed, not as the number they parse to. Blank is "not
       // filled yet", like every other field.
-      if (typeof value === "boolean") return err("Expected a number.");
+      if (typeof value === "boolean") return err(t("Expected a number."));
       const text = String(value).trim();
       if (!text) return ok;
       const n = Number(text);
       if (typeof value === "string" ? !/^-?\d+(\.\d+)?$/.test(text) : !Number.isFinite(n))
-        return err("Expected a number.");
-      if (decl.min !== undefined && n < decl.min) return err(`Must be at least ${decl.min}.`);
-      if (decl.max !== undefined && n > decl.max) return err(`Must be at most ${decl.max}.`);
+        return err(t("Expected a number."));
+      if (decl.min !== undefined && n < decl.min) return err(t("Must be at least {{min}}.", { min: decl.min }));
+      if (decl.max !== undefined && n > decl.max) return err(t("Must be at most {{max}}.", { max: decl.max }));
       return ok;
     }
     case "image":
-      return typeof value === "string" ? ok : err("Expected an image.");
+      return typeof value === "string" ? ok : err(t("Expected an image."));
     case "code": {
-      if (typeof value !== "string") return err("Expected a code value.");
+      if (typeof value !== "string") return err(t("Expected a code value."));
       // upc-a and an unset symbology both validate as UPC-A: the historical
       // `upc` field predates `symbology` and was always a UPC-A code, so
       // leaving symbology unset is a deliberate default, not a fallback.
@@ -45,11 +46,11 @@ export function validateField(decl: FieldDecl, value: FieldValue): Result {
     }
     case "select":
       return decl.options?.includes(String(value))
-        ? ok : err(`Must be one of: ${decl.options?.join(", ") ?? ""}.`);
+        ? ok : err(t("Must be one of: {{options}}.", { options: decl.options?.join(", ") ?? "" }));
     case "toggle":
-      return typeof value === "boolean" ? ok : err("Expected on/off.");
+      return typeof value === "boolean" ? ok : err(t("Expected on/off."));
     default:
-      return err(`Unknown field kind "${decl.kind}".`);
+      return err(t("Unknown field kind {{kind}}.", { kind: decl.kind }));
   }
 }
 
@@ -80,5 +81,5 @@ const SYMBOLOGY_LABEL: Record<Symbology, string> = {
 export function minModuleWarning(symbology: Symbology, moduleW: number): string | null {
   const MIN = 0.72;
   if (moduleW >= MIN) return null;
-  return `${SYMBOLOGY_LABEL[symbology]} module width is ${moduleW}pt. Use at least ${MIN}pt for reliable scanning on curved metal.`;
+  return t("{{symbology}} module width is {{width}}pt. Use at least {{min}}pt for reliable scanning on curved metal.", { symbology: SYMBOLOGY_LABEL[symbology], width: moduleW, min: MIN });
 }

@@ -17,6 +17,7 @@
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
+import { useTranslation } from "@/i18n";
 import { drawPlate, type CanvasRenderSource } from "@/canvas/draw";
 import { planLayerScene } from "@/planLayers";
 import { hitBoxesFromLayout, hitTestBoxes, type LayerBox } from "@/hittestLayers";
@@ -160,6 +161,7 @@ export const PreviewCompare = forwardRef<
   },
   ref,
 ) {
+  const { t } = useTranslation();
   const dieR = dieRadius(cornerRadiusPct);
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
@@ -517,7 +519,7 @@ export const PreviewCompare = forwardRef<
         className="absolute inset-0 h-full w-full"
         style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
       />
-      <div role="separator" tabIndex={0} aria-label="White ink comparison"
+      <div role="separator" tabIndex={0} aria-label={t("White ink comparison")}
         aria-orientation="vertical" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(split)}
         data-slot="resizable-handle"
         className="absolute inset-y-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none focus-visible:outline focus-visible:outline-ring"
@@ -563,8 +565,8 @@ export const PreviewCompare = forwardRef<
       {readout && boxesById.get(readout.id) && (() => {
         const b = boxesById.get(readout.id)!;
         const rows = readout.moved
-          ? [`X ${lengthLabel(readout.moved.dx, unit)}`, `Y ${lengthLabel(readout.moved.dy, unit)}`]
-          : [`W ${lengthLabel(b.w, unit)}`, `H ${lengthLabel(b.h, unit)}`];
+          ? [t("X {{value}}", { value: lengthLabel(readout.moved.dx, unit) }), t("Y {{value}}", { value: lengthLabel(readout.moved.dy, unit) })]
+          : [t("W {{value}}", { value: lengthLabel(b.w, unit) }), t("H {{value}}", { value: lengthLabel(b.h, unit) })];
         return (
           <div
             className="pointer-events-none absolute"
@@ -613,7 +615,7 @@ export const PreviewCompare = forwardRef<
           style={pageBox(groupBox.x, groupBox.y, groupBox.w, groupBox.h, GROUP_PAD)}
         >
           <span className="absolute -top-5 left-0 rounded-sm bg-info-soft px-1 text-[10px] font-medium leading-4 text-info-text">
-            {selBoxes.length} layers
+            {t("{{count}} layer", { count: selBoxes.length })}
           </span>
         </div>
       )}
@@ -632,7 +634,7 @@ export const PreviewCompare = forwardRef<
             // Locked layers keep inert ticks; onHandleDown re-checks the lock.
             <span
               key={h.key} aria-hidden="true" data-resize-handle={h.key}
-              title="Drag to resize (shift: keep proportions)"
+              title={t("Drag to resize (shift: keep proportions)")}
               className={b.locked ? h.clsLocked : h.cls}
               onClick={(e) => { e.stopPropagation(); swallowClick.current = false; }}
               onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}

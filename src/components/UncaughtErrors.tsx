@@ -10,12 +10,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { isAbort } from "@/filePickers";
 import { errMsg } from "@/lib/utils";
+import { useTranslation } from "@/i18n";
 
 /** Chromium/WebKit report this when an observer's callback resizes what it
  *  observes; the next frame delivers it. Noise, not a failure. */
 const RESIZE_OBSERVER_NOTICE = /^ResizeObserver loop/;
 
 export function UncaughtErrors() {
+  const { t } = useTranslation();
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,15 +46,14 @@ export function UncaughtErrors() {
   return (
     <div className="fixed inset-x-0 bottom-4 z-50 mx-auto w-full max-w-xl px-4">
       <Alert variant="destructive" className="shadow-lg">
-        <AlertTitle>Something went wrong</AlertTitle>
+        <AlertTitle>{t("Something went wrong")}</AlertTitle>
         <AlertDescription>
           <p className="break-words font-mono text-xs">{message}</p>
           <p>
-            The last action may not have finished. Your open tabs are intact;
-            check the result before relying on it.
+            {t("The last action may not have finished. Your open tabs are intact; check the result before relying on it.")}
           </p>
           <Button size="sm" variant="outline" className="mt-1" onClick={() => setMessage(null)}>
-            Dismiss
+            {t("Dismiss")}
           </Button>
         </AlertDescription>
       </Alert>

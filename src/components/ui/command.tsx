@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n"
 import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 
@@ -32,8 +33,8 @@ function Command({
 }
 
 function CommandDialog({
-  title = "Command Palette",
-  description = "Search for a command to run...",
+  title,
+  description,
   children,
   className,
   showCloseButton = false,
@@ -45,6 +46,7 @@ function CommandDialog({
   showCloseButton?: boolean
   children: React.ReactNode
 }) {
+  const { t } = useTranslation()
   return (
     <Dialog {...props}>
       <DialogContent
@@ -60,8 +62,8 @@ function CommandDialog({
             children need cmdk's <Command> root — CommandInput/CommandList
             throw without that provider. */}
         <DialogHeader className="sr-only">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogTitle>{title ?? t("Command Palette")}</DialogTitle>
+          <DialogDescription>{description ?? t("Search for a command to run...")}</DialogDescription>
         </DialogHeader>
         <Command>{children}</Command>
       </DialogContent>

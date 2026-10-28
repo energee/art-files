@@ -6,6 +6,7 @@
 import {
   forwardRef, useEffect, useImperativeHandle, useRef, useState,
 } from "react";
+import { useTranslation } from "@/i18n";
 import { CanScene, type CanSceneMode } from "@/three/canScene";
 import { drawPlates, buildLabelTextures } from "@/three/labelTextures";
 import type { CanvasRenderSource } from "@/canvas/draw";
@@ -58,6 +59,7 @@ export const CanView = forwardRef<CanViewHandle, {
   layers, source, bleedIn, mode, cornerRadiusPct,
   edgeSoftnessPct, curvePct, onZoom, initialView, onRenderError, exporting,
 }, ref) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<CanScene | null>(null);
   const [loading, setLoading] = useState(false);
@@ -162,11 +164,11 @@ export const CanView = forwardRef<CanViewHandle, {
       {/* Paints the 3D stage's backdrop: the renderer clears transparent, so
           the flat colour behind the can comes from the app's own theme token
           (see canScene's note) rather than a hex duplicated in the scene. */}
-      <div ref={containerRef} tabIndex={0} role="region" aria-label="3D can view: arrows pan; Shift plus arrows rotates" className="absolute inset-0 overflow-hidden rounded-md bg-background" />
+      <div ref={containerRef} tabIndex={0} role="region" aria-label={t("3D can view: arrows pan; Shift plus arrows rotates")} className="absolute inset-0 overflow-hidden rounded-md bg-background" />
       {loading && !exporting && (
         <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-          rendering…
+          {t("rendering…")}
         </span>
       )}
     </div>

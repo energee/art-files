@@ -81,8 +81,8 @@ it("benches and reports orphan value and variant ids when a label opens on its o
       "gone-layer": "stale",
     },
   }, async ({ container, save, writes, dirty }) => {
-    expect(container.textContent).toContain("1 value(s) benched: gone-layer");
-    expect(container.textContent).toContain("1 variant(s) benched: gone-variant");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("gone-layer");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("gone-variant");
     expect(dirty).toBe(true); // Save stays live so the cleaned label reaches disk
 
     await save();
@@ -120,7 +120,7 @@ it("reports a v2 label's value for a layer its master no longer has", async () =
     values: { name: "Alpha", "gone-layer": "stale" },
   })) });
   await openLabel(bytes, async ({ container, dirty }) => {
-    expect(container.textContent).toContain("1 value(s) benched: gone-layer");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("gone-layer");
     expect(dirty).toBe(true);
   });
 }, 30_000);

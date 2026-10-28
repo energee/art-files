@@ -182,4 +182,15 @@ describe("macOS application menu", () => {
     expect(quit).toHaveBeenCalledOnce();
   });
 
+  // A predefined item given `text` drops muda's own "About Label Lab" /
+  // "Hide Label Lab", so every language must name the app itself.
+  it("names the app in the About and Hide rows", async () => {
+    const { api, made } = fakeApi();
+    await macApplicationMenu(api, [], () => undefined, () => undefined, settingsRow);
+    const text = (item: string) => made.predefined.find((options) =>
+      options.item === item || (typeof options.item === "object" && item in (options.item as object)))?.text;
+    expect(text("About")).toBe("About Label Lab");
+    expect(text("Hide")).toBe("Hide Label Lab");
+  });
+
 });

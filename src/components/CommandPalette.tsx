@@ -6,14 +6,14 @@
 // under Other. A check row shows its state as a leading check mark, and every
 // row in its group keeps that mark's space so the titles line up.
 import { CheckIcon } from "lucide-react";
-import { menuGroups, rowTitle, type CheckedState } from "@/components/AppMenu";
+import { useTranslation } from "@/i18n";
+import { actionsIn, APP_MENUS, localizedMenus, menuGroups, rowTitle, type CheckedState } from "@/components/AppMenu";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
 import {
   CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut,
 } from "@/components/ui/command";
 
-const GROUPS = menuGroups();
-const IN_MENUS = new Set(GROUPS.flatMap((group) => group.rows.map((row) => row.id)));
+const menuIds = new Set(APP_MENUS.flatMap((group) => actionsIn(group.items).map((row) => row.id)));
 
 export function CommandPalette(props: {
   open: boolean;
@@ -22,6 +22,8 @@ export function CommandPalette(props: {
   /** Which check rows are on (the same map AppMenu gets). */
   checked?: CheckedState;
 }) {
+  const { t } = useTranslation();
+  const groups = menuGroups(localizedMenus(t));
   const index = new Map(props.actions.map((a) => [a.id, a]));
   // cmdk matches the search against value then keywords, in order, so the
   // heading leads the value: bare "Label" or "Dark" is ambiguous, "view
@@ -37,7 +39,7 @@ export function CommandPalette(props: {
             rows beside check rows, keep the space so the titles line up.
             The on check is named, so a screen reader still hears the
             state the old "Hide rulers" wording carried. */}
-        {check === true && <CheckIcon role="img" aria-label="On" data-palette-check="on" />}
+        {check === true && <CheckIcon role="img" aria-label={t("On")} data-palette-check="on" />}
         {check === false && <CheckIcon aria-hidden="true" data-palette-check="off" className="invisible" />}
         {title}
         {/* CommandShortcut, not a bare ml-auto span: its data-slot is what
@@ -47,13 +49,13 @@ export function CommandPalette(props: {
       </CommandItem>
     );
   };
-  const others = props.actions.filter((a) => !IN_MENUS.has(a.id));
+  const others = props.actions.filter((a) => !menuIds.has(a.id));
   return (
     <CommandDialog open={props.open} onOpenChange={props.onOpenChange}>
-      <CommandInput placeholder="Type a command…" />
+      <CommandInput placeholder={t("Type a command…")} />
       <CommandList>
-        <CommandEmpty>No results.</CommandEmpty>
-        {GROUPS.map((group) => {
+        <CommandEmpty>{t("No results.")}</CommandEmpty>
+        {groups.map((group) => {
           const gutter = group.rows.some((row) => row.check);
           const rows = group.rows.flatMap((row) => {
             const a = index.get(row.id);
@@ -64,7 +66,7 @@ export function CommandPalette(props: {
           return rows.length > 0 && <CommandGroup key={group.heading} heading={group.heading}>{rows}</CommandGroup>;
         })}
         {others.length > 0 && (
-          <CommandGroup heading="Other">{others.map((a) => item(a, "Other", a.label))}</CommandGroup>
+          <CommandGroup heading={t("Other")}>{others.map((a) => item(a, t("Other"), a.label))}</CommandGroup>
         )}
       </CommandList>
     </CommandDialog>

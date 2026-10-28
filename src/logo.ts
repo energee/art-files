@@ -2,6 +2,7 @@
 // both deliverable builders. Kept out of pdf/build.ts so the PSD builder can
 // use it without importing the PDF renderer.
 import svgpath from "svgpath";
+import { t } from "@/i18n";
 
 /** Extract the logo's paths (basic shapes converted — see shapeToPath)
  *  pre-scaled to `width` points. Transforms are applied — each shape's own
@@ -91,7 +92,7 @@ function shapeToPath(name: string, tag: string): string {
   switch (name) {
     case "path": {
       const d = attr(tag, "d");
-      if (!d) throw new Error("Logo path is missing d attribute");
+      if (!d) throw new Error(t("Logo path is missing d attribute"));
       return d;
     }
     case "rect": {
@@ -124,8 +125,7 @@ function shapeToPath(name: string, tag: string): string {
       return `M ${n("x1")} ${n("y1")} L ${n("x2")} ${n("y2")}`;
     default:
       throw new Error(
-        `This SVG uses <${name}>, which we can't place. Convert it to plain paths ` +
-        "(outline text, expand/unlink clones, remove embedded images), then export it again.",
+        t("This SVG uses <{{name}}>, which we can't place. Convert it to plain paths (outline text, expand/unlink clones, remove embedded images), then export it again.", { name }),
       );
   }
 }
@@ -161,14 +161,14 @@ function parseLogoUncached(
       parsed.push(svgpath(d).transform(tf).abs().unshort().unarc());
     }
   }
-  if (parsed.length === 0) throw new Error("Could not parse logo SVG paths");
+  if (parsed.length === 0) throw new Error(t("Could not parse logo SVG paths"));
 
   // The laurel path (no height cap): scale by the viewBox, exactly as ever —
   // LOGO_ASPECT and the shipped laurel geometry are measured against it.
   if (maxH === undefined) {
     const vb = attr(svg.match(/<svg\b[^>]*>/)?.[0] ?? "", "viewBox").trim().split(/[\s,]+/);
     const vbW = +vb[2]!, vbH = +vb[3]!;
-    if (!(vbW > 0 && vbH > 0)) throw new Error("Could not parse logo SVG viewBox");
+    if (!(vbW > 0 && vbH > 0)) throw new Error(t("Could not parse logo SVG viewBox"));
     const scale = width / vbW;
     return {
       paths: parsed.map((p) => emit(p.scale(scale))),
@@ -196,7 +196,7 @@ function parseLogoUncached(
       }
     });
   const bw = maxX - minX, bh = maxY - minY;
-  if (!(bw > 0 && bh > 0)) throw new Error("Logo SVG has no drawable extent");
+  if (!(bw > 0 && bh > 0)) throw new Error(t("Logo SVG has no drawable extent"));
   const scale = Math.min(width / bw, maxH / bh);
   return {
     paths: parsed.map((p) => emit(p.translate(-minX, -minY).scale(scale))),

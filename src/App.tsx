@@ -32,6 +32,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
+import { useTranslation } from "@/i18n";
+import { isNote, t as translate } from "@/i18n";
 import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
@@ -39,7 +41,7 @@ import { basename } from "@tauri-apps/api/path";
 import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
 import { LABEL_EXT, type LabelAsset } from "@/labelfile";
-import { MASTER_FILTER, MASTER_TYPES, isAbort } from "@/filePickers";
+import { masterFilter, masterTypes, isAbort } from "@/filePickers";
 import { openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
 import type {
@@ -127,7 +129,7 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
   (m) => ({ default: m.CanView }),
   (err: unknown) => ({
     default: function CanViewLoadFailed({ onRenderError }: CanViewProps) {
-      useEffect(() => onRenderError(`The 3D view failed to load: ${errMsg(err)}`), [onRenderError]);
+      useEffect(() => onRenderError(translate("The 3D view failed to load: {{error}}", { error: errMsg(err) })), [onRenderError]);
       return null;
     },
   })));
@@ -141,14 +143,14 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
 const RenderSettingsFields = lazy<typeof import("@/components/RenderSettings").RenderSettings>(() => import("@/components/RenderSettings").then(
   (m) => ({ default: m.RenderSettings }),
   (err: unknown) => ({
-    default: () => <p className="text-xs text-destructive-text">{loadFailedMessage("Settings", err)}</p>,
+    default: () => <p className="text-xs text-destructive-text">{loadFailedMessage(translate("Settings"), err)}</p>,
   })));
 type MasterSaveReviewProps = Parameters<typeof import("@/components/MasterSaveReview").MasterSaveReview>[0];
 const MasterSaveReview = lazy<ComponentType<MasterSaveReviewProps>>(() => import("@/components/MasterSaveReview").then(
   (m) => ({ default: m.MasterSaveReview }),
   (err: unknown) => ({
     default: ({ open, onCancel }: MasterSaveReviewProps) => (
-      <DialogLoadFailed title="Save Master" what="The Save Master review" err={err}
+      <DialogLoadFailed title={translate("Save Master")} what={translate("The Save Master review")} err={err}
         open={open} onOpenChange={(o) => { if (!o) onCancel(); }} />
     ),
   })));
@@ -247,8 +249,8 @@ function loadViewPrefs(): ViewPrefs {
 
 /** The "N value(s) benched" notes a rebind reports for what didn't fit. */
 const benchedNotes = (dropped: { values: string[]; variants: string[] }): string[] => [
-  ...(dropped.values.length ? [`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`] : []),
-  ...(dropped.variants.length ? [`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`] : []),
+  ...(dropped.values.length ? [translate("{{count}} value benched: {{names}}", { count: dropped.values.length, names: dropped.values.join(", ") })] : []),
+  ...(dropped.variants.length ? [translate("{{count}} variant benched: {{names}}", { count: dropped.variants.length, names: dropped.variants.join(", ") })] : []),
 ];
 
 /** What every open path hands to openProject. Each entry point converts
@@ -379,6 +381,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
+  const { t } = useTranslation();
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
@@ -1003,11 +1006,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     setLoadError((e) => e.startsWith(`Could not load ${what} `) ? "" : e);
   async function onTexture(f: File) {
     try { swapLoaded(setTexture, previewOnce(await readRaster(f), f)); clearLoadErrorOf("texture"); }
-    catch (err) { setLoadError(`Could not load texture "${f.name}": ${errMsg(err)}`); }
+    catch (err) { setLoadError(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
   }
   async function onMask(f: File) {
     try { swapLoaded(setMask, previewOnce(await readRaster(f), f)); clearLoadErrorOf("mask"); }
-    catch (err) { setLoadError(`Could not load mask "${f.name}": ${errMsg(err)}`); }
+    catch (err) { setLoadError(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
   }
 
   /** An image layer's well: read the dropped file into the per-id store
@@ -1061,7 +1064,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   });
 
   // What the tab strip, window title and export names call this document.
-  const title = titleOf(drawLayers) || "Untitled";
+  const title = titleOf(drawLayers) || t("Untitled");
   const exportBase = exportBaseOf(drawLayers);
   // The PDF/PSD exports and the export-in-flight state (useExport.ts). Its
   // exportStale runs from markDirty and edit above, which only fire from
@@ -1570,7 +1573,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       promoted = applyPromotions(master, label, promote, version ?? undefined);
     } catch (err) {
-      setLoadError(`Could not save master: ${errMsg(err)}`);
+      setLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
     }
     /** What goes into the file, for the header note: the master's own
@@ -1625,7 +1628,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const path = as ? null : saveTargetFor(masterFilePath.current, master.id);
       const handle = as ? null : saveTargetFor(masterFileHandle.current, master.id);
       const saved = await saveThrough((name) => packMaster(titled(name), assets), {
-        name: suggested + MASTER_EXT, type: "application/zip", filter: MASTER_FILTER, types: MASTER_TYPES,
+        name: suggested + MASTER_EXT, type: "application/zip", filter: masterFilter(), types: masterTypes(),
         target: path ? { path } : handle ? { handle } : null,
       }, saveBytes);
       if (!saved) return false;
@@ -1634,10 +1637,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
       if (ours) setLoadError([
-        `Note: Saved ${saved.name}${written ? ` (${written} change${written === 1 ? "" : "s"})` : ""}`,
-        ...(!missing ? []
-          : missing === 1 ? ["1 image has no file to save. It will be blank when you reopen this master."]
-          : [`${missing} images have no file to save. They will be blank when you reopen this master.`]),
+        t("Note: Saved {{name}}", { name: saved.name }) + (written ? t(" ({{count}} change)", { count: written }) : ""),
+        ...(!missing ? [] : [t("{{count}} image has no file to save. It will be blank when you reopen this master.", { count: missing })]),
       ].join(" · "));
       return true;
     } catch (err) {
@@ -1652,10 +1653,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
       const r = unpackMaster(bytes);
-      if (r.warnings.length) setLoadError("Note: " + r.warnings.join(" · "));
+      if (r.warnings.length) setLoadError(t("Note: {{message}}", { message: r.warnings.join(" · ") }));
       return r;
     } catch (err) {
-      setLoadError(`Could not open master: ${errMsg(err)}`);
+      setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
   }
@@ -1703,7 +1704,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     clearSelection();
     const notes = benchedNotes(dropped);
     setLoadError(notes.length
-      ? `Note: Switched to “${target.name}” · ${notes.join(" · ")} · ${shortcutLabel("⌘Z")} to restore` : "");
+      ? t("Note: {{message}}", { message: t("Switched to “{{name}}” · {{notes}} · {{shortcut}} to restore", { name: target.name, notes: notes.join(" · "), shortcut: shortcutLabel("⌘Z") }) }) : "");
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
@@ -1781,7 +1782,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  hidden-input fallback elsewhere. */
   async function openMasterPicker() {
     try {
-      const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
+      const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
       if (target === undefined) { masterInput.current?.click(); return; }
       if (target === null) return;
       if ("path" in target) await openMasterBytes(await readNativeFile(target.path), target.path, target);
@@ -1790,7 +1791,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
       }
     } catch (err) {
-      if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
+      if (!isAbort(err)) setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
     }
   }
 
@@ -1836,7 +1837,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         setEdited(false);
         setDirty(true);
       } catch (err) {
-        if (!claimed()) setLoadError(`Could not restore master: ${errMsg(err)}`);
+        if (!claimed()) setLoadError(t("Could not restore master: {{error}}", { error: errMsg(err) }));
       }
     });
     return () => { cancelled = true; };
@@ -1844,7 +1845,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   const reportOpenError = (err: unknown) => {
-    if (!isAbort(err)) setLoadError(`Could not open label: ${errMsg(err)}`);
+    if (!isAbort(err)) setLoadError(t("Could not open label: {{error}}", { error: errMsg(err) }));
   };
 
   /** A .label's master couldn't be resolved: ask the operator. "Use current"
@@ -1874,14 +1875,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     // one on a quiet attempt and ask again with no explanation.
     let bytes: Uint8Array, path: string;
     try {
-      const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
-      if (target === undefined) { setLoadError("Could not open master: this browser has no file picker. Use File → Open Master… first."); return null; }
+      const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
+      if (target === undefined) { setLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
       [bytes, path] = "path" in target
         ? [await readNativeFile(target.path), target.path]
         : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
     } catch (err) {
-      if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
+      if (!isAbort(err)) setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
     const r = tryParseMaster(bytes);
@@ -1990,7 +1991,13 @@ export const DocumentEditor = memo(function DocumentEditor({
       for (const { layer, variant } of layerRows(next.master, next.label).rows) {
         if (variant && !variant.enabled) continue;
         try { validateLayer(structuredClone(layer), "label"); }
-        catch (err) { throw new Error(errMsg(err).replace(/^Invalid master file: /, "invalid override: ")); }
+        catch (err) {
+          // validateLayer's message carries the translated master prefix.
+          const prefix = translate("Invalid master file: {{message}}", { message: "" });
+          const message = errMsg(err);
+          throw new Error(message.startsWith(prefix)
+            ? translate("invalid override: {{message}}", { message: message.slice(prefix.length) }) : message);
+        }
       }
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Image bytes merge the
@@ -2015,10 +2022,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (images.length) setCustomImages(() => Object.fromEntries(images.map(([id, mint]) => [id, mint()])));
       setDirty(benched);
       setEdited(benched);
-      setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+      setLoadError(notes.length ? translate("Note: {{message}}", { message: notes.join(" · ") }) : "");
       return true;
     } catch (err) {
-      if (!opts?.quiet) setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
+      if (!opts?.quiet) setLoadError(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
       return false;
     }
   }
@@ -2055,8 +2062,8 @@ export const DocumentEditor = memo(function DocumentEditor({
               if (recoveredPath?.rebind) bindPath(recoveredPath.path, recoveredPath.modifiedAt);
               else if (recoveredPath) {
                 // Joins the open's own notes (benched values) rather than replacing them.
-                const note = `Restored from ${recoveredPath.path}, which moved, changed or is open in another tab, so Save asks where`;
-                setLoadError((e) => e.startsWith("Note: ") ? `${e} · ${note}` : `Note: ${note}`);
+                const note = t("Restored from {{path}}, which moved, changed or is open in another tab, so Save asks where", { path: recoveredPath.path });
+                setLoadError((e) => isNote(e) ? `${e} · ${note}` : t("Note: {{message}}", { message: note }));
               }
               const bytes = new Uint8Array(await file.arrayBuffer());
               // The path (and its baseline mtime) rides along only once
@@ -2086,76 +2093,76 @@ export const DocumentEditor = memo(function DocumentEditor({
   const removable = selected.some((id) => rowById.has(id));
   /** File → Save Master… and the picker's button: the review writes into the
    *  version the picker names, and both say which. */
-  const saveLabel = version === null ? "Save Master…" : "Save Variant…";
+  const saveLabel = version === null ? t("Save Master…") : t("Save Variant…");
   const commands: Command[] = [
-    { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },
-    { id: "tab-close", label: "Close Tab", key: "w", mods: "⌘", run: onCloseTab },
-    { id: "project-open", label: "Open Label…", key: "o", mods: "⌘", run: onOpenProject },
-    { id: "project-save", label: "Save Label", key: "s", mods: "⌘",
+    { id: "tab-new", label: t("New Tab"), key: "n", mods: "⌘", run: onNewTab },
+    { id: "tab-close", label: t("Close Tab"), key: "w", mods: "⌘", run: onCloseTab },
+    { id: "project-open", label: t("Open Label…"), key: "o", mods: "⌘", run: onOpenProject },
+    { id: "project-save", label: t("Save Label"), key: "s", mods: "⌘",
       disabled: !dirty, run: () => void saveProject() },
-    { id: "project-save-as", label: "Save Label As…", key: "s", mods: "⇧⌘",
+    { id: "project-save-as", label: t("Save Label As…"), key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
-    { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
+    { id: "master-open", label: t("Open Master…"), run: () => void openMasterPicker() },
     // Names the version it writes into, like the picker's button (saveLabel).
     { id: "master-save", label: saveLabel, disabled: !masterDirty,
       run: () => requestMasterSave(false) },
-    { id: "master-save-as", label: "Save Master As…", run: () => requestMasterSave(true) },
+    { id: "master-save-as", label: t("Save Master As…"), run: () => requestMasterSave(true) },
     // The first export in a tab asks where (beside its .label); later ones
     // rewrite that print file silently, and Export PDF As… asks again.
     // They don't wait for the preview: the builds load their own fonts and art.
-    { id: "export-pdf", label: "Export PDF", key: "e", mods: "⌘",
+    { id: "export-pdf", label: t("Export PDF"), key: "e", mods: "⌘",
       disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }) },
-    { id: "export-pdf-as", label: "Export PDF As…",
+    { id: "export-pdf-as", label: t("Export PDF As…"),
       disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }) },
     ...(render.twoFilePdfExport ? [
-      { id: "export-both", label: "Export PDFs",
+      { id: "export-both", label: t("Export PDFs"),
         disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }, "pair") },
-      { id: "export-both-as", label: "Export PDFs As…",
+      { id: "export-both-as", label: t("Export PDFs As…"),
         disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }, "pair") },
-      { id: "export-art", label: "Export Artwork PDF",
+      { id: "export-art", label: t("Export Artwork PDF"),
         disabled: exportBlocked, run: () => void exportPdfPlate("art", { labelPath: filePath }) },
-      { id: "export-mask", label: "Export Mask PDF",
+      { id: "export-mask", label: t("Export Mask PDF"),
         disabled: exportBlocked, run: () => void exportPdfPlate("mask", { labelPath: filePath }) },
     ] : []),
-    { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
+    { id: "export-psd", label: t("Export PSDs"), key: "e", mods: "⇧⌘",
       disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }) },
-    { id: "export-psd-as", label: "Export PSDs As…",
+    { id: "export-psd-as", label: t("Export PSDs As…"),
       disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }) },
-    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
-    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
-    { id: "variant-new", label: "New Variant", run: onNewVariant },
-    { id: "layer-add-text", label: "Add Text Layer", run: () => onAddLayer("text") },
-    { id: "layer-add-image", label: "Add Image Layer", run: () => onAddLayer("image") },
-    { id: "layer-add-barcode", label: "Add Barcode Layer", run: () => onAddLayer("barcode") },
-    { id: "layer-add-qr", label: "Add QR Layer", run: () => onAddLayer("qr") },
+    { id: "undo", label: t("Undo"), shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
+    { id: "redo", label: t("Redo"), shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
+    { id: "variant-new", label: t("New Variant"), run: onNewVariant },
+    { id: "layer-add-text", label: t("Add Text Layer"), run: () => onAddLayer("text") },
+    { id: "layer-add-image", label: t("Add Image Layer"), run: () => onAddLayer("image") },
+    { id: "layer-add-barcode", label: t("Add Barcode Layer"), run: () => onAddLayer("barcode") },
+    { id: "layer-add-qr", label: t("Add QR Layer"), run: () => onAddLayer("qr") },
     // Delete/Backspace reach this through their own listener (see above),
     // which stands aside in text fields; the shortcut here is display-only.
-    { id: "layer-remove", label: "Remove Layer", shortcut: "⌫", disabled: !removable,
+    { id: "layer-remove", label: t("Remove Layer"), shortcut: "⌫", disabled: !removable,
       run: () => onRemoveLayer(selected[selected.length - 1]) },
-    { id: "settings", label: "Settings…", key: ",", mods: "⌘", run: () => setSettingsOpen(true) },
-    { id: "view-label", label: "Label", key: "1", run: () => show2d("art") },
-    { id: "view-mask", label: "Mask", key: "2", run: () => show2d("mask") },
-    { id: "view-rendered", label: "Rendered", key: "3", run: () => setViewMode("rendered") },
-    { id: "view-can", label: "Can", key: "4", run: () => setViewMode("can") },
-    { id: "view-one-can", label: "One Can", disabled: viewMode !== "can", run: () => setCans(1) },
-    { id: "view-four-pack", label: "Four-Pack", disabled: viewMode !== "can", run: () => setCans(4) },
+    { id: "settings", label: t("Settings…"), key: ",", mods: "⌘", run: () => setSettingsOpen(true) },
+    { id: "view-label", label: t("Label"), key: "1", run: () => show2d("art") },
+    { id: "view-mask", label: t("Mask"), key: "2", run: () => show2d("mask") },
+    { id: "view-rendered", label: t("Rendered"), key: "3", run: () => setViewMode("rendered") },
+    { id: "view-can", label: t("Can"), key: "4", run: () => setViewMode("can") },
+    { id: "view-one-can", label: t("One Can"), disabled: viewMode !== "can", run: () => setCans(1) },
+    { id: "view-four-pack", label: t("Four-Pack"), disabled: viewMode !== "can", run: () => setCans(4) },
     // ⌘B is display-only: SidebarProvider's own listener handles the key.
-    { id: "layers", label: "Layers", shortcut: "⌘B", run: () => setSidebarOpen((open) => !open) },
-    { id: "rulers", label: "Rulers", key: "r",
+    { id: "layers", label: t("Layers"), shortcut: "⌘B", run: () => setSidebarOpen((open) => !open) },
+    { id: "rulers", label: t("Rulers"), key: "r",
       disabled: !twoD, run: () => setShowRulers((shown) => !shown) },
-    { id: "guides", label: "Guides", key: "g",
+    { id: "guides", label: t("Guides"), key: "g",
       disabled: !twoD, run: () => setShowGuides((shown) => !shown) },
     // Zoom about the pane centre (the 3D views dolly their camera).
-    { id: "zoom-in", label: "Zoom In", key: "=", mods: "⌘", run: () => zoomTo((z) => z * ZOOM_FACTOR) },
-    { id: "zoom-out", label: "Zoom Out", key: "-", mods: "⌘", run: () => zoomTo((z) => z / ZOOM_FACTOR) },
-    { id: "zoom-fit", label: "Zoom to Fit", key: "0", mods: "⌘", run: () => zoomTo(() => 1) },
-    { id: "unit-in", label: "Inches", run: () => setUnit("in") },
-    { id: "unit-mm", label: "Millimetres", run: () => setUnit("mm") },
-    { id: "unit-pt", label: "Points", run: () => setUnit("pt") },
-    { id: "unit-px", label: "Pixels", run: () => setUnit("px") },
-    { id: "theme-system", label: "System", run: () => setTheme("system") },
-    { id: "theme-light", label: "Light", run: () => setTheme("light") },
-    { id: "theme-dark", label: "Dark", run: () => setTheme("dark") },
+    { id: "zoom-in", label: t("Zoom In"), key: "=", mods: "⌘", run: () => zoomTo((z) => z * ZOOM_FACTOR) },
+    { id: "zoom-out", label: t("Zoom Out"), key: "-", mods: "⌘", run: () => zoomTo((z) => z / ZOOM_FACTOR) },
+    { id: "zoom-fit", label: t("Zoom to Fit"), key: "0", mods: "⌘", run: () => zoomTo(() => 1) },
+    { id: "unit-in", label: t("Inches"), run: () => setUnit("in") },
+    { id: "unit-mm", label: t("Millimetres"), run: () => setUnit("mm") },
+    { id: "unit-pt", label: t("Points"), run: () => setUnit("pt") },
+    { id: "unit-px", label: t("Pixels"), run: () => setUnit("px") },
+    { id: "theme-system", label: t("System"), run: () => setTheme("system") },
+    { id: "theme-light", label: t("Light"), run: () => setTheme("light") },
+    { id: "theme-dark", label: t("Dark"), run: () => setTheme("dark") },
   ];
   /** The check rows' state, for the menus and the palette alike. */
   const checked = {
@@ -2205,7 +2212,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
       return (
-        <TextEditor id={id} label={layer.input === "number" ? "Number" : layer.input === "code" ? "Code" : "Text"}
+        <TextEditor id={id} label={t(layer.input === "number" ? "Number" : layer.input === "code" ? "Code" : "Text")}
           lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, id)}
           uppercase={uppercaseOf(layer)}
@@ -2215,20 +2222,20 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     if (layer.kind === "image") {
       if (layer.role === "background") {
-        return <FileDrop label="Texture" accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] }}
+        return <FileDrop label={t("Texture")} accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] }}
           fileName={texture?.name} previewUrl={texture?.previewUrl}
           onFile={(f) => void onTexture(f)} onClear={() => clearLoaded(setTexture)} />;
       }
       if (layer.role === "mask") {
-        return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
+        return <FileDrop label={t("Metallic mask")} accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
       }
       if (layer.asset === "builtin:logo") return null;
       const file = customImages[layer.asset];
-      return <FileDrop label="Image" accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
+      return <FileDrop label={t("Image")} accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}
-        onFile={(f) => onLayerImage(layer, f).then(imageError.clear, (err) => imageError.set(`Could not load image: ${errMsg(err)}`))}
+        onFile={(f) => onLayerImage(layer, f).then(imageError.clear, (err) => imageError.set(t("Could not load image: {{error}}", { error: errMsg(err) })))}
         // In history (the well names ⌘Z): returns no undo of its own. Its own
         // step (coalesce false), so ⌘Z right after a fast drop-then-X brings
         // the art back instead of undoing the drop too.
@@ -2260,7 +2267,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Every text layer can feed the link: its id is the ref, its name is
       // what the picker shows. Handed to the Select as `items` too, so the
       // trigger shows an option's label rather than its raw value (#222).
-      const sources = [{ value: "none", label: "nothing" }, ...rows.flatMap((r) =>
+      const sources = [{ value: "none", label: t("nothing") }, ...rows.flatMap((r) =>
         r.layer.kind === "text" ? [{ value: r.layer.id, label: r.layer.name }] : [])];
       const src = link.id ?? "";
       // The link box types as one session keyed by its id; a suffix pick is
@@ -2269,15 +2276,15 @@ export const DocumentEditor = memo(function DocumentEditor({
         setContent(layer, formatLink(prefix, ref), coalesce);
       return (
         <div className="space-y-1">
-          <Label htmlFor={id} className="text-xs text-muted-foreground">Link</Label>
+          <Label htmlFor={id} className="text-xs text-muted-foreground">{t("Link")}</Label>
           <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
             placeholder="https://lolev.beer/beer/"
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">followed by</span>
+            <span className="text-[11px] text-muted-foreground">{t("followed by")}</span>
             <Select items={sources} value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
-              <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
+              <SelectTrigger id={`${id}-src`} size="sm" aria-label={t("Link suffix")}
                 className="h-6 w-32 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -2290,7 +2297,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
           {src && (
             <p className="text-[11px] text-muted-foreground">
-              Made safe for a link: lowercased, spaces and punctuation become dashes.
+              {t("Made safe for a link: lowercased, spaces and punctuation become dashes.")}
             </p>
           )}
           {foot}
@@ -2300,18 +2307,18 @@ export const DocumentEditor = memo(function DocumentEditor({
     return (
       <div className="space-y-1">
         <Label htmlFor={id} className="text-xs text-muted-foreground">
-          {layer.kind === "barcode" ? "Code" : "Value"}
+          {layer.kind === "barcode" ? t("Code") : t("Value")}
         </Label>
         {/* A vocabulary makes this the same picker the styled fields use —
             the barcode's tiers are filled HERE, not through TextEditor. */}
         {layer.choices?.length ? (
           <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
             choices={layer.choices} invalid={!!errors[layer.id]}
-            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
+            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : t("digits")}
             onCommit={(v) => setContent(layer, v, id)} />
         ) : (
           <Input id={id} className="h-7 font-mono text-xs" value={template}
-            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
+            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : t("digits")}
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => setContent(layer, e.target.value, id)} />
         )}
@@ -2321,7 +2328,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   // A build "Note:" (a cancelled export) is only a warning: a render error outranks it.
-  const headerError = buildError && !(renderError && buildError.startsWith("Note: ")) ? buildError : renderError;
+  const headerError = buildError && !(renderError && isNote(buildError)) ? buildError : renderError;
 
   return (
     <TooltipProvider>
@@ -2332,7 +2339,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       <Suspense fallback={<DialogLoading />}>
         <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
           <DialogContent className="sm:max-w-sm">
-            <DialogTitle>Settings</DialogTitle>
+            <DialogTitle>{t("Settings")}</DialogTitle>
             <RenderSettingsFields value={render} onChange={onRenderChange} />
           </DialogContent>
         </Dialog>
@@ -2340,16 +2347,15 @@ export const DocumentEditor = memo(function DocumentEditor({
       <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>This label was made with a different master</DialogTitle>
+            <DialogTitle>{t("This label was made with a different master")}</DialogTitle>
             <DialogDescription>
-              Master “{missingMaster?.id}”{missingMaster?.where} isn’t in your library.
-              Open the label on “{missingMaster?.current}”, or locate its .master file.
+              {t("Master “{{id}}”{{where}} isn’t in your library. Open the label on “{{current}}”, or locate its .master file.", { id: missingMaster?.id, where: missingMaster?.where, current: missingMaster?.current })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => missingMaster?.choose(null)}>Cancel</Button>
-            <Button variant="outline" onClick={() => missingMaster?.choose("locate")}>Locate .master…</Button>
-            <Button onClick={() => missingMaster?.choose("current")}>Use “{missingMaster?.current}”</Button>
+            <Button variant="outline" onClick={() => missingMaster?.choose(null)}>{t("Cancel")}</Button>
+            <Button variant="outline" onClick={() => missingMaster?.choose("locate")}>{t("Locate .master…")}</Button>
+            <Button onClick={() => missingMaster?.choose("current")}>{t("Use “{{name}}”", { name: missingMaster?.current })}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2399,7 +2405,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
         <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
-          <SidebarTrigger className="size-6" title={`Layers (${shortcutLabel("⌘B")})`} aria-label="Layers" />
+          <SidebarTrigger className="size-6" title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
@@ -2408,14 +2414,14 @@ export const DocumentEditor = memo(function DocumentEditor({
             <HeaderAlert tone="blocked">
               <button type="button" data-blocked-export
                 className="rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                title="Export is blocked. Click to select the invalid layer."
+                title={t("Export is blocked. Click to select the invalid layer.")}
                 onClick={selectInvalidLayer}>
                 {blockedWhy}
               </button>
             </HeaderAlert>
           )}
-          {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
-          {headerError && <HeaderAlert tone={headerError.startsWith("Note: ") ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
+          {loadError && <HeaderAlert tone={isNote(loadError) ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
+          {headerError && <HeaderAlert tone={isNote(headerError) ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
           {/* An error in the header replaces the export confirmation. */}
           {exportNote && !headerError && <HeaderAlert tone="success">{exportNote}</HeaderAlert>}
           {/* The success note's announcement, from a region that exists
@@ -2426,7 +2432,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked for the same reason. */}
           <span role="status" data-export-blocked-status className="sr-only">
-            {blocked ? `Export blocked: ${blockedWhy}` : ""}
+            {blocked ? t("Export blocked: {{reason}}", { reason: blockedWhy }) : ""}
           </span>
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
@@ -2540,7 +2546,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             <span role="status" data-export-status className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
               {exporting && <>
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-                {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
+                {exporting === "pdf" ? t("Building PDFs…") : t("Building PSDs…")}
               </>}
             </span>
             {/* Drop a texture or mask anywhere in the window; the overlay
@@ -2554,7 +2560,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
-                  <span className="text-xs">rendering label…</span>
+                  <span className="text-xs">{t("rendering label…")}</span>
                 </div>
               </div>
             )}
@@ -2573,8 +2579,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                 if (e.key === "Enter") e.currentTarget.blur();
                 else if (e.key === "Escape") { setZoomDraft(null); e.currentTarget.blur(); }
               }}
-              title="Type a zoom percentage. 100 fits the view."
-              aria-label="Zoom percentage"
+              title={t("Type a zoom percentage. 100 fits the view.")}
+              aria-label={t("Zoom percentage")}
               className="w-8 bg-transparent text-right tabular-nums outline-none" />
             %
             </label>
@@ -2582,25 +2588,25 @@ export const DocumentEditor = memo(function DocumentEditor({
             {/* Pick a view directly; keys 1–4 do the same. Mid-split (Compare)
                 none is pressed and the group is described by the Compare
                 note. Each label starts with its visible text. */}
-            <div role="group" aria-label="View mode" aria-keyshortcuts="1 2 3 4"
+            <div role="group" aria-label={t("View mode")} aria-keyshortcuts="1 2 3 4"
               aria-describedby={view === "compare" ? compareId : undefined}
               className="flex shrink-0 overflow-hidden rounded border border-border">
               {VIEWS.map((v) => (
                 <button key={v.id} type="button" aria-pressed={view === v.state}
-                  title={`${v.label} view (${byId(v.id).key})`}
+                  title={t("{{name}} view ({{shortcut}})", { name: byId(v.id).label, shortcut: byId(v.id).key })}
                   onClick={() => byId(v.id).run()}
                   className={segmentClass(view === v.state)}>
-                  {v.label}
+                  {byId(v.id).label}
                 </button>
               ))}
             </div>
-            {view === "compare" && <span id={compareId} className="ml-2 shrink-0 text-xs text-muted-foreground">Compare</span>}
+            {view === "compare" && <span id={compareId} className="ml-2 shrink-0 text-xs text-muted-foreground">{t("Compare")}</span>}
             {viewMode === "can" && (
-              <div role="group" aria-label="Cans shown"
+              <div role="group" aria-label={t("Cans shown")}
                 className="ml-2 flex shrink-0 overflow-hidden rounded border border-border">
                 {([1, 4] as const).map((n) => (
                   <button key={n} type="button" aria-pressed={cans === n}
-                    title={n === 1 ? "One can" : "Four-pack"}
+                    title={n === 1 ? t("One can") : t("Four-pack")}
                     onClick={() => setCans(n)}
                     className={`tabular-nums ${segmentClass(cans === n)}`}>
                     {n}
@@ -2609,10 +2615,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               </div>
             )}
             {viewMode === "rendered" && (
-              <label title="Bend the label like it's on a can: 0% flat, 100% the can's curve"
+              <label title={t("Bend the label like it's on a can: 0% flat, 100% the can's curve")}
                 className="ml-2 flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                Curve
-                <input type="range" aria-label="Curve" min={0} max={100} step={1}
+                {t("Curve")}
+                <input type="range" aria-label={t("Curve")} min={0} max={100} step={1}
                   value={curvePct} onChange={(e) => setCurvePct(Number(e.target.value))}
                   className="w-24 accent-primary" />
                 <span className="w-8 tabular-nums">{curvePct}%</span>

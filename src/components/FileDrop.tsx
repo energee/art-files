@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { shortcutLabel } from "@/keys";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n";
 
 // The classic light transparency checker, deliberately NOT theme-tinted: a
 // dark checker made black art invisible in the dark UI. Light grey + white
@@ -31,6 +32,7 @@ export function FileDrop(props: {
    *  it is, and the note names ⌘Z instead. */
   onClear?: () => (() => void) | void;
 }) {
+  const { t } = useTranslation();
   // The rejection belongs to the file shown when it happened: once another
   // file loads (by the window overlay, Open, or Remove) it no longer applies.
   const [rejection, setRejection] = useState<{ text: string; shown?: string } | null>(null);
@@ -62,8 +64,8 @@ export function FileDrop(props: {
         setRejection({
           shown: props.fileName,
           text: rejected.some((f) => f.errors.some((e) => e.code === "too-many-files"))
-            ? "Drop one file."
-            : `Choose ${Object.values(props.accept).flat().join(" or ")} for ${props.label}.`,
+            ? t("Drop one file.")
+            : t("Choose {{types}} for {{label}}.", { types: Object.values(props.accept).flat().join(" or "), label: props.label }),
         });
         return;
       }
@@ -97,7 +99,7 @@ export function FileDrop(props: {
         <div className="min-w-0">
           <div className="text-xs font-medium">{props.label}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {props.fileName ?? "drop or browse"}
+            {props.fileName ?? t("Drop or browse")}
           </div>
         </div>
         <Button
@@ -106,17 +108,17 @@ export function FileDrop(props: {
           type="button"
           variant="outline"
           size="xs"
-          aria-label={`Browse ${props.label}`}
+          aria-label={t("Browse {{label}}", { label: props.label })}
           onClick={open}
           className="ml-auto shrink-0"
         >
-          Browse
+          {t("Browse")}
         </Button>
         {props.fileName && props.onClear && (
           <Button
             type="button" variant="ghost" size="icon"
-            aria-label={`Remove ${props.label}`}
-            title="Remove"
+            aria-label={t("Remove {{label}}", { label: props.label })}
+            title={t("Remove")}
             onClick={() => {
               const undo = props.onClear?.() ?? undefined;
               setCleared({ name: props.fileName!, undo });
@@ -129,14 +131,14 @@ export function FileDrop(props: {
             <X className="size-3.5" />
           </Button>
         )}
-        <input {...getInputProps({ "aria-label": `Choose ${props.label} file` })} />
+        <input {...getInputProps({ "aria-label": t("Choose {{label}} file", { label: props.label }) })} />
       </div>
       {/* Always mounted: a live region announces text added to it, not one
           inserted with its text. */}
       <div role="status">
         {cleared && !props.fileName && (
           <p className="mt-1 text-xs text-muted-foreground">
-            Removed {cleared.name}.{" "}
+            {t("Removed {{name}}.", { name: cleared.name })}{" "}
             {cleared.undo ? (
               <Button type="button" size="xs" variant="link" className="h-auto p-0 text-xs"
                 ref={(el) => { if (el && focusUndo.current) { focusUndo.current = false; el.focus(); } }}
@@ -145,7 +147,7 @@ export function FileDrop(props: {
                   browseRef.current?.focus();
                   setCleared(null); cleared.undo!();
                 }}>
-                Undo
+                {t("Undo")}
               </Button>
             ) : `${shortcutLabel("⌘Z")} brings it back.`}
           </p>

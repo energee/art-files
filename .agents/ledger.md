@@ -838,3 +838,23 @@ no status, no attempts, no delta.
 - delta: merged #566's final head 771a3dd1 (tree identical to main 87959863; only a ledger conflict, both sides kept), then recorded origin/main with -s ours. Corrected the useExport comment that claimed the print PDF never overwrites the pair's art file (both default to `<label>.pdf`), the outline/PSD comments that called the neutral path structurally ag-psd's BezierPath, and the RenderSettings doc; the native menu now filters MAC_MENUS once for both rows and symbols. Restored tests/fixtures/print-pdf/lupula-art.pdf, which a Finder alias had replaced in the working tree.
 - evidence: tsc, lint, 8 menu/export/PDF suites (94 tests) and check-release vs origin/main pass; diff vs main is the same 42 files as the PR's diff vs its old parent.
 - release: binary-impacting; existing Unreleased bullets suffice, no version bump.
+
+## 2026-10-28 ui-languages
+- finding: user requested extracting app labels and adding languages in a new PR.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/ui-languages @ feat/ui-languages, stacked on ux/casual-ui-copy (#574)
+- delta: added i18next/react-i18next, 579 English-source message keys in complete English/Spanish/French/German catalogs, a saved Settings language picker with system detection and English fallback, locale-aware dates, translated menus/palette/controls/a11y/dialogs/validation and native file-filter factories. Switching preserves workspace/editor instances and user content. Historical notices retain their creation language; new messages use the current language. Release notes, raw external errors, document content and numeric-entry syntax are unchanged. Removed obsolete wording/field-order tests and wording-only assertions; retained behavioral coverage.
+- evidence: final npm run build passed; full Vitest suite 159 files / 1701 tests passed (--maxWorkers=2 --testTimeout=180000 --hookTimeout=180000); lint and knip@6.38.0 passed; npm audit --omit=dev --audit-level=high found 0 vulnerabilities; check-release against origin/ux/casual-ui-copy passed. Build reports the existing large-chunk warning; happy-dom emits fetch-abort teardown diagnostics without failing tests.
+- evidence: browser smoke on isolated :5276 switched English/Spanish/French/German, visually checked settings and German inspector, preserved unsaved beer text named "Untitled" and the exact editor DOM node through switching, and reloaded into saved German with translated recovery controls. A throwaway tsx run verified all four menu models retain 41 unique native symbol titles. Catalog audit found no missing literal message keys or placeholder mismatches across locales. Native desktop menu rendering/update-install UI were not exercised in a packaged app.
+- release: binary-impacting; Added bullet under Unreleased, version unchanged. Settings guide documents supported languages, unchanged content, and historical-notice behavior.
+
+
+## 2026-10-28 pr-577-rebase-and-review
+- finding: #577 conflicted with main after #574 (its own parent, squash-merged), #575, #566 and #573 landed. Review found a blocker: About/Hide always got `text`, so the Mac menu lost "Label Lab" in every language. Should-fix: the Node harness and tests followed the OS locale; alert tone read a translated "Note:" prefix; an English-only "Invalid master file" rewrite; behaviour tests deleted; doc comments dropped; dates lost the operator's region.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/rebase-577 (detached) → feat/ui-languages
+- delta: rebased the language commit alone onto main. Kept #575's eye/lock/trash row and #573's export commands, settings toggle, menu install queue and visibleEntries; translated their strings in all four catalogs (Spanish "Export PDFs" is now "Exportar los PDF" so it no longer collides with "Export PDF" in symbol matching) and the language switch now rebuilds the native menu (labels dep). About/Hide keys name the app; Node resolves English; isNote() reads the prefix in every language; the override rewrite uses the translated prefix; restored settings-focus (now asserts the Language picker) and the Label filter assertion; restored ScrubField, choices, options, lock and validateBindings comments; shortDate uses the system's region of the UI language.
+- evidence: see the commit's verification run below.
+- release: binary-impacting; existing Added bullet under Unreleased, version unchanged.

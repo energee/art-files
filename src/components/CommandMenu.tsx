@@ -2,6 +2,7 @@
 // small and eager (the Command type, shortcutOf, the ⌘K listener); the
 // palette itself, and cmdk with it, loads on the first ⌘K (#410).
 import { Suspense, lazy, useEffect, useState, type ComponentType } from "react";
+import { useTranslation } from "@/i18n";
 import { dialogOpen, isMacOS, shortcutLabel } from "@/keys";
 import { DialogLoadFailed, DialogLoading } from "@/components/LazyDialog";
 import type { CheckedState } from "@/components/AppMenu";
@@ -12,9 +13,10 @@ type CommandPaletteProps = Parameters<typeof import("@/components/CommandPalette
 const CommandPalette = lazy<ComponentType<CommandPaletteProps>>(() => import("@/components/CommandPalette").then(
   (m) => ({ default: m.CommandPalette }),
   (err: unknown) => ({
-    default: ({ open, onOpenChange }: CommandPaletteProps) => (
-      <DialogLoadFailed title="Commands" what="The command palette" err={err} open={open} onOpenChange={onOpenChange} />
-    ),
+    default: function PaletteLoadFailed({ open, onOpenChange }: CommandPaletteProps) {
+      const { t } = useTranslation();
+      return <DialogLoadFailed title={t("Commands")} what={t("The command palette")} err={err} open={open} onOpenChange={onOpenChange} />;
+    },
   })));
 
 /** One entry in the app's command table (see App's `commands`). `key` is the

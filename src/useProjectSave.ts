@@ -6,9 +6,10 @@
 // state that owns them.
 import { useRef, useState } from "react";
 import { nativeModifiedAt, saveThrough } from "@/files";
-import { LABEL_FILTER, LABEL_TYPES } from "@/filePickers";
+import { labelFilter, labelTypes } from "@/filePickers";
 import { LABEL_EXT } from "@/labelfile";
 import { errMsg } from "@/lib/utils";
+import { t } from "@/i18n";
 
 type ProjectSaveInputs = {
   /** This document as .label bytes (App.tsx packProject), for the file at
@@ -82,7 +83,7 @@ export function useProjectSave({
       const zip = pack(bound);
       startSaveBatch();
       const saved = await saveThrough((name) => name === bound ? zip : pack(name), {
-        name: exportBase + LABEL_EXT, type: "application/zip", filter: LABEL_FILTER, types: LABEL_TYPES,
+        name: exportBase + LABEL_EXT, type: "application/zip", filter: labelFilter(), types: labelTypes(),
         target: as ? null : projectPath.current ? { path: projectPath.current }
           : projectHandle.current ? { handle: projectHandle.current } : null,
       }, saveBytes);
@@ -91,7 +92,7 @@ export function useProjectSave({
       else if (saved.target && "handle" in saved.target) bindHandle(saved.target.handle);
       return onSaved();
     } catch (err) {
-      setLoadError(`Could not save label: ${errMsg(err)}`);
+      setLoadError(t("Could not save label: {{error}}", { error: errMsg(err) }));
       return false;
     }
   }

@@ -8,11 +8,12 @@
 // flow, shared render settings (persisted per operator — see settings.ts),
 // the desktop updater, and window title/close integration.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation, t as translate } from "@/i18n";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
-import { LABEL_FILTER, LABEL_TYPES, isAbort } from "@/filePickers";
+import { labelFilter, labelTypes, isAbort } from "@/filePickers";
 import { nativeModifiedAt, openThrough } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
@@ -48,6 +49,7 @@ type TabExtras = {
 };
 
 export default function TabsShell() {
+  const { t } = useTranslation();
   const [state, setState] = useState(initialTabs);
   // The OS-open listener and window-close handler are registered once but
   // route against the current tabs; same pattern as App.tsx's commandsRef.
@@ -268,7 +270,7 @@ export default function TabsShell() {
         // (a .label symlink arrives as its target), so a file that isn't a
         // .label says so here instead of vanishing (#554). Never read.
         if (!isLabelName(path)) {
-          setPickError(`Could not open label: ${path} isn't a .label file.`);
+          setPickError(t("Could not open label: {{path}} isn't a .label file.", { path }));
           continue;
         }
         setPickError("");
@@ -321,7 +323,7 @@ export default function TabsShell() {
    *  fileToOpen in App.tsx). */
   async function openProjectPicker() {
     try {
-      const target = await openThrough({ filter: LABEL_FILTER, types: LABEL_TYPES });
+      const target = await openThrough({ filter: labelFilter(), types: labelTypes() });
       if (target === undefined) { fileInput.current?.click(); return; }
       if (target === null) return;
       setPickError("");
@@ -331,7 +333,7 @@ export default function TabsShell() {
       // this is the picker itself failing, before any tab exists — shown in
       // the strip, the shell's one visible surface.
       if (!isAbort(err))
-        setPickError(`Could not open label: ${errMsg(err)}`);
+        setPickError(t("Could not open label: {{error}}", { error: errMsg(err) }));
     }
   }
 
@@ -343,13 +345,13 @@ export default function TabsShell() {
       const { exists } = await import("@tauri-apps/plugin-fs");
       if (!await exists(path)) {
         forgetRecent(path);
-        setPickError(`Could not open label: ${path} no longer exists.`);
+        setPickError(t("Could not open label: {{path}} no longer exists.", { path }));
         return;
       }
       setPickError("");
       openRouted({ path });
     } catch (err) {
-      setPickError(`Could not open label: ${errMsg(err)}`);
+      setPickError(t("Could not open label: {{error}}", { error: errMsg(err) }));
     }
   }
   const openRecentRef = useRef(openRecentPath);
@@ -553,7 +555,7 @@ export default function TabsShell() {
           pick error sit outside. No aria-controls: the editor isn't modelled
           as a panel. keys.ts gives a tablist the arrow keys, so Left/Right
           move focus between tabs here (Enter switches) instead of nudging. */}
-      <div role="tablist" aria-label="Open documents" className="flex shrink-0 items-center gap-1.5"
+      <div role="tablist" aria-label={t("Open documents")} className="flex shrink-0 items-center gap-1.5"
         onKeyDown={(e) => {
           // Bare arrows only: ⌘/Ctrl/Alt/Shift+arrow keep their own meanings.
           const bare = !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey);
@@ -598,7 +600,7 @@ export default function TabsShell() {
               }}
               // The button's own label replaces its children's, so the unsaved
               // state has to be named here, not on the • inside it (#403).
-              aria-label={`Close ${t.title}${unsaved(t) ? " (unsaved changes)" : ""}`}
+              aria-label={unsaved(t) ? translate("Close {{name}} (unsaved changes)", { name: t.title }) : translate("Close {{name}}", { name: t.title })}
               className={cn(
                 // fraction-of-foreground, not bg-muted: it has to read on
                 // both chip fills (active bg-background, hovered bg-muted)
@@ -629,8 +631,8 @@ export default function TabsShell() {
           refocusTab.current = e.detail === 0 ? state.tabs.length : null;
           newTab();
         }}
-        aria-label="New tab"
-        title={`New tab (${shortcutLabel("⌘N")})`}
+        aria-label={t("New tab")}
+        title={t("New tab ({{shortcut}})", { shortcut: shortcutLabel("⌘N") })}
         className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         +
       </button>
@@ -638,7 +640,7 @@ export default function TabsShell() {
         <span role="alert" className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
       )}
     </div>
-  ), [state.tabs, state.active, pickError, activate, closeReq, newTab]);
+  ), [state.tabs, state.active, pickError, activate, closeReq, newTab, t]);
 
   return (
     <>
@@ -693,26 +695,26 @@ export default function TabsShell() {
                 prompt says so rather than offering to keep the tab (#552). */}
             <DialogTitle>
               {sweep.current
-                ? `Save changes to “${confirmTab?.title}” before quitting?`
-                : `Close “${confirmTab?.title}”?`}
+                ? t("Save changes to “{{name}}” before quitting?", { name: confirmTab?.title })
+                : t("Close “{{name}}”?", { name: confirmTab?.title })}
             </DialogTitle>
             <DialogDescription>
               {sweep.current
-                ? "This tab has unsaved changes. Save or discard them to quit, or cancel to keep Label Lab open."
-                : "This tab has unsaved changes. Save them, discard them, or keep the tab open."}
+                ? t("This tab has unsaved changes. Save or discard them to quit, or cancel to keep Label Lab open.")
+                : t("This tab has unsaved changes. Save them, discard them, or keep the tab open.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" disabled={saving} onClick={cancelClose}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button variant="destructive" disabled={saving}
               onClick={() => confirmClose !== null && doClose(confirmClose)}>
-              Discard
+              {t("Discard")}
             </Button>
             <Button disabled={saving}
               onClick={() => confirmClose !== null && void saveAndClose(confirmClose)}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("Saving…") : t("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -721,16 +723,14 @@ export default function TabsShell() {
       <Dialog open={recoverable.length > 0} onOpenChange={(open) => !open && setRecoverable([])}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Recover unsaved work?</DialogTitle>
+            <DialogTitle>{t("Recover unsaved work?")}</DialogTitle>
             <DialogDescription>
-              Label Lab closed with unsaved changes in {recoverable.length === 1
-                ? "1 tab" : `${recoverable.length} tabs`}: {recoverable.map((r) => r.name).join(", ")}.
-              Restore opens each in a tab; save it to keep it.
+              {t("Label Lab closed with unsaved changes in {{count}} tab: {{names}}. Restore opens each in a tab; save it to keep it.", { count: recoverable.length, names: recoverable.map((r) => r.name).join(", ") })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="destructive" onClick={() => finishRecovery(false)}>Discard</Button>
-            <Button onClick={() => finishRecovery(true)}>Restore</Button>
+            <Button variant="destructive" onClick={() => finishRecovery(false)}>{t("Discard")}</Button>
+            <Button onClick={() => finishRecovery(true)}>{t("Restore")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -738,17 +738,16 @@ export default function TabsShell() {
       <Dialog open={sweepCount > 0} onOpenChange={(open) => !open && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Review unsaved changes before quitting?</DialogTitle>
+            <DialogTitle>{t("Review unsaved changes before quitting?")}</DialogTitle>
             <DialogDescription>
-              {sweepCount} tabs have unsaved changes. Review them one at a time, or discard
-              all of them. Cancel keeps Label Lab open.
+              {t("{{count}} tab has unsaved changes. Review them one at a time, or discard all of them. Cancel keeps Label Lab open.", { count: sweepCount })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={cancelClose}>Cancel</Button>
-            <Button variant="destructive" onClick={() => void discardAll()}>Discard All</Button>
+            <Button variant="outline" onClick={cancelClose}>{t("Cancel")}</Button>
+            <Button variant="destructive" onClick={() => void discardAll()}>{t("Discard All")}</Button>
             <Button onClick={() => { setSweepCount(0); promptNext(stateRef.current.tabs); }}>
-              Review Changes…
+              {t("Review Changes…")}
             </Button>
           </DialogFooter>
         </DialogContent>

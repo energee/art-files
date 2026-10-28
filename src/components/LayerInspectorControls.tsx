@@ -5,6 +5,7 @@
 // LayerInspector.tsx receives. Split out of LayerInspector.tsx (#433); see
 // that file's header for the patch contract these controls write through.
 import { useState, type ComponentProps, type ReactNode } from "react";
+import { useTranslation } from "@/i18n";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical,
   ArrowDownToLine, ArrowUpToLine, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart,
@@ -143,13 +144,15 @@ export function Badge(props: {
   label: string;
   onReset: (path: string, source: "variant" | "label") => void;
 }) {
-  const who = props.overridden.variantName ?? "A variant";
+  const { t } = useTranslation();
+  const label = t(props.label);
+  const who = props.overridden.variantName ?? t("A variant");
   const marks = ([
-    { source: "variant", cls: "bg-current", title: `${who} sets ${props.label}. Click to reset it in the master.`,
-      aria: `Reset ${props.label} to the master`,
+    { source: "variant", cls: "bg-current", title: t("{{who}} sets {{label}}. Click to reset it in the master.", { who, label }),
+      aria: t("Reset {{label}} to the master", { label }),
       path: props.paths.find((p) => props.overridden.variant.has(p)) },
-    { source: "label", cls: "border border-current", title: `This label sets ${props.label}. Click to use the master value.`,
-      aria: `Reset ${props.label} to this label's master value`,
+    { source: "label", cls: "border border-current", title: t("This label sets {{label}}. Click to use the master value.", { label }),
+      aria: t("Reset {{label}} to this label's master value", { label }),
       path: props.paths.find((p) => props.overridden.label.has(p)) },
   ] as const).filter((m) => m.path);
   if (!marks.length) return null;
@@ -252,47 +255,47 @@ export function Segmented<T extends string>(props: {
 }
 
 
-/** The lock tooltip, on the inspector switch and the Layers row's lock
- *  button. The lock is canvas-only (editGestures): typed X/Y still move it. */
-export const LOCK_TITLE = "Locked on canvas: drag, resize and nudge are off. Typed values still apply.";
 
-/** One control per axis: picking a guide anchors that edge of the box ON the
- *  guide (offset 0). Empty selection = a legacy layer placed by an absolute
- *  x/y; choosing any guide converts it. */
-export const H_GUIDES = [
-  { value: "left", label: "Anchor to left guide", icon: AlignStartVertical },
-  { value: "center", label: "Anchor to center guide", icon: AlignCenterVertical },
-  { value: "right", label: "Anchor to right guide", icon: AlignEndVertical },
-] as const satisfies readonly { value: Anchor; label: string; icon: LucideIcon }[];
-
-export const V_GUIDES = [
-  { value: "top", label: "Anchor to top guide", icon: ArrowUpToLine },
-  { value: "middle", label: "Anchor to middle guide", icon: AlignCenterHorizontal },
-  { value: "bottom", label: "Anchor to bottom guide", icon: ArrowDownToLine },
-] as const satisfies readonly { value: NonNullable<Layer["guideY"]>; label: string; icon: LucideIcon }[];
-
-export const ALIGNS = [
-  { value: "left", label: "Align left", icon: TextAlignStart },
-  { value: "center", label: "Align center", icon: TextAlignCenter },
-  { value: "right", label: "Align right", icon: TextAlignEnd },
-  { value: "justify", label: "Justify", icon: TextAlignJustify },
-] as const;
-
+/** Localized option labels are created while rendering, never at module import. */
 // Dropdown options. Each list is also handed to its Select as `items`, so the
 // closed trigger shows the option's label, not its raw value (#232).
-export const SYMBOLOGIES: readonly { value: Symbology; label: string }[] = [
-  { value: "upc-a", label: "UPC-A" }, { value: "ean-13", label: "EAN-13" }, { value: "code-128", label: "Code 128" },
-];
-export const INPUTS = [
-  { value: "text", label: "Rich text" }, { value: "number", label: "Number" }, { value: "code", label: "Code" },
-] as const;
-export const FITS = [{ value: "contain", label: "Contain" }, { value: "cover", label: "Cover" }] as const;
-export const QR_STYLES = [
-  { value: "square", label: "Square" }, { value: "rounded", label: "Rounded" }, { value: "dots", label: "Dots" },
-] as const;
-export const EC_LEVELS = [
-  { value: "L", label: "L (default)" }, { value: "M", label: "M" }, { value: "Q", label: "Q" }, { value: "H", label: "H" },
-] as const;
+export function useInspectorOptions() {
+  const { t } = useTranslation();
+  return {
+    // One control per axis: picking a guide anchors that edge of the box ON
+    // the guide (offset 0). Empty selection = a legacy layer placed by an
+    // absolute x/y; choosing any guide converts it.
+    hGuides: [
+      { value: "left" as const, label: t("Anchor to left guide"), icon: AlignStartVertical },
+      { value: "center" as const, label: t("Anchor to center guide"), icon: AlignCenterVertical },
+      { value: "right" as const, label: t("Anchor to right guide"), icon: AlignEndVertical },
+    ] satisfies readonly { value: Anchor; label: string; icon: LucideIcon }[],
+    vGuides: [
+      { value: "top" as const, label: t("Anchor to top guide"), icon: ArrowUpToLine },
+      { value: "middle" as const, label: t("Anchor to middle guide"), icon: AlignCenterHorizontal },
+      { value: "bottom" as const, label: t("Anchor to bottom guide"), icon: ArrowDownToLine },
+    ] satisfies readonly { value: NonNullable<Layer["guideY"]>; label: string; icon: LucideIcon }[],
+    aligns: [
+      { value: "left" as const, label: t("Align left"), icon: TextAlignStart },
+      { value: "center" as const, label: t("Align center"), icon: TextAlignCenter },
+      { value: "right" as const, label: t("Align right"), icon: TextAlignEnd },
+      { value: "justify" as const, label: t("Justify"), icon: TextAlignJustify },
+    ],
+    symbologies: [
+      { value: "upc-a" as const, label: "UPC-A" }, { value: "ean-13" as const, label: "EAN-13" }, { value: "code-128" as const, label: "Code 128" },
+    ] satisfies readonly { value: Symbology; label: string }[],
+    inputs: [
+      { value: "text" as const, label: t("Rich text") }, { value: "number" as const, label: t("Number") }, { value: "code" as const, label: t("Code") },
+    ],
+    fits: [{ value: "contain" as const, label: t("Contain") }, { value: "cover" as const, label: t("Cover") }],
+    qrStyles: [
+      { value: "square" as const, label: t("Square") }, { value: "rounded" as const, label: t("Rounded") }, { value: "dots" as const, label: t("Dots") },
+    ],
+    ecLevels: [
+      { value: "L" as const, label: t("L (default)") }, { value: "M" as const, label: "M" }, { value: "Q" as const, label: "Q" }, { value: "H" as const, label: "H" },
+    ],
+  };
+}
 
 /** Compact inspector dropdown with one null/option guard and label mapping. */
 export function SelectField<T extends string>(props: {

@@ -18,6 +18,7 @@
 // Presentational: it reports which promote rows were ticked and lets the
 // caller do the writing (edit.ts's applyPromotions).
 import { useMemo, useState } from "react";
+import { useTranslation } from "@/i18n";
 import type { MasterChange } from "@/model/edit";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,12 +80,12 @@ function listText(from: readonly unknown[], to: readonly unknown[]): string {
  *  model's. Structural rows are a sentence; a property or promote row is a
  *  path and a before/after, set in mono because that is literally what they
  *  are — a key path and its values. */
-function rowText(c: MasterChange): React.ReactNode {
+function rowText(c: MasterChange, t: (key: string, options?: Record<string, unknown>) => string): React.ReactNode {
   switch (c.kind) {
-    case "added": return "Added to the master";
-    case "removed": return "Removed from the master";
-    case "moved": return "Reordered";
-    case "renamed": return `Renamed from "${String(c.from)}"`;
+    case "added": return t("Added to the master");
+    case "removed": return t("Removed from the master");
+    case "moved": return t("Reordered");
+    case "renamed": return t('Renamed from "{{name}}"', { name: String(c.from) });
     default: return (
       <>
         <span className="font-mono text-[11.5px]">{c.path}</span>
@@ -119,6 +120,7 @@ export function MasterSaveReview(props: {
   /** The ticked `promote` rows, in the order they were listed. */
   onConfirm: (promote: MasterChange[]) => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
 
   // Layer order as `changes` first mentions each layer, so the dialog reads in
@@ -153,15 +155,15 @@ export function MasterSaveReview(props: {
   return (
     <Dialog open={props.open} onOpenChange={(open) => { if (!open) props.onCancel(); }}>
       <DialogContent className="sm:max-w-lg">
-        <DialogTitle>{props.as ? "Save Master As" : "Save Master"}</DialogTitle>
+        <DialogTitle>{props.as ? t("Save Master As") : t("Save Master")}</DialogTitle>
         <DialogDescription>
           {props.as
-            ? "Save these changes as a new master. Pick any label overrides you want to include. The original stays as it is."
+            ? t("Save these changes as a new master. Pick any label overrides you want to include. The original stays as it is.")
             : props.changes.length === 0
-            ? "No changes to save in the master."
+            ? t("No changes to save in the master.")
             : props.target === undefined
-              ? "Save these changes to the master. Pick any label overrides you want to keep there too."
-              : `Save these changes to the master. Selected overrides go into the ${props.target} version.`}
+              ? t("Save these changes to the master. Pick any label overrides you want to keep there too.")
+              : t("Save these changes to the master. Selected overrides go into the {{target}} version.", { target: props.target })}
         </DialogDescription>
         {promotable.length > 1 && (
           <label className="flex items-center gap-2 text-sm">
@@ -169,7 +171,7 @@ export function MasterSaveReview(props: {
               data-row="all"
               checked={allTicked}
               onCheckedChange={() => setTicked(allTicked ? new Set() : new Set(promotable))} />
-            <span>Promote all {promotable.length} overrides</span>
+            <span>{t("Promote all {{count}} override", { count: promotable.length })}</span>
           </label>
         )}
         <div className="max-h-80 overflow-y-auto text-sm">
@@ -181,12 +183,12 @@ export function MasterSaveReview(props: {
                 return c.kind === "promote" ? (
                   <label key={row} className="mt-1 flex items-center gap-2">
                     <Checkbox data-row={row} checked={ticked.has(row)} onCheckedChange={() => toggle(row)} />
-                    <span className="text-attention-text">{rowText(c)}</span>
+                    <span className="text-attention-text">{rowText(c, t)}</span>
                   </label>
                 ) : (
                   <p key={row} data-row={row}
                     className={cn("mt-1", c.kind === "removed" ? "text-destructive-text" : "text-muted-foreground")}>
-                    {rowText(c)}
+                    {rowText(c, t)}
                   </p>
                 );
               })}
@@ -194,8 +196,8 @@ export function MasterSaveReview(props: {
           ))}
         </div>
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={props.onCancel}>Cancel</Button>
-          <Button variant="attention" size="sm" onClick={confirm}>{props.as ? "Save Master As" : "Save Master"}</Button>
+          <Button variant="ghost" size="sm" onClick={props.onCancel}>{t("Cancel")}</Button>
+          <Button variant="attention" size="sm" onClick={confirm}>{props.as ? t("Save Master As") : t("Save Master")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

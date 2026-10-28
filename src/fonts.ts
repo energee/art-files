@@ -16,6 +16,7 @@ import barlowSemiBold from "./assets/fonts/BarlowCondensed-SemiBold.ttf?url";
 import barlowBold from "./assets/fonts/BarlowCondensed-Bold.ttf?url";
 import type { FontFamilyId } from "./fontCatalog";
 import type { MeasureFace } from "./plan";
+import { t } from "@/i18n";
 
 type Face = "regular" | "semibold" | "bold";
 
@@ -44,7 +45,7 @@ export const FACE_WEIGHT = { regular: 400, semibold: 600, bold: 700 } as const;
  *  file stays exact even on an engine that ignores fontKerning. */
 function unkernedContext(): CanvasRenderingContext2D {
   const ctx = document.createElement("canvas").getContext("2d");
-  if (!ctx) throw new Error("Could not create the font measurement canvas.");
+  if (!ctx) throw new Error(t("Could not create the font measurement canvas."));
   ctx.fontKerning = "none";
   return ctx;
 }

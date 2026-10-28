@@ -1,4 +1,5 @@
 "use client"
+import { useTranslation } from "@/i18n"
 
 import { dialogOpen, keyOwner } from "@/keys"
 
@@ -240,7 +241,7 @@ function SidebarTrigger({
   ...props
 }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
-
+  const { t } = useTranslation()
   return (
     <Button
       data-sidebar="trigger"
@@ -255,7 +256,7 @@ function SidebarTrigger({
       {...props}
     >
       <PanelLeftIcon />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">{t("Toggle Sidebar")}</span>
     </Button>
   )
 }
