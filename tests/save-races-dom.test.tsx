@@ -136,14 +136,20 @@ async function reorderName() {
   });
 }
 
-// With no override or value to promote the review has nothing to decide.
-it("Save Master with nothing to promote writes without opening a review", async () => {
-  const { pick } = picker();
+// With no override or value to promote the review has nothing to decide:
+// Save Master writes the reordered layers without opening the review.
+it("Save Master with nothing to promote writes the changed master at once", async () => {
+  let written: Uint8Array | undefined;
+  const { pick } = picker(async (bytes) => { written = bytes; });
   await mount();
   await reorderName();
   await act(async () => { await menu.actions.find((c) => c.id === "master-save")!.run(); await new Promise((r) => setTimeout(r, 10)); });
   expect(document.querySelectorAll("[data-row]")).toHaveLength(0);
   expect(pick).toHaveBeenCalledOnce();
+  expect(written).toBeDefined();
+  const { master } = unpackMaster(written!);
+  expect(master.layers.filter((layer) => layer.id === "name" || layer.id === "logo").map((layer) => layer.id))
+    .toEqual(["name", "logo"]);
 });
 
 it("Save Master As with nothing to promote goes straight to the save dialog", async () => {
@@ -152,6 +158,7 @@ it("Save Master As with nothing to promote goes straight to the save dialog", as
   await act(async () => { await menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(pick).toHaveBeenCalledOnce();
+
 });
 
 it("Save Master keeps a promotion when the master is edited during the write", async () => {

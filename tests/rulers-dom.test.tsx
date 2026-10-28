@@ -239,8 +239,7 @@ it("focuses a guide's handle when it is pressed, revealing its ×", () => {
   expect(remove.className).toContain("group-focus-within:pointer-events-auto");
 });
 
-// UX audit 4: the margin inset is master geometry, not a session overlay, so
-// it sits under a "Master" heading, locked until unlocked, and says so.
+// The master margin inset stays locked until explicitly unlocked.
 it("locks the master margin inset until it is unlocked", async () => {
   const props = renderRulers();
   const corner = container.querySelector<HTMLButtonElement>('[aria-label="Ruler settings, current unit in"]')!;
@@ -251,7 +250,7 @@ it("locks the master margin inset until it is unlocked", async () => {
   });
   const margin = document.querySelector<HTMLInputElement>("#guide-margin")!;
   expect(margin.disabled).toBe(true);
-  expect(document.body.textContent).toContain("Master");
+
   await act(async () => {
     margin.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
   });

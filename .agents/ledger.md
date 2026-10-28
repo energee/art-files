@@ -759,3 +759,19 @@ no status, no attempts, no delta.
 - delta: made MAC_MENUS module-private and removed its obsolete exported-for-tests comment; the native menu still uses the same table.
 - evidence: in .agents/worktrees/layer-controls-about @ fix/575-menu-export, npx --yes knip@6.38.0 passes with no findings; 28 menu tests, TypeScript and release metadata vs origin/ux/casual-ui-copy pass. LSP references unavailable (no server); repository search found only the local declaration and native menu consumer.
 - release: export-only cleanup, no user-visible behavior change; existing Unreleased notes suffice, version unchanged.
+
+## 2026-10-28 pr-574-copy-test-failures
+- finding: [tests/high] PR #574 CI run 40649476994 failed four DOM tests because they asserted the UI wording replaced by the PR.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/574-tests @ fix/574-tests, based on 2e62e8ec (PR branch ux/casual-ui-copy)
+- delta: removed obsolete copy assertions and stale negative checks from inspector, ruler and save suites while retaining off-variant enablement, multi-selection and margin-lock behavior coverage. The direct Save Master test now unpacks the saved archive and checks the reordered layers instead of punctuation in the notice.
+- evidence: npm test -- --maxWorkers=2 passes all 1696 tests across 160 files with unchanged timeout limits. Initial default-worker run passed the four repaired cases but hit 5000ms timeouts in unrelated text-edit and PSD-raster cases. npx tsc --noEmit, npm run lint, npm run build, npx --yes knip@6.38.0 and node scripts/check-release.mjs origin/main pass. Existing build chunk-size advisory and happy-dom fetch-abort diagnostics remain.
+- release: repair is non-binary-impacting (tests and ledger only); PR's existing Unreleased UI-copy bullet remains sufficient. No version bump or release operation; no application behavior changed.
+
+## 2026-10-28 pr-575-base-conflicts
+- finding: user requested resolution of PR #575 conflicts with its updated ux/casual-ui-copy base.
+- status: done
+- delta: merged origin/ux/casual-ui-copy; preserved both additive ledger histories, retained the parent's stronger saved-master archive assertion, and kept obsolete wording checks removed from ruler and save tests. No application behavior changed.
+- evidence: on fix/575-menu-export in .agents/worktrees/layer-controls-about, npm test -- --maxWorkers=2 passes 160 files / 1690 tests; npm run build (including TypeScript), lint, knip@6.38.0 and release metadata vs origin/ux/casual-ui-copy pass. Existing chunk-size advisory and happy-dom fetch-abort diagnostics remain.
+- release: conflict resolution adds only tests and ledger changes; existing Unreleased application notes remain sufficient, no version bump or release operation.
