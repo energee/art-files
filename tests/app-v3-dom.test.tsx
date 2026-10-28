@@ -631,6 +631,25 @@ it("cancelling in-place text restores the pre-session dirty state (#278)", async
   }
 }, 60_000);
 
+// UX audit (2026-10) #2 — App's in-place keystrokes went through setContent,
+// which learns a choice, so typing "Lager" into Style on the canvas left
+// L, La, Lag, Lage and Lager in the master's list. Keystrokes now learn
+// nothing; the session's commit learns the final value once.
+it("an in-place session on Style learns its final value once, on commit", async () => {
+  await withCanvasEditor(async (p) => {
+    const before = (layerOf(p(), "styleLine") as TextLayer);
+    const values = () => (layerOf(p(), "styleLine").choices ?? []).map((c) => c.value);
+    const shipped = values();
+    await act(async () => p().onEditSession?.("styleLine"));
+    for (const [i, t] of ["L", "La", "Lag", "Lage", "Lager"].entries())
+      await act(async () => p().onEditText("styleLine", [{ ...before.lines[0], text: t }], i === 0));
+    expect(values()).toEqual(shipped);
+    await act(async () => p().onEditCommit("styleLine"));
+    await act(async () => p().onEditSession?.(null));
+    expect(values()).toEqual([...shipped, "Lager"]);
+  });
+}, 60_000);
+
 it("cancelling in-place text after a mid-session save leaves the tab dirty", async () => {
   stubSavePicker();
   try {

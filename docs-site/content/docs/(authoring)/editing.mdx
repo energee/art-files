@@ -19,14 +19,16 @@ It's WYSIWYG. Not a markdown box.
 
 - **Header:** bigger line (heading scale in the inspector)
 - **Bold**
-- **White ink underlay:** that line (or run) goes on the white-ink plate. Fill colour stays
+- **White ink underlay:** that line (or run) goes on the white-ink plate. Fill colour stays. Colour and plate otherwise come from the inspector's **Fill** and **Metallic**, which restyle every line at once; a line or run you gave the underlay keeps it
 - **Uppercase:** whole layer, without losing what you actually typed. On the pill only; in the sidebar it is the inspector's Typography **Uppercase** switch
 
 Select part of a line and hit Bold or White ink underlay to wrap just that span. Type `**bold**` or `_white ink_` and it becomes a run. The markers vanish. A run can span several words (`**GOVERNMENT WARNING:**`) and keeps its style when the line wraps or justifies. There is no escape hatch for a literal pair.
 
 In the sidebar, `⇧Tab` from a text field reaches its toolbar. The buttons act on the selection you left in the field.
 
-Number and code layers get a plain box with validation, on the canvas and in the sidebar alike. On the canvas, what you type is kept as typed. A value that isn't a number, is out of range, or isn't a valid code shows its error under the box (on the canvas, above it when the box sits near the bottom of the label) and blocks export until you fix it. A number box takes decimals such as `5.8`, and in the sidebar the arrow keys keep the fraction.
+Number and code layers, and any layer with a choice list (Style), get a plain box, on the canvas and in the sidebar alike. A new value typed into a choice field joins the master's list once, when you press Enter or click away, never letter by letter.
+
+Number and code boxes validate. On the canvas, what you type is kept as typed. A value that isn't a number, is out of range, or isn't a valid code shows its error under the box (on the canvas, above it when the box sits near the bottom of the label) and blocks export until you fix it. A number box takes decimals such as `5.8`, and in the sidebar the arrow keys keep the fraction.
 
 ## Moving and resizing
 

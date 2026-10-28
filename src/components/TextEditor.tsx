@@ -51,11 +51,12 @@ export function toEditorLines(lines: TextLine[]): EditorLine[] {
 
 /** The inverse: every line takes the block's `base` style (fill, stroke,
  *  tracking — what a new line typed into the field should look like), then
- *  its own flags. `layer` is written explicitly per line: the White-ink
- *  toggle IS the per-line layer control, so off means the metallic plate
- *  even under a white base — the old markdown format had no "not white"
- *  marker, but a line object does. `bold`/`header` are present only when
- *  set, matching how model/lolevLayers.ts authors lines.
+ *  its own flags. `layer` is written per line from the White-ink toggle:
+ *  "white" is the line's own underlay, and "metallic" means "none of its
+ *  own" — planLayers draws such a line on the BLOCK's plate, and every line
+ *  in the block's fill, so the copies written here never outvote the
+ *  inspector's Fill / Metallic. `bold`/`header` are present only when set,
+ *  matching how model/lolevLayers.ts authors lines.
  *
  *  `base` must be the layer's block Style, not a StyledLine: its keys are
  *  spread onto every line, so a `text`/`bold` on it would leak through. */
