@@ -1,6 +1,5 @@
 import i18next from "i18next";
-import { initReactI18next } from "react-i18next";
-import { useSyncExternalStore } from "react";
+import { initReactI18next, useTranslation } from "react-i18next";
 import core from "./locales/core";
 import shell from "./locales/shell";
 import controls from "./locales/controls";
@@ -51,15 +50,14 @@ let preference = readPreference();
 /** The browser's languages. Node (the generate harness, node-environment
  *  tests) has a `navigator` that follows the OS locale; it stays English. */
 function systemLanguages(): readonly string[] {
-  return typeof window === "undefined" ? [] : navigator.languages?.length
-    ? navigator.languages : [navigator.language];
+  if (typeof window === "undefined") return [];
+  return navigator.languages?.length ? navigator.languages : [navigator.language];
 }
 
+// Later catalogs win on a duplicate key, so keep each key in one catalog.
+const catalogs = [core, shell, controls, messages, inspector, workspace, editor, validation];
 const resources = Object.fromEntries(languages.map(({ value }) => [value, {
-  translation: {
-    ...core[value], ...shell[value], ...controls[value], ...messages[value],
-    ...inspector[value], ...workspace[value], ...editor[value], ...validation[value],
-  },
+  translation: Object.assign({}, ...catalogs.map((catalog) => catalog[value])),
 }]));
 
 const i18n = i18next.createInstance();
@@ -81,17 +79,11 @@ export function getLanguage(): Language {
   return isLanguage(language) ? language : "en";
 }
 
-const listeners = new Set<() => void>();
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
-function notify(): void {
+function syncDocumentLang(): void {
   if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = getLanguage();
-  for (const listener of listeners) listener();
 }
-i18n.on("languageChanged", notify);
-notify();
+i18n.on("languageChanged", syncDocumentLang);
+syncDocumentLang();
 
 /** Changing UI language never replaces or remounts the document workspace. */
 export function setLanguage(next: LanguagePreference): void {
@@ -103,11 +95,12 @@ export function setLanguage(next: LanguagePreference): void {
     // A blocked store must not prevent changing language for this session.
   }
   void i18n.changeLanguage(resolveLanguage(preference, systemLanguages()));
-  notify();
 }
 
+/** Re-renders on every changeLanguage, which i18next emits even when the
+ *  resolved language stays the same (e.g. "pt" → "system" on a pt machine). */
 export function useLanguage(): { preference: LanguagePreference; language: Language; setLanguage: typeof setLanguage } {
-  useSyncExternalStore(subscribe, () => `${preference}:${getLanguage()}`);
+  useTranslation();
   return { preference, language: getLanguage(), setLanguage };
 }
 
@@ -119,7 +112,6 @@ if (typeof window !== "undefined") {
     if (event.key !== STORAGE_KEY && event.key !== null) return;
     preference = readPreference();
     void i18n.changeLanguage(resolveLanguage(preference, systemLanguages()));
-    notify();
   });
 }
 

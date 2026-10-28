@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { readFileSync } from "node:fs";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import i18n, { getLanguage, isNote, languages, resolveLanguage, setLanguage, t } from "../src/i18n";
+import i18n, { getLanguage, isNote, languages, resolveLanguage, setLanguage, t, useLanguage } from "../src/i18n";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -67,6 +69,21 @@ describe("language selection", () => {
   it("uses English for an unknown resource key without losing interpolated user content", () => {
     setLanguage("fr");
     expect(t("Unsupported message for {{name}}", { name: "Lupula <2026>" })).toBe("Unsupported message for Lupula <2026>");
+  });
+
+  it("re-renders useLanguage when only the preference changes", () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["pt-BR"]);
+    function Probe() {
+      const { preference, language } = useLanguage();
+      return `${preference}:${language}`;
+    }
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    act(() => { setLanguage("pt"); root.render(createElement(Probe)); });
+    expect(host.textContent).toBe("pt:pt");
+    act(() => setLanguage("system"));
+    expect(host.textContent).toBe("system:pt");
+    act(() => root.unmount());
   });
 
   it("keeps language switching available when browser storage is blocked", () => {
