@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.110] - 2026-10-28
 
 ### Added
 - **One PDF with a White Ink spot layer.** Export PDF (`⌘E`) now saves the artwork and an outlined, overprinting **White Ink** separation in one file. Uploaded PNG masks preserve transparency, and outlined type uses the same ligatures as the artwork. Inspect it in Acrobat's Output Preview with Overprint Preview enabled; viewers without overprint preview can show magenta and white over the art. **Settings → Two-file PDF export (art + mask)** reveals the unchanged paired and individual PDF exports. Headless generation uses the same single PDF by default; `--two-file` keeps the old pair. PSDs are unchanged. Printer proof approval is still required.
