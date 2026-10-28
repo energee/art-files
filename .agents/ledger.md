@@ -611,3 +611,13 @@ no status, no attempts, no delta.
 - delta: release.yml exports the six APPLE_* secrets to GITHUB_ENV only when APPLE_CERTIFICATE is set (all-or-none, fail-fast); tauri then signs with the Developer ID and notarizes. Windows: AZURE_TRUSTED_SIGNING_ENDPOINT/_ACCOUNT/_PROFILE repo vars make configure-updater.mjs add bundle.windows.signCommand (artifact-signing-cli 0.12.0, the renamed successor of the deprecated trusted-signing-cli, version-pinned because it runs beside the updater key; installed only when configured), AZURE_CLIENT_ID/SECRET/TENANT_ID secrets reach tauri-action.
 - evidence: tests/configure-updater.test.ts (unset, all-set, half-set); Apple gate script run locally under /bin/bash 3.2 for none/partial/full; npm test 159 files / 1671 tests, tsc, lint, knip, check-release pass. Not verified: a real signed/notarized build (no credentials), YAML not linted (actionlint unavailable). Provider choice (Trusted Signing vs an OV/EV cert) is the user's.
 - release: binary-impacting per check-release (packaged config input); [Unreleased] bullet queued
+
+  ## 2026-10-27 qr-dots-decode-542
+- finding: [correctness/high] #542 (AUD-01) — the shipped keylined gold dots QR fails a digital decoder for most ordinary names
+- status: fix in PR, HELD for the printed-Lupula iOS Camera + stock Android scan approval (design change)
+- attempts: 1/3
+- observed-at: branch fix/542-qr-decode on 9c9866f8
+- evidence: 30-name corpus through the real route (planned QR → art PDF → pdftoppm 600 DPI → ZXing tryHarder, 4 turns). EC L (shipped): 6/30 names, 10/120 turns. Square style: 30/30, 120/120. Dots without keyline: 30/30, 120/120. EC M: 30/30, 108/120. EC Q: 30/30, 120/120. Keyline 10/8/5 px at L: 0/30 each, so the halo-size hypothesis was wrong. Cause: gold (luma ≈ 207) reads light inside the black keyline, so a dark module becomes a black ring around a light centre; more error correction recovers it, a thinner keyline does not.
+- delta: shipped master qr ecLevel L → Q (style, colours, keyline, finders unchanged; 29 → 33 modules for typical names). DEFAULT_EC_LEVEL in qr.ts replaces three `?? "L"` copies. Corpus decode regression in tests/qr-print-decode.test.ts (red at L, green at Q). Goldens re-baselined per docs/goldens.md: 600 DPI diffs red only on the QR square (art 147,773 px in a 521 px bbox; mask 123,056 px in a 491 px bbox), PNGs committed.
+- validation: npm test 158 files / 1669 tests, tsc, lint, knip, check-release pass. Not verified: any physical print or phone scan.
+- release: binary-impacting; [Unreleased] bullet with a saved-master caveat

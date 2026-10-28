@@ -5,6 +5,9 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// All hashes re-baselined 2026-10-27 (#542): the shipped QR encodes at
+// error correction Q (was L), so its module pattern changes; the 600 DPI
+// diffs (goldens/collab-off-{art,mask}-qr-ec.diff.png) light only the QR.
 // PDF hashes re-baselined 2026-10-10: both plates now declare a TrimBox (the
 // die inside the bleed) and BleedBox (the page) and a "Label Lab <version>"
 // Producer. 0 px changed at 600 DPI on all four plates; PSDs are unchanged.
@@ -105,9 +108,9 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "9a440de8a254c67eed2d60f1c665a2c6e73dff94313d37b714e8402e4fdfbf27", artLen: 57939,
-      mask: "d52eaaae29a208389a62870731cba1a2f1f6aa6865ac2d4889b3006371159fba", maskLen: 58089,
-      psd: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", psdLen: 1155796,
+      art: "e27905f277f406b6a4c540119b5be34d1698007575ffa82110014f5d1dd0d941", artLen: 71223,
+      mask: "1cd8b8976beb293149440f8414a15d94882b17665ce2e50f145039a8a1d7eac5", maskLen: 71337,
+      psd: "94ee31c7e102b0c6f0d6a8a90e9cafc1e45da88dc30eca9c6511598644486fea", psdLen: 1169316,
     });
   });
 });
@@ -115,9 +118,9 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "2a45b2369ec67c7378db92b4696fcfd5eadad801896a359bb8348b0e44c79fd5", artLen: 59815,
-      mask: "57d92abc989e066a88d273e898454a8059b958333bc0dc7942bdd2e8ad2a59c7", maskLen: 59886,
-      psd: "d6d9f4d9222cc43d26bdc2bc7d0bd7d0bca1a7f573427ed66c5b5dd00eb39974", psdLen: 1165816,
+      art: "59ec5a6ea1ee65123a329c9f1b253a03ae9c9855a5dee3419d1db0148433ddb0", artLen: 73126,
+      mask: "ea1fec44e7188212333a40d14dd1ffaf3be7bc2b89861c9078d1ad180bde1afd", maskLen: 73151,
+      psd: "599bb5f500863375bad45276ba34abe490faea73a7ae7a4cba35051627044a81", psdLen: 1179336,
     });
   });
 });
