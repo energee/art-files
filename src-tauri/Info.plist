@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Tauri merges this into the macOS bundle's Info.plist. Declaring the UI
+     languages (src/i18n.ts `languages`) lets AppKit draw what it owns (Open/Save
+     panels, Dictation, Emoji & Symbols) in the macOS language, and lists Label
+     Lab under System Settings › Language & Region › Applications. Keep in sync
+     with src/i18n.ts. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>es</string>
+    <string>fr</string>
+    <string>de</string>
+    <string>pt</string>
+  </array>
+</dict>
+</plist>
