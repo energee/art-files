@@ -1,0 +1,14 @@
+[
+  {
+    "route": "field right-half",
+    "target": "presentation"
+  },
+  {
+    "route": "field right-half",
+    "backgroundShown": true
+  },
+  {
+    "route": "field precedence",
+    "maskStillPrevious": true
+  }
+]

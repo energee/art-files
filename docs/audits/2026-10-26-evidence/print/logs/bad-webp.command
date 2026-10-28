@@ -1,0 +1,1 @@
+npm run -s generate -- /tmp/label-lab-audit-2026-10-26/print-cli/fixtures/shipped.master /tmp/label-lab-audit-2026-10-26/print-cli/fixtures/shipped-values.json /tmp/label-lab-audit-2026-10-26/print-cli/outputs/bad-webp --asset background=/tmp/label-lab-audit-2026-10-26/print-cli/fixtures/bad-webp.webp

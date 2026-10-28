@@ -1,0 +1,15 @@
+$ cargo tree --target all -i zvariant_derive@5.15.0
+cwd=/Users/tedslesinski/Repos/art-files/src-tauri
+exit=0
+--- stdout ---
+zvariant_derive v5.15.0 (proc-macro)
+└── zvariant v5.15.0
+    ├── zbus v5.19.0
+    │   └── tauri-plugin-single-instance v2.5.4
+    │       └── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+    ├── zbus_macros v5.19.0 (proc-macro)
+    │   └── zbus v5.19.0 (*)
+    └── zbus_names v4.3.4
+        ├── zbus v5.19.0 (*)
+        └── zbus_macros v5.19.0 (proc-macro) (*)
+--- stderr ---

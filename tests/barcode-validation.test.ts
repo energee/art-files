@@ -52,6 +52,35 @@ describe("barcode validation (#94)", () => {
     expect(resolveLayers(withBarcode("garbage", false), [], {}).errors.barcode).toBeUndefined();
   });
 
+  it.each(["", "   "])("a stored blank %j clears the master's barcode without blocking", (value) => {
+    const r = resolveLayers(lolevMaster(), [], { barcode: value });
+    expect(r.errors).toEqual({});
+    expect(barcodeOf(r.layers).value).toBe(value);
+  });
+
+  it.each(["", "garbage", "{name}"])("disabled stored value %j stays non-blocking through variants and overrides", (value) => {
+    const master = lolevMaster();
+    master.variants.push({ id: "off", name: "Off", layers: { barcode: { enabled: false } } });
+    for (const r of [
+      resolveLayers(master, ["off"], { barcode: value }),
+      resolveLayers(master, [], { barcode: value }, { barcode: { enabled: false } }),
+    ]) {
+      expect(r.errors).toEqual({});
+      expect(r.layers.some((l) => l.id === "barcode")).toBe(false);
+    }
+  });
+
+  it.each(["garbage", "{name}"])("enabled invalid value %j still blocks after variant and override changes", (value) => {
+    const master = withBarcode("", false);
+    master.variants.push({ id: "on", name: "On", layers: { barcode: { enabled: true, value } } });
+    for (const r of [
+      resolveLayers(master, ["on"], {}),
+      resolveLayers(master, [], {}, { barcode: { enabled: true, value } }),
+      resolveLayers(master, ["on"], { barcode: value }),
+      resolveLayers(master, [], { barcode: value }, { barcode: { enabled: true } }),
+    ]) expect(r.errors.barcode).toMatch(/UPC-A/);
+  });
+
   it("learnChoice does not teach a barcode an invalid code", () => {
     const m = lolevMaster();
     expect(learnChoice(m, "barcode", "12345")).toBe(m);

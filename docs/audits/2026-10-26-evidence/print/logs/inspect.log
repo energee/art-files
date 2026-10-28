@@ -1,0 +1,108 @@
+{
+  "id": "lolev",
+  "name": "Lolev",
+  "fontFamily": "poppins",
+  "variants": [
+    {
+      "id": "collab",
+      "name": "Collab"
+    }
+  ],
+  "layers": [
+    {
+      "id": "background",
+      "name": "Background",
+      "kind": "image",
+      "role": "background"
+    },
+    {
+      "id": "mask",
+      "name": "Metallic mask",
+      "kind": "image",
+      "role": "mask"
+    },
+    {
+      "id": "volume",
+      "name": "Volume",
+      "kind": "text"
+    },
+    {
+      "id": "abv",
+      "name": "ABV",
+      "kind": "text",
+      "input": "number",
+      "placeholder": "#"
+    },
+    {
+      "id": "description",
+      "name": "Description",
+      "kind": "text"
+    },
+    {
+      "id": "wordmark",
+      "name": "Brand",
+      "kind": "text"
+    },
+    {
+      "id": "logo",
+      "name": "Logo",
+      "kind": "image"
+    },
+    {
+      "id": "name",
+      "name": "Name",
+      "kind": "text",
+      "placeholder": "Name"
+    },
+    {
+      "id": "styleLine",
+      "name": "Style",
+      "kind": "text",
+      "placeholder": "Style"
+    },
+    {
+      "id": "handleAddress",
+      "name": "Info",
+      "kind": "text"
+    },
+    {
+      "id": "warning",
+      "name": "Warning",
+      "kind": "text"
+    },
+    {
+      "id": "storeCold",
+      "name": "Store cold",
+      "kind": "text"
+    },
+    {
+      "id": "qr",
+      "name": "QR",
+      "kind": "qr"
+    },
+    {
+      "id": "barcode",
+      "name": "Barcode",
+      "kind": "barcode",
+      "symbology": "upc-a"
+    },
+    {
+      "id": "collabLead",
+      "name": "Lead-in",
+      "kind": "text",
+      "variant": "collab"
+    },
+    {
+      "id": "collabLeft",
+      "name": "Text logo",
+      "kind": "image",
+      "variant": "collab"
+    },
+    {
+      "id": "collabCenter",
+      "name": "Graphic logo",
+      "kind": "image",
+      "variant": "collab"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+$ cargo tree --target all -i proc-macro-error@1.0.4
+cwd=/Users/tedslesinski/Repos/art-files/src-tauri
+exit=0
+--- stdout ---
+proc-macro-error v1.0.4
+├── glib-macros v0.18.5 (proc-macro)
+│   └── glib v0.18.5
+│       ├── atk v0.18.2
+│       │   └── gtk v0.18.2
+│       │       ├── muda v0.20.0
+│       │       │   └── tauri v2.12.2
+│       │       │       ├── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│       │       │       ├── tauri-plugin-dialog v2.8.3
+│       │       │       │   └── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│       │       │       ├── tauri-plugin-fs v2.7.1
+│       │       │       │   ├── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│       │       │       │   └── tauri-plugin-dialog v2.8.3 (*)
+│       │       │       ├── tauri-plugin-single-instance v2.5.4
+│       │       │       │   └── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│       │       │       └── tauri-plugin-updater v2.14.0
+│       │       │           └── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│       │       ├── tao v0.37.1
+│       │       │   └── tauri-runtime-wry v2.12.1
+│       │       │       └── tauri v2.12.2 (*)
+│       │       ├── tauri v2.12.2 (*)
+│       │       ├── tauri-runtime v2.12.1
+│       │       │   ├── tauri v2.12.2 (*)
+│       │       │   └── tauri-runtime-wry v2.12.1 (*)
+│       │       ├── tauri-runtime-wry v2.12.1 (*)
+│       │       ├── webkit2gtk v2.0.2
+│       │       │   ├── tauri v2.12.2 (*)
+│       │       │   ├── tauri-runtime v2.12.1 (*)
+│       │       │   ├── tauri-runtime-wry v2.12.1 (*)
+│       │       │   └── wry v0.57.0
+│       │       │       └── tauri-runtime-wry v2.12.1 (*)
+│       │       └── wry v0.57.0 (*)
+│       ├── cairo-rs v0.18.5
+│       │   ├── gdk v0.18.2
+│       │   │   ├── gdkx11 v0.18.2
+│       │   │   │   └── wry v0.57.0 (*)
+│       │   │   ├── gtk v0.18.2 (*)
+│       │   │   └── webkit2gtk v2.0.2 (*)
+│       │   ├── gtk v0.18.2 (*)
+│       │   └── webkit2gtk v2.0.2 (*)
+│       ├── gdk v0.18.2 (*)
+│       ├── gdk-pixbuf v0.18.5
+│       │   ├── gdk v0.18.2 (*)
+│       │   └── gtk v0.18.2 (*)
+│       ├── gdkx11 v0.18.2 (*)
+│       ├── gio v0.18.4
+│       │   ├── gdk v0.18.2 (*)
+│       │   ├── gdk-pixbuf v0.18.5 (*)
+│       │   ├── gdkx11 v0.18.2 (*)
+│       │   ├── gtk v0.18.2 (*)
+│       │   ├── pango v0.18.3
+│       │   │   ├── gdk v0.18.2 (*)
+│       │   │   └── gtk v0.18.2 (*)
+│       │   ├── soup3 v0.5.0
+│       │   │   ├── webkit2gtk v2.0.2 (*)
+│       │   │   └── wry v0.57.0 (*)
+│       │   └── webkit2gtk v2.0.2 (*)
+│       ├── gtk v0.18.2 (*)
+│       ├── javascriptcore-rs v1.1.2
+│       │   ├── webkit2gtk v2.0.2 (*)
+│       │   └── wry v0.57.0 (*)
+│       ├── pango v0.18.3 (*)
+│       ├── soup3 v0.5.0 (*)
+│       └── webkit2gtk v2.0.2 (*)
+└── gtk3-macros v0.18.2 (proc-macro)
+    └── gtk v0.18.2 (*)
+--- stderr ---
+ Downloading crates ...
+  Downloaded tauri-plugin-single-instance v2.5.4

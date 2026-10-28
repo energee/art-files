@@ -28,8 +28,9 @@ const EyeDropper = (window as { EyeDropper?: new () => { open(): Promise<{ sRGBH
 export function ColorField(props: {
   value: Fill;
   onChange: (v: Fill) => void;
+  /** Accessible context supplied by the inspector caller. */
+  label: string;
   allowNone?: boolean;
-  /** id for the hex Input, so an external Label can point at this field. */
   id?: string;
 }) {
   const none = props.value === "none";
@@ -62,6 +63,7 @@ export function ColorField(props: {
           variant="outline"
           size="icon"
           title='No ink ("none")'
+          aria-label={`Use no ${props.label.toLowerCase()} ink`}
           aria-pressed={none}
           onClick={() => { setText(null); props.onChange(none ? GOLD : "none"); }}
           className={cn("size-6 rounded-sm", none && "ring-2 ring-ring")}
@@ -75,7 +77,7 @@ export function ColorField(props: {
               type="button"
               variant="outline"
               size="icon"
-              aria-label="Pick color"
+              aria-label={`Pick ${props.label.toLowerCase()} color`}
               disabled={none}
               className="size-6 rounded-sm"
               style={none ? undefined : { background: hex }}
@@ -149,6 +151,7 @@ export function ColorField(props: {
       </Popover>
       <Input
         id={props.id}
+        aria-label={`${props.label} color`}
         value={none ? "none" : (text ?? props.value)}
         disabled={none}
         // A full #rrggbb applies as it is typed; a 3-digit hex only on

@@ -1,0 +1,9 @@
+$ shasum -a 256 package-lock.json docs-site/package-lock.json src-tauri/Cargo.lock .nvmrc src-tauri/Cargo.toml
+exit=0
+--- stdout ---
+e51b4327c565395d2232a68a9e21e9738c55c19a38d2df3b5630a0bcb5f18090  package-lock.json
+d014a10190afcfbc114335eb17c7cfdea127c4aebfbb0dc04c2759b0b1453385  docs-site/package-lock.json
+3682e315d7254792df1953a4b4e98a3a67a81b5168f76bf61c99e944d0452d6c  src-tauri/Cargo.lock
+68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53  .nvmrc
+10eb117af57a02ed17b602253a0b341bee26a5dd1578684872fa5275ca62fb19  src-tauri/Cargo.toml
+--- stderr ---

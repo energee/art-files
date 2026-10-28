@@ -1,0 +1,6 @@
+$ rustup toolchain list
+exit=0
+--- stdout ---
+stable-aarch64-apple-darwin (active, default)
+1.88.0-aarch64-apple-darwin
+--- stderr ---

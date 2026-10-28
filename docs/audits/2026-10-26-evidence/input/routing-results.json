@@ -1,0 +1,32 @@
+[
+  {
+    "name": "left.png",
+    "type": "image/png",
+    "route": "texture"
+  },
+  {
+    "name": "right.png",
+    "type": "image/png",
+    "route": "mask"
+  },
+  {
+    "name": "right.jpg",
+    "type": "image/jpeg",
+    "route": "texture"
+  },
+  {
+    "name": "right.webp",
+    "type": "image/webp",
+    "route": "mask"
+  },
+  {
+    "name": "wrong.svg",
+    "type": "image/svg+xml",
+    "route": null
+  },
+  {
+    "name": "extension-only.PNG",
+    "type": "",
+    "route": "mask"
+  }
+]

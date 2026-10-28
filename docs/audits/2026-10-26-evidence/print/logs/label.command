@@ -1,0 +1,1 @@
+npm run -s generate -- --master /tmp/label-lab-audit-2026-10-26/print-cli/fixtures/shipped.master --label /tmp/label-lab-audit-2026-10-26/print-cli/fixtures/shipped.label --out /tmp/label-lab-audit-2026-10-26/print-cli/outputs/label --format pdf

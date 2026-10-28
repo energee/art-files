@@ -1,0 +1,60 @@
+$ npm run build
+cwd=/Users/tedslesinski/Repos/art-files
+exit=0
+elapsed_seconds=40.289
+timed_out=False
+--- stdout ---
+
+> label-lab@0.1.108 build
+> tsc && vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 2829 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/metalnessMask.worker-IBEMjxCN.js           0.27 kB
+dist/assets/32x32-BvEXJEQL.png                         0.51 kB
+dist/index.html                                        1.61 kB │ gzip:   0.70 kB
+dist/assets/128x128-Cd0qZjCQ.png                       1.75 kB
+dist/assets/BarlowCondensed-Regular-u9oSiJc6.ttf     102.48 kB
+dist/assets/BarlowCondensed-SemiBold-B7YG4rBL.ttf    109.42 kB
+dist/assets/BarlowCondensed-Bold-v1X23fbx.ttf        109.91 kB
+dist/assets/Poppins-Bold-CdT-0Mts.ttf                155.99 kB
+dist/assets/Poppins-SemiBold-DVCj-rhG.ttf            157.31 kB
+dist/assets/Poppins-Regular-B2YTLo9r.ttf             160.31 kB
+dist/assets/worker-DFQM60M-.js                     1,087.81 kB
+dist/assets/index-7vPm0RdC.css                        96.20 kB │ gzip:  15.71 kB
+dist/assets/dist-js-BnTUryob.js                        0.28 kB │ gzip:   0.17 kB
+dist/assets/offThread-DXyv5-a3.js                      0.64 kB │ gzip:   0.41 kB
+dist/assets/rolldown-runtime-hePW80VL.js               0.71 kB │ gzip:   0.42 kB
+dist/assets/dist-js-D6kuGl7P.js                        1.11 kB │ gzip:   0.51 kB
+dist/assets/fonts-CcdDL0Z4.js                          1.28 kB │ gzip:   0.65 kB
+dist/assets/event-CxLWIub9.js                          1.35 kB │ gzip:   0.64 kB
+dist/assets/layout-OJWDd2H4.js                         1.51 kB │ gzip:   0.88 kB
+dist/assets/RenderSettings-Pae7E0-O.js                 1.92 kB │ gzip:   0.86 kB
+dist/assets/core-BdRrNHc2.js                           2.11 kB │ gzip:   0.91 kB
+dist/assets/dpi-DXToqxYv.js                            2.56 kB │ gzip:   0.68 kB
+dist/assets/textheight-CkT84_Jp.js                     2.62 kB │ gzip:   1.38 kB
+dist/assets/dist-js-DtZl9E0f.js                        2.96 kB │ gzip:   1.05 kB
+dist/assets/menu-B9FsAtX3.js                           8.35 kB │ gzip:   1.82 kB
+dist/assets/MasterSaveReview-w_UMh_1M.js               9.25 kB │ gzip:   3.94 kB
+dist/assets/window-CH4V-6se.js                        10.83 kB │ gzip:   2.69 kB
+dist/assets/input-group-DfmIJ49T.js                   14.30 kB │ gzip:   5.51 kB
+dist/assets/useControlled-Skhsowl7.js                 29.11 kB │ gzip:  11.03 kB
+dist/assets/utils-Djh7eZm4.js                         36.05 kB │ gzip:  11.87 kB
+dist/assets/CommandPalette-oOOkTMzo.js                52.52 kB │ gzip:  17.76 kB
+dist/assets/planLayers-B3MDzGM0.js                    59.40 kB │ gzip:  21.57 kB
+dist/assets/build-Bc9iZ4gu.js                        291.08 kB │ gzip:  87.19 kB
+dist/assets/build-Bi87_5NU.js                        379.24 kB │ gzip: 162.92 kB
+dist/assets/CanView-C4gZHJ_3.js                      653.20 kB │ gzip: 165.58 kB
+dist/assets/index-D32s5hxG.js                        740.07 kB │ gzip: 242.56 kB
+dist/assets/fontkit-DGty4SKn.js                      756.28 kB │ gzip: 343.60 kB
+
+✓ built in 8.60s
+--- stderr ---
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

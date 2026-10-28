@@ -1,7 +1,6 @@
-// FileDrop.tsx — drag-and-drop/click file target built on react-dropzone
-// (keyboard, focus, and aria handled by the library), with an image
-// thumbnail on a checkerboard and inline error text. Its X clears at once
-// with no confirm, so the emptied well says how to get the file back (#426).
+// FileDrop.tsx — react-dropzone drag target with a named Browse action,
+// checkerboard thumbnail and inline error text. Its X clears at once,
+// with an Undo action or document-undo hint in the emptied well (#426).
 import { useRef, useState } from "react";
 import { useDropzone, type Accept } from "react-dropzone";
 import { X } from "lucide-react";
@@ -52,9 +51,12 @@ export function FileDrop(props: {
   /** Set by the X when it offers an Undo: the X unmounts with the file, so
    *  focus moves to the Undo once it mounts instead of falling to <body>. */
   const focusUndo = useRef(false);
-  const { getRootProps, getInputProps, isDragActive, rootRef } = useDropzone({
+  const browseRef = useRef<HTMLButtonElement>(null);
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     accept: props.accept,
     multiple: false,
+    noClick: true,
+    noKeyboard: true,
     onDrop: (files, rejected) => {
       if (rejected.length) {
         setRejection({
@@ -77,7 +79,7 @@ export function FileDrop(props: {
           // so a PNG aimed here is not diverted into its window-wide chooser.
           [FILE_DROP_ATTR]: "",
           className: cn(
-            "flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "flex items-center gap-2 rounded-md border border-dashed border-border p-2 transition-colors",
             isDragActive && "border-primary bg-accent",
           ),
         })}
@@ -95,30 +97,39 @@ export function FileDrop(props: {
         <div className="min-w-0">
           <div className="text-xs font-medium">{props.label}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {props.fileName ?? "drop or click"}
+            {props.fileName ?? "drop or browse"}
           </div>
         </div>
+        <Button
+          ref={browseRef}
+          data-file-drop-browse
+          type="button"
+          variant="outline"
+          size="xs"
+          aria-label={`Browse ${props.label}`}
+          onClick={open}
+          className="ml-auto shrink-0"
+        >
+          Browse
+        </Button>
         {props.fileName && props.onClear && (
           <Button
             type="button" variant="ghost" size="icon"
             aria-label={`Remove ${props.label}`}
             title="Remove"
-            // stopPropagation: the whole drop target is a click-to-browse
-            // zone; the X must clear, not open the file picker.
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
               const undo = props.onClear?.() ?? undefined;
               setCleared({ name: props.fileName!, undo });
-              // The X goes with the file: keep keyboard focus in the well.
+              // The X goes with the file: keep keyboard focus on Browse.
               if (undo) focusUndo.current = true;
-              else rootRef.current?.focus();
+              else browseRef.current?.focus();
             }}
-            className="ml-auto size-5 shrink-0 text-muted-foreground hover:text-foreground"
+            className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X className="size-3.5" />
           </Button>
         )}
-        <input {...getInputProps()} />
+        <input {...getInputProps({ "aria-label": `Choose ${props.label} file` })} />
       </div>
       {/* Always mounted: a live region announces text added to it, not one
           inserted with its text. */}
@@ -130,8 +141,8 @@ export function FileDrop(props: {
               <Button type="button" size="xs" variant="link" className="h-auto p-0 text-xs"
                 ref={(el) => { if (el && focusUndo.current) { focusUndo.current = false; el.focus(); } }}
                 onClick={() => {
-                  // This button goes with the note: hand focus back to the well.
-                  rootRef.current?.focus();
+                  // This button goes with the note: hand focus back to Browse.
+                  browseRef.current?.focus();
                   setCleared(null); cleared.undo!();
                 }}>
                 Undo

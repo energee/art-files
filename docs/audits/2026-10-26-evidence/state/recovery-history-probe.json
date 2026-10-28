@@ -1,0 +1,17 @@
+{
+  "recovery": {
+    "unchanged": true,
+    "missing": false,
+    "changed": false,
+    "duplicate": false,
+    "noBaseline": false,
+    "earlier": ["old:1", "another:3"]
+  },
+  "history": {
+    "stack": {"past": ["before", "first"], "present": "second", "future": []},
+    "undo": {"past": ["before"], "present": "first", "future": ["second"]},
+    "redo": {"past": ["before", "first"], "present": "second", "future": []}
+  },
+  "command": "npx tsx /tmp/label-lab-audit-2026-10-26/state-native/recovery-history-probe.ts",
+  "exit": 0
+}

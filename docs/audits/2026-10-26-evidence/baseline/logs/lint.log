@@ -1,0 +1,11 @@
+$ npm run lint
+cwd=/Users/tedslesinski/Repos/art-files
+exit=0
+elapsed_seconds=4.748
+timed_out=False
+--- stdout ---
+
+> label-lab@0.1.108 lint
+> eslint . --max-warnings 0
+
+--- stderr ---

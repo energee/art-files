@@ -44,6 +44,8 @@ Barcodes ship as near-black bars inside a white halo over white ink. The white-i
 
 Export checks the code each barcode will actually print, after any `{layer}` refs expand, wherever it came from: this label, a variant, or the master. A code that isn't valid for the barcode's symbology blocks export with an error instead of leaving the barcode off. A blank or switched-off barcode doesn't block anything.
 
+This includes a barcode cleared in the label's Code field (or values JSON), and a layer disabled by a variant or label override. Whitespace-only codes count as blank. Re-enabling a nonblank invalid code restores the export error.
+
 ## Photoshop
 
 Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
@@ -64,3 +66,5 @@ The app outputs RGB. Before you send it:
 brew install ghostscript   # once
 tools/to-cmyk.sh LABRADORITE.pdf LABRADORITE-mask.pdf
 ```
+
+The script preserves the PDF's authored page orientation. Conversion is not scan certification: verify the exact QR and barcode payloads on the converted artwork and on the printer's proof/stock. The shipped dots QR encodes at error correction Q, the level at which its keylined gold dots decode for ordinary names (at L most names failed a digital decoder). Changing approved QR artwork still requires the printed-label scan approval.

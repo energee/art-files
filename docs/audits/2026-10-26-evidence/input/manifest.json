@@ -1,0 +1,15 @@
+{
+  "audit": "D1-D5 and J3 input-security probe",
+  "commandRevision": "eac33714bbfbc7df704fb4959d32ab7a0793cb1b",
+  "fixtures": [
+    {"id":"D1-truncated","sha256":"7f65db089c1ec1eba05495b9ffe9f825d2ba552beeebedeb4d2e6c6591102ddf","bytes":200000},
+    {"id":"D1-invalid-label","sha256":"f3ba081e1a646ffe89546a4c789517f89e9b775a11899f843c33ad82c53f384e","bytes":184},
+    {"id":"D1-invalid-master","sha256":"eba871ff3c59d30679f5cfd80c59707cbe1d6972bc9b973a6569caf77e1452ef","bytes":141},
+    {"id":"D2-declared-oversize","sha256":"7254ff66f2fcbc15e0bb0eff3e9464d956d2de8979bc5d56e630dbf4f65121e1","bytes":185},
+    {"id":"D2-inflation-mismatch","sha256":"93f9bb73d1a1a36e1f0a12e3698a2503f7af2c2ee485a5c81081dadaf9424df3","bytes":509},
+    {"id":"D2-many-unknown","sha256":"6a4d4f21197269f85359d563f1abf10ec4480f76b11001e36ab5ab58a564c8d1","bytes":1170185,"entries":10001},
+    {"id":"D4-entry-paths","sha256":"33e607eaa715150bd7e77fa997dbeb5e77a2a08d82d433262376650170ec3453","bytes":677},
+    {"id":"D1-valid-master-control","sha256":"16fcca6af0d93347346763e6c5dc3a96a2ab24172ac12ceda4c84aa0bf271924","bytes":2089},
+    {"id":"D4-symlink-sentinel","sha256":"9ee66b9e97007ff22c982bf8f61e06573832b141b72f262381a434aba2299f64","bytes":28,"content":"OUTSIDE-SENTINEL-2026-10-26\\n"}
+  ]
+}

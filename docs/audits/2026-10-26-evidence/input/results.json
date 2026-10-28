@@ -1,0 +1,54 @@
+{
+  "D1-truncated": {
+    "hash": "7f65db089c1ec1eba05495b9ffe9f825d2ba552beeebedeb4d2e6c6591102ddf",
+    "bytes": 200000,
+    "error": "invalid zip data"
+  },
+  "D1-invalid-label": {
+    "hash": "f3ba081e1a646ffe89546a4c789517f89e9b775a11899f843c33ad82c53f384e",
+    "bytes": 184,
+    "error": "Label file is missing its masterId."
+  },
+  "D1-invalid-master": {
+    "hash": "eba871ff3c59d30679f5cfd80c59707cbe1d6972bc9b973a6569caf77e1452ef",
+    "bytes": 141,
+    "error": "Invalid master file: missing id"
+  },
+  "D2-declared-oversize": {
+    "hash": "7254ff66f2fcbc15e0bb0eff3e9464d956d2de8979bc5d56e630dbf4f65121e1",
+    "bytes": 185,
+    "error": "Archive is too large: \"label.json\" exceeds the 128 MiB file or 256 MiB total limit."
+  },
+  "D2-inflation-mismatch": {
+    "hash": "93f9bb73d1a1a36e1f0a12e3698a2503f7af2c2ee485a5c81081dadaf9424df3",
+    "bytes": 509,
+    "error": "Archive is too large: \"texture/inflate.png\" exceeds the 128 MiB file or 256 MiB total limit."
+  },
+  "D2-many-unknown": {
+    "hash": "6a4d4f21197269f85359d563f1abf10ec4480f76b11001e36ab5ab58a564c8d1",
+    "bytes": 1170185,
+    "result": {
+      "retained": [
+        "label.json"
+      ],
+      "retainedCount": 1
+    }
+  },
+  "D4-entry-paths": {
+    "hash": "33e607eaa715150bd7e77fa997dbeb5e77a2a08d82d433262376650170ec3453",
+    "bytes": 677,
+    "result": {
+      "retained": [
+        "label.json"
+      ],
+      "retainedCount": 1
+    }
+  },
+  "D1-valid-master-control": {
+    "hash": "16fcca6af0d93347346763e6c5dc3a96a2ab24172ac12ceda4c84aa0bf271924",
+    "bytes": 2089,
+    "result": {
+      "id": "lolev"
+    }
+  }
+}

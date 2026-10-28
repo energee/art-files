@@ -1,0 +1,11 @@
+[
+  {
+    "id": 459,
+    "role": "switch",
+    "name": "Enabled",
+    "states": [
+      "checked=false",
+      "focused"
+    ]
+  }
+]
