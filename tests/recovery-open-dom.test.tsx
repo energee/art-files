@@ -50,7 +50,7 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
   await act(async () => { root.render(createElement(DocumentEditor, props)); });
   for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
     await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-  expect(onOpenSettled).toHaveBeenCalledWith(1);
+  expect(onOpenSettled).toHaveBeenCalledWith(1, false);
   const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); };
   return { meta: () => onMeta.mock.calls.at(-1)![0], container, unmount };
 }

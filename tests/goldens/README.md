@@ -30,6 +30,13 @@ same planned cover-fit rectangle as PDF/canvas. Before certifying the spec's
 PSD visual gate, render the old and new PSDs in Photoshop at 600 DPI and commit
 the reviewed diff PNGs alongside these candidates.
 
+## 2026-10-27 QR error correction L → Q (#542)
+
+`collab-off-{art,mask}-qr-ec.diff.png` (2026-10-27, #542) compare the shipped
+master's exports before and after its QR moved from error correction L to Q:
+only the QR square is red, art and mask. Collab ON draws the same QR, so no
+separate ON diff is kept.
+
 ## 2026-09-28 quiet-zone plate removed
 
 `collab-{off,on}-{art,mask}-no-backing.diff.png` compare the four PDF fixtures

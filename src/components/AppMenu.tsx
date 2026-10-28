@@ -137,7 +137,8 @@ export const APP_MENUS: SubmenuEntry[] = [
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
       { kind: "action", id: "undo", text: "Undo", symbol: "arrow.uturn.backward" },
       { kind: "action", id: "redo", text: "Redo", symbol: "arrow.uturn.forward" },
-      { kind: "separator", id: "edit-variants" },
+      // Both rows move to the application menu on the Mac (MAC_MENUS).
+      { kind: "separator", id: "edit-settings" },
       { kind: "action", id: "settings", text: "Settings…", symbol: "gear" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
@@ -194,6 +195,15 @@ export const APP_MENUS: SubmenuEntry[] = [
     ],
   },
 ];
+
+/** The Mac menu bar's table: Settings… (and its separator) leave Edit for
+ *  the application menu, where macOS puts it (#551; macApplicationMenu).
+ *  Windows, Linux and the in-window menu keep APP_MENUS. Exported for tests. */
+export const MAC_MENUS: SubmenuEntry[] = APP_MENUS.map((menu) => ({
+  ...menu,
+  items: menu.items.filter((e) => !("id" in e && (e.id === "settings" || e.id === "edit-settings"))),
+}));
+const SETTINGS_ROW = actionsIn(APP_MENUS).find((e) => e.id === "settings")!;
 
 function isCheckAction(entry: ActionEntry): entry is CheckAction {
   return !!entry.check;
@@ -330,12 +340,15 @@ async function closeResources(resources: NativeResource[]) {
 /** The macOS application menu. Quit is a custom item, not the predefined
  *  one: that sends NSApp `terminate:`, which exits without a window
  *  close-requested event, so ⌘Q skipped the unsaved-tabs prompt (#80).
- *  `quit` must run the window close flow instead. Exported for tests. */
+ *  `quit` must run the window close flow instead. `settings` is the
+ *  Settings… row, built like every other command row, shown under About
+ *  where macOS users look for it (#551). Exported for tests. */
 export async function macApplicationMenu(
   api: MenuApi,
   resources: NativeResource[],
   checkForUpdates: () => void,
   quit: () => void,
+  settings: NativeEntry,
 ) {
   const definitions = [
     { item: { About: null } as const },
@@ -360,6 +373,10 @@ export async function macApplicationMenu(
   });
   resources.push(updater);
   items.splice(1, 0, updater);
+  const separator = await api.PredefinedMenuItem.new({ item: "Separator" });
+  resources.push(separator);
+  // About, Check for Updates…, separator, Settings…, separator, Services…
+  items.splice(3, 0, settings, separator);
   const quitItem = await api.MenuItem.new({
     id: "quit",
     text: "Quit Label Lab",
@@ -531,8 +548,9 @@ function useNativeMenu(
         // What Open Recent's first rows show; a change before the subscribe
         // below would otherwise never reach the menu.
         const recentBuiltFrom = JSON.stringify(recentLabels());
-        const roots = await Promise.all(APP_MENUS.map((entry) =>
-          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources)));
+        const native = (entry: MenuEntry) =>
+          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources);
+        const roots = await Promise.all((isMacOS() ? MAC_MENUS : APP_MENUS).map(native));
         // On macOS the first submenu is the conventional application menu;
         // the browser renderer must not show it. Other desktop platforms put
         // File first and receive their window-local menu bar normally.
@@ -542,7 +560,8 @@ function useNativeMenu(
           const quit = () => void import("@tauri-apps/api/window")
             .then((m) => m.getCurrentWindow().close())
             .catch((error) => errorRef.current(`Could not quit: ${errMsg(error)}`));
-          roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
+          roots.unshift(await macApplicationMenu(
+            api, resources, () => updateRef.current(), quit, await native(SETTINGS_ROW)));
         } else {
           const updater = await api.MenuItem.new({
             id: "check-for-updates", text: UPDATE_ITEM_TEXT.check,

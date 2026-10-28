@@ -64,7 +64,7 @@ async function openLabel(
     await act(async () => { root.render(createElement(DocumentEditor, props)); });
     for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
       await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-    expect(onOpenSettled).toHaveBeenCalledWith(1);
+    expect(onOpenSettled).toHaveBeenCalledWith(1, false);
     const save = () => act(async () => { expect(await saveSlot.current!()).toBe(true); });
     await check({ container, save, writes, dirty: onMeta.mock.calls.at(-1)![0].dirty });
   } finally {

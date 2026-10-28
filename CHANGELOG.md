@@ -8,6 +8,16 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 - **Interface library patch updates.** Tauri JS 2.12.4 and its dialog and file-system plugins, React 19.3.1, Lucide icons 1.61, react-dropzone 20.1.4 and zxing-wasm 3.1.6, plus newer build tooling; no change in behaviour.
+- **Settings… is where Mac apps keep it.** On macOS it moved from Edit to the **Label Lab** menu, under Check for Updates…, and it has a shortcut everywhere: `⌘,` (`Ctrl+,` on Windows and Linux, where it stays under Edit).
+- **The quit prompt says you're quitting.** With unsaved tabs, `⌘Q`, Dock → Quit or the window's close button now ask “Save changes to “…” before quitting?”, and say Cancel keeps Label Lab open, instead of offering to close the tab.
+
+### Fixed
+- **Cancelling a different-master open leaves no empty tab.** Cancel in the “This label was made with a different master” dialog, or in its Locate picker, now closes the Untitled tab that open made, so each cancelled attempt no longer leaves one behind.
+- **Opening a file that isn't a `.label` says so.** Open With on another file, or a `.label` shortcut that points at a file of another type, now shows “isn't a .label file” in the tab strip instead of doing nothing. The file is not read.
+- **Release builds are ready for code signing.** Once the Apple Developer ID and Azure Trusted Signing credentials are added to the release setup, published Mac builds are signed and notarized (no Gatekeeper warning) and the Windows installer is signed (no SmartScreen warning). Until then builds are signed exactly as before.
+
+- **Readable update notes.** Bold text in the update dialog now renders as bold instead of showing literal `**` markers.
+- **The shipped QR scans for ordinary beer names.** The Lolev master's dots QR now uses error correction Q instead of L. At L the black keyline made its gold dots hard to read, and most names failed to decode; at Q every name tested decodes. The code looks the same but is a little denser. A master you saved from the old Lolev master keeps L: set **Error correction** to Q on its QR layer and Save Master.
 
 ## [0.1.109] - 2026-10-27
 

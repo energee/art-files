@@ -1,8 +1,8 @@
 // appmenu.test.ts — native menu accelerators, standard text-edit roles, and
-// the macOS application menu's Quit routing.
+// the macOS application menu's Quit routing and Settings… row.
 import { describe, expect, it, vi } from "vitest";
 import {
-  APP_MENUS, actionsIn, macApplicationMenu, menuSymbols, nativeAccelerator,
+  APP_MENUS, MAC_MENUS, actionsIn, macApplicationMenu, menuSymbols, nativeAccelerator,
 } from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
 
@@ -146,17 +146,33 @@ describe("macOS application menu", () => {
     };
     return { api: api as unknown as Parameters<typeof macApplicationMenu>[0], made };
   };
+  // The Settings… row nativeEntry builds; only its title is read here.
+  const settingsRow = { text: "Settings…" } as unknown as Parameters<typeof macApplicationMenu>[4];
 
   // #80: the predefined Quit sends NSApp terminate:, which exits without a
   // window close-requested event — the unsaved-tabs prompt never runs.
   it("routes ⌘Q through the window close flow, not the predefined Quit", async () => {
     const { api, made } = fakeApi();
     const quit = vi.fn();
-    await macApplicationMenu(api, [], () => undefined, quit);
+    await macApplicationMenu(api, [], () => undefined, quit, settingsRow);
     expect(made.predefined.map((options) => options.item)).not.toContain("Quit");
     const item = made.items.find((options) => options.accelerator === "CmdOrCtrl+Q");
     expect(item?.text).toBe("Quit Label Lab");
     (item?.action as () => void)();
     expect(quit).toHaveBeenCalledOnce();
+  });
+
+  // #551: Settings… sits under About / Check for Updates…, between
+  // separators, and leaves the Mac Edit menu; ⌘, is its accelerator.
+  it("carries Settings… after Check for Updates…, and the Mac Edit menu drops it", async () => {
+    const { api } = fakeApi();
+    const menu = await macApplicationMenu(api, [], () => undefined, () => undefined, settingsRow);
+    const titles = (menu as unknown as { items: Options[] }).items.map((i) => i.text ?? i.item);
+    expect(titles.slice(0, 6)).toEqual(
+      [{ About: null }, "Check for Updates…", "Separator", "Settings…", "Separator", "Services"]);
+    const edit = (menus: typeof APP_MENUS) => actionsIn(menus.filter((m) => m.id === "edit-menu")).map((e) => e.id);
+    expect(edit(APP_MENUS)).toContain("settings");
+    expect(edit(MAC_MENUS)).not.toContain("settings");
+    expect(nativeAccelerator(command({ key: ",", mods: "⌘" }))).toBe("CmdOrCtrl+,");
   });
 });

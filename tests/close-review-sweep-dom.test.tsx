@@ -2,7 +2,9 @@
 // a desktop window close (UX audit item 16): a cancelled review aborts the
 // whole sweep and the window stays up; a review that saves the master of a
 // tab whose .label is already saved closes that tab and moves the sweep on.
-// The editor is stubbed so the test drives masterSaveSlot directly.
+// The prompt is worded for quitting during the sweep, for closing a tab
+// otherwise (#552). The editor is stubbed so the test drives masterSaveSlot
+// directly.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -80,6 +82,18 @@ async function review(saved: boolean, beforeResolve?: () => void) {
   expect(prompt()).toBeNull(); // hidden while the review is up
   await act(async () => { beforeResolve?.(); resolve(saved); });
 }
+
+it("words the prompt for quitting during a window close, and for the tab otherwise", async () => {
+  await twoTabsClosingWindow();
+  const title = () => prompt()!.querySelector('[data-slot="dialog-title"]')!.textContent;
+  expect(title()).toBe("Save changes to “A” before quitting?");
+  expect(prompt()!.textContent).toContain("cancel to keep Label Lab open");
+  await act(async () => { button("Cancel").click(); });
+  await act(async () => { (document.querySelector('[aria-label^="Close B"]') as HTMLElement).click(); });
+  await vi.waitFor(() => expect(prompt()?.textContent).toContain("“B”"));
+  expect(title()).toBe("Close “B”?");
+  expect(prompt()!.textContent).toContain("keep the tab open");
+});
 
 it("a cancelled review aborts the window close and keeps every tab", async () => {
   await twoTabsClosingWindow();
