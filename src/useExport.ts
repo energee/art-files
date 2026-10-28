@@ -14,14 +14,16 @@ import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
 import type { RenderSettings } from "@/settings";
-import { FONT_URLS } from "@/fonts";
+import { FONT_URLS, labelFontCss, loadLabelFaces } from "@/fonts";
+import { drawPlate } from "@/canvas/draw";
+import { PSD_DOC } from "@/layout";
 import type { FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 // The builders are imported dynamically at export time (buildFull, exportPsd,
 // which runs buildPsd in a worker) so they stay out of the initial bundle;
 // only their types are needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
-import type { PsdAssets } from "@/psd/build";
+import type { PsdAssets, PsdOpts } from "@/psd/build";
 import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } from "@/assets/io";
 
 /** The texture/mask bytes for a build (App.tsx pageArt): absent when the
@@ -30,6 +32,30 @@ type PageArt = {
   texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
   maskPng?: Uint8Array;
 };
+
+/** One plate flattened at PSD_DOC size by the preview's canvas renderer:
+ *  the PSD's composite (PsdOpts.composite), the image Finder and Preview
+ *  show. Decodes the full-resolution export bytes, not the preview's
+ *  downsized bitmaps. SVG art plans as paths, so it needs no bitmap. */
+async function flattenPlate(
+  plan: readonly PlacedLayer[], images: Record<string, CollabImage>, mode: "art" | "mask", fontCss: string,
+): Promise<PsdOpts["composite"]> {
+  const bitmaps: Record<string, ImageBitmap> = {};
+  try {
+    for (const [id, image] of Object.entries(images))
+      if (image.kind !== "svg") bitmaps[id] = await createImageBitmap(new Blob([image.bytes as BlobPart]));
+    const canvas = document.createElement("canvas");
+    canvas.width = PSD_DOC.w;
+    canvas.height = PSD_DOC.h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined; // no 2D canvas: keep ag-psd's black composite
+    drawPlate(ctx, plan, { images: bitmaps }, mode, fontCss);
+    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    return { data, width, height };
+  } finally {
+    for (const bitmap of Object.values(bitmaps)) bitmap.close();
+  }
+}
 
 type ExportInputs = {
   /** The layers that draw — what the preview plans from, and so the exports. */
@@ -300,7 +326,7 @@ export function useExport({
    *  runs here: it needs a canvas. Saved like the PDFs (see buildFull). */
   async function exportPsd(request: ExportRequest = {}) {
     await exportPair("psd", "image/vnd.adobe.photoshop", request, async () => {
-      const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images }] = await Promise.all([
+      const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images, fontFamilies }] = await Promise.all([
         import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
@@ -308,11 +334,20 @@ export function useExport({
         fonts, fontFamily: family,
         images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
+      // The composite draws with the preview's registered faces.
+      await loadLabelFaces(family, Object.keys(fontFamilies ?? {}) as FontFamilyId[]);
+      const flatImages: Record<string, CollabImage> = {
+        ...images,
+        ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
+        ...(art.maskPng ? { [PAGE_ART_ID.mask]: { kind: "png" as const, bytes: art.maskPng } } : {}),
+      };
       // Each plate builds in its own worker (#415); the worker's layout.ts
       // gets this editor's bleed and DPI with the job.
       const geometry = { bleedIn: render.bleedIn, dpi: render.dpi };
-      const plate = (mode: "art" | "mask") =>
-        buildPsdOffThread({ items: plan, assets, mode, opts: { layers: drawLayers }, geometry });
+      const plate = async (mode: "art" | "mask") => buildPsdOffThread({
+        items: plan, assets, mode, geometry,
+        opts: { layers: drawLayers, composite: await flattenPlate(plan, flatImages, mode, labelFontCss(family)) },
+      });
       return await Promise.all([plate("art"), plate("mask")]);
     });
   }

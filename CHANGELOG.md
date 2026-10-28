@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+- **PSD previews show the label.** Exported PSDs used to save an all-black flattened image, so Finder, Quick Look and Preview showed nothing but black (Photoshop rebuilt the art from the layers). Each PSD now saves its plate drawn at full resolution, so every app shows the actual art. PSDs written by `npm run generate` keep the black preview.
+
 ## [0.1.110] - 2026-10-28
 
 ### Added
