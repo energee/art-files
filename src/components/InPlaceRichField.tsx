@@ -50,8 +50,8 @@ export function InPlaceRichField(props: {
   toolbarPos: { left: number; top: number };
   onApply: (lines: TextLine[]) => void;
   onUppercase: (uppercase: boolean) => void;
-  /** Ends the session: Escape asks to undo it (`cancel`). */
-  onClose: (cancel: boolean) => void;
+  /** Ends the session, keeping what was typed: Escape (Enter is a new line). */
+  onClose: () => void;
   /** Click-away guards — the field wrapper and the portaled pill both count
    *  as "inside the session" (see PreviewCompare's pointerdown capture effect). */
   fieldRef: React.RefObject<HTMLDivElement | null>;
@@ -140,7 +140,7 @@ export function InPlaceRichField(props: {
         // interacting with the editor must not re-select or reopen.
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === "Escape") onClose(true); }}
+        onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
       >
         <div
           {...fieldProps}

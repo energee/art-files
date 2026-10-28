@@ -107,15 +107,13 @@ export const PreviewCompare = forwardRef<
      *  new lines. `first` is true on the session's opening keystroke; App
      *  uses it to fold the whole session into one undo step. */
     onEditText: (id: string, lines: TextLine[], first: boolean) => void;
-    /** An in-place session that changed something ended WITHOUT Escape —
-     *  Enter, click-away, or the preview going away. Called once, after the
-     *  last onEditText; App learns the final value into the layer's choices
-     *  here, never per keystroke (the sidebar picker's commit rule). */
+    /** An in-place session that changed something ended — Enter, Escape,
+     *  click-away, or the preview going away; every end keeps the typing.
+     *  Called once, after the last onEditText; App learns the final value
+     *  into the layer's choices here, never per keystroke (the sidebar
+     *  picker's commit rule). */
     onEditCommit: (id: string) => void;
     onEditUppercase: (id: string, uppercase: boolean, first: boolean) => void;
-    /** Escape mid-session: App undoes the session's single step. Never
-     *  called when nothing was typed. */
-    onEditCancel: () => void;
     /** Drag-to-move: called on every pointermove past the 3px threshold with
      *  the CUMULATIVE delta from the drag's start, in label points, `first`
      *  true on the movement that crosses the threshold — App applies moveBy
@@ -154,7 +152,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditCommit, onEditUppercase, onEditCancel, onDrag,
+    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditCommit, onEditUppercase, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -291,7 +289,7 @@ export const PreviewCompare = forwardRef<
   // The pill portals to <body>, so click-away must ask it separately.
   const toolbarRef = useRef<HTMLDivElement>(null);
   // Whether this session has applied any keystroke yet — the first one opens
-  // the undo step, and Escape has nothing to undo before it.
+  // the undo step, and a session that typed nothing commits nothing.
   const edited = useRef(false);
 
   // Drag-to-move: pointerdown on an unlocked layer arms a two-axis drag;
@@ -407,9 +405,8 @@ export const PreviewCompare = forwardRef<
   useEffect(() => { if (!canvasRender) setEditing(null); }, [canvasRender]);
 
   // Report the open session so App can skip the layer from the render for
-  // its duration, and COMMIT the one that just ended if it changed anything
-  // (Escape clears `edited`, so a cancel commits nothing). One effect covers
-  // every open/close path.
+  // its duration, and COMMIT the one that just ended if it changed anything.
+  // One effect covers every open/close path.
   const openSession = useRef<string | null>(null);
   useEffect(() => {
     const ended = openSession.current;
@@ -655,11 +652,7 @@ export const PreviewCompare = forwardRef<
           onEditText(editing, lines, !edited.current);
           edited.current = true;
         };
-        const close = (cancel: boolean) => {
-          if (cancel && edited.current) onEditCancel();
-          if (cancel) edited.current = false;
-          setEditing(null);
-        };
+        const close = () => setEditing(null);
         // A layer with choices gets the plain box, as the sidebar's picker
         // field is one plain line (TextEditor's PlainLineField rule).
         if (!layer.input && !layer.choices?.length) {
