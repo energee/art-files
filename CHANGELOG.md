@@ -34,6 +34,9 @@ that section to the new version (see .agents/release-steward.md).
 - **PDF export no longer waits for the preview.** Export PDF is available as soon as a label opens; the "(rendering…)" note is gone.
 - **`⌘E` on an invalid label shows what's wrong.** While export is blocked, `⌘E` and `⇧⌘E` select the first invalid layer, as clicking the header's reason does, instead of doing nothing.
 
+### Fixed
+- **Menu bar commands work after switching tabs.** In 0.1.109, File → Export, Settings… and the other menu bar commands could do nothing once more than one tab was open, while their keyboard shortcuts (`⌘E`, `⇧⌘E`) still worked: a background tab's menu could finish installing last and take the clicks. The menu now installs one tab at a time, so clicks always reach the tab you're looking at.
+
 ### Removed
 - **The per-layer "Lengths in" mm / pt toggle and the status bar's "8 × 5 in" size readout.** The single unit above replaces both.
 - **The image Scale field.** It multiplied the drawn size behind Width and Height's back, so a typed Width was not the drawn width. Width and Height are now the drawn size. Labels and masters saved with a Scale open with it folded into their width and height and print exactly as before; save them to keep it that way. One caveat: where a label changed an image's size or Scale and its master or variant also had a Scale other than 1, the label's own change no longer picks up that master Scale; check that image's Width and Height.
