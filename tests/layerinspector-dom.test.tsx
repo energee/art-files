@@ -84,18 +84,57 @@ const click = (el: Element) =>
   act(() => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 
 describe("LayerInspector header", () => {
-  it("shows the layer's name and renames through onChange({ name })", () => {
+  // The name box commits like the Layers row's rename: Enter or leaving the
+  // box writes it once (one undo step), Escape puts the old name back.
+  const keydown = (el: Element, key: string) =>
+    act(() => { el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })); });
+  const blur = (el: Element) =>
+    act(() => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+
+  it("shows the layer's name and renames once, on Enter, trimmed", () => {
     const { onChange } = render(text());
     const name = $("#name-name") as HTMLInputElement;
     expect(name.value).toBe("Name");
-    type(name, "Beer name");
+    type(name, "Beer");
+    type(name, "Beer name ");
+    expect(onChange).not.toHaveBeenCalled();
+    keydown(name, "Enter");
+    expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith({ name: "Beer name" });
   });
 
-  it("never commits an empty name", () => {
+  it("renames on blur, and not at all when the name is unchanged", () => {
     const { onChange } = render(text());
-    type($("#name-name")!, "");
+    const name = $("#name-name") as HTMLInputElement;
+    type(name, "Title");
+    blur(name);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({ name: "Title" });
+    const again = render(text());
+    blur($("#name-name")!);
+    keydown($("#name-name")!, "Enter");
+    expect(again.onChange).not.toHaveBeenCalled();
+  });
+
+  it("Escape restores the previous name and commits nothing", () => {
+    const { onChange } = render(text());
+    const name = $("#name-name") as HTMLInputElement;
+    type(name, "Oops");
+    keydown(name, "Escape");
+    expect(name.value).toBe("Name");
+    blur(name);
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("never commits an empty name; leaving the box restores it", () => {
+    const { onChange } = render(text());
+    const name = $("#name-name") as HTMLInputElement;
+    type(name, "  ");
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    keydown(name, "Enter");
+    blur(name);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(name.value).toBe("Name");
   });
 
   // Power and lock are header icon toggles (the row's icons), not rows.
@@ -166,29 +205,18 @@ describe("LayerInspector header", () => {
       .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply.");
   });
 
-  // #12: the toggle is app-wide and covers lengths only; fixed-unit fields say why.
-  it("labels the unit toggle as shared lengths, and titles the fixed-unit addons", () => {
-    render(text({ style: { ...STYLE, stroke: "#000000" } }), { unit: "mm", onUnitChange: vi.fn() });
-    expect(container.textContent).toContain("Lengths in");
-    // Every field that takes props.unit is listed, so the title does not
-    // under-promise (binding gap, barcode module width and QR size convert too).
-    expect(byLabel("Lengths in")!.getAttribute("title"))
-      .toBe("Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size");
+  // One app-wide unit (rulers, View → Units) converts the length fields; the
+  // inspector spends no row on it. Fixed-unit fields say why they don't follow.
+  it("has no Lengths in row, and titles the fixed-unit addons", () => {
+    render(text({ style: { ...STYLE, stroke: "#000000" } }), { unit: "mm" });
+    expect(byLabel("Lengths in")).toBeNull();
+    expect(container.textContent).not.toContain("Lengths in");
     const addonTitle = (id: string) =>
       $(`#${id}`)!.closest("[data-slot=input-group]")!.querySelector("[title]")?.getAttribute("title");
     expect(addonTitle("name-size")).toBe("Type size is always points");
     expect(addonTitle("name-tracking")).toBe("Letter spacing is always points");
     expect(addonTitle("name-stroke-width")).toBe("Stroke width is pixels at 600 DPI");
-  });
-
-  // Page art has no length fields, so the toggle would convert nothing.
-  it("hides the unit toggle on page art", () => {
-    render(image({ id: "background", name: "Background", role: "background", fit: "cover" }),
-      { unit: "mm", onUnitChange: vi.fn() });
-    expect(byLabel("Lengths in")).toBeNull();
-    expect(container.textContent).not.toContain("Lengths in");
-    render(image({ id: "mask", name: "Mask", role: "mask", fit: "cover" }),
-      { unit: "mm", onUnitChange: vi.fn() });
+    render(image({ id: "background", name: "Background", role: "background", fit: "cover" }), { unit: "mm" });
     expect(byLabel("Lengths in")).toBeNull();
   });
 
@@ -346,11 +374,14 @@ describe("LayerInspector geometry follows the kind", () => {
     expect(onChange).toHaveBeenLastCalledWith({ width: undefined });
   });
 
-  it("image: width, height, scale and tint; no text fields", () => {
+  // No Scale: Width and Height are the drawn size (an old file's scale is
+  // folded into them when it is read).
+  it("image: width, height and tint; no scale, no text fields", () => {
     const { onChange } = render(image(), { rasterArt: true });
     expect($("#logo-w")).not.toBeNull();
     expect($("#logo-h")).not.toBeNull();
-    expect($("#logo-scale")).not.toBeNull();
+    expect($("#logo-scale")).toBeNull();
+    expect(container.textContent).not.toContain("Scale");
     expect(byLabel("Tint raster")).not.toBeNull();
     expect($("#logo-size")).toBeNull();
     type($("#logo-w")!, "40");
@@ -701,8 +732,7 @@ it("displays imported size precision cleanly without changing the stored layer",
 });
 
 it("converts dimensional edits from mm to points while keeping typography in points", () => {
-  const onUnitChange = vi.fn();
-  const { onChange } = render(text({ x: 72, y: -72, width: 144, size: 15.83 }), { unit: "mm", onUnitChange });
+  const { onChange } = render(text({ x: 72, y: -72, width: 144, size: 15.83 }), { unit: "mm" });
   expect(($("#name-x") as HTMLInputElement).value).toBe("25.4");
   expect(($("#name-y") as HTMLInputElement).value).toBe("-25.4");
   expect(($("#name-width") as HTMLInputElement).value).toBe("50.8");
@@ -715,11 +745,33 @@ it("converts dimensional edits from mm to points while keeping typography in poi
   type($("#name-width")!, "");
   expect(onChange).toHaveBeenLastCalledWith({ width: undefined });
   vi.mocked(onChange).mockClear();
-  click(byLabel("Points")!);
-  expect(onUnitChange).toHaveBeenLastCalledWith("pt");
-  render(text({ x: 72 }), { unit: "pt", onChange, onUnitChange });
+  render(text({ x: 72 }), { unit: "pt", onChange });
   expect(($("#name-x") as HTMLInputElement).value).toBe("72");
   expect(onChange).not.toHaveBeenCalled();
+});
+
+// The same conversion in inches and in output pixels (600 DPI by default),
+// which the rulers and the drag readout already spoke.
+it("converts lengths in inches and pixels, keeping the model in points", () => {
+  const { onChange } = render(text({ x: 72, width: 144, size: 15.83 }), { unit: "in" });
+  expect(($("#name-x") as HTMLInputElement).value).toBe("1");
+  expect(($("#name-width") as HTMLInputElement).value).toBe("2");
+  expect(($("#name-size") as HTMLInputElement).value).toBe("15.83");
+  const addon = (id: string) =>
+    $(`#${id}`)!.closest("[data-slot=input-group]")!.querySelector("[data-slot=input-group-addon]")!.textContent;
+  expect(addon("name-x")).toBe("in");
+  expect(addon("name-size")).toBe("pt");
+  type($("#name-x")!, "0.5");
+  expect(onChange).toHaveBeenLastCalledWith({ x: 36 });
+  act(() => { $("#name-x")!.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+  // 1pt needs four decimals of an inch to store back as 1pt.
+  render(text({ x: 1 }), { unit: "in", onChange });
+  expect(($("#name-x") as HTMLInputElement).value).toBe("0.0139");
+  render(qr({ size: 72 }), { unit: "px", onChange });
+  expect(($("#qr-size") as HTMLInputElement).value).toBe("600");
+  expect(addon("qr-size")).toBe("px");
+  type($("#qr-size")!, "300");
+  expect(onChange).toHaveBeenLastCalledWith({ size: 36 });
 });
 
 // #131: a millimetre value is stored at the model's 0.01pt, and that stored

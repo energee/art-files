@@ -28,8 +28,9 @@ import {
 import { labelFontCss } from "@/fonts";
 import { modsOf, type SelectMods } from "@/selection";
 import { errMsg } from "@/lib/utils";
+import { lengthLabel, type LengthUnit } from "@/rulers";
 import {
-  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, inches, pageBox,
+  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, pageBox,
   SEL_PAD,
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
@@ -149,11 +150,13 @@ export const PreviewCompare = forwardRef<
     bleedIn: number;
     /** A failed frame, for App's error strip; "" on the next good frame. */
     onRenderError?: (message: string) => void;
+    /** The app's length unit (rulers.ts), which the drag/resize readout speaks. */
+    unit: LengthUnit;
   }
 >(function PreviewCompare(
   {
     canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditCommit, onEditUppercase, onDrag,
-    onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
+    onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError, unit,
   },
   ref,
 ) {
@@ -560,8 +563,8 @@ export const PreviewCompare = forwardRef<
       {readout && boxesById.get(readout.id) && (() => {
         const b = boxesById.get(readout.id)!;
         const rows = readout.moved
-          ? [`X ${inches(readout.moved.dx)}`, `Y ${inches(readout.moved.dy)}`]
-          : [`W ${inches(b.w)}`, `H ${inches(b.h)}`];
+          ? [`X ${lengthLabel(readout.moved.dx, unit)}`, `Y ${lengthLabel(readout.moved.dy, unit)}`]
+          : [`W ${lengthLabel(b.w, unit)}`, `H ${lengthLabel(b.h, unit)}`];
         return (
           <div
             className="pointer-events-none absolute"

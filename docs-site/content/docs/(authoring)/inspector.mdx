@@ -7,11 +7,13 @@ Pick a layer in the list or on the preview and the right-hand inspector opens. T
 
 With several layers selected, the inspector edits only the last one you picked and says so ("Editing Brand only (3 selected)"). Drag, reorder and Delete still act on the whole selection.
 
-The mm / pt toggle (**Lengths in**, under the header) is shared by every layer and is display only. Under the hood it's still PDF points. It converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size. Type size and letter spacing stay in points, stroke width in pixels and character height in millimetres; hover a field's unit to see why.
+Lengths show in the app's one unit: inches, millimetres, points or pixels, picked in the ruler corner or under View → **Units** (see [Preview](/docs/preview#rulers-and-guides)). It is display only; under the hood it's still PDF points. It converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size. Type size and letter spacing stay in points (the typographic unit), stroke width in pixels at 600 DPI (the unit it is saved in, whatever the export resolution) and character height in millimetres; hover a field's unit to see why.
 
 ## Header
 
-Kind icon, inline rename, then **power** and **lock** icon buttons, the same icons as the list row, so they work with the Layers sidebar hidden (`⌘B`). Page art (texture and mask) has no lock: it can't be dragged anyway.
+Kind icon, the layer's name, then **power** and **lock** icon buttons, the same icons as the list row, so they work with the Layers sidebar hidden (`⌘B`). Page art (texture and mask) has no lock: it can't be dragged anyway.
+
+The name box renames the way a Layers row does: type, then press Enter or click away to rename (one undo step). Esc puts the old name back. An empty name is never saved; leaving the box empty restores the name.
 
 A layer that only a variant adds reads **Off** while that variant is off for this label, with a note naming the variant. Edits to it don't apply until it is on; turning it on switches the variant on too.
 
@@ -42,7 +44,7 @@ Position is measured from the layer's guides and anchors. **Bind to layer…** t
 
 Text and codes can rotate **90°** (reads bottom to top). Images can't.
 
-Image layers also have width, optional height, contain/cover fit, scale, and **Tint raster** for colouring a bitmap with the fill (shown only for PNG/JPEG art; an SVG already takes the fill). Page art (texture and mask) always covers the page, so it has no Position fields or mm / pt toggle. A position override left on it (X, Y, a guide or a binding) shows a reset badge (**Unused position override**) so you can clear it.
+Image layers also have width, optional height, contain/cover fit, and **Tint raster** for colouring a bitmap with the fill (shown only for PNG/JPEG art; an SVG already takes the fill). Width and height are the drawn size. (Files saved before Scale was removed open with it folded into width and height, so they draw exactly as before.) Page art (texture and mask) always covers the page, so it has no Position or size fields. A position override left on it (X, Y, a guide or a binding) shows a reset badge (**Unused position override**) so you can clear it.
 
 Barcodes: UPC-A, EAN-13, or Code 128. Module width, bar height, show digits. You'll see a warning when the module is too skinny for curved metal.
 

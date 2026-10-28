@@ -262,13 +262,6 @@ export function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: bool
         onChange={(h) => set({ h })}
       />
       {fit}
-      <Row badge={badge(["scale"], "Scale")}>
-        <ScrubField
-          id={`${id}-scale`} label="Scale" unit="×" value={layer.scale ?? 1}
-          min={0.1} max={4} step={0.05} dragStep={0.05}
-          onChange={(scale) => set({ scale })}
-        />
-      </Row>
       {/* Raster only: an SVG already takes the fill, so the switch would do
           nothing there. */}
       {props.rasterArt && (

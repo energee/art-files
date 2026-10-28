@@ -242,11 +242,11 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
   const entry = assets.custom?.[l.asset];
   if (!entry) return null;
   // The envelope the art contain-fits into: w x h (h absent = the asset's
-  // aspect at w), times the scale knob. The envelope is the layer's box; the
-  // fitted art sits at its top, on the anchor's side.
-  const scale = l.scale ?? 1;
-  const maxW = l.w * scale;
-  const maxH = (l.h ?? l.w / entry.aspect) * scale;
+  // aspect at w). The envelope is the layer's box; the fitted art sits at its
+  // top, on the anchor's side. (An old file's scale was folded into w/h when
+  // it was read: model/layers.ts foldScale.)
+  const maxW = l.w;
+  const maxH = l.h ?? l.w / entry.aspect;
   const placeX = (box: Box, w: number) => box.x + anchorFraction(l.anchor) * (box.w - w);
   const size = { w: maxW, h: maxH };
   if (entry.art?.kind === "svg") {

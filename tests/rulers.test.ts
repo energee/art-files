@@ -5,8 +5,8 @@ import {
   setOutputDpi, WARNING,
 } from "./legacy/layout";
 import {
-  DEFAULT_MARGIN_PT, layoutGuides, majorStep, pointToScreen,
-  pointToUnit, rulerTicks, screenToPoint, sizeLabel, unitToPoint, withCornerClear,
+  DEFAULT_MARGIN_PT, layoutGuides, lengthLabel, majorStep, pointToScreen,
+  pointToUnit, rulerTicks, screenToPoint, unitToPoint, withCornerClear,
 } from "../src/rulers";
 
 describe("preview rulers", () => {
@@ -76,27 +76,37 @@ describe("preview rulers", () => {
       .toEqual([expect.closeTo(201, 8), 2799]);
   });
 
-  it("states the artboard size in each unit without trailing zeros", () => {
-    expect(sizeLabel(PAGE.w, PAGE.h, "in")).toBe("8.127 × 5.127 in");
-    expect(sizeLabel(PAGE.w, PAGE.h, "pt")).toBe("585.12 × 369.12 pt");
-    // The toolbar's px figure IS the exported PSD's pixel size, because
-    // PSD_DOC is this same page measured at the same DPI.
-    expect(sizeLabel(PAGE.w, PAGE.h, "px")).toBe(`${PSD_DOC.w} × ${PSD_DOC.h} px`);
+  it("measures in millimetres too: 25.4 to the inch", () => {
+    expect(pointToUnit(ART.x + ART.w, ART.x, "mm")).toBeCloseTo(203.2, 10);
+    expect(pointToUnit(ART.y + ART.h, ART.y, "mm")).toBeCloseTo(127, 10);
+    expect(unitToPoint(25.4, ART.x, "mm")).toBeCloseTo(ART.x + 72, 10);
+    // A readable mm interval: 20mm at the fitted page, 10mm zoomed in.
+    expect(majorStep(585.12, PAGE.w, "mm")).toBe(20);
+    expect(majorStep(1462.8, PAGE.w, "mm")).toBe(10);
+    const ticks = rulerTicks({
+      visibleStart: 0, visibleEnd: 600, frameStart: 0, frameSize: PAGE.w,
+      pageSize: PAGE.w, origin: ART.x, unit: "mm",
+    });
+    expect(ticks.filter((tick) => tick.major).slice(0, 3).map((tick) => tick.label)).toEqual(["0", "20", "40"]);
   });
 
-  it("states the trim as the round size the label is ordered at", () => {
-    expect(sizeLabel(ART.w, ART.h, "in")).toBe("8 × 5 in");
-    expect(sizeLabel(ART.w, ART.h, "px")).toBe("4800 × 3000 px");
+  // The drag/resize badge on the canvas speaks the chosen unit.
+  it("labels a length in each unit for the canvas readout", () => {
+    expect(lengthLabel(90, "in")).toBe("1.250 in");
+    expect(lengthLabel(72, "mm")).toBe("25.40 mm");
+    expect(lengthLabel(12.345, "pt")).toBe("12.35 pt");
+    expect(lengthLabel(72, "px")).toBe("600 px");
   });
 
   it("follows the output DPI in px, and leaves saved ink weights alone", () => {
     try {
       setOutputDpi(300);
-      // Half the pixels for the same physical label...
-      expect(sizeLabel(PAGE.w, PAGE.h, "px")).toBe(`${PSD_DOC.w} × ${PSD_DOC.h} px`);
+      // Half the pixels for the same physical label (PSD_DOC is this same page
+      // measured at the same DPI)...
+      expect(Math.round(pointToUnit(PAGE.w, 0, "px"))).toBe(PSD_DOC.w);
       expect(PSD_DOC.w).toBe(2438);
       // ...while inches and points, being physical, do not move.
-      expect(sizeLabel(PAGE.w, PAGE.h, "in")).toBe("8.127 × 5.127 in");
+      expect(pointToUnit(PAGE.w, 0, "in")).toBeCloseTo(8.127, 3);
       // The whole reason DESIGN_DPI is separate: a keyline saved as 15px is
       // 1.8pt of ink at any export resolution. If this ever tracks the knob,
       // every label ever saved silently changes stroke weight.

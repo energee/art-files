@@ -196,11 +196,11 @@ describe("planLayers image", () => {
     expect(item.paths.length).toBeGreaterThan(0);
   });
 
-  it("contain-fits a raster asset into w x h, scaled, carrying the asset key", () => {
+  it("contain-fits a raster asset into w x h, carrying the asset key", () => {
     const custom = { art1: { aspect: 2 } };
     const [full] = planLayers([image({ id: "i", asset: "art1", w: 70, h: 44, x: 10, y: 20 })], m, { ...assets, custom }) as PlacedImage[];
     expect(full).toMatchObject({ kind: "image", id: "i", asset: "art1", x: 10, y: 20, w: 70, h: 35 });
-    const [half] = planLayers([image({ id: "i", asset: "art1", w: 70, h: 44, scale: 0.5, x: 100, y: 20, anchor: "center" })], m, { ...assets, custom }) as PlacedImage[];
+    const [half] = planLayers([image({ id: "i", asset: "art1", w: 35, h: 22, x: 100, y: 20, anchor: "center" })], m, { ...assets, custom }) as PlacedImage[];
     expect(half).toMatchObject({ x: 100 - 17.5, w: 35, h: 17.5 });
     // No h: the box follows the asset's aspect at w.
     const [free] = planLayers([image({ id: "i", asset: "art1", w: 100, x: 0, y: 0 })], m, { ...assets, custom }) as PlacedImage[];

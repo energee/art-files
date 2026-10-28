@@ -267,7 +267,7 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
   await mount();
   await paletteRows();
   const groups = paletteGroups();
-  expect(Object.keys(groups)).toEqual(["File", "Export", "Edit", "Layer", "View", "Appearance", "Other"]);
+  expect(Object.keys(groups)).toEqual(["File", "Export", "Edit", "Layer", "View", "Units", "Appearance", "Other"]);
   expect(groups.File.map((r) => r.replace(/(⌘|Ctrl).*$/, ""))).toEqual([
     "New Tab", "Open Label…", "Close Tab", "Save Label", "Save Label As…",
     "Open Master…", "Save Master…", "Save Master As…",
@@ -281,12 +281,13 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
   expect(groups.View.slice(0, 9).map((r) => r.replace(/(⌘|Ctrl\+)?[0-9A-Z]$/, ""))).toEqual([
     "Label", "Mask", "Rendered", "Can", "One Can", "Four-Pack", "Layers", "Rulers", "Guides",
   ]);
+  expect(groups.Units).toEqual(["Inches", "Millimetres", "Points", "Pixels"]);
   expect(groups.Appearance).toEqual(["System", "Light", "Dark"]);
   expect(groups.Other).toEqual(["New Variant"]);
   // State is a leading check, not a Show/Hide verb: the defaults are on.
   const on = [...document.querySelectorAll("[data-palette-check=on]")]
     .map((el) => el.closest("[data-slot=command-item]")?.textContent?.replace(/(Ctrl\+)?[0-9A-Z]$/, ""));
-  expect(on).toEqual(["Label", "One Can", "Layers", "Rulers", "Guides", "System"]);
+  expect(on).toEqual(["Label", "One Can", "Layers", "Rulers", "Guides", "Inches", "System"]);
   // A group with check rows reserves the check's space on its plain rows
   // too, so every title in it lines up; a group without them reserves none.
   expect(paletteRow("Zoom In").firstElementChild?.matches("svg.invisible[aria-hidden=true]")).toBe(true);

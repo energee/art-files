@@ -55,7 +55,7 @@ it("the mounted preview paints only the art plate until the divider reveals the 
       ref, canvasRender: source, layers: [layer], editLayerOf: (l) => l, selected: [],
       onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCommit: vi.fn(),
       onDrag: () => ({ x: null, y: null, dx: 0, dy: 0 }), onDragCancel: vi.fn(), onResize: vi.fn(),
-      onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN,
+      onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN, unit: "in",
     }));
   });
   await frame();

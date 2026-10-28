@@ -7,8 +7,8 @@
 // enabled === false dropped. Pure and synchronous. Relative `y` bindings
 // are NOT resolved here: that needs measured heights and is the renderer's
 // step. The layers come back in draw order, ready to measure and place.
-import type { Layer, LayerValue, Master, TextLayer, TextLine } from "./layers";
-import { uppercaseOf } from "./layers";
+import type { ImageLayer, LabelFile, Layer, LayerValue, Master, TextLayer, TextLine } from "./layers";
+import { foldScale, uppercaseOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { validateLayerInput } from "./fields";
 import { expandFormat, fieldRefs } from "./format";
@@ -181,6 +181,26 @@ export function resolveLayers(
     if (!r.ok) errors[l.id] = r.error!;
   }
   return { layers: opts.keepDisabled ? layers : layers.filter((l) => l.enabled !== false), warnings, errors };
+}
+
+/** A label's overrides with any old image `scale` folded into w/h (see
+ *  layers.ts foldScale; parseMaster has already folded the master's own).
+ *  Each override folds against the layer it lands on, resolved from the
+ *  master, the label's variants and its values. Call once, when a label
+ *  opens on its master. The resolved base is the FOLDED master, so a label
+ *  that set a size or a scale over a master or variant scale other than 1
+ *  cannot be told apart from one that did not; it takes the folded size. */
+export function foldLabelScale(label: LabelFile, master: Master): LabelFile {
+  const scaled = Object.entries(label.overrides ?? {}).filter(([, p]) => "scale" in p);
+  if (!scaled.length) return label;
+  const { layers } = resolveLayers(master, label.enabledVariants, label.values, undefined, { keepDisabled: true });
+  const overrides = structuredClone(label.overrides!);
+  for (const [id] of scaled) {
+    const p = overrides[id] as DeepPartial<Layer> & { scale?: unknown };
+    const base = layers.find((l) => l.id === id);
+    if ((base ?? p).kind === "image") foldScale(p, base as ImageLayer | undefined);
+  }
+  return { ...label, overrides };
 }
 
 /** A layer's content, in the shape a .label stores it. */

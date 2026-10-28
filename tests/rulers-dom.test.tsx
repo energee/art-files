@@ -286,3 +286,22 @@ it("relocks the margin inset each time the settings reopen", async () => {
   await toggle(); // reopen
   expect(document.querySelector<HTMLInputElement>("#guide-margin")!.disabled).toBe(true);
 });
+
+// The corner's picker is the app's one unit choice: four units, Millimetres
+// among them, and the margin inset reads in whichever is chosen.
+it("offers inches, millimetres, points and pixels, and reads the margin in the chosen unit", async () => {
+  const props = renderRulers({ unit: "mm" });
+  const corner = container.querySelector<HTMLButtonElement>('[aria-label="Ruler settings, current unit mm"]')!;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      corner.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    corner.click();
+  });
+  const units = [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Units"] button')];
+  expect(units.map((b) => b.textContent)).toEqual(["Inches", "Millimetres", "Points", "Pixels"]);
+  expect(units[1].getAttribute("aria-pressed")).toBe("true");
+  // 24.12pt is 8.509mm.
+  expect(document.querySelector<HTMLInputElement>("#guide-margin")!.value).toBe("8.5");
+  await act(async () => { units[3].click(); });
+  expect(props.onUnitChange).toHaveBeenLastCalledWith("px");
+});

@@ -8,8 +8,8 @@ import type {
   CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
 import {
-  Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  Grid2x2, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
+  ALargeSmall, Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
+  Grid2x2, Grid3x3, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
   Redo2, Ruler, Settings, Sparkles, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
   ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
@@ -64,6 +64,8 @@ const SYMBOL_GLYPH = {
   "sun.max": Sun,
   "moon": Moon,
   "paintpalette": Palette,
+  "textformat.size": ALargeSmall,
+  "square.grid.3x3": Grid3x3,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
@@ -170,6 +172,16 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "action", id: "layers", text: "Layers", check: true, keywords: ["Show sidebar", "Hide sidebar"], symbol: "sidebar.left" },
       { kind: "action", id: "rulers", text: "Rulers", check: true, keywords: ["Show rulers", "Hide rulers"], symbol: "ruler" },
       { kind: "action", id: "guides", text: "Guides", check: true, keywords: ["Show guides", "Hide guides"], symbol: "rectangle.split.2x1" },
+      // The app's one length unit, as the ruler corner's picker sets it; here
+      // so it stays reachable with the rulers hidden. One is always checked.
+      {
+        kind: "submenu", id: "units-menu", text: "Units", symbol: "ruler", items: [
+          { kind: "action", id: "unit-in", text: "Inches", check: true, keywords: ["Units"], symbol: "ruler" },
+          { kind: "action", id: "unit-mm", text: "Millimetres", check: true, keywords: ["Units", "Millimeters"], symbol: "ruler" },
+          { kind: "action", id: "unit-pt", text: "Points", check: true, keywords: ["Units"], symbol: "textformat.size" },
+          { kind: "action", id: "unit-px", text: "Pixels", check: true, keywords: ["Units"], symbol: "square.grid.3x3" },
+        ],
+      },
       { kind: "separator", id: "view-zoom" },
       { kind: "action", id: "zoom-in", text: "Zoom In", symbol: "plus.magnifyingglass" },
       { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
