@@ -25,28 +25,30 @@ You can fill beers all day without drifting the brand. File → Save Master… i
 
 Top of the left sidebar. It answers "which version am I editing?"
 
-The menu is split under two headings. **Current master** is the one this label uses, with a check mark on the version you're editing. **Other masters** lists the rest of the library. Under each master's name is its file name (with its folder, when two files share a name) and the day it was last opened, saved or picked as the master on this computer. Opening a `.label` that uses it doesn't change that date, and neither does an Open Master you cancel. Two masters with the same name can be told apart this way. The shipped master reads **Built in** until you open or save it from a file. A master this computer has no file path for, such as one opened in the browser, reads **No file**.
+The menu is split under two headings. **Current master** is the one this label uses, with a check mark on the version you're editing. **Other masters** lists the rest of the library. Under each master's name is its file name (with its folder, when two files share a name) and the day it was last opened, saved or picked as the master on this computer. Opening a `.label` that uses it doesn't change that date. Two masters with the same name can be told apart this way. The shipped master reads **Built in** until you open or save it from a file. A master this computer has no file path for, such as one opened in the browser, reads **No file**.
 
 - The **current master** and its **variants as versions**. Switch a version and a later Save Master / promotion lands in that variant, not the base master.
-- **Other masters** in the library. Picking one is a rebind. You get a preview of what would move to the bench, then Continue. The preview's counts follow edits you make while it is open. If nothing would move to the bench, the switch happens at once (⌘Z undoes it). The **×** at the right of a remembered master's row, or the Delete key on the highlighted row, takes it off the library on this computer without switching to it. The `.master` file stays where it is, and a note under the picker says so, with **Undo** to put the master back. If you pick a remembered master whose file has been deleted and this computer has no saved copy of it, the picker says it could not open it and drops it from the library.
+- **Other masters** in the library. Picking one is a rebind, and it happens at once. Filled fields or variants the new master can't show move to the bench, and the header note names them with **⌘Z to restore**: one ⌘Z puts the label back on its old master with everything it had. Art the switch filled into an empty texture, mask or image slot stays after ⌘Z; clear it by hand if you don't want it. The **×** at the right of a remembered master's row, or the Delete key on the highlighted row, takes it off the library on this computer without switching to it. The `.master` file stays where it is, and a note under the picker says so, with **Undo** to put the master back. If you pick a remembered master whose file has been deleted and this computer has no saved copy of it, the picker says it could not open it and drops it from the library.
 - **New Variant** at the foot of the menu (same as New Variant in the `⌘K` palette).
-- **Save Master…** under the picker (**Save Variant…** while a variant is the version, and the File menu item reads the same). It opens the same review as File → Save Master…, and appears only while the master itself has unsaved changes (for example a layer added, removed or reordered, or the margin). Moving, restyling or filling a layer for this beer is a label override that `⌘S` saves, so it does not bring the button up. To promote overrides into the master, use File → Save Master…, which stays enabled while the label has any.
+- **Save Master…** under the picker (**Save Variant…** while a variant is the version, and the File menu item reads the same). It does what File → Save Master… does, and appears only while the master itself has unsaved changes (for example a layer added, removed or reordered, or the margin). Moving, restyling or filling a layer for this beer is a label override that `⌘S` saves, so it does not bring the button up. To promote overrides into the master, use File → Save Master…, which stays enabled while the label has any.
 
 The master picker both shows the chosen version on this label and selects the destination for Save Master promotions.
 
 ## Save Master
 
-File → **Save Master…** (or **Save Master As…**) puts every template change in front of you:
+File → **Save Master…** (or **Save Master As…**) writes the template. When this label has nothing to promote, it writes straight away (Save Master As goes straight to the save dialog), and the header says **Saved lolev.master — 3 changes**.
 
-- Structural rows (added, removed, reordered, renamed). Moving one layer lists that layer alone, not every layer it passed
-- Fill-contract edits
-- This label's overrides, each with a tick, so you can **promote** them into the master (or the version the picker names)
+When the label has overrides or filled values that could go into the master, a review opens first:
+
+- Structural rows (added, removed, reordered, renamed), as a plain list: they are already in the master. Moving one layer lists that layer alone, not every layer it passed
+- Fill-contract edits, listed the same way
+- This label's overrides and values, each with a tick, so you can **promote** them into the master (or the version the picker names)
 
 One tick can promote everything. Confirm, and the `.master` file writes. Save Master As mints a new master id, rebinds this document onto it, and writes the new file.
 
 Save Master writes back to the file this master was opened from or last saved to. Undo back past Open Master, a library pick, or Save Master As, and Save Master asks where to save instead of reusing the other master's file.
 
-File → **Open Master…** loads a template from disk and adds it to the library. Switching this label to it works like picking it in the master picker: if the switch would hide filled fields or variants, the picker shows the same preview, opening the sidebar if it was closed. **Continue** switches; **Cancel** leaves the label on its master, and the opened master stays in the library for later. Save Master writes to the opened file only once you have switched to it. The desktop app remembers the real path, so a restart finds it. The browser keeps copies of the 20 masters you most recently opened, saved or used, so a reload does not sneak you back to shipped Lolev. A master you haven't touched in 20 others is dropped from the browser; open its file again to bring it back.
+File → **Open Master…** loads a template from disk and adds it to the library. It also switches this label to it at once, like picking it in the master picker, with the same note and the same ⌘Z. Save Master then writes to the opened file. The desktop app remembers the real path, so a restart finds it. The browser keeps copies of the 20 masters you most recently opened, saved or used, so a reload does not sneak you back to shipped Lolev. A master you haven't touched in 20 others is dropped from the browser; open its file again to bring it back.
 
 Opening a label reads that master file. If the file was saved again over the same path (Save Master As writes a new id), the label follows the file. It does not reopen an older copy remembered from the id the label still names. Saving the label records the new id.
 

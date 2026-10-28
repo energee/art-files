@@ -136,6 +136,28 @@ async function reorderName() {
   });
 }
 
+// With no override or value to promote the review has nothing to decide:
+// Save Master writes at once and the header says what went in.
+it("Save Master with nothing to promote writes at once and says how many changes", async () => {
+  const { pick } = picker();
+  await mount();
+  await reorderName();
+  await act(async () => { await menu.actions.find((c) => c.id === "master-save")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelectorAll("[data-row]")).toHaveLength(0);
+  expect(pick).toHaveBeenCalledOnce();
+  expect(document.body.textContent).toMatch(/Saved \S+ — 1 change(?!s)/);
+});
+
+it("Save Master As with nothing to promote goes straight to the save dialog", async () => {
+  const { pick } = picker();
+  await mount();
+  await act(async () => { await menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(pick).toHaveBeenCalledOnce();
+  expect(document.body.textContent).toContain("Saved Beer.label");
+  expect(document.body.textContent).not.toMatch(/Saved \S+ —/);
+});
+
 it("Save Master keeps a promotion when the master is edited during the write", async () => {
   let finish!: () => void;
   picker(() => new Promise<void>((resolve) => { finish = resolve; }));
@@ -341,8 +363,7 @@ it("Open Master's benched-values note survives the master's texture loading (#11
   openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
     { texture: { name: "art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
   await run("master-open");
-  // Opening a master that hides a filled value previews the switch first.
-  await act(async () => (document.querySelector("#master-picker-continue") as HTMLButtonElement).click());
+  // Opening a master that hides a filled value switches at once.
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
   expect(document.body.textContent).toContain("1 value(s) benched: volume");
 });
@@ -358,31 +379,20 @@ async function openHidingMaster() {
   return handle;
 }
 
-it("Open Master previews a switch that hides values, and Cancel leaves the label on its master", async () => {
-  const other = await openHidingMaster();
-  const preview = document.querySelector("#master-picker-preview");
-  expect(preview?.textContent).toContain('Switching to "Other" hides 1 filled field');
-  // Nothing has switched yet.
-  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
-  const cancel = [...preview!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
-  await act(async () => cancel.click());
+// No confirm card: the switch is one undoable step, and the note says so.
+it("Open Master switches at once over hidden values, names them and ⌘Z, and undo restores them", async () => {
+  await openHidingMaster();
   expect(document.querySelector("#master-picker-preview")).toBeNull();
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(document.body.textContent).toMatch(/Switched to “Other” · 1 value\(s\) benched: volume · (⌘|Ctrl\+)Z to restore/);
+  expect(localStorage.getItem("labellab.lastMaster")).toBe("master-other");
+  expect(document.querySelector('[data-layer-id="volume"]')).toBeNull();
+  await run("undo");
   expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
-  // The opened master joined the library all the same, but not as the
-  // last-applied master a new untitled tab would start on…
-  expect(localStorage.getItem("labellab.master:master-other")).toContain("Other");
-  expect(localStorage.getItem("labellab.lastMaster")).not.toBe("master-other");
-  // …but Save Master was never bound to its file (#81).
-  const { pick } = picker();
-  await toggle("warning");
-  await run("master-save");
-  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
-  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
-  expect(other.createWritable).not.toHaveBeenCalled();
-  expect(pick).toHaveBeenCalledOnce();
+  expect(document.querySelector('[data-layer-id="volume"]')).not.toBeNull();
 });
 
-it("Open Master reopens a collapsed sidebar to show its preview", async () => {
+it("Open Master leaves a collapsed sidebar collapsed", async () => {
   const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
   await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
   await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
@@ -392,14 +402,11 @@ it("Open Master reopens a collapsed sidebar to show its preview", async () => {
   const base = lolevMaster();
   openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
   await run("master-open");
-  expect(sidebar()).toBe("expanded");
-  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
-  expect(document.activeElement?.textContent).toBe("Cancel");
+  expect(sidebar()).toBe("collapsed");
 });
 
-it("Open Master's Continue switches and binds Save Master to the opened file", async () => {
+it("Open Master over hidden values binds Save Master to the opened file", async () => {
   const other = await openHidingMaster();
-  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   await toggle("warning");
   await run("master-save");
@@ -408,38 +415,9 @@ it("Open Master's Continue switches and binds Save Master to the opened file", a
   expect(other.createWritable).toHaveBeenCalledOnce();
 });
 
-// A second Open Master while the first one's card is open: the card must
-// follow the label, never offer the first master's stale switch.
-it("a second Open Master that hides nothing closes the first one's card", async () => {
-  await openHidingMaster();
-  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
-  openMasterFile({ ...lolevMaster(), id: "master-same", name: "Same" });
-  await run("master-open");
-  expect(document.querySelector("#master-picker")?.textContent).toContain("Same");
-  expect(document.querySelector("#master-picker-preview")).toBeNull();
-});
-
-it("a second Open Master that hides values replaces the first one's card", async () => {
-  await openHidingMaster();
-  const base = lolevMaster();
-  openMasterFile({ ...base, id: "master-third", name: "Third", layers: base.layers.filter((l) => l.id !== "volume") });
-  await run("master-open");
-  expect(document.querySelector("#master-picker-preview")?.textContent).toContain('Switching to "Third"');
-  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 10)); });
-  expect(document.querySelector("#master-picker")?.textContent).toContain("Third");
-  expect(document.querySelector("#master-picker-preview")).toBeNull();
-});
-
-it("Cancel on Open Master's card hands focus back to the master picker", async () => {
-  await openHidingMaster();
-  await act(async () => (document.activeElement as HTMLButtonElement).click());
-  expect(document.querySelector("#master-picker-preview")).toBeNull();
-  expect(document.activeElement?.id).toBe("master-picker");
-});
-
-// Continue runs long after the open: it must adopt the master's art against
-// the label's slots as they are then, so art dropped meanwhile wins.
-it("Open Master's Continue keeps art dropped while its card was open", async () => {
+// The master's art only fills slots the label left empty, so art the label
+// already has wins over the opened master's texture.
+it("Open Master keeps art the label already has", async () => {
   class FakeBitmap { width = 10; height = 10; close() {} }
   vi.stubGlobal("ImageBitmap", FakeBitmap);
   const decoded: string[] = [];
@@ -449,56 +427,19 @@ it("Open Master's Continue keeps art dropped while its card was open", async () 
   const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
   await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
   await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-  const base = lolevMaster();
-  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
-    { texture: { name: "master-art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
-  await run("master-open");
-  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
   const art = new File(["ok"], "mine.png", { type: "image/png" });
   const e = new Event("drop", { bubbles: true, cancelable: true });
   Object.defineProperty(e, "dataTransfer", { value: { types: ["Files"], items: [{ kind: "file", type: art.type }], files: [art] } });
   Object.defineProperty(e, "clientX", { value: 10 });
   await act(async () => { document.body.dispatchEvent(e); await new Promise((r) => setTimeout(r, 10)); });
   expect(decoded).toEqual(["mine.png"]);
-  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 20)); });
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
+    { texture: { name: "master-art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
+  await run("master-open");
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(decoded).toEqual(["mine.png"]);
-});
-
-// Opening a .label replaces the whole document: the earlier Open Master's
-// switch is not this document's to make.
-it("opening a label into the tab withdraws a pending Open Master card", async () => {
-  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
-  const { props } = await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
-  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-  const base = lolevMaster();
-  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
-  await run("master-open");
-  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
-  await act(async () => {
-    root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 2, file: new File([label as unknown as BlobPart], "second.label") } }));
-    await new Promise((r) => setTimeout(r, 20));
-  });
-  expect(document.querySelector("#master-picker-preview")).toBeNull();
-  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
-});
-
-// A file with the current master's own id: Cancel must leave that id's
-// remembered copy and path alone, or a reload would resolve the label to
-// the file the operator declined.
-it("cancelling Open Master of the current master's id keeps its remembered copy", async () => {
-  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
-  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
-  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-  const before = localStorage.getItem("labellab.master:lolev");
-  const base = lolevMaster();
-  openMasterFile({ ...base, layers: base.layers.filter((l) => l.id !== "volume") });
-  await run("master-open");
-  const preview = document.querySelector("#master-picker-preview");
-  expect(preview?.textContent).toContain("hides 1 filled field");
-  const cancel = [...preview!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
-  await act(async () => cancel.click());
-  expect(localStorage.getItem("labellab.master:lolev")).toBe(before);
 });
 
 it("a promotion whose layer is deleted during the write doesn't cost the others", async () => {

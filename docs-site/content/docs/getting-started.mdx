@@ -33,7 +33,7 @@ npm run desktop:dev
 
 Double-click a `.label` and it opens in Label Lab, even if the app is already running: the window comes to the front, even from minimized. New tab, or it focuses the tab that already has that file. On Linux the association shows up once the AppImage is desktop-integrated. `Label_Lab.AppImage path/to/file.label` works either way.
 
-Published builds check the configured update feed after launch and when the window comes back. On macOS, **Label Lab → Check for Updates…** requests a check on demand. On Windows and Linux, use **Help → Check for Updates…**. Updates also appear in the status bar after an automatic check. Development builds do not receive automatic updates.
+Published builds check the configured update feed after launch and when the window comes back. On macOS, **Label Lab → Check for Updates…** requests a check on demand. On Windows and Linux, use **Help → Check for Updates…**. An update found by an automatic check appears in the status bar; when you're already up to date the status bar stays empty, and only a check you asked for says so. **Restart Now** (or **Install and Restart** on Windows) first walks any unsaved tabs the way quitting does, and Cancel there keeps Label Lab running. If an install fails, **Try again** installs the same update again. Development builds do not receive automatic updates.
 
 ## Your first document
 

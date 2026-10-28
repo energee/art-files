@@ -9,7 +9,10 @@ const agent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Windows")
 const { DesktopUpdater } = await import("../src/components/DesktopUpdater");
 agent.mockRestore();
 
-it("Windows rechecks dirty tabs after downloading and before its exiting installer (#292)", async () => {
+// The NSIS installer closes Label Lab, so the unsaved tabs are walked (the
+// shell's beforeRestart, as for a quit) after the download and before it
+// runs; Install and Restart is never greyed out (#292).
+it("Windows walks the unsaved tabs after downloading and before its exiting installer (#292)", async () => {
   let finish!: () => void;
   const update = {
     version: "0.2.0", currentVersion: "0.1.0", close: vi.fn(async () => {}),
@@ -20,26 +23,29 @@ it("Windows rechecks dirty tabs after downloading and before its exiting install
   const host = document.createElement("div"), bar = document.createElement("div");
   document.body.append(host, bar);
   const root = createRoot(host);
-  const render = (dirty: boolean, request: number) => root.render(createElement(DesktopUpdater, { dirty, checkRequest: request, statusHost: bar }));
+  const beforeRestart = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  const render = (request: number) => root.render(createElement(DesktopUpdater, { beforeRestart, checkRequest: request, statusHost: bar }));
   const installButton = () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Install and Restart")!;
   try {
-    await act(async () => render(true, 0));
-    await act(async () => render(true, 1));
-    expect(installButton().disabled).toBe(true);
-    await act(async () => render(false, 1));
+    await act(async () => render(0));
+    await act(async () => render(1));
+    expect(installButton().disabled).toBe(false);
     await act(async () => installButton().click());
     expect(update.download).toHaveBeenCalledOnce();
     expect(update.download).toHaveBeenCalledWith(expect.any(Function), { timeout: 900_000 });
-    await act(async () => render(true, 1));
+    expect(beforeRestart).not.toHaveBeenCalled();
     await act(async () => { finish(); });
+    // Cancelled walk: no installer, no relaunch; the update waits in the bar.
+    expect(beforeRestart).toHaveBeenCalledOnce();
     expect(update.install).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalledWith("relaunch_app");
-    expect(installButton().disabled).toBe(true);
-    // Once the tabs are saved, Install reuses the finished download rather
-    // than fetching (and holding) a second copy of the installer.
-    await act(async () => render(false, 1));
+    expect(bar.textContent).toContain("Update available");
+    // Install again reuses the finished download rather than fetching (and
+    // holding) a second copy of the installer.
+    await act(async () => (bar.querySelector("button") as HTMLButtonElement).click());
     await act(async () => installButton().click());
     expect(update.download).toHaveBeenCalledOnce();
+    expect(beforeRestart).toHaveBeenCalledTimes(2);
     expect(update.install).toHaveBeenCalledOnce();
   } finally {
     await act(async () => root.unmount()); host.remove(); bar.remove();
