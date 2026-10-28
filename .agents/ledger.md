@@ -697,3 +697,12 @@ no status, no attempts, no delta.
 - delta: one LengthUnit (in/mm/pt/px, rulers.ts) in App state, persisted in the existing `lolev-view` localStorage entry (read and write guarded); drives rulers, inspector length fields, drag/resize readout (lengthLabel) and margin inset; RulerUnitPicker gains Millimetres; View → Units submenu (four check rows, both menus and ⌘K) replaces the status-bar readout, which is deleted with sizeLabel and the inches() helper. Type size and letter spacing stay pt, stroke width stays px at 600 DPI (DESIGN_DPI, not the output-DPI px unit). Image `scale` removed from ImageLayer: parseMaster folds it into w/h for master layers and variant diffs (against the unfolded master), foldLabelScale folds label overrides on open (App openProject, generate-lib), converters fold v1/v2 collab scale. Known limit: a label override of size or scale over a master/variant scale ≠ 1 folds against the already-folded master. Inspector name box: draft, commit on Enter/blur (trimmed, non-empty, changed), Escape restores.
 - evidence: tests/image-scale-fold.test.ts pins the pre-change planLayers boxes for a master+label with scale on master layers, a variant diff, a variant-added layer, label overrides and the laurel; collab-variant-goldens (byte digests) unchanged.
 - release: binary-impacting; [Unreleased] Changed + Removed bullets queued, no version bump
+
+## 2026-10-28 new-application-icon
+- finding: user supplied replacement LabelLab.icns and label-lab-icon.svg.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ main (uncommitted working tree)
+- delta: replaced src-tauri/app-icon.svg with the supplied vector, regenerated existing platform icon variants with Tauri CLI, and installed the supplied macOS ICNS unchanged. Existing favicon and touch-icon links consume the refreshed PNGs.
+- evidence: npm run tauri -- icon src-tauri/app-icon.svg succeeded; generated icon.png visually inspected; npm run build passed and emitted updated favicon/touch PNGs; node scripts/check-release.mjs origin/main passed; cmp confirmed SVG and ICNS match supplied originals byte-for-byte. Installed desktop/Dock appearance not exercised.
+- release: binary-impacting; Changed bullet queued under Unreleased, version unchanged. Cosmetic change alone does not warrant cutting a release.
