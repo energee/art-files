@@ -759,7 +759,6 @@ no status, no attempts, no delta.
 - delta: made MAC_MENUS module-private and removed its obsolete exported-for-tests comment; the native menu still uses the same table.
 - evidence: in .agents/worktrees/layer-controls-about @ fix/575-menu-export, npx --yes knip@6.38.0 passes with no findings; 28 menu tests, TypeScript and release metadata vs origin/ux/casual-ui-copy pass. LSP references unavailable (no server); repository search found only the local declaration and native menu consumer.
 - release: export-only cleanup, no user-visible behavior change; existing Unreleased notes suffice, version unchanged.
-
 ## 2026-10-28 pr-574-copy-test-failures
 - finding: [tests/high] PR #574 CI run 40649476994 failed four DOM tests because they asserted the UI wording replaced by the PR.
 - status: done
@@ -774,4 +773,5 @@ no status, no attempts, no delta.
 - status: done
 - delta: merged origin/ux/casual-ui-copy; preserved both additive ledger histories, retained the parent's stronger saved-master archive assertion, and kept obsolete wording checks removed from ruler and save tests. No application behavior changed.
 - evidence: on fix/575-menu-export in .agents/worktrees/layer-controls-about, npm test -- --maxWorkers=2 passes 160 files / 1690 tests; npm run build (including TypeScript), lint, knip@6.38.0 and release metadata vs origin/ux/casual-ui-copy pass. Existing chunk-size advisory and happy-dom fetch-abort diagnostics remain.
+- evidence: parent PR #574 merged as 86fd240f and its branch was deleted during integration. Retargeted #575 to main and merged origin/main, preserving the compact controls and About icon notes. Re-ran the full 1690-test suite (--maxWorkers=2), build, lint, Knip and release metadata against origin/main: all pass.
 - release: conflict resolution adds only tests and ledger changes; existing Unreleased application notes remain sufficient, no version bump or release operation.
