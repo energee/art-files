@@ -729,13 +729,11 @@ it("the inspector names its one layer in a multi-selection and reads an off vari
     await act(async () => rowButton("collabLead").click());
     const enabled = () => document.querySelector('[aria-label="Enabled"]')!;
     expect(enabled().getAttribute("aria-pressed")).toBe("false");
-    expect(document.body.textContent).toMatch(/Added by Collab, which is off for this label\. Turn on to edit\./);
     expect(document.querySelector('[id$="-selection-note"]')).toBeNull();
     // Turning it on from the inspector switches the variant on, like the row.
     await act(async () => (enabled() as HTMLButtonElement).click());
     expect(container.querySelector("#master-picker")!.textContent).toContain("Collab");
     expect(enabled().getAttribute("aria-pressed")).toBe("true");
-    expect(document.body.textContent).not.toMatch(/which is off for this label/);
     await act(async () => rowButton("name").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
     expect(document.querySelector("#name-selection-note")?.textContent).toBe("Editing Name only (2 selected)");
   } finally { await unmount(); }

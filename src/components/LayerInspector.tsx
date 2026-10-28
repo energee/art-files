@@ -152,7 +152,7 @@ export function LayerInspector(props: {
             reachable with the sidebar hidden (⌘B). Page art has no lock — it
             can't be dragged, so locking it would do nothing. */}
         <Button variant="ghost" size="icon-sm" aria-label="Enabled" aria-pressed={enabled}
-          title={enabled ? "Enabled — turn off to stop it drawing" : "Off — turn on to draw this layer"}
+          title={enabled ? "Turn off this layer" : "Turn on this layer"}
           onClick={() => set({ enabled: !enabled })}>
           {enabled ? <Power aria-hidden="true" /> : <PowerOff aria-hidden="true" />}
         </Button>
@@ -179,7 +179,7 @@ export function LayerInspector(props: {
       )}
       {props.offVariant !== undefined && (
         <p className="text-[11px] text-muted-foreground">
-          Added by {props.offVariant}, which is off for this label. Turn on to edit.
+          From {props.offVariant}. Turn on this variant to edit the layer.
         </p>
       )}
 

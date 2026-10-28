@@ -706,3 +706,22 @@ no status, no attempts, no delta.
 - delta: replaced src-tauri/app-icon.svg with the supplied vector, regenerated existing platform icon variants with Tauri CLI, and installed the supplied macOS ICNS unchanged. Existing favicon and touch-icon links consume the refreshed PNGs.
 - evidence: npm run tauri -- icon src-tauri/app-icon.svg succeeded; generated icon.png visually inspected; npm run build passed and emitted updated favicon/touch PNGs; node scripts/check-release.mjs origin/main passed; cmp confirmed SVG and ICNS match supplied originals byte-for-byte. Installed desktop/Dock appearance not exercised.
 - release: binary-impacting; Changed bullet queued under Unreleased, version unchanged. Cosmetic change alone does not warrant cutting a release.
+
+## 2026-10-28 casual-ui-copy
+- finding: user requested less em-dash-heavy UI copy and more casual descriptions.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: rewrote layer/override/ruler/zoom tooltips, master-save descriptions and notices, updater descriptions, and SVG/barcode/import warnings as shorter conversational sentences. Kept technical limits and consequences intact. Left comments, artwork content, missing-value dash, recent-file name separator, and internal PSD diagnostic unchanged.
+- evidence: npm run build and node scripts/check-release.mjs origin/main passed. Browser smoke at localhost:5173 observed new layer power/zoom titles and opened ruler settings; screenshot confirmed the new margin description fits the popover. Desktop-only updater states and native save dialogs not visually exercised. Copy-only changes; no new tests or behavior changes.
+- release: binary-impacting; Changed bullet queued under Unreleased, version unchanged.
+
+## 2026-10-28 pr-574-copy-test-failures
+- finding: [tests/high] PR #574 CI run 40649476994 failed four DOM tests because they asserted the UI wording replaced by the PR.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/574-tests @ fix/574-tests, based on 2e62e8ec (PR branch ux/casual-ui-copy)
+- delta: removed obsolete copy assertions and stale negative checks from inspector, ruler and save suites while retaining off-variant enablement, multi-selection and margin-lock behavior coverage. The direct Save Master test now unpacks the saved archive and checks the reordered layers instead of punctuation in the notice.
+- evidence: npm test -- --maxWorkers=2 passes all 1696 tests across 160 files with unchanged timeout limits. Initial default-worker run passed the four repaired cases but hit 5000ms timeouts in unrelated text-edit and PSD-raster cases. npx tsc --noEmit, npm run lint, npm run build, npx --yes knip@6.38.0 and node scripts/check-release.mjs origin/main pass. Existing build chunk-size advisory and happy-dom fetch-abort diagnostics remain.
+- release: repair is non-binary-impacting (tests and ledger only); PR's existing Unreleased UI-copy bullet remains sufficient. No version bump or release operation; no application behavior changed.
+

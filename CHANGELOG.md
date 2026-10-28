@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **More relaxed UI copy.** Shorter descriptions and tooltips, with plain sentences instead of em-dash chains.
 - **New Label Lab icon.** Updated the application icon across desktop platforms and the browser favicon.
 - **Interface library patch updates.** Tauri JS 2.12.4 and its dialog and file-system plugins, React 19.3.1, Lucide icons 1.61, react-dropzone 20.1.4 and zxing-wasm 3.1.6, plus newer build tooling; no change in behaviour.
 - **Settings… is where Mac apps keep it.** On macOS it moved from Edit to the **Label Lab** menu, under Check for Updates…, and it has a shortcut everywhere: `⌘,` (`Ctrl+,` on Windows and Linux, where it stays under Edit).
