@@ -47,7 +47,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
     onMaster: vi.fn(), onNewVariant: vi.fn().mockReturnValue("variant-2"),
     onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), saveLabel: "Save Master…", onForget: vi.fn().mockResolvedValue(vi.fn()),
-    masterDirty: true, version: null, onVersion: vi.fn(),
+    templateMoved: true, version: null, onVersion: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -387,8 +387,8 @@ describe("MasterPicker", () => {
     expect(onSaveMaster).toHaveBeenCalled();
   });
 
-  it("shows no Save button when nothing would be written", () => {
-    renderPicker({ masterDirty: false });
+  it("shows no Save button while the master itself is unchanged", () => {
+    renderPicker({ templateMoved: false });
     expect(container.querySelector("#variant-save")).toBeNull();
   });
 

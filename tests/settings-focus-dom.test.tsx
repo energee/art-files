@@ -2,7 +2,7 @@
 // (#410). The dialog must still open focused on its first field, as it did
 // when the fields shipped with the editor, not on the Close button that is
 // the only focusable thing while the fields are still loading. The first
-// field is Resolution (Output leads), which the status bar DPI readout uses.
+// field is PSD resolution (Output leads).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";

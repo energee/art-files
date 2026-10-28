@@ -10,7 +10,15 @@ that section to the new version (see .agents/release-steward.md).
 - **Interface library patch updates.** Tauri JS 2.12.4 and its dialog and file-system plugins, React 19.3.1, Lucide icons 1.61, react-dropzone 20.1.4 and zxing-wasm 3.1.6, plus newer build tooling; no change in behaviour.
 - **Settings… is where Mac apps keep it.** On macOS it moved from Edit to the **Label Lab** menu, under Check for Updates…, and it has a shortcut everywhere: `⌘,` (`Ctrl+,` on Windows and Linux, where it stays under Edit).
 - **The quit prompt says you're quitting.** With unsaved tabs, `⌘Q`, Dock → Quit or the window's close button now ask “Save changes to “…” before quitting?”, and say Cancel keeps Label Lab open, instead of offering to close the tab.
+- **Save Master… under the picker appears only when the master changed.** Moving, restyling or filling a layer for this beer is a label override that `⌘S` saves, so it no longer brings up the pink button (or pushes the Layers list down). File → Save Master… stays enabled while the label has overrides, so promoting them works as before.
+- **Settings → Resolution is now PSD resolution.** It only sets the PSD raster resolution and the pixel ruler's scale; the PDFs are unaffected.
 - **Esc keeps what you typed on the preview.** Pressing Esc while editing text in place on the preview now finishes the edit and keeps your typing, like Enter or a click away (and like Figma and Illustrator). Before, Esc threw the typing away. `⌘Z` still takes the whole edit back in one step, and a new Style typed this way joins the master's choices once.
+
+### Removed
+- **The DPI readout in the status bar.** Change it in Settings → PSD resolution.
+- **Settings → Appearance.** Choose System, Light or Dark from View → Appearance or the `⌘K` palette.
+- **Single-plate exports.** File → Export and the palette keep **Export PDFs** (`⌘E`) and **Export PSDs** (`⇧⌘E`), which write the art and mask together; Export Artwork / Mask PDF and PSD are gone.
+- **The resting drop hint under the preview.** Dragging an image over the window still shows the background and metallic-mask drop zones.
 
 ### Fixed
 - **Fill and Metallic recolour a text layer.** Changing a text layer's **Fill** or switching **Metallic** in the inspector now changes the drawn text straight away, on every line. Before, the text kept its old colour and plate until you typed into it. A line or run you gave the toolbar's **White ink underlay** stays on white ink. Labels and masters open unchanged, and the shipped Lolev master prints exactly as before.

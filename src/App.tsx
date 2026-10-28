@@ -295,7 +295,7 @@ type ViewMode = "2d" | "can" | "rendered";
  *  both read this, so they can't disagree. Exported for tests. */
 export const viewState = (mode: ViewMode, split: number) =>
   mode !== "2d" ? mode : split === 0 ? "label" : split === 100 ? "mask" : "compare";
-/** The status bar's clickable readouts (zoom, trim size, DPI): a faint idle
+/** The status bar's clickable readouts (zoom, trim size): a faint idle
  *  border so they read as controls, not as text like the readouts beside them.
  *  Zoom puts it on a wrapping label so the "%" sits inside the border. */
 const STATUS_CONTROL = "rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
@@ -436,9 +436,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     [pendingSave, master, label, version, savedTick]);
   // The dirty flag is the cheap superset of the same question: the template
   // moved, or the label holds an override that a save could offer to promote.
-  // It can light Save Master for an override that happens to equal what the
-  // master already says — the review then opens with nothing in it, which is
-  // the honest answer to "what would this save write?".
+  // It enables File → Save Master… (so overrides can still be promoted) and
+  // can do so for an override that happens to equal what the master already
+  // says — the review then opens with nothing in it, which is the honest
+  // answer to "what would this save write?". The picker's pink button reads
+  // templateMoved alone: an override is this beer's, saved by ⌘S.
   // Only the master compare is worth memoizing, and it depends on `master`
   // alone — keeping `label.overrides` out of the deps stops a drag's
   // per-pointermove override writes from re-walking the whole master.
@@ -1390,9 +1392,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   }, []);
 
-  const downloadArt = () => void buildFull("art");
-  const downloadMask = () => void buildFull("mask");
-  const exportPdfs = () => void buildFull("both");
+  const exportPdfs = () => void buildFull();
 
   /** The same save-identity pattern for the .master this document's master
    *  was last saved to or opened from — tagged with that master's id, since
@@ -2077,12 +2077,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
       disabled: pdfExportBlocked, note: pdfNote, run: exportPdfs },
-    { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, note: pdfNote, run: downloadArt },
-    { id: "export-mask", label: "Export Mask PDF", disabled: pdfExportBlocked, note: pdfNote, run: downloadMask },
     { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
       disabled: exportBlocked, run: () => void exportPsd() },
-    { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
-    { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
     { id: "variant-new", label: "New Variant", run: onNewVariant },
@@ -2347,7 +2343,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               library={library} resolve={resolveLibraryMaster}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
-              onSaveMaster={() => setPendingSave({ as: false })} saveLabel={saveLabel} masterDirty={masterDirty}
+              onSaveMaster={() => setPendingSave({ as: false })} saveLabel={saveLabel} templateMoved={templateMoved}
               onForget={forgetLibraryMaster} offer={masterOffer} onOfferDone={() => setMasterOffer(null)}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
@@ -2506,15 +2502,6 @@ export const DocumentEditor = memo(function DocumentEditor({
                 {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
               </>}
             </span>
-            {/* 2D only: over the can it would sit on the label. A texture
-                still drops in every view. */}
-            {!texture && !exporting && previewReady && viewMode === "2d" && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
-                <span className="mx-4 rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-center text-xs text-muted-foreground backdrop-blur-sm">
-                  drop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)
-                </span>
-              </div>
-            )}
             {/* Drop a texture or mask anywhere in the window; the overlay
                 draws over this pane only, so the sidebar and the inspector's
                 drop wells stay visible. Only the active tab mounts the
@@ -2534,7 +2521,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {/* Preview toolbar, in every view. */}
           <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
             {/* The "%" sits inside the border so the readout is one control,
-                like the size and DPI buttons; clicking it focuses the input. */}
+                like the size button; clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
               value={zoomDraft ?? String(shownZoomPct)}
@@ -2567,13 +2554,6 @@ export const DocumentEditor = memo(function DocumentEditor({
                 <RulerUnitPicker unit={rulerUnit} onUnitChange={setRulerUnit} />
               </PopoverContent>
             </Popover>
-            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            <button type="button" onClick={() => byId("settings").run()}
-              title="PSD raster resolution and pixel-ruler scale. Click to change it in Settings"
-              aria-label={`${render.dpi} DPI; click to change the resolution in Settings`}
-              className={`shrink-0 px-1 py-0.5 tabular-nums whitespace-nowrap ${STATUS_CONTROL}`}>
-              {render.dpi} DPI
-            </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             {/* Pick a view directly; keys 1–4 do the same. Mid-split (Compare)
                 none is pressed and the group is described by the Compare
