@@ -330,7 +330,7 @@ export function QrGeometry(props: Ctx & { layer: QrLayer }) {
       </Row>
       <SelectField id={`${id}-qr-style`} label="Style" ariaLabel="QR style" badge={badge(["qrStyle"], "QR style")}
         items={QR_STYLES} value={layer.qrStyle} onChange={(v) => set({ qrStyle: v as QrLayer["qrStyle"] })} />
-      {/* Match the renderer’s L default when the optional level is absent. */}
+      {/* Match the renderer’s default (DEFAULT_EC_LEVEL) when the optional level is absent. */}
       <SelectField id={`${id}-ec`} label="Error correction" ariaLabel="Error correction" badge={badge(["ecLevel"], "Error correction")}
         items={EC_LEVELS} value={layer.ecLevel ?? DEFAULT_EC_LEVEL} onChange={(v) => set({ ecLevel: v as QrLayer["ecLevel"] })} />
     </div>
