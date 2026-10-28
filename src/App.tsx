@@ -339,8 +339,10 @@ type DocumentEditorProps = {
   active: boolean;
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
-   *  shell can drop the queued entry. */
-  onOpenSettled: (seq: number) => void;
+   *  shell can drop the queued entry. `cancelled`: the operator backed out
+   *  (the different-master prompt's Cancel, or its Locate picker's), so a
+   *  tab made only for this open can go again (#553). */
+  onOpenSettled: (seq: number, cancelled: boolean) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its save fn into on every render;
    *  resolves false when the user cancels the save dialog. */
@@ -391,6 +393,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  resetDocument / asset writes. openedSeq !== 0 means an open has claimed
    *  this editor — restore must not run (or continue) after that. */
   const openedSeq = useRef(0);
+  // Set by missingMasterChoice when the operator cancels; reset by each
+  // fileToOpen attempt and reported through onOpenSettled.
+  const openCancelled = useRef(false);
   const openChain = useRef<Promise<void>>(Promise.resolve());
   // The master as of the last open/save — the baseline the "unsaved master
   // edits" dot (Save Master) compares against, itemised by masterChanges.
@@ -1837,6 +1842,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const choice = await new Promise<"current" | "locate" | null>((choose) =>
       setMissingMaster({ id, where, current: docRef.current.master.name, choose }));
     setMissingMaster(null);
+    if (choice === null) openCancelled.current = true;
     // Read after the dialog: the tab may have switched masters meanwhile.
     const current = docRef.current.master;
     // Through this tab's own file: the library may name another file with the
@@ -1852,7 +1858,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
       if (target === undefined) { setLoadError("Could not open master: this browser has no file picker. Use File → Open Master… first."); return null; }
-      if (target === null) return null;
+      if (target === null) { openCancelled.current = true; return null; }
       [bytes, path] = "path" in target
         ? [await readNativeFile(target.path), target.path]
         : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
@@ -2009,6 +2015,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { path, handle, file, recovered, recoveredPath } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
+      openCancelled.current = false;
       try {
         if (path) {
           const name = await basename(path);
@@ -2047,7 +2054,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       } catch (err) {
         reportOpenError(err);
       } finally {
-        onOpenSettled(mySeq);
+        onOpenSettled(mySeq, openCancelled.current);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2097,7 +2104,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // which stands aside in text fields; the shortcut here is display-only.
     { id: "layer-remove", label: "Remove Layer", shortcut: "⌫", disabled: !removable,
       run: () => onRemoveLayer(selected[selected.length - 1]) },
-    { id: "settings", label: "Settings…", run: () => setSettingsOpen(true) },
+    { id: "settings", label: "Settings…", key: ",", mods: "⌘", run: () => setSettingsOpen(true) },
     { id: "view-label", label: "Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Mask", key: "2", run: () => show2d("mask") },
     { id: "view-rendered", label: "Rendered", key: "3", run: () => setViewMode("rendered") },

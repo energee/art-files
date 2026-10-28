@@ -603,6 +603,15 @@ no status, no attempts, no delta.
 - blocked: the macOS 27 out-of-process save panel ignores synthetic clicks and drops AX references after Go to Folder, so Save As to a typed destination was not driven (Return/Escape do reach it). Windows/Linux, signed updater, Photoshop, print and screen-reader proof unchanged.
 - release: non-binary-impacting (ledger only)
 
+## 2026-10-27 native-ux-551-554
+- finding: [ux/low] the four native-macos-pass observations, filed as #551 (Settings… in Edit, no ⌘,), #552 (quit prompt titled "Close"), #553 (cancelled different-master open leaves an empty tab), #554 (non-.label OS open does nothing)
+- status: done (PR open, unmerged)
+- attempts: 1/3
+- observed-at: branch fix/native-ux-551-554 on 9c9866f8
+- delta: Settings… gets ⌘, and moves to the Mac application menu (MAC_MENUS drops it from Edit); the close prompt reads "Save changes to “…” before quitting?" during a window-close sweep; onOpenSettled reports `cancelled` (different-master Cancel or its Locate picker cancel) and the shell closes a pristine tab openRouted made for that open, never a reused one; macOS Opened no longer filters by extension in Rust, the shell rejects a non-.label canonical path with a strip error and never reads it (shared isLabelName also serves the drop handler).
+- evidence: new assertions red on main's src (appmenu, close-review-sweep, missing-master, tabs-os-open), green after; npm test 158 files / 1672 tests, tsc, lint, knip, cargo test 13/13, check-release pass. Not driven in the native app: real menu bar placement, ⌘, through muda, and the LaunchServices symlink path (D4 scope enforcement still unproven).
+- release: binary-impacting; bullets under [Unreleased]
+
 ## 2026-10-27 signing-397
 - finding: [security/medium] #397 — release builds are ad-hoc signed on macOS and unsigned on Windows
 - status: done (PR open, unmerged; inert until credentials exist)
