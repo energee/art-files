@@ -157,15 +157,16 @@ jobs:
             echo "$name=${!name}" >> "$GITHUB_ENV"
           done
 
-      # Windows — Azure Trusted Signing: repository variables
+      # Windows — Azure Artifact Signing (formerly Trusted Signing): repository variables
       # AZURE_TRUSTED_SIGNING_ENDPOINT (e.g. https://eus.codesigning.azure.net),
       # AZURE_TRUSTED_SIGNING_ACCOUNT and AZURE_TRUSTED_SIGNING_PROFILE put the
       # sign command into the release config (scripts/configure-updater.mjs);
       # secrets AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and AZURE_TENANT_ID are
-      # the service principal trusted-signing-cli signs as.
+      # the service principal artifact-signing-cli signs as. Pinned like the
+      # actions above (#393): tauri runs it while the updater key is in env.
       - name: Install Windows signing tool
         if: runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING_ACCOUNT != ''
-        run: cargo install trusted-signing-cli --locked
+        run: cargo install artifact-signing-cli --version 0.12.0 --locked
 
       - name: Configure signed updater
         run: npm run desktop:release-config
@@ -185,7 +186,7 @@ jobs:
           # Compiled into updater_enabled(); the value is public, but keeping
           # all three key settings together makes release setup less error-prone.
           TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
-          # trusted-signing-cli's credentials; unused unless the sign command is set.
+          # artifact-signing-cli's credentials; unused unless the sign command is set.
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}

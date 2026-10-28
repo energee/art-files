@@ -1,5 +1,5 @@
 // configure-updater.test.ts — the release config generator: the updater key
-// always, the Windows Trusted Signing command only when all three settings are
+// always, the Windows Artifact Signing command only when all three settings are
 // given, and a half-set signing config fails the build instead of shipping
 // unsigned (#397).
 import { execFileSync } from "node:child_process";
@@ -22,14 +22,14 @@ it("leaves Windows unsigned without the Trusted Signing settings", () => {
   expect(config.bundle.windows).toBeUndefined();
 });
 
-it("adds the trusted-signing-cli sign command when all three are set", () => {
+it("adds the artifact-signing-cli sign command when all three are set", () => {
   const config = configure({
     AZURE_TRUSTED_SIGNING_ENDPOINT: "https://eus.codesigning.azure.net",
     AZURE_TRUSTED_SIGNING_ACCOUNT: "acct",
     AZURE_TRUSTED_SIGNING_PROFILE: "prof",
   });
   expect(config.bundle.windows.signCommand).toBe(
-    'trusted-signing-cli -e https://eus.codesigning.azure.net -a acct -c prof -d "Label Lab" %1');
+    "artifact-signing-cli -e https://eus.codesigning.azure.net -a acct -c prof %1");
 });
 
 it("refuses a half-set signing config", () => {

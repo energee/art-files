@@ -1,6 +1,6 @@
 // configure-updater.mjs — injects the public updater key into an ignored,
 // release-only Tauri config without ever writing private material to the repo,
-// plus the Windows sign command once Azure Trusted Signing is configured (#397;
+// plus the Windows sign command once Azure Artifact Signing is configured (#397;
 // see the signing steps in .github/workflows/release.yml).
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -26,7 +26,7 @@ if (signing.some(Boolean)) {
   const [endpoint, account, profile] = signing;
   // tauri runs this on each file it signs, %1 being the file.
   config.bundle.windows = {
-    signCommand: `trusted-signing-cli -e ${endpoint} -a ${account} -c ${profile} -d "Label Lab" %1`,
+    signCommand: `artifact-signing-cli -e ${endpoint} -a ${account} -c ${profile} %1`,
   };
 }
 await writeFile(outputUrl, `${JSON.stringify(config, null, 2)}\n`);
