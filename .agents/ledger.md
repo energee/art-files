@@ -678,3 +678,12 @@ no status, no attempts, no delta.
 - evidence: full suite 159 files / 1672 tests (--maxWorkers=2), tsc, lint, knip, build, check-release vs origin/ux/shell-trim pass. Browser check (vite :5271): Save Master review shows "Added to the master" as plain text and a checkbox only on the promote row. Not verified in a browser: the direct-save note (would open Chrome's native save picker), the quit/restart prompts (Tauri-only; covered by DOM tests with mocked IPC).
 - caveat: ⌘Z after a master switch restores master and label but not art the switch put into an EMPTY texture/mask/image slot (asset slots are outside undo history); documented in commitRebind, docs and CHANGELOG. Filled label values count as promotable, so a filled label still opens the review.
 - release: binary-impacting; Changed/Removed bullets under [Unreleased], no version bump
+
+## 2026-10-27 inspector-trim
+- finding: [ux/med] UX audit (layer editing) #5, #4, #6, #8, #9, #12 — LayerInspector.tsx:146-160 Enabled/Locked rows repeat the row's power and lock; LayerList.tsx:318 Pencil repeats the inspector name box; LayerInspector.tsx:181 "Content" heading sits over a caption that names it; Lock offered on page art (LayerInspector.tsx:156, LayerList.tsx:368) where hittestLayers skips it; Tint raster shown on SVG art (LayerInspectorSections.tsx:272); Metallic live with Fill "No ink" (LayerInspectorSections.tsx:367)
+- status: in-review
+- attempts: 1/3
+- observed-at: e64285d7
+- attempted-in: .agents/worktrees/inspector-trim @ ux/inspector-trim
+- delta: inspector Enabled/Locked Field rows → two header icon buttons (Power/PowerOff, Lock/LockOpen; aria-pressed, names "Enabled"/"Locked"; badges beside them); no lock in the inspector, the row's lock icon or the row menu on background/mask; selected-row Pencil removed (inspector name box, double-click, right-click Rename remain); Content heading removed; Tint raster gated on the existing App `rasterArt` prop (now passed to ImageGeometry); MetallicToggle disabled (not hidden, matching its existing `disabled` prop) while fill is "none". Not done here: the inspector name box's commit model (audit #4 second half), Lengths in (#3).
+- release: binary-impacting; [Unreleased] Changed + Removed bullets queued, no version bump

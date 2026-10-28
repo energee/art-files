@@ -1,10 +1,11 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, close button, a "editing one of N" note on a
-// multi-selection, enabled/locked with an off-variant note), the parent's
-// content editor, kind-specific geometry/typography, Position (not on page
-// art), Style, and expandable template field settings.
+// inline rename, power and lock icon toggles (no lock on page art), close
+// button, a "editing one of N" note on a multi-selection, an off-variant
+// note), the parent's content editor (no heading: its caption names it),
+// kind-specific geometry/typography, Position (not on page art), Style, and
+// expandable template field settings.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -31,16 +32,17 @@
 // per-kind geometry and Style in LayerInspectorSections.tsx; the template
 // field settings (fill contract, vocabulary) in LayerInspectorTemplate.tsx.
 import type { ReactNode } from "react";
-import { Barcode, Image, QrCode, Type, XIcon, type LucideIcon } from "lucide-react";
+import {
+  Barcode, Image, Lock, LockOpen, Power, PowerOff, QrCode, Type, XIcon, type LucideIcon,
+} from "lucide-react";
 import type { BindingSide, Layer, LayerKind } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SheetClose } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-  Badge, Field, Heading, LOCK_TITLE, useRequiredText, type Ctx, type DimensionUnit, type Patch,
+  Badge, Field, LOCK_TITLE, useRequiredText, type Ctx, type DimensionUnit, type Patch,
 } from "./LayerInspectorControls";
 import {
   BarcodeGeometry, ImageGeometry, Position, QrGeometry, StyleSection, TextGeometry,
@@ -84,7 +86,8 @@ export function LayerInspector(props: {
   /** The master's typeface, display only. */
   fontFamily?: string;
   /** An image layer holding raster art (PNG/JPEG): it always prints on
-   *  white ink, so Style offers no plate toggle. */
+   *  white ink, so Style offers no plate toggle, and only raster art offers
+   *  Tint raster (an SVG already takes the fill). */
   rasterArt?: boolean;
   /** Shows the header's visible close button. It is a SheetClose, so it
    *  needs the parent Sheet (whose close-press clears the selection, as
@@ -95,8 +98,8 @@ export function LayerInspector(props: {
   selectionCount?: number;
   /** The name of the switched-OFF variant that adds this layer. Such a layer
    *  does not draw and edits to it are dropped (editLabel's patchLayers), so
-   *  Enabled reads off — matching the Layers row — and turning it on enables
-   *  the variant. */
+   *  the header's power reads off — matching the Layers row — and turning
+   *  it on enables the variant. */
   offVariant?: string;
 }) {
   const { layer } = props;
@@ -127,6 +130,22 @@ export function LayerInspector(props: {
           className="h-7 flex-1 text-xs font-medium"
           {...nameProps}
         />
+        {/* Power and lock as icon toggles, the Layers row's icons: they stay
+            reachable with the sidebar hidden (⌘B). Page art has no lock — it
+            can't be dragged, so locking it would do nothing. */}
+        <Button variant="ghost" size="icon-sm" aria-label="Enabled" aria-pressed={enabled}
+          title={enabled ? "Enabled — turn off to stop it drawing" : "Off — turn on to draw this layer"}
+          onClick={() => set({ enabled: !enabled })}>
+          {enabled ? <Power aria-hidden="true" /> : <PowerOff aria-hidden="true" />}
+        </Button>
+        {badge(["enabled"], "Enabled")}
+        {!page && <>
+          <Button variant="ghost" size="icon-sm" aria-label="Locked" aria-pressed={!!layer.locked}
+            title={LOCK_TITLE} onClick={() => set({ locked: !layer.locked })}>
+            {layer.locked ? <Lock aria-hidden="true" /> : <LockOpen aria-hidden="true" />}
+          </Button>
+          {badge(["locked"], "Locked")}
+        </>}
         {props.showCloseButton && (
           <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label="Close inspector" />}>
             <XIcon className="size-4.5" aria-hidden="true" />
@@ -140,25 +159,11 @@ export function LayerInspector(props: {
           Editing {layer.name} only ({props.selectionCount} selected)
         </p>
       )}
-      {/* The two policy switches read as ordinary Fields (label left, control
-          right) like every other row in the panel — crowded onto one line they
-          looked like a toolbar, which they are not. */}
-      <div className="space-y-1.5 pt-2">
-        <Field id={`${layer.id}-enabled`} label="Enabled" badge={badge(["enabled"], "Enabled")}>
-          <Switch id={`${layer.id}-enabled`} aria-label="Enabled" checked={enabled}
-            onCheckedChange={(on) => set({ enabled: on === true })} />
-        </Field>
-        {props.offVariant !== undefined && (
-          <p className="text-[11px] text-muted-foreground">
-            Added by {props.offVariant}, which is off for this label. Turn on to edit.
-          </p>
-        )}
-        <Field id={`${layer.id}-locked`} label="Locked" badge={badge(["locked"], "Locked")}>
-          <Switch id={`${layer.id}-locked`} aria-label="Locked" checked={!!layer.locked}
-            title={LOCK_TITLE}
-            onCheckedChange={(on) => set({ locked: on === true })} />
-        </Field>
-      </div>
+      {props.offVariant !== undefined && (
+        <p className="text-[11px] text-muted-foreground">
+          Added by {props.offVariant}, which is off for this label. Turn on to edit.
+        </p>
+      )}
 
       {/* App-wide, not this layer's: it converts the length fields only.
           Type size, tracking and stroke keep their own units (see their
@@ -177,14 +182,13 @@ export function LayerInspector(props: {
       </Field>}
 
       {props.content !== undefined && (
-        <div className="space-y-1.5">
-          <Heading>Content</Heading>
-          {props.content}
-        </div>
+        // No heading: the editor's own caption (Text, Code, Link, Texture…)
+        // names it.
+        <div className="pt-2">{props.content}</div>
       )}
 
       {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
-      {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}
+      {layer.kind === "image" && <ImageGeometry layer={layer} rasterArt={props.rasterArt} {...ctx} />}
       {layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
       {/* A barcode has no `input` to hang a contract off, but its tier list is
           the same vocabulary a style has. */}

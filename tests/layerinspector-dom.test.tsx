@@ -98,13 +98,35 @@ describe("LayerInspector header", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("toggles enabled / locked as top-level patches", () => {
+  // Power and lock are header icon toggles (the row's icons), not rows.
+  it("toggles enabled / locked from header icon buttons as top-level patches", () => {
     const { onChange } = render(text());
-    click(byLabel("Enabled")!);
+    const power = byLabel("Enabled")!;
+    const lock = byLabel("Locked")!;
+    expect(power.tagName).toBe("BUTTON");
+    expect(power.getAttribute("aria-pressed")).toBe("true");
+    expect(lock.getAttribute("aria-pressed")).toBe("false");
+    // Same line as the name box and the close button.
+    expect(power.parentElement).toBe($("#name-name")!.parentElement);
+    expect(lock.parentElement).toBe($("#name-name")!.parentElement);
+    click(power);
     expect(onChange).toHaveBeenLastCalledWith({ enabled: false });
-    click(byLabel("Locked")!);
+    click(lock);
     expect(onChange).toHaveBeenLastCalledWith({ locked: true });
+    const locked = render(text({ locked: true }));
+    expect(byLabel("Locked")!.getAttribute("aria-pressed")).toBe("true");
+    click(byLabel("Locked")!);
+    expect(locked.onChange).toHaveBeenLastCalledWith({ locked: false });
     expect(byLabel("Fillable")).toBeNull();
+  });
+
+  // Page art can't be dragged, so a lock would do nothing there.
+  it("offers no lock on page art", () => {
+    render(image({ id: "background", name: "Background", role: "background", fit: "cover", locked: true }));
+    expect(byLabel("Enabled")).not.toBeNull();
+    expect(byLabel("Locked")).toBeNull();
+    render(image({ id: "mask", name: "Mask", role: "mask", fit: "cover" }));
+    expect(byLabel("Locked")).toBeNull();
   });
 
   // #1: the inspector edits the last-picked layer only, while drag, reorder
@@ -126,14 +148,14 @@ describe("LayerInspector header", () => {
   it("reads Off for a layer an off variant adds, and turning it on sends enabled:true", () => {
     const { onChange } = render(image(), { offVariant: "Collab" });
     const toggle = byLabel("Enabled")!;
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(container.textContent).toContain("Added by Collab, which is off for this label. Turn on to edit.");
     click(toggle);
     expect(onChange).toHaveBeenLastCalledWith({ enabled: true });
     // Other fields stay editable (no read-only fields).
     expect(($("#logo-x") as HTMLInputElement).disabled).toBe(false);
     render(image());
-    expect(byLabel("Enabled")!.getAttribute("aria-checked")).toBe("true");
+    expect(byLabel("Enabled")!.getAttribute("aria-pressed")).toBe("true");
     expect(container.textContent).not.toContain("which is off for this label");
   });
 
@@ -170,10 +192,11 @@ describe("LayerInspector header", () => {
     expect(byLabel("Lengths in")).toBeNull();
   });
 
-  it("renders the parent's content editor under a Content heading", () => {
+  // The editor's own caption names it, so there is no "Content" heading.
+  it("renders the parent's content editor with no Content heading", () => {
     render(text(), { content: createElement("p", { id: "content-slot" }, "editor") });
     expect($("#content-slot")).not.toBeNull();
-    expect(container.textContent).toContain("Content");
+    expect([...container.querySelectorAll("h2")].map((h) => h.textContent)).not.toContain("Content");
   });
 });
 
@@ -324,7 +347,7 @@ describe("LayerInspector geometry follows the kind", () => {
   });
 
   it("image: width, height, scale and tint; no text fields", () => {
-    const { onChange } = render(image());
+    const { onChange } = render(image(), { rasterArt: true });
     expect($("#logo-w")).not.toBeNull();
     expect($("#logo-h")).not.toBeNull();
     expect($("#logo-scale")).not.toBeNull();
@@ -334,6 +357,13 @@ describe("LayerInspector geometry follows the kind", () => {
     expect(onChange).toHaveBeenLastCalledWith({ w: 40 });
     click(byLabel("Tint raster")!);
     expect(onChange).toHaveBeenLastCalledWith({ tintRaster: true });
+  });
+
+  // An SVG already takes the fill, so Tint raster would do nothing on it.
+  it("image: no Tint raster on SVG art", () => {
+    render(image(), { rasterArt: false });
+    expect($("#logo-w")).not.toBeNull();
+    expect(byLabel("Tint raster")).toBeNull();
   });
 
   it("background image layer fills the page without ineffective geometry controls", () => {
@@ -397,6 +427,14 @@ describe("LayerInspector style", () => {
     const { onChange } = render(text());
     click(byLabel("Metallic")!);
     expect(onChange).toHaveBeenLastCalledWith({ style: { layer: "white" } });
+  });
+
+  // No ink leaves nothing to plate, so the toggle is disabled (not hidden).
+  it("disables the plate toggle while Fill is no ink", () => {
+    render(text());
+    expect((byLabel("Metallic") as HTMLButtonElement).disabled).toBe(false);
+    render(text({ style: { ...STYLE, fill: "none" } }));
+    expect((byLabel("Metallic") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("switching the stroke on writes a colour; the width then patches style.strokeWidth", () => {
