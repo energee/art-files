@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Added
-- **One PDF with a White Ink spot layer.** Export PDF (`⌘E`) now saves the artwork and an outlined, overprinting **White Ink** separation in one file. Inspect it in Acrobat's Output Preview with Overprint Preview enabled; viewers without overprint preview can show magenta and white over the art. **Settings → Two-file PDF export (art + mask)** reveals the unchanged paired and individual PDF exports. Headless generation uses the same single PDF by default; `--two-file` keeps the old pair. PSDs are unchanged. Printer proof approval is still required.
+- **One PDF with a White Ink spot layer.** Export PDF (`⌘E`) now saves the artwork and an outlined, overprinting **White Ink** separation in one file. Uploaded PNG masks preserve transparency, and outlined type uses the same ligatures as the artwork. Inspect it in Acrobat's Output Preview with Overprint Preview enabled; viewers without overprint preview can show magenta and white over the art. **Settings → Two-file PDF export (art + mask)** reveals the unchanged paired and individual PDF exports. Headless generation uses the same single PDF by default; `--two-file` keeps the old pair. PSDs are unchanged. Printer proof approval is still required.
 
 ### Changed
 - **Interface library patch updates.** Tauri JS 2.12.4 and its dialog and file-system plugins, React 19.3.1, Lucide icons 1.61, react-dropzone 20.1.4 and zxing-wasm 3.1.6, plus newer build tooling; no change in behaviour.

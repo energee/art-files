@@ -315,7 +315,7 @@ function svgToPaths(d: string, dx: number, dy: number): BezierPath[] {
 /** PSD adapter for the shared raw-advance glyph walker. Barcode groups have
  * no tracking, and ag-psd's BezierPath is structurally the neutral outline. */
 export function digitGroupPaths(
-  font: Pick<Font, "unitsPerEm" | "glyphsForString">,
+  font: Pick<Font, "unitsPerEm" | "layout">,
   text: string,
   size: number,
   rotated: boolean,

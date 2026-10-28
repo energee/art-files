@@ -27,12 +27,12 @@ const knot = (cIn: Pt, anchor: Pt, cOut: Pt): Knot => ({
 const closed = (knots: Knot[]): OutlinePath => ({ closed: true, knots });
 
 /**
- * Walk glyph commands without text shaping: pdf-lib draws raw glyph advances,
- * so kerning and ligatures would put outlined white ink somewhere live text
- * never goes. `rotated` maps the same 90° PDF placement back to label space.
+ * Use the same shaped glyph sequence as pdf-lib's text encoder, but its raw
+ * advances rather than GPOS kerning or offsets. Tracking is applied once per
+ * emitted glyph. `rotated` maps the 90° PDF placement back to label space.
  */
 export function glyphPaths(
-  font: Pick<Font, "unitsPerEm" | "glyphsForString">,
+  font: Pick<Font, "unitsPerEm" | "layout">,
   text: string,
   size: number,
   rotated: boolean,
@@ -50,7 +50,7 @@ export function glyphPaths(
     bbox.maxY = Math.max(bbox.maxY, point[1]);
   };
   let advance = 0;
-  const glyphs = font.glyphsForString(text);
+  const glyphs = font.layout(text).glyphs;
   for (const glyph of glyphs) {
     const toLabel = rotated
       ? (x: number, y: number): Pt => [anchorX - y * scale, anchorY - (advance + x * scale)]
@@ -103,7 +103,7 @@ export function glyphPaths(
 }
 
 /** Convert label-space glyph paths to one compound SVG path for `drawSvgPath`. */
-export function outlineText(font: Pick<Font, "unitsPerEm" | "glyphsForString">, item: PlacedText): string[] {
+export function outlineText(font: Pick<Font, "unitsPerEm" | "layout">, item: PlacedText): string[] {
   const paths = glyphPaths(font, item.text, item.size, item.rotated, item.x, item.y, item.tracking).paths;
   if (!paths.length) return [];
   return [paths.map((path) => {

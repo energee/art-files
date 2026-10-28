@@ -515,6 +515,11 @@ export function menuSymbols(entries: MenuEntry[] = APP_MENUS): [string, string][
 /** The macOS application-menu item's two labels, toggled by `updateInstalled`. */
 const UPDATE_ITEM_TEXT = { check: "Check for Updates…", restart: "Restart to Update" } as const;
 
+// Replacing the application menu is process-global. Serialize installations
+// across settings changes and component lifetimes so a stale IPC completion
+// cannot replace or close a newer menu.
+let nativeMenuInstalls = Promise.resolve();
+
 function useNativeMenu(
   desktop: boolean,
   commands: CommandIndex,
@@ -541,7 +546,6 @@ function useNativeMenu(
   const [installed, setInstalled] = useState<{
     items: Map<string, NativeAction>; shape: string; isLive: () => boolean;
   } | null>(null);
-  const items = installed?.items;
   const updateQueue = useRef(Promise.resolve());
   const appliedState = useRef(new Map<string, string>());
   // Bumped when a native check item is clicked. muda flips a CheckMenuItem
@@ -557,7 +561,8 @@ function useNativeMenu(
     const resources: NativeResource[] = [];
     let stopRecent = () => {};
 
-    void (async () => {
+    const install = async () => {
+      if (!live) return;
       try {
         // The menu API is desktop-only and stays out of the browser's initial
         // chunk. isTauri alone is not enough to make a static import lazy.
@@ -675,7 +680,8 @@ function useNativeMenu(
         await closeResources(resources);
         if (live) errorRef.current(`Could not install the native menu: ${errMsg(error)}`);
       }
-    })();
+    };
+    nativeMenuInstalls = nativeMenuInstalls.then(install, install);
 
     return () => {
       live = false;
@@ -685,16 +691,17 @@ function useNativeMenu(
   }, [desktop, menuShape]);
 
   useEffect(() => {
-    const item = items?.get("check-for-updates");
+    if (!installed?.isLive()) return;
+    const item = installed.items.get("check-for-updates");
     if (!item) return;
     const text = updateInstalled ? UPDATE_ITEM_TEXT.restart : UPDATE_ITEM_TEXT.check;
     if (appliedState.current.get("check-for-updates:text") === text) return;
     appliedState.current.set("check-for-updates:text", text);
     if (!updateInstalled) return; // the item is created with the check label
     void item.setText(text).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
+      if (installed.isLive()) errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
-  }, [items, updateInstalled]);
+  }, [installed, updateInstalled]);
 
   const snapshot = actionsIn(menus).map((entry) => ({
     id: entry.id,

@@ -108,7 +108,7 @@ export function whiteStroke(tint: 0 | 1): PDFOperator[] {
 /**
  * Embeds decoded RGBA mask pixels as one Separation sample per pixel. Red is
  * inverted because the legacy mask's blue is R=0 (full ink) and white R=255
- * is a knockout. Alpha is intentionally ignored, matching the legacy plate.
+ * is a knockout. A soft mask preserves PNG transparency and draw order.
  */
 export function embedWhiteInkMask(
   doc: PDFDocument,
@@ -122,8 +122,24 @@ export function embedWhiteInkMask(
     throw new Error("White Ink mask RGBA data length does not match its dimensions");
 
   const tints = new Uint8Array(width * height);
-  for (let source = 0, pixel = 0; pixel < tints.length; source += 4, pixel++)
+  let alpha: Uint8Array | undefined;
+  for (let source = 0, pixel = 0; pixel < tints.length; source += 4, pixel++) {
     tints[pixel] = 255 - rgba[source];
+    const opacity = rgba[source + 3];
+    if (opacity !== 255 && !alpha) {
+      alpha = new Uint8Array(tints.length);
+      alpha.fill(255, 0, pixel);
+    }
+    if (alpha) alpha[pixel] = opacity;
+  }
+  const softMask = alpha ? doc.context.register(doc.context.flateStream(alpha, {
+    Type: "XObject",
+    Subtype: "Image",
+    Width: width,
+    Height: height,
+    ColorSpace: "DeviceGray",
+    BitsPerComponent: 8,
+  })) : undefined;
 
   return doc.context.register(doc.context.flateStream(tints, {
     Type: "XObject",
@@ -132,5 +148,6 @@ export function embedWhiteInkMask(
     Height: height,
     ColorSpace: whiteInkColorSpace(doc),
     BitsPerComponent: 8,
+    SMask: softMask,
   }));
 }

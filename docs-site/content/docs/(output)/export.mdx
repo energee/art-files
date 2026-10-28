@@ -20,7 +20,7 @@ In **Adobe Acrobat → Print Production → Output Preview**, enable **Overprint
 
 **Viewer caveat:** macOS Preview and other viewers without overprint preview may show opaque magenta and white shapes over the artwork. Do not judge the final print from that composite. This export is not yet PDF/X or ICC-profiled; Acrobat may require you to enable overprint preview manually. Obtain a proof accepted by the printer before production.
 
-An uploaded mask becomes a single-channel spot image: blue (`R=0`) is full white ink, white (`R=255`) is knockout, and intermediate red values retain partial ink coverage. No mask uploaded? The white separation floods the page. Metallic elements still knock out to bare stock on top of that flood.
+An uploaded mask becomes a single-channel spot image: blue (`R=0`) is full white ink, white (`R=255`) is knockout, and intermediate red values retain partial ink coverage. PNG transparency is preserved: fully transparent pixels leave earlier white ink untouched, and partial alpha blends with it. No mask uploaded? The white separation floods the page. Metallic elements still knock out to bare stock on top of that flood.
 
 Each element has a **fill** (artwork ink; `none` for no ink) and a **plate** (metallic knocks out white ink; white gets a white-ink underlay). Outer strokes have their own independent plate. White-ink runs inside a text line (`_white ink_` / the White ink underlay toggle) follow the same rule per span.
 

@@ -15,6 +15,8 @@ import { PAGE } from "../src/layout";
 
 const bytes = readFileSync(new URL("../src/assets/fonts/Poppins-Bold.ttf", import.meta.url));
 const font = openFont(bytes);
+const barlowBytes = readFileSync(new URL("../src/assets/fonts/BarlowCondensed-Regular.ttf", import.meta.url));
+const barlow = openFont(barlowBytes);
 const item = (overrides: Partial<PlacedText> = {}): PlacedText => ({
   kind: "text", id: "outline", text: "LUPULA", x: 40, y: 80, w: 0, size: 24,
   face: "bold", tracking: 1.25, fill: "#000000", layer: "white", stroke: null, rotated: false,
@@ -40,9 +42,14 @@ it("uses raw advances and one tracking gap per glyph", async () => {
   );
 });
 
-it.each([false, true])("matches live tracked text bounds and preserves counters (rotated=%s)", async (rotated) => {
+it.each([
+  { text: "BLUPULA", rotated: false, font, bytes },
+  { text: "BLUPULA", rotated: true, font, bytes },
+  { text: "office", rotated: false, font: barlow, bytes: barlowBytes },
+  { text: "office", rotated: true, font: barlow, bytes: barlowBytes },
+])("matches live tracked text bounds and counters for $text (rotated=$rotated)", async ({ text, rotated, font, bytes }) => {
   const dir = mkdtempSync(join(tmpdir(), "pdf-outlines-"));
-  const run = item({ text: "BLUPULA", x: 100, y: 180, rotated });
+  const run = item({ text, x: 100, y: 180, rotated });
   try {
     const rasters: PNG[] = [];
     for (const outlined of [false, true]) {
@@ -53,7 +60,7 @@ it.each([false, true])("matches live tracked text bounds and preserves counters 
         for (const d of outlineText(font, run))
           page.drawSvgPath(d, { x: 0, y: PAGE.h, color: rgb(0, 0, 0) });
       } else {
-        const embedded = await doc.embedFont(bytes);
+        const embedded = await doc.embedFont(bytes, { subset: true });
         page.pushOperators(setCharacterSpacing(run.tracking));
         page.drawText(run.text, { x: run.x, y: PAGE.h - run.y, size: run.size, font: embedded, rotate: degrees(rotated ? 90 : 0), color: rgb(0, 0, 0) });
       }

@@ -9,10 +9,11 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { setTimeout as tick } from "node:timers/promises";
 
 const native = vi.hoisted(() => {
   class Resource {
-    id: string; checked: boolean; action?: () => void; text?: string;
+    id: string; checked: boolean; action?: () => void; text?: string; closed = false;
     constructor(opts: { id?: string; checked?: boolean; action?: () => void; text?: string }) {
       this.id = opts.id ?? "predefined"; this.checked = !!opts.checked; this.action = opts.action; this.text = opts.text;
     }
@@ -21,10 +22,22 @@ const native = vi.hoisted(() => {
       native.items.set(item.id, item);
       return item;
     }
-    async close() { if (native.items.get(this.id) === this) native.items.delete(this.id); }
+    async close() {
+      this.closed = true;
+      if (native.items.get(this.id) === this) native.items.delete(this.id);
+    }
     async setEnabled() {}
-    async setText(text: string) { this.text = text; }
-    async setAsAppMenu() { return null; }
+    async setText(text: string) {
+      if (this.closed) throw new Error("Native item is closed");
+      this.text = text;
+    }
+    async setAsAppMenu() {
+      native.installCalls++;
+      await native.beforeInstall?.();
+      const previous = native.currentMenu;
+      native.currentMenu = this;
+      return previous;
+    }
   }
   class CheckMenuItem extends Resource {
     async setChecked(value: boolean) { this.checked = value; }
@@ -33,6 +46,9 @@ const native = vi.hoisted(() => {
   }
   return {
     items: new Map<string, Resource>(),
+    currentMenu: null as Resource | null,
+    beforeInstall: null as (() => Promise<void>) | null,
+    installCalls: 0,
     api: {
       MenuItem: class extends Resource {}, IconMenuItem: class extends Resource {},
       PredefinedMenuItem: class extends Resource {}, Submenu: class extends Resource {},
@@ -228,4 +244,75 @@ it("rebuilds the native export menu when legacy PDF commands become available or
     expect(native.items.has("export-both")).toBe(false);
     expect(native.items.has("export-pdf")).toBe(true);
   } finally { await act(async () => { root.unmount(); }); }
+});
+
+it("finishes a pending native installation before installing a new export menu", async () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((release) => { resolve = release; });
+  const gate = { promise, resolve };
+  native.items.clear();
+  native.installCalls = 0;
+  native.beforeInstall = () => native.installCalls === 1 ? gate.promise : Promise.resolve();
+  const root = createRoot(document.createElement("div"));
+  const errors = vi.fn();
+  const render = async (legacy: boolean) => act(async () => {
+    root.render(createElement(AppMenu, {
+      actions: actionsIn(APP_MENUS).filter((entry) => legacy || !entry.optional).map((entry) => ({
+        id: entry.id, label: entry.text, run: () => undefined,
+      })),
+      checked: {}, onNativeError: errors, onCheckForUpdates: () => undefined,
+    }));
+    await tick();
+  });
+  try {
+    await render(false);
+    await vi.waitFor(() => expect(native.installCalls).toBe(1));
+    await render(true);
+    await act(async () => { await tick(); });
+    expect(native.installCalls).toBe(1);
+    await act(async () => { gate.resolve(); await tick(); });
+    await vi.waitFor(() => expect(native.installCalls).toBe(2));
+    expect(native.currentMenu?.closed).toBe(false);
+    expect(native.items.has("export-both")).toBe(true);
+    expect(errors).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => { gate.resolve(); await tick(); root.unmount(); });
+    native.beforeInstall = null;
+  }
+});
+
+it("waits for the replacement menu before relabeling the installed-update command", async () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((release) => { resolve = release; });
+  const gate = { promise, resolve };
+  native.items.clear();
+  native.beforeInstall = null;
+  const root = createRoot(document.createElement("div"));
+  const errors = vi.fn();
+  const render = async (legacy: boolean, updateInstalled: boolean) => act(async () => {
+    root.render(createElement(AppMenu, {
+      actions: actionsIn(APP_MENUS).filter((entry) => legacy || !entry.optional).map((entry) => ({
+        id: entry.id, label: entry.text, run: () => undefined,
+      })),
+      checked: {}, onNativeError: errors, onCheckForUpdates: () => undefined, updateInstalled,
+    }));
+    await tick();
+  });
+  try {
+    await render(false, false);
+    await vi.waitFor(() => expect(native.currentMenu?.closed).toBe(false));
+    const oldUpdate = native.items.get("check-for-updates")!;
+    native.beforeInstall = () => gate.promise;
+    await render(true, false);
+    await vi.waitFor(() => expect(oldUpdate.closed).toBe(true));
+    await render(true, true);
+    await act(async () => { await tick(); });
+    expect(errors).not.toHaveBeenCalled();
+    await act(async () => { gate.resolve(); await tick(); });
+    await vi.waitFor(() => expect(native.items.get("check-for-updates")?.text).toBe("Restart to Update"));
+    expect(native.items.get("check-for-updates")?.closed).toBe(false);
+  } finally {
+    await act(async () => { gate.resolve(); await tick(); root.unmount(); });
+    native.beforeInstall = null;
+  }
 });

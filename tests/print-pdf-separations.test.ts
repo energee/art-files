@@ -104,12 +104,12 @@ async function compare(items: PlacedLayer[], input: Assets, bleed = SHIPPED_BLEE
       // Fractional page sizes round differently in GS and Poppler: their
       // outermost row/column is also an edge, not a changed solid interior.
       let edge = x === 0 || y === 0 || x === mask.width - 1 || y === mask.height - 1;
-      const here = mask.data[i * 4] < 128;
+      const here = mask.data[i * 4];
       for (let dy = -1; dy <= 1 && !edge; dy++) for (let dx = -1; dx <= 1; dx++) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= mask.width || ny >= mask.height) continue;
         const value = mask.data[(ny * mask.width + nx) * 4];
-        if ((value > 0 && value < 255) || (value < 128) !== here) edge = true;
+        if (value !== here) edge = true;
       }
       if (!edge) {
         outsideEdges++;
@@ -140,4 +140,24 @@ it("preserves uploaded mask tints, knockout order and page coverage with changed
     { kind: "paths", id: "white", x: 110, y: 110, paths: ["M0 0H10V10H0Z"], fill: "#FFFFFF", layer: "white", stroke: null },
   ];
   await compare(items, { ...assets, images: { mask: { kind: "png", bytes: PNG.sync.write(mask) } }, maskPixels: { data: new Uint8ClampedArray(mask.data), width: 2, height: 1 } }, 0.125);
+}, 30_000);
+
+it("preserves transparent mask pixels and partial alpha over earlier white ink", async () => {
+  const mask = new PNG({ width: 4, height: 1 });
+  mask.data.set([
+    0, 0, 255, 0,
+    255, 255, 255, 64,
+    0, 0, 255, 128,
+    0, 0, 255, 0,
+  ]);
+  const items: PlacedLayer[] = [
+    { kind: "paths", id: "underlay", x: 0, y: 0,
+      paths: [`M0 0H${PAGE.w / 2}V${PAGE.h}H0Z`], fill: "#FFFFFF", layer: "white", stroke: null },
+    { kind: "page", id: "mask", role: "mask", asset: "mask", x: 0, y: 0, w: PAGE.w, h: PAGE.h },
+  ];
+  await compare(items, {
+    ...assets,
+    images: { mask: { kind: "png", bytes: PNG.sync.write(mask) } },
+    maskPixels: { data: new Uint8ClampedArray(mask.data), width: mask.width, height: mask.height },
+  });
 }, 30_000);

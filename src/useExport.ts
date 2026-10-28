@@ -213,7 +213,9 @@ export function useExport({
     return { art, plan, assets };
   }
 
-  async function exportPrint(request: ExportRequest) {
+  /** One-file PDF exports share the build/save lifecycle. Only the combined
+   *  print file remembers a destination; individual legacy plates always ask. */
+  async function exportSinglePdf(mode: "print" | "art" | "mask", request: ExportRequest) {
     if (exportRunning.current) return;
     exportRunning.current = true;
     setExporting("pdf");
@@ -221,28 +223,46 @@ export function useExport({
     exportFresh.current = true;
     startSaveBatch();
     const labelPath = request.labelPath ?? null;
-    if (exportPaths.current.label !== labelPath) exportPaths.current = { label: labelPath };
-    const remembered = exportPaths.current.printPdf;
-    const name = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, ".pdf") ?? `${exportBase}.pdf`;
+    let remembered: string | undefined;
+    if (mode === "print") {
+      if (exportPaths.current.label !== labelPath) exportPaths.current = { label: labelPath };
+      remembered = exportPaths.current.printPdf;
+    }
+    const suffix = mode === "mask" ? "-mask.pdf" : ".pdf";
+    const name = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, suffix) ?? `${exportBase}${suffix}`;
     try {
-      const [{ buildPrintPdf }, { art, plan, assets }] = await Promise.all([
+      const [builders, { art, plan, assets }] = await Promise.all([
         import("@/pdf/build"), pdfInputs(),
       ]);
-      if (art.maskPng) {
-        const pixels = await rasterPixelsNatural(art.maskPng);
-        assets.maskPixels = {
-          data: new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.byteLength),
-          width: pixels.width,
-          height: pixels.height,
-        };
+      let bytes: Uint8Array;
+      switch (mode) {
+        case "print": {
+          if (art.maskPng) {
+            const pixels = await rasterPixelsNatural(art.maskPng);
+            assets.maskPixels = {
+              data: new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.byteLength),
+              width: pixels.width,
+              height: pixels.height,
+            };
+          }
+          bytes = await builders.buildPrintPdf(plan, assets);
+          break;
+        }
+        case "art":
+          bytes = await builders.buildArtPdf(plan, assets);
+          break;
+        case "mask":
+          bytes = await builders.buildMaskPdf(plan, assets);
+          break;
       }
-      const result = await saveVia(await buildPrintPdf(plan, assets), name, "application/pdf",
-        request.ask ? undefined : remembered ? { path: remembered } : undefined);
+      const target = !request.ask && remembered ? { path: remembered } : undefined;
+      const result = await saveVia(bytes, name, "application/pdf", target);
       if (!result) {
         exportError.set(`Note: Export cancelled before saving ${name}.`);
         return;
       }
-      if (result.target && "path" in result.target) exportPaths.current.printPdf = result.target.path;
+      if (mode === "print" && result.target && "path" in result.target)
+        exportPaths.current.printPdf = result.target.path;
       exportError.clear();
       if (exportFresh.current) setExportNote(`Saved ${result.name}.`);
     } catch (error) {
@@ -255,7 +275,7 @@ export function useExport({
 
   /** Build one combined print PDF by default; the retained pair is explicit. */
   async function buildFull(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
-    if (kind === "print") return exportPrint(request);
+    if (kind === "print") return exportSinglePdf("print", request);
     await exportPair("pdf", "application/pdf", request, async () => {
       const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([
         import("@/pdf/build"), pdfInputs(),
@@ -264,33 +284,8 @@ export function useExport({
     });
   }
 
-  async function exportPdfPlate(mode: "art" | "mask", request: ExportRequest = {}) {
-    if (exportRunning.current) return;
-    exportRunning.current = true;
-    setExporting("pdf");
-    setExportNote("");
-    exportFresh.current = true;
-    startSaveBatch();
-    const name = request.labelPath?.replace(/(\.[^./\\]+)?$/, mode === "art" ? ".pdf" : "-mask.pdf")
-      ?? `${exportBase}${mode === "mask" ? "-mask" : ""}.pdf`;
-    try {
-      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([
-        import("@/pdf/build"), pdfInputs(),
-      ]);
-      const bytes = mode === "art" ? await buildArtPdf(plan, assets) : await buildMaskPdf(plan, assets);
-      const result = await saveVia(bytes, name, "application/pdf");
-      if (!result) {
-        exportError.set(`Note: Export cancelled before saving ${name}.`);
-        return;
-      }
-      exportError.clear();
-      if (exportFresh.current) setExportNote(`Saved ${result.name}.`);
-    } catch (error) {
-      exportError.set(`Could not save ${name}: ${errMsg(error)}`);
-    } finally {
-      exportRunning.current = false;
-      setExporting(null);
-    }
+  function exportPdfPlate(mode: "art" | "mask", request: ExportRequest = {}) {
+    return exportSinglePdf(mode, request);
   }
 
   /** Layered Photoshop files, built full-resolution on demand like the PDFs,
