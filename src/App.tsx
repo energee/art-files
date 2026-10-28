@@ -1631,10 +1631,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
       if (ours) setLoadError([
-        `Note: Saved ${saved.name}${written ? ` — ${written} change${written === 1 ? "" : "s"}` : ""}`,
+        `Note: Saved ${saved.name}${written ? ` (${written} change${written === 1 ? "" : "s"})` : ""}`,
         ...(!missing ? []
-          : missing === 1 ? ["1 image has no file to save — it will be blank when this master reopens"]
-          : [`${missing} images have no file to save — they will be blank when this master reopens`]),
+          : missing === 1 ? ["1 image has no file to save. It will be blank when you reopen this master."]
+          : [`${missing} images have no file to save. They will be blank when you reopen this master.`]),
       ].join(" · "));
       return true;
     } catch (err) {
@@ -2560,7 +2560,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 if (e.key === "Enter") e.currentTarget.blur();
                 else if (e.key === "Escape") { setZoomDraft(null); e.currentTarget.blur(); }
               }}
-              title="Zoom — type a percentage, 100 fits the view"
+              title="Type a zoom percentage. 100 fits the view."
               aria-label="Zoom percentage"
               className="w-8 bg-transparent text-right tabular-nums outline-none" />
             %

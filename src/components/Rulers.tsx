@@ -83,7 +83,7 @@ function RulerSettings(props: {
         <button type="button"
           onClick={() => setMarginLocked((locked) => !locked)}
           aria-label="Margin inset: locked" aria-pressed={marginLocked}
-          title={marginLocked ? "Locked — unlock to change the master's margin" : "Unlocked"}
+          title={marginLocked ? "Unlock to change the master's margin" : "Unlocked"}
           className="grid size-5 place-items-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&>svg]:size-3">
           {marginLocked ? <Lock /> : <LockOpen />}
         </button>
@@ -94,7 +94,7 @@ function RulerSettings(props: {
         value={Number(marginValue.toFixed(decimalsOf(MARGIN_STEP[unit])))}
         min={0} max={marginMax} step={MARGIN_STEP[unit]} disabled={marginLocked}
         onChange={(value) => onMarginChange(clampMargin(unitToPoint(value, 0, unit)))} />
-      <p className="text-[11px] text-muted-foreground">Changes the master on all four sides; Save Master keeps it.</p>
+      <p className="text-[11px] text-muted-foreground">Sets all four margins in the master. Use Save Master to keep it.</p>
     </div>
   );
 }
@@ -425,7 +425,7 @@ export function Rulers(props: {
             <PopoverTrigger
               style={{ height: RULER_SIZE, width: RULER_SIZE }}
               className="pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              title={`Ruler settings — ${unit}`} aria-label={`Ruler settings, current unit ${unit}`}>
+              title={`Ruler settings (${unit})`} aria-label={`Ruler settings, current unit ${unit}`}>
               {unit}
             </PopoverTrigger>
             <PopoverContent align="start" side="bottom" className="w-80 gap-3">

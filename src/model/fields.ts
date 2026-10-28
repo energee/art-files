@@ -80,5 +80,5 @@ const SYMBOLOGY_LABEL: Record<Symbology, string> = {
 export function minModuleWarning(symbology: Symbology, moduleW: number): string | null {
   const MIN = 0.72;
   if (moduleW >= MIN) return null;
-  return `${SYMBOLOGY_LABEL[symbology]} module width is ${moduleW}pt — below the ${MIN}pt minimum for reliable scanning on curved metal.`;
+  return `${SYMBOLOGY_LABEL[symbology]} module width is ${moduleW}pt. Use at least ${MIN}pt for reliable scanning on curved metal.`;
 }

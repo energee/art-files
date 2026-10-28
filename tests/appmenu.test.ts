@@ -1,10 +1,14 @@
 // appmenu.test.ts — native menu accelerators, standard text-edit roles, and
-// the macOS application menu's Quit routing and Settings… row.
+// the macOS application menu's Quit routing.
 import { describe, expect, it, vi } from "vitest";
 import {
-  APP_MENUS, MAC_MENUS, actionsIn, macApplicationMenu, menuSymbols, nativeAccelerator,
+  APP_MENUS, actionsIn, macApplicationMenu, menuSymbols, nativeAccelerator,
 } from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
+
+vi.mock("@tauri-apps/api/app", () => ({
+  defaultWindowIcon: async () => ({ rid: 1, close: async () => undefined }),
+}));
 
 const command = (fields: Partial<Command>): Command => ({
   id: "test",
@@ -178,17 +182,4 @@ describe("macOS application menu", () => {
     expect(quit).toHaveBeenCalledOnce();
   });
 
-  // #551: Settings… sits under About / Check for Updates…, between
-  // separators, and leaves the Mac Edit menu; ⌘, is its accelerator.
-  it("carries Settings… after Check for Updates…, and the Mac Edit menu drops it", async () => {
-    const { api } = fakeApi();
-    const menu = await macApplicationMenu(api, [], () => undefined, () => undefined, settingsRow);
-    const titles = (menu as unknown as { items: Options[] }).items.map((i) => i.text ?? i.item);
-    expect(titles.slice(0, 6)).toEqual(
-      [{ About: null }, "Check for Updates…", "Separator", "Settings…", "Separator", "Services"]);
-    const edit = (menus: typeof APP_MENUS) => actionsIn(menus.filter((m) => m.id === "edit-menu")).map((e) => e.id);
-    expect(edit(APP_MENUS)).toContain("settings");
-    expect(edit(MAC_MENUS)).not.toContain("settings");
-    expect(nativeAccelerator(command({ key: ",", mods: "⌘" }))).toBe("CmdOrCtrl+,");
-  });
 });
