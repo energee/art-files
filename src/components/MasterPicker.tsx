@@ -148,14 +148,16 @@ export function MasterPicker(props: {
   onRenameVersion: (id: string, name: string) => void;
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
-  /** File → Save Master…, the button under the Select while `masterDirty`:
+  /** File → Save Master…, the button under the Select while `templateMoved`:
    *  opens the review that writes into whichever version the Select names. */
   onSaveMaster: () => void;
   /** The save button's text — File → Save Master…'s own title ("Save
    *  Master…", or "Save Variant…" on a variant), so the two always match. */
   saveLabel: string;
-  /** Whether a save would have anything to write (App's masterDirty). */
-  masterDirty: boolean;
+  /** Whether the master itself changed (App's templateMoved). Label
+   *  overrides alone don't show the button: they are this beer's, ⌘S saves
+   *  them, and File → Save Master… still offers to promote them. */
+  templateMoved: boolean;
   /** File → Open Master…'s switch, when it would bench something: shown in
    *  the preview card as a library pick's is. A new object opens the card
    *  (focus moves to its Cancel, since the command came from a menu);
@@ -397,7 +399,7 @@ export function MasterPicker(props: {
             if (e.key === "Escape") setNaming(null);
           }}
         />
-      ) : props.masterDirty && (
+      ) : props.templateMoved && (
         <Button type="button" id="variant-save" size="xs" variant="attention"
           className="mt-1" onClick={props.onSaveMaster}>
           {props.saveLabel}

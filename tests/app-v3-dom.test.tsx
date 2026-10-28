@@ -27,7 +27,6 @@ vi.mock("../src/pdf/fonts", () => ({
   loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
 }));
 import { DocumentEditor } from "../src/App";
-import { fileDrag, png } from "./dom-drag";
 
 /** Mount a real DocumentEditor; `onMeta` records the tab metadata it reports. */
 async function mountEditor() {
@@ -769,27 +768,3 @@ it("the inspector names its one layer in a multi-selection and reads an off vari
   } finally { await unmount(); }
 }, 60_000);
 
-// UX audit #14: the idle hint named only the texture, so the right-half mask
-// target stayed a secret until mid-drag. The halves are the WINDOW's (where
-// globalAssetKind splits), not the preview's, so the hint says so; it goes
-// away once a texture is loaded.
-it("the no-texture hint names both drop targets and leaves once a texture loads", async () => {
-  class FakeBitmap { width = 4; height = 2; close() {} }
-  vi.stubGlobal("ImageBitmap", FakeBitmap);
-  vi.stubGlobal("createImageBitmap", vi.fn(async () => new FakeBitmap()));
-  const ctx = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
-  const blob = vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
-  try {
-    await withCanvasEditor(async (_p, container) => {
-      const text = container.textContent ?? "";
-      expect(text).toContain("left half of the window → background");
-      expect(text).toContain("right half of the window → metallic mask (PNG/WebP)");
-      fileDrag("drop", png); // clientX 10: the left half, so the texture
-      await vi.waitFor(() => expect(container.textContent).not.toContain("drop an image anywhere"));
-    });
-  } finally {
-    ctx.mockRestore();
-    blob.mockRestore();
-    vi.unstubAllGlobals();
-  }
-}, 60_000);

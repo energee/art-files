@@ -23,7 +23,7 @@ vi.mock("@/planLayers", () => ({ planLayers: () => [] }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-async function exportBoth(which: "art" | "mask" | "both" = "both") {
+async function exportBoth() {
   const { useExport } = await import("@/useExport");
   const setBuildError = vi.fn();
   let api: ReturnType<typeof useExport> | undefined;
@@ -37,7 +37,7 @@ async function exportBoth(which: "art" | "mask" | "both" = "both") {
   }
   const root = createRoot(document.createElement("div"));
   await act(async () => { root.render(createElement(Probe)); });
-  await act(async () => { await api!.buildFull(which); });
+  await act(async () => { await api!.buildFull(); });
 
   const note = api!.exportNote;
 
@@ -94,11 +94,4 @@ it("names the derived mask path when writing it fails", async () => {
   writeFile.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("disk full"));
   const { error } = await exportBoth();
   expect(error).toBe("Saved /labels/Renamed.pdf. Could not save /labels/Renamed-mask.pdf: disk full");
-}, 30000);
-
-it("does not look for a mask path when exporting the art plate alone", async () => {
-  save.mockResolvedValue("/labels/Renamed.pdf");
-  await exportBoth("art");
-  expect(exists).not.toHaveBeenCalled();
-  expect(writeFile.mock.calls.map(([p]) => p)).toEqual(["/labels/Renamed.pdf"]);
 }, 30000);

@@ -2,9 +2,8 @@
 // status bar's Label | Mask | Rendered | Can control and the View menu's checks both
 // read viewState(), so mid-split ("Compare") neither claims Label; the
 // one-can / four-pack choice is a View command as well as the status-bar 1|4
-// toggle; the zoom readout's "%" sits inside its bordered control; the status
-// bar's DPI readout opens Settings on Resolution; and the texture-drop hint
-// stays off the 3D can.
+// toggle; the zoom readout's "%" sits inside its bordered control; and the
+// status bar has no DPI readout (it lives in Settings → PSD resolution).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -149,25 +148,11 @@ it("the zoom readout's % sits inside its bordered control", async () => {
   } finally { await unmount(); }
 });
 
-it("the DPI readout opens Settings focused on Resolution", async () => {
+// The DPI setting only shapes PSD export and the pixel ruler, so it lives in
+// Settings → PSD resolution, not in the status bar.
+it("the status bar carries no DPI readout", async () => {
   const { container, unmount } = await mountEditor();
   try {
-    const dpi = [...container.querySelectorAll("button")]
-      .find((b) => b.textContent?.endsWith("DPI"))!;
-    expect(dpi).toBeDefined();
-    await act(async () => { dpi.click(); });
-    await vi.waitFor(() => expect(document.activeElement?.id).toBe("doc-dpi"), { timeout: 5000 });
+    expect([...container.querySelectorAll("button")].some((b) => /DPI/.test(b.textContent ?? ""))).toBe(false);
   } finally { await unmount(); }
 });
-
-it("the texture-drop hint shows over the 2D sheet, not on the can", async () => {
-  const { container, unmount } = await mountEditor();
-  const hint = "drop an image anywhere";
-  try {
-    await vi.waitFor(() => expect(container.textContent).toContain(hint), { timeout: 30_000 });
-    await press("4");
-    expect(container.textContent).not.toContain(hint);
-    await press("1");
-    expect(container.textContent).toContain(hint);
-  } finally { await unmount(); }
-}, 60_000);

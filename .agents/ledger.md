@@ -642,3 +642,11 @@ no status, no attempts, no delta.
 - delta: shipped master qr ecLevel L → Q (style, colours, keyline, finders unchanged; 29 → 33 modules for typical names). DEFAULT_EC_LEVEL in qr.ts replaces three `?? "L"` copies. Corpus decode regression in tests/qr-print-decode.test.ts (red at L, green at Q). Goldens re-baselined per docs/goldens.md: 600 DPI diffs red only on the QR square (art 147,773 px in a 521 px bbox; mask 123,056 px in a 491 px bbox), PNGs committed.
 - validation: npm test 158 files / 1669 tests, tsc, lint, knip, check-release pass. Not verified: any physical print or phone scan.
 - release: binary-impacting; [Unreleased] bullet with a saved-master caveat
+
+## 2026-10-27 ux-shell-trim
+- finding: [ux/low] UX audit (ux-shell #10, #11, #13, #15; ux-master #1, #10) — UI that adds steps or noise: the picker's pink Save Master… lit for any label override (App.tsx masterDirty), a status-bar DPI control that only affects PSD/pixel ruler, a Settings → Appearance group duplicating View → Appearance, four single-plate export rows, and a resting drop hint that repeats the drag overlay
+- status: in-review (PR open, unmerged)
+- attempts: 1/3
+- observed-at: e64285d7 (branch ux/shell-trim)
+- delta: picker button gated on templateMoved (File → Save Master… still on masterDirty); status-bar DPI button deleted, Settings field renamed "PSD resolution"; Settings Appearance group and ThemeSwitch.tsx deleted; Export submenu/palette keep Export PDFs + Export PSDs only, useExport buildFull/exportPsd always build the pair (`which` parameter and null-plate handling removed); resting drop hint deleted (AssetDropOverlay already shows both zones mid-drag). Docs: masters-and-labels, variants, settings, export, workspace, preview, getting-started.
+- release: binary-impacting; Changed/Removed bullets under [Unreleased], no version bump

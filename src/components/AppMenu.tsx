@@ -123,12 +123,7 @@ export const APP_MENUS: SubmenuEntry[] = [
       {
         kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
           { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc" },
-          { kind: "action", id: "export-art", text: "Export Artwork PDF", symbol: "photo" },
-          { kind: "action", id: "export-mask", text: "Export Mask PDF", symbol: "circle.lefthalf.filled" },
-          { kind: "separator", id: "export-formats" },
           { kind: "action", id: "export-psd", text: "Export PSDs", symbol: "square.3.layers.3d" },
-          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD", symbol: "photo" },
-          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD", symbol: "circle.lefthalf.filled" },
         ],
       },
     ],
@@ -180,7 +175,7 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
       { kind: "action", id: "zoom-fit", text: "Zoom to Fit", symbol: "arrow.up.left.and.down.right.magnifyingglass" },
       { kind: "separator", id: "view-appearance" },
-      // The same three choices as Settings → Appearance; one is always checked.
+      // System / Light / Dark, also in the ⌘K palette; one is always checked.
       {
         kind: "submenu", id: "appearance-menu", text: "Appearance", symbol: "paintpalette", items: [
           { kind: "action", id: "theme-system", text: "System", check: true, keywords: ["Theme"], symbol: "desktopcomputer" },
