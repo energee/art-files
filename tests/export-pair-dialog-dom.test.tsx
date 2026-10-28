@@ -7,6 +7,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
+import type { HeaderMessage } from "@/useOwnedError";
 
 const save = vi.fn();
 const writeFile = vi.fn(async (_path: string, _bytes: Uint8Array) => undefined);
@@ -27,13 +28,13 @@ const writes = () => writeFile.mock.calls.map(([p]) => p);
  *  Export PDFs As…) in it and reports the header's note and error. */
 async function mountExport() {
   const { useExport } = await import("@/useExport");
-  const setBuildError = vi.fn();
+  const setBuildMessage = vi.fn();
   let api: ReturnType<typeof useExport> | undefined;
   function Probe() {
     api = useExport({
       drawLayers: [], family: "poppins", liveImages: {}, planAssets: () => ({}) as never,
       pageArt: () => ({}), title: "Beer", exportBase: "beer",
-      render: { bleedIn: 0.125, dpi: 600 } as never, setBuildError,
+      render: { bleedIn: 0.125, dpi: 600 } as never, setBuildMessage,
     });
     return null;
   }
@@ -42,9 +43,9 @@ async function mountExport() {
   return {
     api: () => api!,
     async exportPdfs(options?: Parameters<NonNullable<typeof api>["buildFull"]>[0]) {
-      setBuildError.mockClear();
+      setBuildMessage.mockClear();
       await act(async () => { await api!.buildFull(options, "pair"); });
-      return { note: api!.exportNote, error: setBuildError.mock.lastCall?.[0] as string | undefined };
+      return { note: api!.exportNote, error: (setBuildMessage.mock.lastCall?.[0] as HeaderMessage | undefined)?.text };
     },
     async exportPrint(options?: Parameters<NonNullable<typeof api>["buildFull"]>[0]) {
       await act(async () => { await api!.buildFull(options); });

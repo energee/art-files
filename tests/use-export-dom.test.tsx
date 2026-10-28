@@ -5,6 +5,7 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
+import type { HeaderMessage } from "../src/useOwnedError";
 
 type Saved = { name: string; bytes: Uint8Array } | null;
 const save = vi.hoisted(() => ({ next: [] as (() => Promise<Saved>)[], names: [] as string[] }));
@@ -23,20 +24,23 @@ vi.mock("../src/pdf/fonts", async () => {
 });
 
 const { useExport } = await import("../src/useExport");
+const { NO_MESSAGE } = await import("../src/useOwnedError");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let api: ReturnType<typeof useExport>;
 let buildError = "";
+let buildNote: boolean | undefined;
 let setError: (e: string) => void = () => undefined;
 
 function Probe() {
-  const [error, setBuildError] = useState("");
-  buildError = error;
-  setError = setBuildError;
+  const [error, setBuildMessage] = useState<HeaderMessage>(NO_MESSAGE);
+  buildError = error.text;
+  buildNote = error.note;
+  setError = (text) => setBuildMessage({ text });
   api = useExport({
     drawLayers: [], family: "poppins", liveImages: {}, planAssets: () => ({}) as never,
-    pageArt: () => ({}), title: "T", exportBase: "beer", render: DEFAULT_RENDER, setBuildError,
+    pageArt: () => ({}), title: "T", exportBase: "beer", render: DEFAULT_RENDER, setBuildMessage,
   });
   return null;
 }
@@ -63,6 +67,7 @@ it("reports the first file saved and the second that failed", async () => {
   save.next = [async () => ({ name: "beer.pdf", bytes: new Uint8Array() }), async () => { throw new Error("disk full"); }];
   await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("Saved beer.pdf. Could not save beer-mask.pdf: disk full");
+  expect(buildNote).toBeFalsy();
   expect(api.exportNote).toBe("");
   // The failure is the export's own message, so the next good export clears it.
   await act(async () => { await api.buildFull({}, "pair"); });
@@ -75,6 +80,7 @@ it("notes a cancelled save", async () => {
   save.next = [async () => null];
   await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("Note: Export cancelled before saving beer.pdf.");
+  expect(buildNote).toBe(true);
   expect(save.names).toEqual(["beer.pdf"]);
   act(() => root.unmount());
 });

@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
-import { useOwnedError } from "@/useOwnedError";
+import { useOwnedError, type HeaderMessage } from "@/useOwnedError";
 import { t } from "@/i18n";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
@@ -50,7 +50,7 @@ type ExportInputs = {
    *  Shared with asset, master and menu errors, so it takes App's raw setter:
    *  a successful export clears the slot only while it still holds the
    *  export's own message (#473). */
-  setBuildError: Dispatch<SetStateAction<string>>;
+  setBuildMessage: Dispatch<SetStateAction<HeaderMessage>>;
 };
 
 /** Where an export writes. `labelPath` is the tab's bound .label (desktop
@@ -59,7 +59,7 @@ type ExportInputs = {
 type ExportRequest = { labelPath?: string | null; ask?: boolean };
 
 export function useExport({
-  drawLayers, family, liveImages, planAssets, pageArt, title, exportBase, render, setBuildError,
+  drawLayers, family, liveImages, planAssets, pageArt, title, exportBase, render, setBuildMessage,
 }: ExportInputs) {
   // The export in flight, if any: it blurs the preview under a note naming
   // the files being built (#401), and blocks a second export.
@@ -147,7 +147,7 @@ export function useExport({
 
   const exportRunning = useRef(false);
   // A later successful export clears only the error an export set (#473).
-  const exportError = useOwnedError(setBuildError);
+  const exportError = useOwnedError(setBuildMessage);
   async function exportPair(
     extension: "pdf" | "psd", type: string, { labelPath, ask }: ExportRequest,
     build: () => Promise<[art: Uint8Array, mask: Uint8Array]>,
@@ -185,7 +185,7 @@ export function useExport({
         if (!result) {
           exportError.set(saved.length
             ? t("Note: Saved {{files}}. Export cancelled before saving {{file}}.", { files: saved.join(", "), file: pending })
-            : t("Note: Export cancelled before saving {{file}}.", { file: pending }));
+            : t("Note: Export cancelled before saving {{file}}.", { file: pending }), true);
           return;
         }
         saved.push(result.name);
@@ -265,7 +265,7 @@ export function useExport({
       const target = !request.ask && remembered ? { path: remembered } : undefined;
       const result = await saveVia(bytes, name, "application/pdf", target);
       if (!result) {
-        exportError.set(t("Note: Export cancelled before saving {{file}}.", { file: name }));
+        exportError.set(t("Note: Export cancelled before saving {{file}}.", { file: name }), true);
         return;
       }
       if (mode === "print" && result.target && "path" in result.target)

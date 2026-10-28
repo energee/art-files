@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import i18n, { getLanguage, isNote, languages, resolveLanguage, setLanguage, t, useLanguage } from "../src/i18n";
+import { shortDate } from "../src/lib/utils";
+import { getLanguage, languages, resolveLanguage, setLanguage, t, useLanguage } from "../src/i18n";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -16,14 +17,6 @@ describe("language selection", () => {
     const plist = readFileSync("src-tauri/Info.plist", "utf8");
     const declared = [...plist.matchAll(/<string>(\w+)<\/string>/g)].map((m) => m[1]);
     expect(declared).toEqual(languages.map(({ value }) => value));
-  });
-
-  it("still reads a note made before a language switch as a warning", () => {
-    setLanguage("de");
-    const note = t("Note: {{message}}", { message: "x" });
-    setLanguage("fr");
-    expect(isNote(note)).toBe(true);
-    expect(isNote("Could not open x")).toBe(false);
   });
 
   it("matches regional system languages in preference order and falls back for unsupported languages", () => {
@@ -93,27 +86,19 @@ describe("language selection", () => {
     expect(t("Language")).toBe("Idioma");
   });
 
-  it("restores system detection when an explicit choice is cleared in another window", () => {
-    setLanguage("de");
-    localStorage.removeItem("labellab.language");
-    window.dispatchEvent(new StorageEvent("storage", { key: "labellab.language", newValue: null }));
-    expect(getLanguage()).toBe(resolveLanguage("system", navigator.languages));
-    expect(document.documentElement.lang).toBe(i18n.resolvedLanguage);
-  });
-
-  it("treats an invalid stored preference as system instead of selecting an unsupported locale", () => {
-    setLanguage("fr");
+  it("treats an invalid stored preference as system instead of selecting an unsupported locale", async () => {
     localStorage.setItem("labellab.language", "not-a-language");
-    window.dispatchEvent(new StorageEvent("storage", { key: "labellab.language", newValue: "not-a-language" }));
-    expect(getLanguage()).toBe(resolveLanguage("system", navigator.languages));
-    setLanguage("system");
+    vi.resetModules();
+    const fresh = await import("../src/i18n");
+    expect(fresh.getLanguage()).toBe(resolveLanguage("system", navigator.languages));
+    expect(document.documentElement.lang).toBe(fresh.getLanguage());
+    fresh.setLanguage("system");
     expect(localStorage.getItem("labellab.language")).toBeNull();
   });
 });
 
 describe("dates", () => {
-  it("formats in the UI language, in the operator's region of it", async () => {
-    const { shortDate } = await import("../src/lib/utils");
+  it("formats in the UI language, in the operator's region of it", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-GB", "de-AT"]);
     setLanguage("en");
     expect(shortDate("2026-10-11T12:00:00Z")).toBe("11 Oct 2026");

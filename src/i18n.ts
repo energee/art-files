@@ -104,21 +104,7 @@ export function useLanguage(): { preference: LanguagePreference; language: Langu
   return { preference, language: getLanguage(), setLanguage };
 }
 
-if (typeof window !== "undefined") {
-  window.addEventListener("languagechange", () => {
-    if (preference === "system") void i18n.changeLanguage(resolveLanguage(preference, systemLanguages()));
-  });
-  window.addEventListener("storage", (event) => {
-    if (event.key !== STORAGE_KEY && event.key !== null) return;
-    preference = readPreference();
-    void i18n.changeLanguage(resolveLanguage(preference, systemLanguages()));
-  });
-}
-
-/** A "Note:" message is a warning, not an error. Checked in every UI
- *  language: a note keeps the language it was made in after a switch. */
-export function isNote(text: string): boolean {
-  return languages.some(({ value }) => text.startsWith(i18n.getFixedT(value)("Note:")));
-}
+// ponytail: no live "languagechange"/"storage" sync. The desktop app has one
+// window and macOS fixes its languages at launch; a dev browser tab reloads.
 
 export default i18n;
