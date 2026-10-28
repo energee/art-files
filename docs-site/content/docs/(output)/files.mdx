@@ -34,7 +34,7 @@ Dropping on an inspector image field wins and loads that field. Clicking a field
 
 Background takes PNG, JPEG, or WebP. The mask takes PNG or WebP. The `.label` file keeps the image you dropped, WebP included. Only the PDFs get a PNG copy of a WebP, because the PDF embed handles PNG and JPEG only.
 
-A PNG mask is embedded as-authored, no recoloring. A JPEG aimed at the mask half of the chooser lands on the background instead.
+In the combined print PDF, mask pixels become White Ink spot tints (blue = full ink, white = knockout). The optional legacy mask PDF embeds the PNG as-authored, with no recolouring. A JPEG aimed at the mask half of the chooser lands on the background instead.
 
 ## Older configs
 

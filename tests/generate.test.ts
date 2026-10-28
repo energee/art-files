@@ -24,17 +24,17 @@ describe("parseGenerateArgs", () => {
   it("new form: positional master + values + out", () => {
     expect(parseGenerateArgs(["beer.master", "v.json", "out"])).toEqual({
       mode: "generate", masterPath: "beer.master", source: { kind: "values", path: "v.json" },
-      outDir: "out", variants: [], assets: {}, set: {}, format: "all",
+      outDir: "out", variants: [], assets: {}, set: {}, format: "all", twoFile: false,
     });
   });
 
-  it("new form: flags, stdin values, one variant, one asset, pdf only", () => {
+  it("new form accepts --two-file", () => {
     expect(parseGenerateArgs([
       "--master", "beer.master", "--values", "-", "--out", "out",
-      "--variant", "collab", "--asset", "collabLeft=./a.svg", "--format", "pdf",
+      "--variant", "collab", "--asset", "collabLeft=./a.svg", "--format", "pdf", "--two-file",
     ])).toMatchObject({
       mode: "generate", source: { kind: "values", path: "-" }, variants: ["collab"],
-      assets: { collabLeft: "./a.svg" }, format: "pdf",
+      assets: { collabLeft: "./a.svg" }, format: "pdf", twoFile: true,
     });
   });
 
@@ -53,7 +53,7 @@ describe("parseGenerateArgs", () => {
   it("new form without a master: values + out, and stdin + out (#105)", () => {
     expect(parseGenerateArgs(["v.json", "out"])).toEqual({
       mode: "generate", source: { kind: "values", path: "v.json" },
-      outDir: "out", variants: [], assets: {}, set: {}, format: "all",
+      outDir: "out", variants: [], assets: {}, set: {}, format: "all", twoFile: false,
     });
     expect(parseGenerateArgs(["-", "out"])).toMatchObject({
       mode: "generate", source: { kind: "values", path: "-" }, outDir: "out",
@@ -61,10 +61,14 @@ describe("parseGenerateArgs", () => {
     expect(parseGenerateArgs(["out"])).toMatchObject({ mode: "generate", outDir: "out" });
   });
 
-  it("legacy positional still parses", () => {
-    expect(parseGenerateArgs(["none", "none", "out", "cfg.json", "--collab-left=a.svg"]))
+  it("legacy positional accepts --two-file", () => {
+    expect(parseGenerateArgs(["none", "none", "out", "cfg.json", "--collab-left=a.svg", "--two-file"]))
       .toMatchObject({ mode: "legacy", texturePath: "none", maskPath: "none",
-        outDir: "out", configPath: "cfg.json", collabLeft: "a.svg" });
+        outDir: "out", configPath: "cfg.json", collabLeft: "a.svg", twoFile: true });
+  });
+
+  it("--two-file is unavailable with --inspect", () => {
+    expect(() => parseGenerateArgs(["--inspect", "--two-file"])).toThrow(/usage/i);
   });
 
   it("unknown flag throws USAGE", () => {
@@ -182,7 +186,7 @@ const labradorite = () => coerceValues(
 ).values;
 
 describe("buildLabel", () => {
-  it("writes an art PDF whose stream contains the filled name", async () => {
+  it("writes one print PDF by default", async () => {
     const result = await buildLabel({
       master: lolevMaster(),
       masterAssets: {},
@@ -193,9 +197,23 @@ describe("buildLabel", () => {
       assetRoot,
     });
     expect(result.basename).toBe("labradorite");
-    const art = result.files.find((f) => f.name === "labradorite.pdf");
-    expect(art).toBeTruthy();
-    expect((await PDFDocument.load(art!.bytes)).getTitle()).toBe("Labradorite label art");
+    expect(result.files.map((f) => f.name)).toEqual(["labradorite.pdf"]);
+    expect((await PDFDocument.load(result.files[0].bytes)).getTitle()).toBe("Labradorite label");
+  });
+
+  it("two-file build keeps the art and mask pair", async () => {
+    const result = await buildLabel({
+      master: lolevMaster(),
+      masterAssets: {},
+      values: labradorite(),
+      enabledVariants: [],
+      extraImages: {},
+      format: "pdf",
+      twoFile: true,
+      assetRoot,
+    });
+    expect(result.files.map((f) => f.name)).toEqual(["labradorite.pdf", "labradorite-mask.pdf"]);
+    expect((await PDFDocument.load(result.files[0].bytes)).getTitle()).toBe("Labradorite label art");
   });
 
   it("invalid UPC fails loudly", async () => {
@@ -247,13 +265,22 @@ describe("runGenerate", () => {
     expect(JSON.parse(io.stdout.join("")).layers.map((l: { id: string }) => l.id)).toContain("name");
   });
 
-  it("generate writes the named art PDF", async () => {
+  it("generate writes one print PDF by default", async () => {
     const io = memIo();
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify({
       name: "Labradorite", barcode: "850051366224",
     })));
     expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
     expect(io.files.has("/out/labradorite.pdf")).toBe(true);
+    expect(io.files.has("/out/labradorite-mask.pdf")).toBe(false);
+  });
+
+  it("--two-file generates the old PDF pair", async () => {
+    const io = memIo();
+    io.files.set("/v.json", json({ name: "Labradorite", barcode: "850051366224" }));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(0);
+    expect(io.files.has("/out/labradorite.pdf")).toBe(true);
+    expect(io.files.has("/out/labradorite-mask.pdf")).toBe(true);
   });
 
   it("unknown variant returns 1", async () => {
@@ -262,13 +289,20 @@ describe("runGenerate", () => {
     expect(io.stderr.join("")).toMatch(/nope/);
   });
 
-  it("legacy none none out still writes four files", async () => {
+  it("legacy none none out writes a print PDF and PSD pair", async () => {
     const io = memIo();
     expect(await io.run(["none", "none", "/out"])).toBe(0);
     expect(io.files.has("/out/label.pdf")).toBe(true);
-    expect(io.files.has("/out/label-mask.pdf")).toBe(true);
+    expect(io.files.has("/out/label-mask.pdf")).toBe(false);
     expect(io.files.has("/out/label.psd")).toBe(true);
     expect(io.files.has("/out/label-mask.psd")).toBe(true);
+  });
+
+  it("legacy --two-file writes the old PDF pair", async () => {
+    const io = memIo();
+    expect(await io.run(["none", "none", "/out", "--two-file"])).toBe(0);
+    expect(io.files.has("/out/label.pdf")).toBe(true);
+    expect(io.files.has("/out/label-mask.pdf")).toBe(true);
   });
 
   it("reads values from stdin when --values=-", async () => {
@@ -336,7 +370,7 @@ describe("runGenerate", () => {
     expect(io.files.has("/out/collab-label.pdf")).toBe(true);
   });
 
-  it("new-form --asset background= and mask= feed the page art", async () => {
+  it("new-form --asset background= and mask= feed the print PDF", async () => {
     const io = memIo();
     io.files.set("/tex.png", whitePng());
     io.files.set("/mask.png", whitePng());
@@ -389,7 +423,7 @@ describe("runGenerate", () => {
   it("--check validates every job, prints problems, writes nothing", async () => {
     const io = memIo();
     io.files.set("/ok.json", json([{ name: "A", barcode: "850051366224" }, { name: "B" }]));
-    expect(await io.run(["--values", "/ok.json", "--out", "/out", "--check"])).toBe(0);
+    expect(await io.run(["--values", "/ok.json", "--out", "/out", "--check", "--two-file"])).toBe(0);
     expect([...io.files.keys()]).toEqual(["/ok.json"]);
     expect(io.stdout.join("")).toMatch(/2 jobs? OK/);
 
@@ -398,6 +432,15 @@ describe("runGenerate", () => {
     expect(io.stderr.join("")).toMatch(/barcode/i);
     expect(io.stderr.join("")).toMatch(/nope/);
     expect([...io.files.keys()]).toEqual(["/ok.json", "/bad.json"]);
+  });
+
+  it("--format all writes one print PDF and the PSD pair", async () => {
+    const io = memIo();
+    io.files.set("/v.json", json({ name: "All", barcode: "850051366224" }));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "all"])).toBe(0);
+    expect([...io.files.keys()].filter((p) => p.startsWith("/out/")).sort()).toEqual([
+      "/out/all-mask.psd", "/out/all.pdf", "/out/all.psd",
+    ]);
   });
 
   it("--check needs no output directory", async () => {
@@ -426,12 +469,20 @@ describe("runGenerate", () => {
     expect(io.files.size).toBe(1);
   });
 
-  it("rejects a batch whose files would overwrite (night vs night-mask)", async () => {
+  it("allows a batch whose old mask-derived names do not collide by default", async () => {
     const io = memIo();
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify([
       { name: "Night" }, { name: "Night Mask" },
     ])));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(1);
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
+  });
+
+  it("rejects a two-file batch whose files would overwrite (night vs night-mask)", async () => {
+    const io = memIo();
+    io.files.set("/v.json", new TextEncoder().encode(JSON.stringify([
+      { name: "Night" }, { name: "Night Mask" },
+    ])));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/night-mask\.pdf/);
   });
 });

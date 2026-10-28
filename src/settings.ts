@@ -16,7 +16,9 @@ import { decimalsOf } from "@/numeric";
  *  inspector shows them all in inches (see InchField) and stores them in the
  *  form canScene consumes:
  *    cornerRadius — % of the label's short side
- *    edgeSoftness — foil-edge blur, % of the label's width */
+ *    edgeSoftness — foil-edge blur, % of the label's width
+ *  It also carries twoFilePdfExport, a plain on/off that keeps the legacy
+ *  art + mask PDF exports in the menus. */
 export interface RenderSettings {
   cornerRadius: number;
   edgeSoftness: number;
@@ -32,6 +34,8 @@ export interface RenderSettings {
    *  a fixed 8x5in die, so it changes the exported page size without moving a
    *  single element relative to the trim. */
   bleedIn: number;
+  /** Keep the legacy separate art and mask PDF commands visible. */
+  twoFilePdfExport: boolean;
 }
 
 // There is no labelSize/labelWidth here: how big the label sits on the can is
@@ -59,6 +63,7 @@ export const DEFAULT_RENDER: RenderSettings = {
   // its exact distance from the TRIM — the edge the label is actually cut on.
   // Only the page around it changes size. Nothing on the die moves.
   bleedIn: 0.0635,
+  twoFilePdfExport: false,
 };
 
 /** Typing granularity of the bleed field, in inches — and so the
@@ -137,8 +142,12 @@ export function loadRenderSettings(): RenderSettings {
   const stored = raw && typeof raw === "object" ? raw as Partial<RenderSettings> : {};
   const out = { ...DEFAULT_RENDER };
   for (const k of Object.keys(DEFAULT_RENDER) as (keyof RenderSettings)[]) {
-    if (typeof stored[k] === "number" && Number.isFinite(stored[k])) out[k] = stored[k];
+    if (typeof DEFAULT_RENDER[k] === "number"
+      && typeof stored[k] === "number" && Number.isFinite(stored[k])) {
+      (out[k] as number) = stored[k] as number;
+    }
   }
+  if (typeof stored.twoFilePdfExport === "boolean") out.twoFilePdfExport = stored.twoFilePdfExport;
   return out;
 }
 

@@ -7,7 +7,7 @@ Same resolve, plan, and build path as the app. No window. The CLI uses the maste
 
 ```bash
 npm run generate -- beer.master values.json ./out
-# writes {name}.pdf, {name}-mask.pdf, {name}.psd, {name}-mask.psd
+# writes {name}.pdf (art + White Ink spot), {name}.psd, {name}-mask.psd
 
 npm run -s generate -- beer.master --inspect
 # prints the master's layer ids (the keys values.json uses)
@@ -26,7 +26,8 @@ npm run generate -- beer.master values.json ./out --set name=X
 
 - `--variant id`: enable a variant (union with variants already on a `--label`)
 - `--asset layerId=path`: attach an image file. `--asset background=` / `mask=` need a master with that role layer
-- `--format pdf` or `psd`: skip the other pair. Default is both
+- `--format pdf` or `psd`: emit only the print PDF or only the PSD pair. Default emits both formats
+- `--two-file`: emit the legacy artwork PDF and blue/white mask PDF instead of the combined print PDF. Works with master, batch, label and legacy inputs; PSD output is unchanged
 - `--set id=value`: overlay one value on every job
 - `--inspect`: JSON on stdout, exit 0. Use `npm run -s` when piping output so npm does not add its banner
 - `--check`: validate every job and print its errors and warnings, then stop. Nothing is built or written, so no output directory is needed (one given is ignored). Exit 0 when every job passes
@@ -50,5 +51,5 @@ Exit codes: **0** wrote everything (with `--check`: every job is valid), **1** a
 The older texture/mask/config.json argv still works for golden re-baselines:
 
 ```bash
-npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json]
+npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] [--two-file]
 ```

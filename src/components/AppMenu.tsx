@@ -80,6 +80,8 @@ type ActionEntry = {
    *  the title it is installed under (Save Master… reads Save Variant… while
    *  a variant is the version) — see rowTitle. */
   live?: true;
+  /** Omitted when its settings-gated command is absent. Other missing commands are errors. */
+  optional?: true;
   /** Extra ⌘K search terms (cmdk keywords): the palette's old wording, so a
    *  search for "Hide rulers" or "Preview: Mask" still finds the row. */
   keywords?: string[];
@@ -125,8 +127,12 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "file-projects" },
       {
         kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
-          { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc" },
-          { kind: "action", id: "export-both-as", text: "Export PDFs As…", symbol: "doc.on.doc" },
+          { kind: "action", id: "export-pdf", text: "Export PDF", symbol: "doc.on.doc" },
+          { kind: "action", id: "export-pdf-as", text: "Export PDF As…", symbol: "doc.on.doc" },
+          { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc", optional: true },
+          { kind: "action", id: "export-both-as", text: "Export PDFs As…", symbol: "doc.on.doc", optional: true },
+          { kind: "action", id: "export-art", text: "Export Artwork PDF", symbol: "doc.on.doc", optional: true },
+          { kind: "action", id: "export-mask", text: "Export Mask PDF", symbol: "doc.on.doc", optional: true },
           { kind: "action", id: "export-psd", text: "Export PSDs", symbol: "square.3.layers.3d" },
           { kind: "action", id: "export-psd-as", text: "Export PSDs As…", symbol: "square.3.layers.3d" },
         ],
@@ -253,6 +259,17 @@ type CommandIndex = Record<string, Command>;
 /** Which check rows are on, by command id: one map for both menus and ⌘K. */
 export type CheckedState = Partial<Record<string, boolean>>;
 
+/** Filter optional commands once, so native and web menus expose the same
+ * setting-gated rows as the command palette. */
+function visibleEntries(entries: MenuEntry[], commands: CommandIndex): MenuEntry[] {
+  return entries.flatMap<MenuEntry>((entry) => {
+    if (entry.kind === "action") return !entry.optional || commands[entry.id] ? [entry] : [];
+    if (entry.kind !== "submenu") return [entry];
+    const items = visibleEntries(entry.items, commands);
+    return items.length ? [{ ...entry, items }] : [];
+  });
+}
+
 function MenuGlyph({ name }: { name: MenuSymbol }) {
   const Icon = SYMBOL_GLYPH[name];
   // Sized here: MenubarCheckboxItem, unlike MenubarItem, has no svg size
@@ -308,10 +325,10 @@ function WebEntries(props: {
   });
 }
 
-function WebMenu(props: { commands: CommandIndex; checked: CheckedState }) {
+function WebMenu(props: { commands: CommandIndex; checked: CheckedState; menus: SubmenuEntry[] }) {
   return (
     <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
-      {APP_MENUS.map((menu) => (
+      {props.menus.map((menu) => (
         <MenubarMenu key={menu.id}>
           <MenubarTrigger className={MENU_TRIGGER}>{menu.text}</MenubarTrigger>
           <MenubarContent align="start" className={MENU_ITEMS}>
@@ -502,6 +519,11 @@ export function menuSymbols(entries: MenuEntry[] = APP_MENUS): [string, string][
 /** The macOS application-menu item's two labels, toggled by `updateInstalled`. */
 const UPDATE_ITEM_TEXT = { check: "Check for Updates…", restart: "Restart to Update" } as const;
 
+// Replacing the application menu is process-global. Serialize installations
+// across settings changes and component lifetimes so a stale IPC completion
+// cannot replace or close a newer menu.
+let nativeMenuInstalls = Promise.resolve();
+
 function useNativeMenu(
   desktop: boolean,
   commands: CommandIndex,
@@ -509,6 +531,7 @@ function useNativeMenu(
   onError: (message: string) => void,
   onCheckForUpdates: () => void,
   updateInstalled: boolean,
+  menus: SubmenuEntry[],
 ) {
   const commandsRef = useRef(commands);
   const checkedRef = useRef(checked);
@@ -518,8 +541,15 @@ function useNativeMenu(
   checkedRef.current = checked;
   errorRef.current = onError;
   updateRef.current = onCheckForUpdates;
+  // Native resources rebuild only when the visible command set changes,
+  // not on every editor render. Live state is synchronized separately below.
+  const menusRef = useRef(menus);
+  menusRef.current = menus;
+  const menuShape = actionsIn(menus).map((entry) => entry.id).join(",");
 
-  const [items, setItems] = useState<Map<string, NativeAction> | null>(null);
+  const [installed, setInstalled] = useState<{
+    items: Map<string, NativeAction>; shape: string; isLive: () => boolean;
+  } | null>(null);
   const updateQueue = useRef(Promise.resolve());
   const appliedState = useRef(new Map<string, string>());
   // Bumped when a native check item is clicked. muda flips a CheckMenuItem
@@ -530,11 +560,13 @@ function useNativeMenu(
 
   useEffect(() => {
     if (!desktop) return;
+    const menus = menusRef.current;
     let live = true;
     const resources: NativeResource[] = [];
     let stopRecent = () => {};
 
-    void (async () => {
+    const install = async () => {
+      if (!live) return;
       try {
         // The menu API is desktop-only and stays out of the browser's initial
         // chunk. isTauri alone is not enough to make a static import lazy.
@@ -563,7 +595,9 @@ function useNativeMenu(
         const recentBuiltFrom = JSON.stringify(recentLabels());
         const native = (entry: MenuEntry) =>
           nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources);
-        const roots = await Promise.all((isMacOS() ? MAC_MENUS : APP_MENUS).map(native));
+        // One filtered table for the rows and their symbols below.
+        const shown = isMacOS() ? visibleEntries(MAC_MENUS, commandsRef.current) as SubmenuEntry[] : menus;
+        const roots = await Promise.all(shown.map(native));
         // On macOS the first submenu is the conventional application menu;
         // the browser renderer must not show it. Other desktop platforms put
         // File first and receive their window-local menu bar normally.
@@ -596,7 +630,7 @@ function useNativeMenu(
         // The Tauri menu API only knows AppKit's old template icons; the SF
         // Symbols go on natively. A failure leaves the rows without icons.
         if (isMacOS()) {
-          await invoke("set_menu_symbols", { symbols: [...menuSymbols(), ...SYSTEM_ROWS] })
+          await invoke("set_menu_symbols", { symbols: [...menuSymbols(shown), ...SYSTEM_ROWS] })
             .catch((error: unknown) => console.warn("menu symbols:", error));
         }
         if (!live) {
@@ -643,33 +677,35 @@ function useNativeMenu(
         stopRecent = subscribeRecent(queueRebuild);
         if (JSON.stringify(recentLabels()) !== recentBuiltFrom) queueRebuild();
         appliedState.current.clear();
-        setItems(actionItems);
+        setInstalled({ items: actionItems, shape: menuShape, isLive: () => live });
       } catch (error) {
         await closeResources(resources);
         if (live) errorRef.current(`Could not install the native menu: ${errMsg(error)}`);
       }
-    })();
+    };
+    nativeMenuInstalls = nativeMenuInstalls.then(install, install);
 
     return () => {
       live = false;
       stopRecent();
       void closeResources(resources);
     };
-  }, [desktop]);
+  }, [desktop, menuShape]);
 
   useEffect(() => {
-    const item = items?.get("check-for-updates");
+    if (!installed?.isLive()) return;
+    const item = installed.items.get("check-for-updates");
     if (!item) return;
     const text = updateInstalled ? UPDATE_ITEM_TEXT.restart : UPDATE_ITEM_TEXT.check;
     if (appliedState.current.get("check-for-updates:text") === text) return;
     appliedState.current.set("check-for-updates:text", text);
     if (!updateInstalled) return; // the item is created with the check label
     void item.setText(text).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
+      if (installed.isLive()) errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
-  }, [items, updateInstalled]);
+  }, [installed, updateInstalled]);
 
-  const snapshot = MENU_ACTIONS.map((entry) => ({
+  const snapshot = actionsIn(menus).map((entry) => ({
     id: entry.id,
     enabled: !commands[entry.id].disabled,
     checked: isCheckAction(entry) ? !!checked[entry.id] : null,
@@ -679,10 +715,11 @@ function useNativeMenu(
   const signature = JSON.stringify(snapshot);
 
   useEffect(() => {
-    if (!items) return;
+    if (!installed || installed.shape !== menuShape || !installed.isLive()) return;
     const apply = async () => {
+      if (!installed.isLive()) return;
       await Promise.all(snapshot.map(async (state) => {
-        const item = items.get(state.id);
+        const item = installed.items.get(state.id);
         if (!item) throw new Error(`Native menu item is missing: ${state.id}`);
         const stateKey = `${state.enabled}:${state.checked ?? "-"}`;
         // The title is tracked apart, so a check or enable change costs no
@@ -703,13 +740,13 @@ function useNativeMenu(
     // Preserve render order across IPC: a slow prior update must never land
     // after a newer checked/disabled state.
     updateQueue.current = updateQueue.current.then(apply, apply).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
+      if (installed.isLive()) errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
   // renders do not produce an IPC update per row. resync re-runs it after a native
   // check click whose command left app state unchanged.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, signature, resync]);
+  }, [installed, menuShape, signature, resync]);
 }
 
 export function AppMenu(props: {
@@ -721,6 +758,7 @@ export function AppMenu(props: {
   updateInstalled?: boolean;
 }) {
   const commands = Object.fromEntries(props.actions.map((command) => [command.id, command]));
+  const menus = visibleEntries(APP_MENUS, commands) as SubmenuEntry[];
   const desktop = isTauri();
   useNativeMenu(
     desktop,
@@ -729,10 +767,11 @@ export function AppMenu(props: {
     props.onNativeError,
     props.onCheckForUpdates,
     !!props.updateInstalled,
+    menus,
   );
   // After hooks: throwing earlier for a missing command would skip useNativeMenu.
-  for (const entry of MENU_ACTIONS) {
+  for (const entry of actionsIn(menus)) {
     if (!commands[entry.id]) throw new Error(`Unknown menu command: ${entry.id}`);
   }
-  return desktop ? null : <WebMenu commands={commands} checked={props.checked} />;
+  return desktop ? null : <WebMenu commands={commands} checked={props.checked} menus={menus} />;
 }

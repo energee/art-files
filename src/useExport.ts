@@ -70,14 +70,17 @@ export function useExport({
   const [exportNote, setExportNote] = useState("");
   const exportFresh = useRef(false);
   const exportStale = () => { exportFresh.current = false; setExportNote(""); };
-  // The art file each desktop pair export last wrote, by extension: the
-  // next export of that kind rewrites it and its `-mask` sibling with no
-  // dialog. In memory, per tab (each tab runs its own editor), and only for
-  // the .label path (`label`) they were chosen under; a tab that opens
-  // another document forgets them (forgetExportPaths). The dialog plugin
-  // added each path to the fs scope when it was chosen, for the rest of the
-  // session, so the rewrite is allowed.
-  const exportPaths = useRef<{ label?: string | null; pdf?: string; psd?: string }>({});
+  // Desktop export destinations, scoped to the label they were chosen from.
+  // The one-file print PDF remembers its destination separately from the
+  // two-file pair, but both default to `<label>.pdf`: a print export into a
+  // folder holding an older pair replaces its art file and leaves its
+  // `-mask.pdf` behind.
+  const exportPaths = useRef<{
+    label?: string | null;
+    pdf?: string;
+    printPdf?: string;
+    psd?: string;
+  }>({});
   const forgetExportPaths = () => { exportPaths.current = {}; };
 
   // Revoking immediately can abort a large download, so each URL lives until
@@ -198,25 +201,93 @@ export function useExport({
     }
   }
 
-  /** Export PDFs (Export PDFs As… with `ask`): build both full-resolution
-   *  plates before opening any save dialog. */
-  async function buildFull(request: ExportRequest = {}) {
-    await exportPair("pdf", "application/pdf", request, async () => {
-      const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
-        import("@/pdf/build"), loadFonts(family), exportPlan(),
+  async function pdfInputs() {
+    const art = pageArt(false);
+    const [{ plan, images, fontFamilies }, fonts] = await Promise.all([exportPlan(), loadFonts(family)]);
+    const assets: Assets = {
+      fonts, fontFamilies, title,
+      images: {
+        ...images,
+        ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
+        ...(art.maskPng ? { [PAGE_ART_ID.mask]: { kind: "png" as const, bytes: art.maskPng } } : {}),
+      },
+    };
+    return { art, plan, assets };
+  }
+
+  /** One-file PDF exports share the build/save lifecycle. Only the combined
+   *  print file remembers a destination; individual legacy plates always ask. */
+  async function exportSinglePdf(mode: "print" | "art" | "mask", request: ExportRequest) {
+    if (exportRunning.current) return;
+    exportRunning.current = true;
+    setExporting("pdf");
+    setExportNote("");
+    exportFresh.current = true;
+    startSaveBatch();
+    const labelPath = request.labelPath ?? null;
+    let remembered: string | undefined;
+    if (mode === "print") {
+      if (exportPaths.current.label !== labelPath) exportPaths.current = { label: labelPath };
+      remembered = exportPaths.current.printPdf;
+    }
+    const suffix = mode === "mask" ? "-mask.pdf" : ".pdf";
+    const name = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, suffix) ?? `${exportBase}${suffix}`;
+    try {
+      const [builders, { art, plan, assets }] = await Promise.all([
+        import("@/pdf/build"), pdfInputs(),
       ]);
-      const art = pageArt(false);
-      const assets: Assets = {
-        fonts, fontFamilies, title,
-        images: {
-          ...images,
-          ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
-          ...(art.maskPng ? { [PAGE_ART_ID.mask]: { kind: "png" as const, bytes: art.maskPng } } : {}),
-        },
-      };
-      // Both files build BEFORE the first dialog opens.
+      let bytes: Uint8Array;
+      switch (mode) {
+        case "print": {
+          if (art.maskPng) {
+            const pixels = await rasterPixelsNatural(art.maskPng);
+            assets.maskPixels = {
+              data: new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.byteLength),
+              width: pixels.width,
+              height: pixels.height,
+            };
+          }
+          bytes = await builders.buildPrintPdf(plan, assets);
+          break;
+        }
+        case "art":
+          bytes = await builders.buildArtPdf(plan, assets);
+          break;
+        case "mask":
+          bytes = await builders.buildMaskPdf(plan, assets);
+          break;
+      }
+      const target = !request.ask && remembered ? { path: remembered } : undefined;
+      const result = await saveVia(bytes, name, "application/pdf", target);
+      if (!result) {
+        exportError.set(`Note: Export cancelled before saving ${name}.`);
+        return;
+      }
+      if (mode === "print" && result.target && "path" in result.target)
+        exportPaths.current.printPdf = result.target.path;
+      exportError.clear();
+      if (exportFresh.current) setExportNote(`Saved ${result.name}.`);
+    } catch (error) {
+      exportError.set(`Could not save ${name}: ${errMsg(error)}`);
+    } finally {
+      exportRunning.current = false;
+      setExporting(null);
+    }
+  }
+
+  /** Build one combined print PDF by default; the retained pair is explicit. */
+  async function buildFull(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
+    if (kind === "print") return exportSinglePdf("print", request);
+    await exportPair("pdf", "application/pdf", request, async () => {
+      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([
+        import("@/pdf/build"), pdfInputs(),
+      ]);
       return await Promise.all([buildArtPdf(plan, assets), buildMaskPdf(plan, assets)]);
     });
+  }
+
+  function exportPdfPlate(mode: "art" | "mask", request: ExportRequest = {}) {
+    return exportSinglePdf(mode, request);
   }
 
   /** Layered Photoshop files, built full-resolution on demand like the PDFs,
@@ -241,5 +312,8 @@ export function useExport({
     });
   }
 
-  return { exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes, buildFull, exportPsd };
+  return {
+    exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    buildFull, exportPdfPlate, exportPsd,
+  };
 }

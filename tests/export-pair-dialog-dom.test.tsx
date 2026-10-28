@@ -43,8 +43,12 @@ async function mountExport() {
     api: () => api!,
     async exportPdfs(options?: Parameters<NonNullable<typeof api>["buildFull"]>[0]) {
       setBuildError.mockClear();
-      await act(async () => { await api!.buildFull(options); });
+      await act(async () => { await api!.buildFull(options, "pair"); });
       return { note: api!.exportNote, error: setBuildError.mock.lastCall?.[0] as string | undefined };
+    },
+    async exportPrint(options?: Parameters<NonNullable<typeof api>["buildFull"]>[0]) {
+      await act(async () => { await api!.buildFull(options); });
+      return api!.exportNote;
     },
     unmount: () => act(() => root.unmount()),
   };
@@ -170,3 +174,33 @@ it("names the derived mask path when writing it fails", async () => {
   expect(error).toBe("Saved /labels/Renamed.pdf. Could not save /labels/Renamed-mask.pdf: disk full");
   tab.unmount();
 }, 30000);
+
+it("remembers a single print file, keeps its destination on cancelled As, and separates pair memory", async () => {
+  save.mockResolvedValueOnce("/print/Beer.pdf")
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce("/legacy/Beer.pdf")
+    .mockResolvedValueOnce("/new/New.pdf");
+  const tab = await mountExport();
+  try {
+    const labelPath = "/labels/Beer.label";
+    expect(await tab.exportPrint({ labelPath })).toBe("Saved /print/Beer.pdf.");
+    expect(writes()).toEqual(["/print/Beer.pdf"]);
+    writeFile.mockClear();
+    await tab.exportPrint({ labelPath });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(writes()).toEqual(["/print/Beer.pdf"]);
+    await tab.exportPrint({ labelPath, ask: true });
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: "/print/Beer.pdf" }));
+    writeFile.mockClear();
+    await tab.exportPrint({ labelPath });
+    expect(writes()).toEqual(["/print/Beer.pdf"]);
+    await tab.exportPdfs({ labelPath });
+    expect(save).toHaveBeenCalledTimes(3);
+    writeFile.mockClear();
+    await tab.exportPrint({ labelPath });
+    expect(writes()).toEqual(["/print/Beer.pdf"]);
+    await tab.exportPrint({ labelPath: "/labels/New.label" });
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: "/labels/New.pdf" }));
+    expect(writes()).toEqual(["/print/Beer.pdf", "/new/New.pdf"]);
+  } finally { tab.unmount(); }
+}, 30_000);

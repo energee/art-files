@@ -716,6 +716,51 @@ no status, no attempts, no delta.
 - evidence: npm run tauri -- icon src-tauri/app-icon.svg succeeded; generated icon.png visually inspected; npm run build passed and emitted updated favicon/touch PNGs; node scripts/check-release.mjs origin/main passed; cmp confirmed SVG and ICNS match supplied originals byte-for-byte. Installed desktop/Dock appearance not exercised.
 - release: binary-impacting; Changed bullet queued under Unreleased, version unchanged. Cosmetic change alone does not warrant cutting a release.
 
+## 2026-10-28 issue-569-white-ink-pdf
+- finding: [user request] #569 — replace the default art/mask PDF pair with one print PDF carrying the printer's White Ink spot separation.
+- status: implemented; human proof gates remain open
+- attempts: 1/3
+- attempted-in: .agents/worktrees/white-ink-pdf @ feat/white-ink-pdf (stacked on ux/export-memory, PR #566; base 12f85957)
+- delta: combined PDF preserves the art content stream and adds a top White Ink OCG, DeviceCMYK-magenta alternate Separation, fill/stroke overprint, outlined white text/digits, and red-inverted uploaded-mask samples. Shared glyph geometry replaces the PSD-only walk without changing the legacy byte goldens. Export PDF / As are the default; persisted Settings reveals the unchanged legacy paired/individual PDF commands. CLI defaults to the print PDF; --two-file preserves the old pair. PSD output stays unchanged.
+- evidence: new combined-builder tests failed before (buildPrintPdf absent). Real Lupula fixture exported 77 spot stroke paints with OP/op true; tools/to-cmyk.sh retained both flags and gs tiffsep emitted White Ink plus C/M/Y/K, without an extra preservation flag. Temporary proofs are under /tmp/label-white-ink-proof; smoke scripts removed.
+- evidence: real Chrome editor at localhost:5286 — Settings toggle off/on, persisted after reload, optional export menu with no legacy accelerators, and default menu showing Export PDF with Cmd+E. Actual UI export wrote one 281652-byte PDF; uploading a three-tint PNG and pressing Cmd+E wrote one 281868-byte PDF, with no browser errors. Only the save-picker boundary was replaced to capture bytes; application builders and image decoding ran unchanged. Native menu visibility transitions are exercised by DOM tests with mocked Tauri IPC, not a live native menu bar.
+- evidence: actual npm run generate with a packed master, values and uploaded mask wrote only cli-single/lupula.pdf; --two-file wrote cli-pair/lupula.pdf plus lupula-mask.pdf. pdfinfo reports title Lupula label, one 585.12 x 369.12pt page, rotation 0, Producer Label Lab 0.1.109.
+- evidence: separation comparisons require exact solid interiors, allowing only one-pixel raster edges at 150 DPI. With collab alpha PNGs, GS changes 27 C/M/Y/K edge samples; opaque-PNG and image-free controls change zero. The rasterizer cause is unproven, not claimed as a geometry change. White separation matches the legacy mask away from AA edges; fractional page dimensions also allow the outermost page row/column. Live-versus-outlined text bounds match within 0.05pt at 1440 DPI; grid-fitted/vector edge neighborhoods allow two pixels while counter interiors remain exact.
+- evidence: npx tsc --noEmit and npm run lint pass; migrated legacy save-race suite passes 28/28. Earlier full suite had 163/164 files passing; the remaining suite assumed the now-hidden export-both command and cascaded. Its legacy pair scenarios now explicitly enable the setting and no longer wait for the preview.
+- evidence: final feat/white-ink-pdf verification after simplification — npx tsc --noEmit, zero-warning npm run lint, npm test (164 files / 1725 tests), npm run build, knip 6.38.0 and check-release against origin/ux/export-memory all pass. Existing happy-dom teardown AbortError diagnostics and Vite's large-chunk warning remain visible. Docs npm run build --prefix docs-site passes and generates 48 pages. No application source changes after these checks.
+- ruling: not production-certified. Acrobat layer/Output Preview inspection and the printer's accepted proof remain human gates; issue #569 stays open. No PDF/X or ICC-profile claim.
+- release: binary-impacting; Added bullet under Unreleased plus aligned export notes, version unchanged at 0.1.109. No merge or release authorized.
+
+## 2026-10-28 issue-570-571-prerequisite-gates
+- finding: [user request] work through the remaining GitHub enhancement queue in its recorded order.
+- status: parked(context)
+- attempts: 1/3
+- attempted-in: .agents/worktrees/white-ink-pdf @ feat/white-ink-pdf
+- evidence: #570 explicitly requires matched real-label studio/daylight photos, a side-by-side gap analysis and user-selected gaps before tuning. The existing can view rendered successfully in Chrome, but no .label fixtures or matched photographs were found in the checkout. No material, tone-map, geometry or lighting edits made.
+- evidence: #571 task 0 requires Blue Label Digital's RGB-versus-CMYK acceptance, output condition/ICC, and named-ink requirements. The issue and existing audit explicitly record these as unavailable; repository searches found no .icc/.icm profiles or answers.
+- ruling: unpark #570 when matching reference photos/labels are supplied, then obtain the specified gap selection; unpark #571 when the printer answers task 0. Do not invent a profile or claim generic Ghostscript conversion is printer-approved. Both issues remain open.
+- release: no additional binary changes for these investigations.
+
+## 2026-10-28 pr-573-simplify-review-proofs
+- finding: [user request] run simplify and code-review on #573; attach actual PDFs for testing.
+- status: done (review corrections and PDF packet; Acrobat/printer proof gates remain open)
+- attempts: 1/3
+- attempted-in: .agents/worktrees/white-ink-pdf @ feat/white-ink-pdf, starting at 817d132
+- delta: simplified duplicate one-file PDF build/save/error handling into one lifecycle while retaining print destination memory and always-prompted legacy plates. Two independent reviewer slices identified five actionable findings; all corrected.
+- finding: [correctness/high] pdf/whiteInk.ts — uploaded-mask alpha was discarded. Preserve the original inverted-red tint and attach a grayscale alpha SMask, rather than baking alpha into tint (which would erase earlier white ink). Regression failed before with 231,634 wrong solid pixels; corrected separation test passes over both prior white ink and bare stock.
+- finding: [correctness/med] pdf/outline.ts — glyphsForString omitted substitutions that pdf-lib's text encoder performs. Use layout(text).glyphs with raw advances, matching the subset encoder. Actual Barlow Condensed office maps six characters to four glyphs; normal and rotated raster regressions now match production subset:true embedding. Suggested Devanagari repro was withdrawn because the existing fontkit runtime throws regeneratorRuntime before export; no dependency added.
+- finding: [evidence/med] tests/print-pdf-separations.test.ts — any intermediate mask tint was treated as an AA edge, exempting entire partial-tint interiors. Only neighboring value transitions now identify edges, including 0/1 transitions; constant partial-tint interiors must match exactly.
+- finding: [correctness/high] AppMenu.tsx — asynchronous native menu generations could install out of order and close the replacement. Serialize installations process-wide, including component lifetimes. Deferred-install regression failed before (two concurrent installs) and passes after.
+- finding: [correctness/med] AppMenu.tsx — updater relabeling touched a closing generation during a menu rebuild. Require the installed generation to be live before accessing its item or reporting an asynchronous failure. Regression reported a closed-item error before and passes after.
+- evidence: six targeted suites pass 36 tests, including the new alpha, actual-font ligature and deferred native-lifetime regressions. Both independent reviewers inspected the corrections and reported no remaining findings; they ran no checks. Native race proof uses the real React menu lifecycle with a modeled IPC/resource boundary, not a live AppKit menu bar.
+- evidence: actual Chrome editor exports through the simplified lifecycle saved one 281652-byte print PDF, one 71255-byte art PDF and one 71370-byte mask PDF, with expected saved-file notices and no browser errors. Only the picker/write boundary captured bytes; real application builders ran.
+- evidence: seven actual PDFs generated under tests/fixtures/print-pdf/: Lupula combined/art/mask/CMYK and type-transparency combined/art/mask. Sample beer data is explicitly marked not for production. All have one page; each combined file, including the CMYK conversion, retains White Ink OCG/separation and fill/stroke overprint. The transparency proof has an alpha soft mask. Lupula art and type mask rasters were visually inspected.
+- evidence: actual proof PDFs passed Ghostscript tiffsep. Transparency proof process plates differ at 188 edge samples each, with zero interior differences; White Ink column densities measure 100.0%, 74.9%, 50.2%, 0.0%. Generic CMYK conversion is not printer-profile approval.
+- evidence: default npm test completed 161/164 files but hit four unchanged 5-second deadlines in pdf-print-build (2), generate (1) and close-save-master (1). No assertion failure was reported. Full-suite scheduling experiment uses --maxWorkers=2; timeouts and repository configuration remain unchanged. Contention is a hypothesis, not a measured independent defect.
+- delta: merged updated parent ux/export-memory e7eb126c into b9b808e1; resolved the additive ledger-only conflict by preserving the icon and White Ink histories. Published the source corrections and all seven proof PDFs; the primary GitHub raw download resolves to a real one-page PDF.
+- evidence: final verification at b9b808e1 on feat/white-ink-pdf passes npx tsc --noEmit, zero-warning npm run lint, npm test -- --maxWorkers=2 (164 files / 1730 tests, unchanged timeouts), npm run build, knip 6.38.0, release metadata against parent e7eb126c, and docs production build (48 pages). Happy-dom AbortError teardown diagnostics, Vite chunk-size and docs metadataBase warnings remain visible. No application source changes after these checks.
+- release: binary-impacting corrections covered by the updated Unreleased feature note; proof PDFs/tests are non-binary-impacting. Version unchanged at 0.1.109; no main-branch merge, release or printer certification.
+
 ## 2026-10-28 casual-ui-copy
 - finding: user requested less em-dash-heavy UI copy and more casual descriptions.
 - status: done
@@ -784,3 +829,12 @@ no status, no attempts, no delta.
 - evidence: on fix/575-menu-export in .agents/worktrees/layer-controls-about, npm test -- --maxWorkers=2 passes 160 files / 1690 tests; npm run build (including TypeScript), lint, knip@6.38.0 and release metadata vs origin/ux/casual-ui-copy pass. Existing chunk-size advisory and happy-dom fetch-abort diagnostics remain.
 - evidence: parent PR #574 merged as 86fd240f and its branch was deleted during integration. Retargeted #575 to main and merged origin/main, preserving the compact controls and About icon notes. Re-ran the full 1690-test suite (--maxWorkers=2), build, lint, Knip and release metadata against origin/main: all pass.
 - release: conflict resolution adds only tests and ledger changes; existing Unreleased application notes remain sufficient, no version bump or release operation.
+
+## 2026-10-28 pr-573-land-after-566
+- finding: #566 squash-merged as 87959863, so #573 conflicted with main in 8 files; a separate review of #573 found no blockers and some inaccurate comments.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/white-ink-pdf @ feat/white-ink-pdf
+- delta: merged #566's final head 771a3dd1 (tree identical to main 87959863; only a ledger conflict, both sides kept), then recorded origin/main with -s ours. Corrected the useExport comment that claimed the print PDF never overwrites the pair's art file (both default to `<label>.pdf`), the outline/PSD comments that called the neutral path structurally ag-psd's BezierPath, and the RenderSettings doc; the native menu now filters MAC_MENUS once for both rows and symbols. Restored tests/fixtures/print-pdf/lupula-art.pdf, which a Finder alias had replaced in the working tree.
+- evidence: tsc, lint, 8 menu/export/PDF suites (94 tests) and check-release vs origin/main pass; diff vs main is the same 42 files as the PR's diff vs its old parent.
+- release: binary-impacting; existing Unreleased bullets suffice, no version bump.

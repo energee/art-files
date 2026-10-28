@@ -1066,7 +1066,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The PDF/PSD exports and the export-in-flight state (useExport.ts). Its
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
-  const { exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes, buildFull, exportPsd } = useExport({
+  const {
+    exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    buildFull, exportPdfPlate, exportPsd,
+  } = useExport({
     drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render, setBuildError,
   });
   const exportBlocked = blocked || exporting !== null;
@@ -2098,12 +2101,22 @@ export const DocumentEditor = memo(function DocumentEditor({
       run: () => requestMasterSave(false) },
     { id: "master-save-as", label: "Save Master As…", run: () => requestMasterSave(true) },
     // The first export in a tab asks where (beside its .label); later ones
-    // rewrite that pair silently, and the As… rows ask again (useExport.ts).
+    // rewrite that print file silently, and Export PDF As… asks again.
     // They don't wait for the preview: the builds load their own fonts and art.
-    { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
+    { id: "export-pdf", label: "Export PDF", key: "e", mods: "⌘",
       disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }) },
-    { id: "export-both-as", label: "Export PDFs As…",
+    { id: "export-pdf-as", label: "Export PDF As…",
       disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }) },
+    ...(render.twoFilePdfExport ? [
+      { id: "export-both", label: "Export PDFs",
+        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }, "pair") },
+      { id: "export-both-as", label: "Export PDFs As…",
+        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }, "pair") },
+      { id: "export-art", label: "Export Artwork PDF",
+        disabled: exportBlocked, run: () => void exportPdfPlate("art", { labelPath: filePath }) },
+      { id: "export-mask", label: "Export Mask PDF",
+        disabled: exportBlocked, run: () => void exportPdfPlate("mask", { labelPath: filePath }) },
+    ] : []),
     { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
       disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }) },
     { id: "export-psd-as", label: "Export PSDs As…",

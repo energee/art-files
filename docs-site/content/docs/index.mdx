@@ -5,10 +5,9 @@ description: Two plates, one can, your beer on it
 
 You sit down with a master (the brand's template) and this beer's copy and art. Label Lab turns that into print-ready plates.
 
-Export writes two PDFs with vector geometry and images at their original resolution:
+Export writes one PDF with vector artwork, original-resolution images and an overprinting **White Ink** spot layer. Check the separation in Acrobat's Output Preview with Overprint Preview enabled; viewers without it may show magenta and white shapes instead of the intended composite.
 
-- **Artwork** (`{name}.pdf`): the printed label, bleed included
-- **Mask** (`{name}-mask.pdf`): the white-ink plate
+**Settings → Two-file PDF export (art + mask)** reveals the optional legacy artwork and mask PDFs.
 
 On the mask, **blue is white ink** and **white is knockout**. Bare metallic stock shows through the holes. No mask image loaded? The plate floods full blue. That's "print this as a white label." Metallic type and marks still knock out to stock on top of the flood.
 
@@ -30,5 +29,5 @@ Tabs hold more than one label. Filling *this* beer never quietly rewrites the te
   <Card title="Getting started" href="/docs/getting-started" description="Browser or desktop. Drop a texture. Type a name." />
   <Card title="Masters and labels" href="/docs/masters-and-labels" description="The brand versus this beer, and when Save Master actually writes." />
   <Card title="Editing" href="/docs/editing" description="Click, type, drag, snap, undo." />
-  <Card title="Export" href="/docs/export" description="Art PDF, mask PDF, PSDs, and what blue means." />
+  <Card title="Export" href="/docs/export" description="White Ink spot PDF, optional two-file plates, and PSDs." />
 </Cards>

@@ -20,8 +20,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # poppler's pdftoppm rasterizes the PDF goldens (scripts/golden-diff.mts).
-      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends poppler-utils
+      # Poppler rasterizes PDF goldens; Ghostscript verifies process/spot separations.
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends poppler-utils ghostscript
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
