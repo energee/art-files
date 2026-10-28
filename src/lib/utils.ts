@@ -2,6 +2,7 @@
 // "which text do I show for whatever was thrown?", and shortDate.
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getLanguage } from "@/i18n";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -11,10 +12,15 @@ export function cn(...inputs: ClassValue[]) {
  *  message, else the value as a string (Tauri invoke rejects with strings). */
 export const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
-
-/** "Oct 11, 2026" in the operator's locale; "" for an unparsable date. */
+/** "Oct 11, 2026" in the selected UI language, in the operator's own region
+ *  of it when the system lists one (en-GB gets "11 Oct 2026"); "" for an
+ *  unparsable date. */
 export function shortDate(iso: string): string {
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? "" : SHORT_DATE.format(d);
+  const language = getLanguage();
+  const regional = (typeof navigator === "undefined" ? [] : navigator.languages ?? [])
+    .find((tag) => tag.toLowerCase().split(/[-_]/)[0] === language);
+  return isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat(regional ?? language, {
+    month: "short", day: "numeric", year: "numeric",
+  }).format(d);
 }

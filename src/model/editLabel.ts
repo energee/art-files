@@ -13,6 +13,7 @@ import { fieldRefs } from "./format";
 import { without, type Doc, type Entry, type LayerPatch } from "./editRecords";
 import { clearEntry, isLabelOnly, patchLayer } from "./editLayers";
 import { enableBeneathVersion } from "./editVariants";
+import { t } from "@/i18n";
 
 // --- Label ------------------------------------------------------------------
 
@@ -142,7 +143,7 @@ export function checkLabelBindings(doc: Doc, prev?: Doc): Doc {
     && doc.label.enabledVariants === prev.label.enabledVariants && doc.label.overrides === prev.label.overrides)
     return doc;
   const { layers } = resolveLayers(doc.master, doc.label.enabledVariants, {}, doc.label.overrides, { keepDisabled: true });
-  validateBindings(layers, "label", (msg) => { throw new Error(`Can't apply this edit: ${msg}`); });
+  validateBindings(layers, "label", (message) => { throw new Error(t("Can't apply this edit: {{message}}", { message })); });
   return doc;
 }
 

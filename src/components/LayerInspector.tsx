@@ -42,13 +42,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SheetClose } from "@/components/ui/sheet";
 import {
-  Badge, LOCK_TITLE, type Ctx, type Patch,
+  Badge, type Ctx, type Patch,
 } from "./LayerInspectorControls";
 import type { LengthUnit } from "@/rulers";
 import {
   BarcodeGeometry, ImageGeometry, Position, QrGeometry, StyleSection, TextGeometry,
 } from "./LayerInspectorSections";
 import { FillContract, Vocabulary } from "./LayerInspectorTemplate";
+import { useTranslation } from "@/i18n";
 
 /** One icon per kind — the same four the Layers list rows use, so the
  *  header and the row never disagree about what a kind looks like. */
@@ -106,6 +107,7 @@ export function LayerInspector(props: {
   offVariant?: string;
 }) {
   const { layer } = props;
+  const { t } = useTranslation();
   const set = props.onChange;
   const badge = (paths: readonly string[], label: string) => (
     <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
@@ -136,7 +138,7 @@ export function LayerInspector(props: {
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <Input
           id={`${layer.id}-name`}
-          aria-label="Layer name"
+          aria-label={t("Layer name")}
           aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
           className="h-7 flex-1 text-xs font-medium"
           value={nameDraft ?? layer.name}
@@ -151,21 +153,22 @@ export function LayerInspector(props: {
         {/* Power and lock as icon toggles, the Layers row's icons: they stay
             reachable with the sidebar hidden (⌘B). Page art has no lock — it
             can't be dragged, so locking it would do nothing. */}
-        <Button variant="ghost" size="icon-sm" aria-label="Enabled" aria-pressed={enabled}
-          title={enabled ? "Turn off this layer" : "Turn on this layer"}
+        <Button variant="ghost" size="icon-sm" aria-label={t("Enabled")} aria-pressed={enabled}
+          title={enabled ? t("Turn off this layer") : t("Turn on this layer")}
           onClick={() => set({ enabled: !enabled })}>
           {enabled ? <Power aria-hidden="true" /> : <PowerOff aria-hidden="true" />}
         </Button>
         {badge(["enabled"], "Enabled")}
         {!page && <>
-          <Button variant="ghost" size="icon-sm" aria-label="Locked" aria-pressed={!!layer.locked}
-            title={LOCK_TITLE} onClick={() => set({ locked: !layer.locked })}>
+          {/* The lock is canvas-only (editGestures): typed X/Y still move it. */}
+          <Button variant="ghost" size="icon-sm" aria-label={t("Locked")} aria-pressed={!!layer.locked}
+            title={t("Locked on canvas: drag, resize and nudge are off. Typed values still apply.")} onClick={() => set({ locked: !layer.locked })}>
             {layer.locked ? <Lock aria-hidden="true" /> : <LockOpen aria-hidden="true" />}
           </Button>
           {badge(["locked"], "Locked")}
         </>}
         {props.showCloseButton && (
-          <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label="Close inspector" />}>
+          <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label={t("Close inspector")} />}>
             <XIcon className="size-4.5" aria-hidden="true" />
           </SheetClose>
         )}
@@ -174,12 +177,12 @@ export function LayerInspector(props: {
           the arrows still delete and nudge the whole selection. */}
       {multi && (
         <p id={`${layer.id}-selection-note`} className="text-[11px] text-muted-foreground">
-          Editing {layer.name} only ({props.selectionCount} selected)
+          {t("Editing {{name}} only ({{count}} selected)", { name: layer.name, count: props.selectionCount })}
         </p>
       )}
       {props.offVariant !== undefined && (
         <p className="text-[11px] text-muted-foreground">
-          From {props.offVariant}. Turn on this variant to edit the layer.
+          {t("From {{variant}}. Turn on this variant to edit the layer.", { variant: props.offVariant })}
         </p>
       )}
 
@@ -201,7 +204,7 @@ export function LayerInspector(props: {
           A position override still left on it keeps its reset badges here. */}
       {stalePosition && (
         <div className="flex items-center justify-between gap-2 pt-2">
-          <p className="text-[11px] text-muted-foreground">Unused position override</p>
+          <p className="text-[11px] text-muted-foreground">{t("Unused position override")}</p>
           <span className="flex items-center">
             {STALE_POSITION.map(([paths, label]) =>
               <Badge key={label} paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />)}
@@ -217,11 +220,11 @@ export function LayerInspector(props: {
       {(layer.kind === "text" || layer.kind === "barcode") && (
         <details className="mt-4 border-t border-border pt-3">
           <summary className="cursor-pointer rounded py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            Template field settings
+            {t("Template field settings")}
           </summary>
           <div className="space-y-3 pt-2">
             {layer.kind === "text" ? <FillContract layer={layer} {...ctx} /> : <>
-              <p className="text-xs text-muted-foreground">Set the field label and saved choices in the master.</p>
+              <p className="text-xs text-muted-foreground">{t("Set the field label and saved choices in the master.")}</p>
               <Vocabulary layer={layer} {...ctx} />
             </>}
           </div>

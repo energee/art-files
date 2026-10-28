@@ -1,6 +1,7 @@
 // upc.ts — pure UPC-A + EAN-13 validation + module encoding (no DOM).
 // Validation mirrors the barcode-qr app's behavior; encoding implements the
 // standard L/R/G patterns so the PDF builder can draw bars directly.
+import { t } from "@/i18n";
 
 /** Left-hand (odd parity) patterns for digits 0-9; right-hand = bitwise NOT. */
 const L: string[] = [
@@ -25,10 +26,10 @@ export const upcDigits = (value: string): string => value.replace(/[\s-]/g, "");
 export function validateUpc(value: string): { ok: boolean; error?: string } {
   const digits = upcDigits(value);
   if (!/^\d{12}$/.test(digits))
-    return { ok: false, error: `"${value}" is not a valid UPC-A code (12 digits).` };
+    return { ok: false, error: t("{{value}} is not a valid UPC-A code (12 digits).", { value: `"${value}"` }) };
   const check = upcCheckDigit(digits.slice(0, 11));
   if (check !== +digits[11])
-    return { ok: false, error: `UPC-A check digit does not match: check digit should be ${check}.` };
+    return { ok: false, error: t("UPC-A check digit does not match: check digit should be {{check}}.", { check }) };
   return { ok: true };
 }
 
@@ -82,9 +83,9 @@ export function ean13CheckDigit(first12: string): number {
 
 export function validateEan13(value: string): { ok: boolean; error?: string } {
   if (!/^\d{13}$/.test(value))
-    return { ok: false, error: `"${value}" is not a valid EAN-13 code (13 digits).` };
+    return { ok: false, error: t("{{value}} is not a valid EAN-13 code (13 digits).", { value: `"${value}"` }) };
   if (ean13CheckDigit(value.slice(0, 12)) !== +value[12])
-    return { ok: false, error: "EAN-13 check digit does not match." };
+    return { ok: false, error: t("EAN-13 check digit does not match.") };
   return { ok: true };
 }
 

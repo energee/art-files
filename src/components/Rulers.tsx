@@ -9,6 +9,7 @@
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
 } from "react";
+import { useTranslation } from "@/i18n";
 import { ART, PAGE } from "@/layout";
 import {
   clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
@@ -63,6 +64,7 @@ function RulerSettings(props: {
   /** Guides is on: with it off a new guide would be invisible yet still snap. */
   canAdd: boolean;
 }) {
+  const { t } = useTranslation();
   const { unit, onUnitChange, marginPt, onMarginChange, canAdd } = props;
   // The inset is master geometry, unlike everything else here: locked each
   // time the popover opens (the popover unmounts on close), behind a lock
@@ -74,27 +76,27 @@ function RulerSettings(props: {
 
   return (
     <div className="flex flex-col gap-2.5">
-      <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("x", PAGE.w / 2)}>Add vertical guide</button>
-      <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("y", PAGE.h / 2)}>Add horizontal guide</button>
-      <Label className="text-xs text-muted-foreground">Measurement</Label>
+      <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("x", PAGE.w / 2)}>{t("Add vertical guide")}</button>
+      <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("y", PAGE.h / 2)}>{t("Add horizontal guide")}</button>
+      <Label className="text-xs text-muted-foreground">{t("Measurement")}</Label>
       <RulerUnitPicker unit={unit} onUnitChange={onUnitChange} />
       <div className="flex items-center justify-between">
-        <Label className="text-xs text-muted-foreground">Master</Label>
+        <Label className="text-xs text-muted-foreground">{t("Master")}</Label>
         <button type="button"
           onClick={() => setMarginLocked((locked) => !locked)}
-          aria-label="Margin inset: locked" aria-pressed={marginLocked}
-          title={marginLocked ? "Unlock to change the master's margin" : "Unlocked"}
+          aria-label={t("Margin inset: locked")} aria-pressed={marginLocked}
+          title={marginLocked ? t("Unlock to change the master's margin") : t("Unlocked")}
           className="grid size-5 place-items-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&>svg]:size-3">
           {marginLocked ? <Lock /> : <LockOpen />}
         </button>
       </div>
       {/* The inspector's numeric field, so the inset scrubs like every other
           number in the app and clamps/rounds the same way (NumberRoot). */}
-      <ScrubField id="guide-margin" label="Margin inset" unit={unit}
+      <ScrubField id="guide-margin" label={t("Margin inset")} unit={unit}
         value={Number(marginValue.toFixed(decimalsOf(MARGIN_STEP[unit])))}
         min={0} max={marginMax} step={MARGIN_STEP[unit]} disabled={marginLocked}
         onChange={(value) => onMarginChange(clampMargin(unitToPoint(value, 0, unit)))} />
-      <p className="text-[11px] text-muted-foreground">Sets all four margins in the master. Use Save Master to keep it.</p>
+      <p className="text-[11px] text-muted-foreground">{t("Sets all four margins in the master. Use Save Master to keep it.")}</p>
     </div>
   );
 }
@@ -121,6 +123,7 @@ export function Rulers(props: {
    *  is in range. */
   onSnapGuide?: (axis: GuideAxis, point: number, id?: number) => number;
 }) {
+  const { t } = useTranslation();
   const {
     paneRef, previewRef, transform, showRulers, unit, onUnitChange, showGuides,
     marginPt, onMarginChange, manual, onAddManual, onMoveManual, onRemoveManual,
@@ -357,7 +360,7 @@ export function Rulers(props: {
           spot. */}
       {shownManual.map((guide) => {
         const vertical = guide.axis === "x";
-        const kind = vertical ? "Vertical" : "Horizontal";
+        const kind = t(vertical ? "Vertical" : "Horizontal");
         return (
           <div key={`hit-${guide.id}`}
             className={cn("group pointer-events-none absolute",
@@ -370,7 +373,7 @@ export function Rulers(props: {
                   : "top-0 right-0 h-2 -translate-y-1 cursor-row-resize")}
               style={vertical ? { top: contentStart } : { left: contentStart }}
               data-guide-control role="button" tabIndex={0}
-              aria-label={`${kind} manual guide; arrow keys move, Delete removes`}
+              aria-label={t("{{kind}} manual guide; arrow keys move, Delete removes", { kind })}
               onPointerDown={(event) => startExisting(guide, event)}
               onKeyDown={(event) => {
                 if (event.key === "Delete" || event.key === "Backspace") {
@@ -384,7 +387,7 @@ export function Rulers(props: {
               onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag}
             onClick={onStripClick} />
             <button type="button"
-              data-guide-control aria-label={`Remove ${kind.toLowerCase()} manual guide`} title="Remove guide"
+              data-guide-control aria-label={t("Remove {{kind}} manual guide", { kind: kind.toLowerCase() })} title={t("Remove guide")}
               onClick={() => onRemoveManual(guide.id)}
               className={cn(
                 "absolute z-10 grid size-3.5 place-items-center rounded-sm bg-sidebar text-[10px] leading-none",
@@ -410,14 +413,14 @@ export function Rulers(props: {
           <div className={cn("pointer-events-auto absolute top-0 right-0",
               showGuides ? "cursor-row-resize" : "cursor-default")}
             style={{ left: RULER_SIZE, height: RULER_SIZE }}
-            title={showGuides ? "Drag down to create a horizontal guide" : "Turn on Guides to add guides"}
+            title={showGuides ? t("Drag down to create a horizontal guide") : t("Turn on Guides to add guides")}
             onPointerDown={(event) => startNew("y", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag}
             onClick={onStripClick} />
           <div className={cn("pointer-events-auto absolute bottom-0 left-0",
               showGuides ? "cursor-col-resize" : "cursor-default")}
             style={{ top: RULER_SIZE, width: RULER_SIZE }}
-            title={showGuides ? "Drag right to create a vertical guide" : "Turn on Guides to add guides"}
+            title={showGuides ? t("Drag right to create a vertical guide") : t("Turn on Guides to add guides")}
             onPointerDown={(event) => startNew("x", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag}
             onClick={onStripClick} />
@@ -425,12 +428,12 @@ export function Rulers(props: {
             <PopoverTrigger
               style={{ height: RULER_SIZE, width: RULER_SIZE }}
               className="pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              title={`Ruler settings (${unit})`} aria-label={`Ruler settings, current unit ${unit}`}>
+              title={t("Ruler settings ({{unit}})", { unit })} aria-label={t("Ruler settings, current unit {{unit}}", { unit })}>
               {unit}
             </PopoverTrigger>
             <PopoverContent align="start" side="bottom" className="w-80 gap-3">
               <PopoverHeader>
-                <PopoverTitle>Ruler settings</PopoverTitle>
+                <PopoverTitle>{t("Ruler settings")}</PopoverTitle>
               </PopoverHeader>
               <RulerSettings onAddManual={onAddManual} canAdd={showGuides} unit={unit} onUnitChange={onUnitChange}
                 marginPt={marginPt} onMarginChange={onMarginChange} />

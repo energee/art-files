@@ -40,7 +40,9 @@
 // onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
+import { t } from "@/i18n";
 import { shortcutLabel } from "@/keys";
 import type { MasterAssets } from "@/model/files";
 import type { Master } from "@/model/layers";
@@ -50,7 +52,6 @@ import {
 } from "@/components/ui/select";
 import { errMsg, shortDate } from "@/lib/utils";
 import { recentTitles } from "@/recent";
-
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 /** The menu's non-library rows (see the header note). No master id can
@@ -78,9 +79,9 @@ export function entryDetails(entries: [string, LibraryEntry][]): Record<string, 
   const titles = recentTitles(withPath.map(([, e]) => e.path!));
   const file = new Map(withPath.map(([id], i) => [id, titles[i]]));
   return Object.fromEntries(entries.map(([id, e]) => {
-    const name = file.get(id) ?? (e.builtIn ? "Built in" : "No file");
+    const name = file.get(id) ?? (e.builtIn ? t("Built in") : t("No file"));
     const used = e.lastSeen ? shortDate(e.lastSeen) : "";
-    return [id, used ? `${name} · Used ${used}` : name];
+    return [id, used ? `${name} · ${t("Used {{date}}", { date: used })}` : name];
   }));
 }
 
@@ -145,8 +146,10 @@ export function MasterPicker(props: {
    *  Resolves to an undo that puts it back (masters.ts's removeFromLibrary). */
   onForget: (id: string) => Promise<() => Promise<void>>;
 }): React.JSX.Element {
+  const { t: translate } = useTranslation();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [unopenedMaster, setUnopenedMaster] = useState<string | null>(null);
   /** onMaster is running (index write, asset decode): a second pick in that
    *  window would rebind the label twice, so the Select is disabled. */
   const [committing, setCommitting] = useState(false);
@@ -169,6 +172,7 @@ export function MasterPicker(props: {
   const closeAll = () => {
     setResolvingId(null);
     setError("");
+    setUnopenedMaster(null);
     setRemoved(null);
     setDeleted(null);
   };
@@ -200,10 +204,11 @@ export function MasterPicker(props: {
   const pickEntry = async (id: string) => {
     if (id === props.master.id) return;
     setError("");
+    setUnopenedMaster(null);
     setResolvingId(id);
     const r = await props.resolve(id);
     setResolvingId(null);
-    if (!r) { setError(`Could not open master "${props.library[id]?.name ?? id}".`); return; }
+    if (!r) { setUnopenedMaster(props.library[id]?.name ?? id); return; }
     setCommitting(true);
     try {
       await props.onMaster(r.master, r.assets);
@@ -262,13 +267,13 @@ export function MasterPicker(props: {
           if (id === props.master.id) { props.onVersion(null); return; }
           void pickEntry(id);
         }}>
-        <SelectTrigger ref={triggerRef} id="master-picker" aria-label="Master" size="sm" className="w-full">
-          <span className="text-muted-foreground">Master:</span>
+        <SelectTrigger ref={triggerRef} id="master-picker" aria-label={translate("Master")} size="sm" className="w-full">
+          <span className="text-muted-foreground">{translate("Master:")}</span>
           <SelectValue>{editing}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectLabel>Current master</SelectLabel>
+            <SelectLabel>{translate("Current master")}</SelectLabel>
             <SelectItem value={props.master.id} label={props.master.name}>
               <MasterRow name={props.master.name} detail={details[props.master.id]} />
             </SelectItem>
@@ -283,7 +288,7 @@ export function MasterPicker(props: {
           {others.length > 0 && (<>
             <SelectSeparator />
             <SelectGroup>
-              <SelectLabel>Other masters</SelectLabel>
+              <SelectLabel>{translate("Other masters")}</SelectLabel>
               {others.map(([id, entry]) => (
                 <SelectItem key={id} value={id} label={entry.name}
                   // The ✕ isn't focusable inside the listbox; Delete on the
@@ -297,8 +302,8 @@ export function MasterPicker(props: {
                   // Remove is the row's own action, not a pick: every event it
                   // fires stops here so the Select never sees a selection.
                   action={entry.inLibrary && (
-                    <button type="button" aria-label={`Remove ${entry.name} from the library`}
-                      title="Remove from the library (Delete). The file stays where it is."
+                    <button type="button" aria-label={translate("Remove {{name}} from the library", { name: entry.name })}
+                      title={translate("Remove from the library (Delete). The file stays where it is.")}
                       className="pointer-events-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
                       onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
                       onClick={(e) => { stop(e); void forget(id); }}>
@@ -311,17 +316,17 @@ export function MasterPicker(props: {
             </SelectGroup>
           </>)}
           <SelectSeparator />
-          <SelectItem value={NEW_VARIANT} className="text-attention-text">New Variant</SelectItem>
+          <SelectItem value={NEW_VARIANT} className="text-attention-text">{translate("New Variant")}</SelectItem>
           {version !== null && (<>
-            <SelectItem value={RENAME_VARIANT}>Rename Variant…</SelectItem>
-            <SelectItem value={DELETE_VARIANT} className="text-destructive-text">Delete Variant</SelectItem>
+            <SelectItem value={RENAME_VARIANT}>{translate("Rename Variant…")}</SelectItem>
+            <SelectItem value={DELETE_VARIANT} className="text-destructive-text">{translate("Delete Variant")}</SelectItem>
           </>)}
         </SelectContent>
       </Select>
       {naming !== null ? (
         <input
           autoFocus
-          aria-label="Variant name"
+          aria-label={translate("Variant name")}
           className="mt-1 w-full rounded-sm border border-sidebar-border bg-transparent px-2 py-1 text-xs"
           defaultValue={props.master.variants.find((v) => v.id === naming)?.name ?? ""}
           onBlur={(e) => commitName(naming, e.target.value)}
@@ -339,31 +344,33 @@ export function MasterPicker(props: {
           {props.saveLabel}
         </Button>
       )}
-      {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
+      {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">{translate("Opening master…")}</p>}
       {/* Always mounted: screen readers announce a change inside a live
           region that already exists, not one inserted with its text. */}
       <div role="status">
         {removed && (
           <p id="master-picker-removed" className="mt-1 px-1 text-[11px] text-muted-foreground">
-            Removed “{removed.name}” from the library. The file stays where it is.{" "}
+            {translate("Removed “{{name}}” from the library. The file stays where it is.", { name: removed.name })}{" "}
             <Button type="button" size="xs" variant="link" className="h-auto p-0 text-[11px]"
               onClick={() => {
                 // This button goes with the note: hand focus back to the picker.
                 triggerRef.current?.focus();
                 setRemoved(null); void removed.undo();
               }}>
-              Undo
+              {translate("Undo")}
             </Button>
           </p>
         )}
         {deleted?.after === props.master && (
           <p id="master-picker-deleted" className="mt-1 px-1 text-[11px] text-muted-foreground">
-            Deleted “{deleted.name}”. {shortcutLabel("⌘Z")} brings it back.
+            {translate("Deleted “{{name}}”. {{shortcut}} brings it back.", { name: deleted.name, shortcut: shortcutLabel("⌘Z") })}
           </p>
         )}
       </div>
-      {error && (
-        <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
+      {(error || unopenedMaster) && (
+        <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">
+          {error || translate('Could not open master "{{name}}".', { name: unopenedMaster })}
+        </p>
       )}
     </div>
   );

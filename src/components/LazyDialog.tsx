@@ -2,6 +2,7 @@
 // the Save Master review, the ⌘K palette) shows before its own chunk
 // renders: DialogLoading while the chunk loads, the load-failed message if
 // it never does.
+import { t, useTranslation } from "@/i18n";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { errMsg } from "@/lib/utils";
 
@@ -15,18 +16,19 @@ export const DialogLoading = () => <div data-slot="dialog-content" hidden />;
 /** React.lazy keeps a failed load for the rest of the session, so the
  *  message names the way out. */
 export const loadFailedMessage = (what: string, err: unknown) =>
-  `${what} failed to load: ${errMsg(err)}. Save your work and reload Label Lab to try again.`;
+  t("{{what}} failed to load: {{error}}. Save your work and reload Label Lab to try again.", { what, error: errMsg(err) });
 
 /** Stands in for a dialog whose chunk failed to load, instead of
  *  unmounting the editor and its unsaved edits. */
 export function DialogLoadFailed({ title, what, err, open, onOpenChange }: {
   title: string; what: string; err: unknown; open: boolean; onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{loadFailedMessage(what, err)}</DialogDescription>
+        <DialogDescription>{t("{{what}} failed to load: {{error}}. Save your work and reload Label Lab to try again.", { what, error: errMsg(err) })}</DialogDescription>
       </DialogContent>
     </Dialog>
   );

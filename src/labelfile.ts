@@ -7,6 +7,7 @@
 // uncompressed (level 0): PNG/JPG bytes are already compressed, and storing
 // them untouched keeps the file lossless and byte-identical on round-trip.
 import { strFromU8, Unzip, UnzipInflate, type Zippable } from "fflate";
+import { t } from "@/i18n";
 
 /** The project file's suffix — owned here with the format itself, so the
  *  pickers, the hidden input, and the download names can't drift apart. */
@@ -95,9 +96,9 @@ const assetEntry = (path: string) =>
 const FILE_CAP = 128 * 1024 * 1024;
 const TOTAL_CAP = 256 * 1024 * 1024;
 const duplicateAsset = (dir: string, a: string, b: string) =>
-  new Error(`Archive is malformed: "${dir}" holds two images ("${a}" and "${b}"), but each image slot holds exactly one. Remove one and re-zip.`);
+  new Error(t("Archive is malformed: {{directory}} holds two images ({{first}} and {{second}}), but each image slot holds exactly one. Remove one and re-zip.", { directory: `"${dir}"`, first: `"${a}"`, second: `"${b}"` }));
 const tooLarge = (name: string) =>
-  new Error(`Archive is too large: "${name}" exceeds the 128 MiB file or 256 MiB total limit.`);
+  new Error(t("Archive is too large: {{name}} exceeds the 128 MiB file or 256 MiB total limit.", { name: `"${name}"` }));
 
 /** Streams the archive through fflate's Unzip in 64 KiB slices, counting the
  *  bytes each entry REALLY inflates to: a central directory can understate an

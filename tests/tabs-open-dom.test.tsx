@@ -40,7 +40,7 @@ vi.mock("../src/App", async () => {
 });
 
 const { default: TabsShell } = await import("../src/TabsShell");
-const { LABEL_FILTER } = await import("../src/filePickers");
+const { labelFilter } = await import("../src/filePickers");
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -70,7 +70,7 @@ it("File → Open Label… uses the native dialog and queues the picked path", a
 
   await openProject();
 
-  expect(mocks.openNativeFile).toHaveBeenCalledWith({ multiple: false, filters: [LABEL_FILTER] });
+  expect(mocks.openNativeFile).toHaveBeenCalledWith({ multiple: false, filters: [labelFilter()] });
   expect(inputClick).not.toHaveBeenCalled();
   // Routed like an OS open: the pristine active tab is reused with a path,
   // so the editor records filePath and ⌘S saves in place.

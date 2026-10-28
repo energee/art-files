@@ -6,6 +6,7 @@
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n";
 
 function HandMetal(props: { className?: string }) {
   return (
@@ -29,6 +30,7 @@ export function MetallicToggle(props: {
    *  nothing to plate. */
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -38,7 +40,7 @@ export function MetallicToggle(props: {
             pressed={props.pressed}
             onPressedChange={props.onPressedChange}
             disabled={props.disabled}
-            aria-label={props.label ? `${props.label}: metallic` : "Metallic"}
+            aria-label={props.label ? t("{{label}}: metallic", { label: props.label }) : t("Metallic")}
             className={cn(
               "size-5 min-w-0 shrink-0 rounded-sm p-0",
               !props.pressed && "opacity-40 hover:opacity-100",
@@ -49,7 +51,7 @@ export function MetallicToggle(props: {
           </Toggle>
         }
       />
-      <TooltipContent>Metallic</TooltipContent>
+      <TooltipContent>{t("Metallic")}</TooltipContent>
     </Tooltip>
   );
 }

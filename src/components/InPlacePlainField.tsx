@@ -4,6 +4,7 @@
 // rotated layer), with the sidebar's validation error under it. Split out of
 // PreviewCompare.tsx (#433), which owns when a session opens and closes.
 import type { MeasureFace } from "@/plan";
+import { useTranslation } from "@/i18n";
 import { facesOf } from "@/planLayers";
 import type { LayerBox } from "@/hittestLayers";
 import type { TextLayer, TextLine } from "@/model/layers";
@@ -29,6 +30,7 @@ export function InPlacePlainField(props: {
   /** Click-away guard (see PreviewCompare's pointerdown capture effect). */
   fieldRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useTranslation();
   const { layer, fontCss, box: b, measure, onApply, onClose, fieldRef } = props;
   const st = layer.style;
   const rotated = layer.rotation === 90;
@@ -87,7 +89,7 @@ export function InPlacePlainField(props: {
         <input
           autoFocus
           value={typed}
-          aria-label={`Edit ${layer.name.toLowerCase()} text`}
+          aria-label={t("Edit {{name}} text", { name: layer.name.toLowerCase() })}
           aria-invalid={!check.ok || undefined} aria-describedby={check.ok ? undefined : errorId}
           onFocus={(e) => {
             const end = e.currentTarget.value.length;

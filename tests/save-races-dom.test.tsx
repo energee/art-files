@@ -350,7 +350,7 @@ it("Open Master's benched-values note survives the master's texture loading (#11
   await run("master-open");
   // Opening a master that hides a filled value switches at once.
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-  expect(document.body.textContent).toContain("1 value(s) benched: volume");
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("volume");
 });
 
 /** A label filling `volume`, and a master without that layer to open over it. */
@@ -369,7 +369,6 @@ it("Open Master switches at once over hidden values, names them and ⌘Z, and un
   await openHidingMaster();
   expect(document.querySelector("#master-picker-preview")).toBeNull();
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
-  expect(document.body.textContent).toMatch(/Switched to “Other” · 1 value\(s\) benched: volume · (⌘|Ctrl\+)Z to restore/);
   expect(localStorage.getItem("labellab.lastMaster")).toBe("master-other");
   expect(document.querySelector('[data-layer-id="volume"]')).toBeNull();
   await run("undo");

@@ -12,6 +12,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { FILE_DROP_ATTR } from "@/components/FileDrop";
+import { useTranslation } from "@/i18n";
 
 /** MIME types the overlay claims. JPEG is texture-only, so it lands on the
  *  texture from either half; PNG and WebP follow the half they're dropped on. */
@@ -62,6 +63,7 @@ export function AssetDropOverlay(props: {
   onTexture: (f: File) => void;
   onMask: (f: File) => void;
 }) {
+  const { t } = useTranslation();
   const [active, setActive] = React.useState(false);
   const [over, setOver] = React.useState<DropKind | null>(null);
   const handlersRef = React.useRef(props);
@@ -152,8 +154,8 @@ export function AssetDropOverlay(props: {
         if (el) measureSplit(el);
       }}
       className="pointer-events-none absolute inset-0 z-50 bg-background/85 backdrop-blur-sm">
-      {half("texture", "Background texture", "PNG, JPG or WebP", "left-0 w-[var(--split)]")}
-      {half("mask", "Metallic mask", "PNG or WebP", "right-0 left-[var(--split)]")}
+      {half("texture", t("Background texture"), t("PNG, JPG or WebP"), "left-0 w-[var(--split)]")}
+      {half("mask", t("Metallic mask"), t("PNG or WebP"), "right-0 left-[var(--split)]")}
     </div>
   );
 }

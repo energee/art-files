@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n"
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
@@ -48,6 +49,7 @@ function SheetContent({
   showCloseButton?: boolean
   showOverlay?: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <SheetPortal>
       {showOverlay && <SheetOverlay />}
@@ -75,7 +77,7 @@ function SheetContent({
             {/* Explicit size: the button's icon-sm default (16px) reads too
                 small against the sheet's own type scale. */}
             <XIcon className="size-4.5" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t("Close")}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>

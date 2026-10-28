@@ -8,6 +8,7 @@
 // the Input and its unit addon. LayerInspector's BlankableField shares
 // NumberRoot and UnitInput.
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "@/i18n";
 import { MoveHorizontal, type LucideIcon } from "lucide-react";
 import { NumberField } from "@base-ui/react/number-field";
 import { Label } from "@/components/ui/label";
@@ -115,12 +116,13 @@ export function ScrubField(props: {
   disabled?: boolean;
   onChange: (v: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <NumberRoot {...props} onChange={(v) => { if (v !== null) props.onChange(v); }}
       className="flex items-center justify-between gap-2">
       <NumberField.ScrubArea
         render={<Label htmlFor={props.id} />}
-        title="Drag to change"
+        title={t("Drag to change")}
         // One step per pixel. At the default 2, NumberField applies only the
         // triggering event's movement, so the rate varied with pointer speed.
         pixelSensitivity={1}

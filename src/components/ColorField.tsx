@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { addColor, setSwatches, useSwatches } from "@/settings";
+import { useTranslation } from "@/i18n";
 
 /** "No ink" checkerboard chip background. */
 const CHECKER =
@@ -34,6 +35,7 @@ export function ColorField(props: {
   id?: string;
 }) {
   const none = props.value === "none";
+  const { t } = useTranslation();
   // Local text state so a half-typed hex doesn't clobber the config.
   const [text, setText] = useState<string | null>(null);
   // Picker and Save still need a real color while the value reads "none".
@@ -62,8 +64,8 @@ export function ColorField(props: {
           type="button"
           variant="outline"
           size="icon"
-          title='No ink ("none")'
-          aria-label={`Use no ${props.label.toLowerCase()} ink`}
+          title={t('No ink ("none")')}
+          aria-label={t("Use no {{label}} ink", { label: props.label.toLowerCase() })}
           aria-pressed={none}
           onClick={() => { setText(null); props.onChange(none ? GOLD : "none"); }}
           className={cn("size-6 rounded-sm", none && "ring-2 ring-ring")}
@@ -77,7 +79,7 @@ export function ColorField(props: {
               type="button"
               variant="outline"
               size="icon"
-              aria-label={`Pick ${props.label.toLowerCase()} color`}
+              aria-label={t("Pick {{label}} color", { label: props.label.toLowerCase() })}
               disabled={none}
               className="size-6 rounded-sm"
               style={none ? undefined : { background: hex }}
@@ -99,7 +101,7 @@ export function ColorField(props: {
                 new EyeDropper().open().then((r) => apply(r.sRGBHex), () => {})
               }
             >
-              <Pipette /> Pick from screen
+              <Pipette /> {t("Pick from screen")}
             </Button>
           )}
           {/* Saved swatches. Click applies, shift-click or Delete removes — a delete
@@ -110,8 +112,8 @@ export function ColorField(props: {
               <button
                 key={c}
                 type="button"
-                title={`${c} (Delete or shift-click to remove)`}
-                aria-label={`Saved color ${c}`}
+                title={t("{{color}} (Delete or shift-click to remove)", { color: c })}
+                aria-label={t("Saved color {{color}}", { color: c })}
                 aria-keyshortcuts="Delete Backspace"
                 className="size-5 rounded-sm border border-border"
                 style={{ background: c }}
@@ -144,14 +146,14 @@ export function ColorField(props: {
               disabled={saved}
               onClick={() => setSwatches((cs) => addColor(cs, hex))}
             >
-              {saved ? "Saved" : "Save"}
+              {saved ? t("Saved") : t("Save")}
             </Button>
           </div>
         </PopoverContent>
       </Popover>
       <Input
         id={props.id}
-        aria-label={`${props.label} color`}
+        aria-label={t("{{label}} color", { label: props.label })}
         value={none ? "none" : (text ?? props.value)}
         disabled={none}
         // A full #rrggbb applies as it is typed; a 3-digit hex only on
@@ -163,7 +165,7 @@ export function ColorField(props: {
           if (parsed && /[0-9a-f]{6}\s*$/i.test(e.target.value)) props.onChange(parsed);
         }}
         aria-invalid={text !== null && !normalizeHex(text) || undefined}
-        title={text !== null && !normalizeHex(text) ? "Enter a 3- or 6-digit hex color." : undefined}
+        title={text !== null && !normalizeHex(text) ? t("Enter a 3- or 6-digit hex color.") : undefined}
         onKeyDown={(e) => { if (e.key === "Enter") commitText(); }}
         onBlur={commitText}
         // w-24/px-2.5 = a ScrubField's value box, so the hex lands in the

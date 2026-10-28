@@ -25,8 +25,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
-import { LOCK_TITLE } from "./LayerInspectorControls";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -125,6 +125,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   atFront: boolean;
   atBack: boolean;
 } & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove">) {
+  const { t } = useTranslation();
   const { layer } = row;
   const { id, name } = layer;
   const Icon = iconFor(layer);
@@ -134,6 +135,14 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const locked = !!layer.locked;
   // Page art can't be dragged (hittestLayers skips it), so it offers no lock.
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
+  let variantTitle = "";
+  if (row.variant) {
+    let key = row.variant.enabled ? "Added by the {{name}} variant" : "Added by the {{name}} variant (off)";
+    if (row.variantOverridden) {
+      key = row.variant.enabled ? "Changed by the {{name}} variant" : "Changed by the {{name}} variant (off)";
+    }
+    variantTitle = t(key, { name: row.variant.name });
+  }
   const [renaming, setRenaming] = useState(false);
   // A row selected from the canvas may sit below the fold of a short window.
   const itemRef = useRef<HTMLLIElement>(null);
@@ -160,7 +169,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
     // This list's own Add layer: every workspace tab mounts a LayerList, so
     // a document-wide lookup would find the first (hidden) tab's.
     const addLayer = current.closest('[data-slot="sidebar-group"]')
-      ?.querySelector<HTMLElement>('[aria-label="Add layer"]');
+      ?.querySelector<HTMLElement>("[data-add-layer]");
     p.onRemove(id);
     queueMicrotask(() => {
       if (!current.isConnected) (next ?? addLayer)?.focus();
@@ -222,7 +231,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             onDoubleClick={() => setRenaming(true)}
             onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
             aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-            title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
+            title={t("Drag to reorder · Alt+↑/↓ · {{range}} for a range, {{add}} to add", {
+              range: isMacOS() ? "⇧-click" : "Shift-click", add: isMacOS() ? "⌘-click" : "Ctrl-click",
+            })}
             className={cn(
               // The row paints hover and selection; its keyboard-focused name
               // keeps the sidebar ring. Focus identifies the next target;
@@ -238,7 +249,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               <input
                 autoFocus
                 defaultValue={name}
-                aria-label={`Rename ${name}`}
+                aria-label={t("Rename {{name}}", { name })}
                 onClick={stop}
                 // The row menu would take focus and commit a half-typed name.
                 onContextMenu={stop}
@@ -258,8 +269,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             )}
             {row.variant && (
               <span
-                title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
-                  row.variant.enabled ? "" : " (off)"}`}
+                title={variantTitle}
                 // /70 on an active row; an inactive row's badge inherits the
                 // row's muted ink with no extra alpha, since stacking a fainter
                 // colour (or row opacity) under it fell below WCAG AA's 4.5:1
@@ -281,21 +291,21 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             {row.variantOverridden && (
               <span
                 role="img"
-                aria-label={`${row.variantOverridden.name} changes this layer`}
-                title={`${row.variantOverridden.name} changes this layer. Resetting changes the master file.`}
+                aria-label={t("{{name}} changes this layer", { name: row.variantOverridden.name })}
+                title={t("{{name}} changes this layer. Resetting changes the master file.", { name: row.variantOverridden.name })}
                 className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
               />
             )}
             {row.changed && (
               <span
                 role="img"
-                aria-label="Changed in this label"
-                title="Changed in this label"
+                aria-label={t("Changed in this label")}
+                title={t("Changed in this label")}
                 className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
               />
             )}
             {invalid && (
-              <span role="img" aria-label="Invalid value" title="Fix this value before exporting"
+              <span role="img" aria-label={t("Invalid value")} title={t("Fix this value before exporting")}
                 className="size-1.5 shrink-0 rounded-full bg-destructive" />
             )}
           </SidebarMenuButton>
@@ -304,14 +314,14 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             <button
               type="button"
               onClick={() => p.onToggle(id, "enabled", inactive)}
-              aria-label={`${name}: enabled`}
+              aria-label={t("{{name}}: enabled", { name })}
               aria-pressed={!inactive}
               data-state={inactive ? "off" : "on"}
               title={inactive
                 ? (row.variant && !row.variant.enabled
-                  ? `Show in preview and exports (also enables ${row.variant.name})`
-                  : "Show in preview and exports")
-                : "Hide from preview and exports"}
+                  ? t("Show in preview and exports (also enables {{name}})", { name: row.variant.name })
+                  : t("Show in preview and exports"))
+                : t("Hide from preview and exports")}
               className={cn(control,
                 inactive ? "text-muted-foreground hover:text-muted-foreground" : "text-sidebar-foreground")}
             >
@@ -322,9 +332,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
                 <button
                   type="button"
                   onClick={() => p.onToggle(id, "locked", !locked)}
-                  aria-label={`${name}: locked`}
+                  aria-label={t("{{name}}: locked", { name })}
                   aria-pressed={locked}
-                  title={`${locked ? "Unlock" : "Lock"} on canvas. ${LOCK_TITLE}`}
+                  title={`${locked ? t("Unlock on canvas.") : t("Lock on canvas.")} ${t("Locked on canvas: drag, resize and nudge are off. Typed values still apply.")}`}
                   className={cn(control, locked && "text-sidebar-foreground")}
                 >
                   {locked ? <Lock /> : <LockOpen />}
@@ -336,8 +346,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
                 <button
                   type="button"
                   onClick={removeSelected}
-                  aria-label={`${name}: remove`}
-                  title="Remove layer"
+                  aria-label={t("{{name}}: remove", { name })}
+                  title={t("Remove layer")}
                   className={cn(control, "hover:text-destructive-text")}
                 >
                   <Trash2 />
@@ -347,9 +357,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           </div>
         </ContextMenu.Trigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
-          {!page && <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? "Unlock" : "Lock"}</DropdownMenuItem>}
-          <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>Remove</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setRenaming(true)}>{t("Rename")}</DropdownMenuItem>
+          {!page && <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? t("Unlock") : t("Lock")}</DropdownMenuItem>}
+          <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>{t("Remove")}</DropdownMenuItem>
         </DropdownMenuContent>
       </ContextMenu.Root>
     </SidebarMenuItem>
@@ -357,15 +367,17 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
 }
 
 export function LayerList(props: LayerListProps): React.JSX.Element {
+  const { t } = useTranslation();
   const { rows, selected, onReorder } = props;
   const [announcement, setAnnouncement] = useState("");
   const reorder = useCallback((id: string, delta: number) => {
     onReorder(id, delta);
-    const text = `${rows.find((r) => r.layer.id === id)?.layer.name ?? "Layer"} moved ${delta > 0 ? "forward" : "backward"}.`;
+    const name = rows.find((r) => r.layer.id === id)?.layer.name ?? t("Layer");
+    const text = delta > 0 ? t("{{name}} moved forward.", { name }) : t("{{name}} moved backward.", { name });
     // A live region speaks only when its text changes, so a repeat of the
     // same move toggles a trailing no-break space to be announced again.
     setAnnouncement((prev) => prev === text ? text + "\u00a0" : text);
-  }, [onReorder, rows]);
+  }, [onReorder, rows, t]);
   // Rows grouped by owning container (master, or the variant that added the
   // layer), in VISIBLE order (front first): a layer only reorders among its
   // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
@@ -466,32 +478,32 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           live in the master Select now, which names the version the canvas
           is drawing. */}
       <SidebarGroupLabel className="gap-1.5">
-        <span className="flex-1">Layers</span>
+        <span className="flex-1">{t("Layers")}</span>
         <button
           type="button"
           aria-pressed={props.changedOnly}
           onClick={() => props.onChangedOnly(!props.changedOnly)}
-          title="Show only layers changed in this label"
+          title={t("Show only layers changed in this label")}
           className={chip(props.changedOnly)}
         >
-          <ListFilter /> Changed
+          <ListFilter /> {t("Changed")}
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <button
                 type="button"
-                aria-label="Add layer"
+                data-add-layer aria-label={t("Add layer")}
                 className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-attention-text hover:text-attention-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
-                <Plus className="size-3" /> Add layer
+                <Plus className="size-3" /> {t("Add layer")}
               </button>
             }
           />
           <DropdownMenuContent align="end">
             {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
               <DropdownMenuItem key={kind} variant="attention" onClick={() => props.onAdd(kind)}>
-                <Icon className="size-3.5" /> {label}
+                <Icon className="size-3.5" /> {t(label)}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>

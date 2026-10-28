@@ -11,6 +11,7 @@ import { FONT_FAMILIES } from "../fontCatalog";
 import { strFromU8, strToU8, zipSync, type Zippable } from "fflate";
 import type { LabelFile, Master } from "./layers";
 import { linesProblem, parseMaster, patchProblem, validateLayer, type Layer, type LayerValue } from "./layers";
+import { t } from "@/i18n";
 import { applyDiff } from "./resolveLayers";
 import type { LabelFileV2 } from "./types";
 import { parseMaster as parseMasterV1 } from "./types";
@@ -31,7 +32,7 @@ const FORMAT_VERSION = 3;
  *  converting it as legacy, then saving, would silently downgrade it (#429). */
 function rejectNewerFormat(version: unknown, kind: string): void {
   if (typeof version === "number" && version > FORMAT_VERSION)
-    throw new Error(`This ${kind} was made by a newer version of Label Lab (format ${version}). Update Label Lab to open it.`);
+    throw new Error(t("This {{kind}} was made by a newer version of Label Lab (format {{version}}). Update Label Lab to open it.", { kind, version }));
 }
 
 // --- .master --------------------------------------------------------------
@@ -71,7 +72,7 @@ export function unpackMaster(bytes: Uint8Array): { master: Master; assets: Maste
   if (legacy !== undefined) return { ...parseMasterJson(JSON.parse(legacy)), assets: {} };
   const entries = unpackArchive(bytes);
   const entry = entries["master.json"];
-  if (!entry) throw new Error("Not a .master file: missing master.json");
+  if (!entry) throw new Error(t("Not a .master file: missing master.json"));
   return { ...parseMasterJson(JSON.parse(strFromU8(entry))), assets: extractAssets(entries) };
 }
 
@@ -81,7 +82,7 @@ export function serializeLabel(l: LabelFile): string {
   return JSON.stringify(l, null, 2);
 }
 
-function badLabel(msg: string): never { throw new Error(`Invalid label file: ${msg}`); }
+function badLabel(message: string): never { throw new Error(t("Invalid label file: {{message}}", { message })); }
 
 /** A JSON object (not null, not an array). */
 export const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -95,14 +96,14 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => ty
  *  3-digit hex is widened in place; see layers.ts's styleProblem). */
 function valueProblem(val: unknown): string | undefined {
   if (typeof val === "string") return undefined;
-  return Array.isArray(val) ? linesProblem(val) : "is not text or a string";
+  return Array.isArray(val) ? linesProblem(val) : t("is not text or a string");
 }
 
 function parseValues(v: unknown): Record<string, LayerValue> {
   if (!isRecord(v)) return {};
   for (const [id, val] of Object.entries(v)) {
     const problem = valueProblem(val);
-    if (problem) badLabel(`value for "${id}" ${problem}`);
+    if (problem) badLabel(t("value for \"{{id}}\" {{problem}}", { id, problem }));
   }
   return v as Record<string, LayerValue>;
 }
@@ -119,25 +120,29 @@ const NUMERIC_KEYS = ["x", "size", "leading", "headerScale", "width", "min", "ma
  *  its geometry and font are checked. */
 function parseOverrides(v: unknown): LabelFile["overrides"] {
   if (v == null) return undefined;
-  if (!isRecord(v)) badLabel("overrides is not an object");
+  if (!isRecord(v)) badLabel(t("overrides is not an object"));
   for (const [id, p] of Object.entries(v)) {
-    if (!isRecord(p)) badLabel(`override "${id}" is not an object`);
+    if (!isRecord(p)) badLabel(t("override \"{{id}}\" is not an object", { id }));
     const family = p.fontFamily;
     if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
-      throw new Error(`Unknown label font family: ${family}`);
+      throw new Error(t("Unknown label font family: {{family}}", { family }));
     const problem = patchProblem(p);
-    if (problem) badLabel(`override "${id}" ${problem}`);
+    if (problem) badLabel(t("override \"{{id}}\" {{problem}}", { id, problem }));
     if (p.kind !== undefined) {
-      if (p.id !== id) badLabel(`added layer "${id}" has a mismatched id`);
+      if (p.id !== id) badLabel(t("added layer \"{{id}}\" has a mismatched id", { id }));
       try { validateLayer(applyDiff({} as Layer, p as never), "label override"); }
-      catch (err) { badLabel((err as Error).message.replace(/^Invalid master file: /, "")); }
+      catch (err) {
+        const prefix = t("Invalid master file: {{message}}", { message: "" });
+        const message = (err as Error).message;
+        badLabel(message.startsWith(prefix) ? message.slice(prefix.length) : message);
+      }
       continue;
     }
     for (const k of NUMERIC_KEYS)
-      if (p[k] != null && !Number.isFinite(p[k])) badLabel(`override "${id}" has invalid ${k}`);
+      if (p[k] != null && !Number.isFinite(p[k])) badLabel(t("override \"{{id}}\" has invalid {{key}}", { id, key: k }));
     const y = p.y;
     if (y != null && !Number.isFinite(y) && !(isRecord(y) && typeof y.below === "string" && Number.isFinite(y.gap)))
-      badLabel(`override "${id}" has invalid y`);
+      badLabel(t("override \"{{id}}\" has invalid y", { id }));
   }
   return v as LabelFile["overrides"];
 }
@@ -163,13 +168,13 @@ function parseDormant(v: unknown): LabelFile["dormant"] {
  *  `{version: 1}` config) or 1 is tagged legacy for parseConfigFile +
  *  convertConfigV1. A newer or unrecognized formatVersion throws (#429). */
 export function parseLabel(json: unknown): LabelFile | { v2: LabelFileV2 } | { legacy: unknown } {
-  if (!json || typeof json !== "object") throw new Error("Not a label file.");
+  if (!json || typeof json !== "object") throw new Error(t("Not a label file."));
   const o = json as Record<string, unknown>;
   if (o.formatVersion === 2) return { v2: parseLabelFile(json) as LabelFileV2 };
   if (o.formatVersion === undefined || o.formatVersion === 1) return { legacy: json };
   rejectNewerFormat(o.formatVersion, "label");
-  if (o.formatVersion !== 3) throw new Error(`Unsupported label formatVersion: ${JSON.stringify(o.formatVersion)}`);
-  if (typeof o.masterId !== "string" || !o.masterId) throw new Error("Label file is missing its masterId.");
+  if (o.formatVersion !== 3) throw new Error(t("Unsupported label formatVersion: {{version}}", { version: JSON.stringify(o.formatVersion) }));
+  if (typeof o.masterId !== "string" || !o.masterId) throw new Error(t("Label file is missing its masterId."));
   const dormant = parseDormant(o.dormant);
   const overrides = parseOverrides(o.overrides);
   return {
@@ -201,7 +206,7 @@ export function unpackLabel(bytes: Uint8Array): {
   const labelEntry = entries["label.json"];
   // Checked before extractAssets, so a wrong ZIP says "not a .label" rather
   // than an asset error (same order as unpackMaster).
-  if (!configEntry && !labelEntry) throw new Error("Not a .label file: missing label.json/config.json");
+  if (!configEntry && !labelEntry) throw new Error(t("Not a .label file: missing label.json/config.json"));
   const assets = extractAssets(entries);
   if (!labelEntry) return { legacy: strFromU8(configEntry), assets };
   const text = strFromU8(labelEntry);

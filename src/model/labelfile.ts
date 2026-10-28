@@ -3,6 +3,7 @@
 // that is what makes rebinding meaningful). Legacy v1 files (version: 1,
 // embedded LabelConfig) are tagged for the migrator, not parsed here.
 import type { FieldValue, LabelFileV2 } from "./types";
+import { t } from "@/i18n";
 
 /** Defensively parse the `dormant` bench (Task 4b): a hand-edited or
  *  half-written file with a mangled `dormant` block should open with an
@@ -18,11 +19,11 @@ function parseDormant(v: unknown): LabelFileV2["dormant"] {
 }
 
 export function parseLabelFile(json: unknown): LabelFileV2 | { legacy: unknown } {
-  if (!json || typeof json !== "object") throw new Error("Not a label file.");
+  if (!json || typeof json !== "object") throw new Error(t("Not a label file."));
   const o = json as Record<string, unknown>;
   if (o.formatVersion !== 2) return { legacy: json };   // v1 has {version: 1}
   if (typeof o.masterId !== "string" || !o.masterId)
-    throw new Error("Label file is missing its masterId.");
+    throw new Error(t("Label file is missing its masterId."));
   return {
     formatVersion: 2,
     masterId: o.masterId,

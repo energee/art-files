@@ -5,6 +5,7 @@
 // PreviewCompare.tsx (#433), which owns when a session opens and closes.
 import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "@/i18n";
 import { facesOf } from "@/planLayers";
 import type { LayerBox } from "@/hittestLayers";
 import type { Face } from "@/plan";
@@ -57,6 +58,7 @@ export function InPlaceRichField(props: {
   fieldRef: React.RefObject<HTMLDivElement | null>;
   toolbarRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useTranslation();
   const { layer, fontCss, box, toolbarPos, onApply, onClose, fieldRef, toolbarRef } = props;
   const size = layer.size;
   const leading = (layer.leading ?? 1.2) * size;
@@ -144,7 +146,7 @@ export function InPlaceRichField(props: {
       >
         <div
           {...fieldProps}
-          aria-label={`Edit ${layer.name.toLowerCase()} text`}
+          aria-label={t("Edit {{name}} text", { name: layer.name.toLowerCase() })}
           className="outline-none caret-sky-400"
         />
       </div>
