@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+- **One PSD with a White Ink spot channel.** Export PSDs (`⇧⌘E`) now saves a single `{name}.psd`: the editable art layers plus a **White Ink** spot channel built from the mask, the same coverage as the print PDF's White Ink layer. The channel shows at 0% solidity, so Photoshop draws the art as-is. The separate `{name}-mask.psd` is no longer written.
+
 ### Fixed
 - **PSD previews show the label.** Exported PSDs used to save an all-black flattened image, so Finder, Quick Look and Preview showed nothing but black (Photoshop rebuilt the art from the layers). Each PSD now saves its plate drawn at full resolution, so every app shows the actual art. PSDs written by `npm run generate` keep the black preview.
 

@@ -47,6 +47,7 @@ import { facesOf } from "../planLayers";
 import { PAGE_ART_ID, type Layer as AppLayer, type TextLayer } from "../model/layers";
 import { qrShapes, type QrShapes } from "../qr";
 import { strokeLayerOf } from "../strokes";
+import { addWhiteInkChannel } from "./spotChannel";
 
 /** Decoded RGBA pixels at their natural size. */
 export interface Rgba { data: Uint8Array; width: number; height: number }
@@ -99,6 +100,9 @@ export interface PsdOpts {
    *  rebuilds from the layers either way. Without it ag-psd writes zeros, a
    *  black preview — what callers with no canvas (the Node CLI) still get. */
   composite?: { data: Uint8ClampedArray; width: number; height: number };
+  /** The White Ink plate at PSD_DOC size, one byte per pixel (0 = 100% ink),
+   *  added as a spot channel (spotChannel.ts): the one-file print PSD. */
+  whiteInk?: Uint8Array;
 }
 
 /** Which deliverable to build: the art PSD, or the white-ink mask plate.
@@ -720,5 +724,6 @@ export async function buildPsd(
     children: buildLayers(items, assets, digitFont, mode, opts),
     ...(opts.composite && { imageData: opts.composite as ImageData }),
   };
-  return writePsdUint8Array(psd);
+  const bytes = writePsdUint8Array(psd);
+  return opts.whiteInk ? addWhiteInkChannel(bytes, opts.whiteInk) : bytes;
 }

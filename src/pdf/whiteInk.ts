@@ -11,9 +11,9 @@ import {
   PDFRef,
   PDFString,
 } from "pdf-lib";
+import { WHITE_INK } from "../layout";
 
-/** The printer-required spot swatch and optional-content layer name. */
-export const WHITE_INK = "White Ink";
+export { WHITE_INK };
 
 const colorSpaces = new WeakMap<PDFDocument, PDFRef>();
 

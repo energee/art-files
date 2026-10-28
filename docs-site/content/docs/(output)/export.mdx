@@ -9,8 +9,8 @@ File → Export, the palette, `⌘E` and `⇧⌘E`:
 | --- | --- |
 | Export PDF (`⌘E`) | `{name}.pdf`: artwork plus a **White Ink** spot layer |
 | Export PDF As… | the same print PDF, somewhere new |
-| Export PSDs (`⇧⌘E`) | `{name}.psd` and `{name}-mask.psd` |
-| Export PSDs As… | the same PSD pair, somewhere new |
+| Export PSDs (`⇧⌘E`) | `{name}.psd`: art layers plus a **White Ink** spot channel |
+| Export PSDs As… | the same PSD, somewhere new |
 
 ## White Ink in the print PDF
 
@@ -33,7 +33,7 @@ In the desktop app:
 - **The first export in a tab** asks where to save. The dialog opens beside the tab's `.label`, named after it (`Lupula.label` suggests `Lupula.pdf`). An unsaved label suggests the beer name instead.
 - **Every later export of that kind** rewrites the remembered destination without a dialog. The header names the files written.
 - **Export … As…** asks again, opening on the current file, and remembers the new place. Cancelling keeps the old destination.
-- For paired exports, the mask goes beside the art file as `{chosen name}-mask.pdf` or `.psd`, without a second desktop dialog. Confirming the art file confirms replacing the pair.
+- For paired exports, the mask goes beside the art file as `{chosen name}-mask.pdf`, without a second desktop dialog. Confirming the art file confirms replacing the pair.
 
 Combined PDF, two-file PDF and PSD destinations are remembered separately until the tab closes, quits, opens another label, or the label is saved under a new name (Save Label As…). In a browser each output file has its own save dialog or download.
 
@@ -58,11 +58,11 @@ The uploaded raster in the legacy mask PDF is embedded as-authored. The 3D previ
 
 ## Photoshop
 
-Export PSDs is the editable RGB handoff, unchanged by the spot-PDF export. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
+Export PSDs is the editable RGB handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
 
 The PSD declares the export resolution (600 ppi unless you change PSD resolution in Settings). Photoshop may prompt to **Update** text layers on open: ag-psd writes text data without a rendered bitmap. Choose Update.
 
-The mask PSD mirrors the legacy mask PDF: a knockout base, the recoloured mask raster (or a white-ink flood), then every element by its plate. The PDF is the print handoff.
+White ink is a spot channel named **White Ink** under **Channels**, built from the mask plate the way the print PDF builds its White Ink layer (full ink where the mask is blue, none where it is white). It shows at 0% solidity, so the art looks as-is on screen; toggle the channel's eye to inspect the underlay. Above it sits **Transparency**, an all-opaque channel Photoshop keeps for the merged image. The saved preview is the art drawn at full resolution, so Finder, Quick Look and Preview show the label. The PDF is the print handoff.
 
 ## CMYK
 

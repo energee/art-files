@@ -177,6 +177,10 @@ export const GOLD = "#F3CD80" as const;
 /** The white-ink plate's ink colour. Hex is the form the PSD writes and the
  *  press specifies; the 0-1 triple below is derived so the two can't drift. */
 export const MASK_BLUE_HEX = "#009CD7" as const;
+
+/** The printer-required White Ink spot swatch: the PDF separation and OCG
+ *  name, and the PSD spot channel name. */
+export const WHITE_INK = "White Ink";
 /** No ink: the knockout / bare-stock colour, as hex for the canvas and PSD. */
 export const WHITE_HEX = "#FFFFFF" as const;
 
