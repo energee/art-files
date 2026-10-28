@@ -652,7 +652,7 @@ function buildLayers(
       // The fill item (the last paths item) carries the placed origin.
       const fill = its.filter((r): r is PlacedPaths => r.kind === "paths").at(-1);
       if (fill) {
-        const shapes = qrShapes(layer.value, { style: layer.qrStyle, ecLevel: layer.ecLevel ?? "L", rotation: layer.rotation });
+        const shapes = qrShapes(layer.value, { style: layer.qrStyle, ecLevel: layer.ecLevel, rotation: layer.rotation });
         const paths = qrBeziers(shapes, layer.size).map((p) => translatePath(p, px(fill.x), px(fill.y)));
         children.push(shapeLayer(
           name, paths, paint(mode, layer.style.fill, layer.style.layer),
