@@ -11,6 +11,7 @@ import type {
 import type { DeepPartial } from "@/model/merge";
 import type { Style } from "@/types";
 import { DEFAULT_STROKE_PX } from "@/layout";
+import { DEFAULT_EC_LEVEL } from "@/qr";
 import { strokeLayerOf } from "@/strokes";
 import { minModuleWarning } from "@/model/fields";
 import { Button } from "@/components/ui/button";
@@ -331,7 +332,7 @@ export function QrGeometry(props: Ctx & { layer: QrLayer }) {
         items={QR_STYLES} value={layer.qrStyle} onChange={(v) => set({ qrStyle: v as QrLayer["qrStyle"] })} />
       {/* Match the renderer’s L default when the optional level is absent. */}
       <SelectField id={`${id}-ec`} label="Error correction" ariaLabel="Error correction" badge={badge(["ecLevel"], "Error correction")}
-        items={EC_LEVELS} value={layer.ecLevel ?? "L"} onChange={(v) => set({ ecLevel: v as QrLayer["ecLevel"] })} />
+        items={EC_LEVELS} value={layer.ecLevel ?? DEFAULT_EC_LEVEL} onChange={(v) => set({ ecLevel: v as QrLayer["ecLevel"] })} />
     </div>
   );
 }
