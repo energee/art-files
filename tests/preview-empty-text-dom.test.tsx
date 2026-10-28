@@ -41,7 +41,7 @@ function render(text: string) {
       canvasRender: source, layers: [layer(text)], editLayerOf: (l) => l, selected: [],
       onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCommit: vi.fn(),
       onDrag: vi.fn(), onDragCancel: vi.fn(), onResize: vi.fn(), onEditSession: vi.fn(),
-      cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN,
+      cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN, unit: "in",
     }));
   });
 }

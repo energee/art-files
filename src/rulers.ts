@@ -1,8 +1,14 @@
 // rulers.ts — pure screen/page conversion and tick/layout-guide geometry for
-// the 2D preview rulers. PDF points remain the authoritative coordinate unit.
+// the 2D preview rulers, and the app's one length unit: the operator picks it
+// once (ruler corner or View → Units) and it drives the rulers, the inspector's
+// length fields, the canvas drag readout and the margin inset. PDF points
+// remain the authoritative coordinate unit; every other unit is display only.
 import { ART, OUTPUT_DPI } from "@/layout";
 
-export type RulerUnit = "in" | "pt" | "px";
+/** The display unit for lengths. Type size, letter spacing and stroke width
+ *  keep their own fixed units (see LayerInspectorSections.tsx). */
+export type LengthUnit = "in" | "mm" | "pt" | "px";
+export const LENGTH_UNITS: readonly LengthUnit[] = ["in", "mm", "pt", "px"];
 export type GuideAxis = "x" | "y";
 
 export interface ManualGuide {
@@ -32,14 +38,22 @@ export interface LayoutGuides {
 export { DEFAULT_MARGIN_PT } from "@/layout";
 const MIN_MAJOR_PX = 56;
 const SUBDIVISIONS = 4;
-// Pixels mean deliverable pixels at the document's OUTPUT resolution, not CSS
-// screen pixels — so the ruler and the size readout count the same pixels the
-// exported PSD has. A function rather than a table because OUTPUT_DPI is a
-// Settings knob: a table built at import time would freeze it at 600 and the
-// px readout would quietly disagree with the file on disk.
-const unitPt = (unit: RulerUnit) => unit === "in" ? 72 : unit === "pt" ? 1 : 72 / OUTPUT_DPI;
-const MAJOR_STEPS: Record<RulerUnit, readonly number[]> = {
+/** Points in one of `unit`. Pixels mean deliverable pixels at the document's
+ *  OUTPUT resolution, not CSS screen pixels — so the ruler, the fields and the
+ *  readout count the same pixels the exported PSD has. A function rather than
+ *  a table because OUTPUT_DPI is a Settings knob: a table built at import time
+ *  would freeze it at 600 and px would quietly disagree with the file on disk. */
+export function unitPt(unit: LengthUnit): number {
+  switch (unit) {
+    case "in": return 72;
+    case "mm": return 72 / 25.4;
+    case "pt": return 1;
+    case "px": return 72 / OUTPUT_DPI;
+  }
+}
+const MAJOR_STEPS: Record<LengthUnit, readonly number[]> = {
   in: [0.125, 0.25, 0.5, 1, 2, 4, 8, 16],
+  mm: [1, 2, 5, 10, 20, 50, 100, 200],
   pt: [6, 12, 18, 36, 72, 144, 288, 576],
   px: [10, 25, 50, 100, 250, 500, 1000, 2000, 5000],
 };
@@ -58,38 +72,32 @@ export function screenToPoint(
   return ((screen - frameStart) / frameSize) * pageSize;
 }
 
-export function pointToUnit(point: number, origin: number, unit: RulerUnit): number {
+export function pointToUnit(point: number, origin: number, unit: LengthUnit): number {
   return (point - origin) / unitPt(unit);
 }
 
-export function unitToPoint(value: number, origin: number, unit: RulerUnit): number {
+export function unitToPoint(value: number, origin: number, unit: LengthUnit): number {
   return origin + value * unitPt(unit);
 }
 
-/**
- * A width x height in the chosen display unit, e.g. `8.127 × 5.127 in`.
- * Trailing zeros are dropped so the trim reads `8 × 5` rather than
- * `8.000 × 5.000`.
- *
- * Callers pass PAGE or ART deliberately, because the label has two honest
- * sizes: the PAGE is the artboard that goes to the press and the one the DPI
- * beside it describes (PSD_DOC is derived from it), while ART is the die cut,
- * the size the finished label is ordered and specified at. The toolbar shows
- * the page and names the trim in its tooltip.
- */
-export function sizeLabel(widthPt: number, heightPt: number, unit: RulerUnit): string {
-  const size = (points: number) => Number(pointToUnit(points, 0, unit).toFixed(3));
-  return `${size(widthPt)} × ${size(heightPt)} ${unit}`;
+/** Decimals the canvas readout shows per unit: about a hundredth of a
+ *  millimetre in every unit but px, where a whole pixel is already finer. */
+const READOUT_DECIMALS: Record<LengthUnit, number> = { in: 3, mm: 2, pt: 2, px: 0 };
+
+/** A length for the canvas drag/resize readout, e.g. `1.250 in`. Fixed
+ *  decimals, so the badge does not change width as the value moves. */
+export function lengthLabel(points: number, unit: LengthUnit): string {
+  return `${pointToUnit(points, 0, unit).toFixed(READOUT_DECIMALS[unit])} ${unit}`;
 }
 
 /** A readable major interval for the current screen scale. */
-export function majorStep(frameSize: number, pageSize: number, unit: RulerUnit): number {
+export function majorStep(frameSize: number, pageSize: number, unit: LengthUnit): number {
   const pxPerUnit = (frameSize / pageSize) * unitPt(unit);
   return MAJOR_STEPS[unit].find((step) => step * pxPerUnit >= MIN_MAJOR_PX)
     ?? MAJOR_STEPS[unit][MAJOR_STEPS[unit].length - 1];
 }
 
-function labelOf(value: number, unit: RulerUnit): string {
+function labelOf(value: number, unit: LengthUnit): string {
   if (Math.abs(value) < 1e-9) return "0";
   if (unit !== "in") return String(Math.round(value));
   return String(Number(value.toFixed(3)));
@@ -106,7 +114,7 @@ export function rulerTicks(args: {
   frameSize: number;
   pageSize: number;
   origin: number;
-  unit: RulerUnit;
+  unit: LengthUnit;
 }): RulerTick[] {
   const { visibleStart, visibleEnd, frameStart, frameSize, pageSize, origin, unit } = args;
   if (!(frameSize > 0) || !(pageSize > 0) || visibleEnd <= visibleStart) return [];

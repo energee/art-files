@@ -52,7 +52,7 @@ function openEditor(id: string, opts: {
       onEditText: opts.onEditText ?? noop, onEditUppercase: noop,
       onEditCommit: opts.onEditCommit ?? noop,
       onDrag: snap, onDragCancel: noop, onResize: snap, onEditSession: noop,
-      cornerRadiusPct: 0, zoom: 1, bleedIn: 0,
+      cornerRadiusPct: 0, zoom: 1, bleedIn: 0, unit: "in",
     } as Parameters<typeof PreviewCompare>[0]));
   });
   const sheet = container.querySelector<HTMLDivElement>('[data-slot="label-sheet"]')!;

@@ -8,7 +8,7 @@ description: Tabs, menus, the palette, and the three-pane layout
 - **Menubar.** File, Edit, Layer, View. In the browser it lives in the window, and the tab icon is the desktop app icon. Every row carries an icon: the Mac menu shows Apple's standard symbols (they follow light and dark mode), and the browser draws the closest match. On desktop those actions sit in the native menu (macOS menu bar, window menu everywhere else), checkmarks and disabled states included, so the in-window copy goes away.
 - **Tabs.** One tab per open label, under the menubar. Own undo, own dirty state, own save target.
 - **Layers sidebar.** Master picker plus the list. Collapse it from the header button, View → Layers, or `⌘B`.
-- **Preview.** The sheet, the mask reveal, the flat rendered label, or the 3D can. Status bar underneath: zoom, trim size, and the Label | Mask | Rendered | Can view control.
+- **Preview.** The sheet, the mask reveal, the flat rendered label, or the 3D can. Status bar underneath: zoom and the Label | Mask | Rendered | Can view control.
 - **Inspector.** Right-hand sheet, open while a layer is selected. Not a modal. You can still click the list and the preview.
 
 **Settings** (bleed, PSD resolution, corner radius) and the View → Appearance theme, plus your colour swatches, stick around on this machine. They do not ride in the `.label` file.
@@ -31,7 +31,7 @@ Tabs with unsaved changes keep a recovery copy as you work. If Label Lab crashes
 
 ## Command palette
 
-`⌘K` / `Ctrl+K`. Every menu command, grouped and named as the menus show them (File, Export, Edit, Layer, View, Appearance). A view or toggle that is on shows a check mark, as in the menu. **New Variant**, which is in no menu, is listed last under Other. Type a menu name to narrow it down: "view label" finds the Label view, "appearance dark" the dark theme.
+`⌘K` / `Ctrl+K`. Every menu command, grouped and named as the menus show them (File, Export, Edit, Layer, View, Units, Appearance). A view or toggle that is on shows a check mark, as in the menu. **New Variant**, which is in no menu, is listed last under Other. Type a menu name to narrow it down: "view label" finds the Label view, "appearance dark" the dark theme.
 
 ## When something's wrong
 

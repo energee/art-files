@@ -261,6 +261,19 @@ describe("convertConfigV1", () => {
     const { warnings } = convertConfigV1(cfg as LabelConfig, false);
     expect(warnings).toContain('"barcodeStrokeWidth" was unset in the old file; the master\'s value stands.');
   });
+  // Image scale is folded into w/h on read (image-scale-fold.test.ts); an old
+  // collab slot's scale must arrive folded too, never as a `scale` key.
+  it("folds a collab slot's scale into its size", () => {
+    const cfg = structuredClone(defaultConfig());
+    cfg.collabLeft.scale = 0.5;
+    const { label } = convertConfigV1(cfg, true);
+    expect(label.overrides?.collabLeft).toEqual({ w: 35, h: 22 });
+    const old = lolevV1();
+    (old.defaults as Record<string, Record<string, unknown>>).collabCenter = { scale: 1.5 };
+    const { master } = convertMasterV1(old);
+    expect(master.variants[0].layers.collabCenter).toMatchObject({ w: 54, h: 54 });
+    expect(JSON.stringify({ label, master })).not.toContain('"scale"');
+  });
   it("a default config becomes an override-free label with its filled values", () => {
     const { label, warnings } = convertConfigV1(defaultConfig(), false);
     expect(warnings).toEqual([]);

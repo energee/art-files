@@ -46,7 +46,7 @@ import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
 import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
-import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
+import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
@@ -76,7 +76,7 @@ import { useOwnedError } from "@/useOwnedError";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
+  BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
@@ -92,13 +92,10 @@ import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
 import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
-import { RulerUnitPicker } from "@/components/RulerUnitPicker";
-import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronDown } from "lucide-react";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, sizeLabel,
-  type GuideAxis, type ManualGuide, type RulerUnit,
+  DEFAULT_MARGIN_PT, LENGTH_UNITS,
+  type GuideAxis, type LengthUnit, type ManualGuide,
 } from "@/rulers";
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
@@ -227,23 +224,25 @@ function HeaderAlert({ children, tone = "destructive" }: { children: React.React
   );
 }
 
-/** Where the two view toggles (rulers/guides) persist — localStorage, like
- *  every other per-operator setting (settings.ts, masters.ts). Only the two
- *  known keys are read, so an entry written by an earlier build sheds its
- *  extras on the next write instead of leaking them in. */
+/** Where the view preferences (the rulers/guides toggles and the length
+ *  unit) persist — localStorage, like every other per-operator setting
+ *  (settings.ts, masters.ts). Only the known keys are read, so an entry
+ *  written by an earlier build sheds its extras on the next write instead of
+ *  leaking them in. Reads and writes are both guarded: storage can be missing
+ *  or full, and a view preference is never worth an error. */
 const VIEW_KEY = "lolev-view";
-type ViewToggles = { showRulers: boolean; showGuides: boolean };
-function loadViewToggles(): ViewToggles {
-  const toggles: ViewToggles = { showRulers: true, showGuides: true };
+type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit };
+function loadViewPrefs(): ViewPrefs {
+  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in" };
   try {
     const stored = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
-    for (const k of Object.keys(toggles) as (keyof ViewToggles)[]) {
-      if (typeof stored[k] === "boolean") toggles[k] = stored[k];
-    }
+    if (typeof stored.showRulers === "boolean") prefs.showRulers = stored.showRulers;
+    if (typeof stored.showGuides === "boolean") prefs.showGuides = stored.showGuides;
+    if (LENGTH_UNITS.includes(stored.unit as LengthUnit)) prefs.unit = stored.unit as LengthUnit;
   } catch {
     // a hand-mangled entry falls back to the defaults rather than crashing boot
   }
-  return toggles;
+  return prefs;
 }
 
 /** The "N value(s) benched" notes a rebind reports for what didn't fit. */
@@ -592,7 +591,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (isFinite(pct)) zoomTo(() => pct / 100);
   };
   // Published to layout.ts during render, not from an effect: the rulers
-  // and the toolbar's size readout read PAGE and OUTPUT_DPI while rendering.
+  // and the px length unit read PAGE and OUTPUT_DPI while rendering.
   // ACTIVE editor only: a hidden editor's memo bail freezes its `render`.
   if (active) {
     setLayoutBleed(render.bleedIn);
@@ -656,12 +655,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
   const previewRef = useRef<PreviewCompareHandle>(null);
-  // Rulers and guides are view state: they assist the operator but are not
-  // label content, so none enters history/exports. Both persist per operator.
-  const [showRulers, setShowRulers] = useState(() => loadViewToggles().showRulers);
-  const [dimensionUnit, setDimensionUnit] = useState<"mm" | "pt">("mm");
-  const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
-  const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
+  // Rulers, guides and the length unit are view state: they assist the
+  // operator but are not label content, so none enters history/exports. All
+  // persist per operator. The one unit drives the rulers, the inspector's
+  // length fields, the canvas drag readout and the margin inset.
+  const [showRulers, setShowRulers] = useState(() => loadViewPrefs().showRulers);
+  const [unit, setUnit] = useState(() => loadViewPrefs().unit);
+  const [showGuides, setShowGuides] = useState(() => loadViewPrefs().showGuides);
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -675,8 +675,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
   useEffect(() => {
-    localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides }));
-  }, [showRulers, showGuides]);
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit }));
+    } catch {
+      // full or missing storage: the preference lasts this session only
+    }
+  }, [showRulers, showGuides, unit]);
 
   /** Whether the document differs from the last saved/opened project —
    *  File → Save Label disables while clean. Clear it ONLY after a completed open
@@ -1933,7 +1937,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         masterAssets = resolved.assets;
         masterPath = resolved.path;
         let l: LabelFile;
-        if (unpacked.label) l = unpacked.label;
+        // An old label's image scale folds into w/h against this master.
+        if (unpacked.label) l = foldLabelScale(unpacked.label, resolved.master);
         else {
           const r = convertLabelV2(unpacked.v2!, resolved.master);
           l = r.label;
@@ -2117,6 +2122,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "zoom-in", label: "Zoom In", key: "=", mods: "⌘", run: () => zoomTo((z) => z * ZOOM_FACTOR) },
     { id: "zoom-out", label: "Zoom Out", key: "-", mods: "⌘", run: () => zoomTo((z) => z / ZOOM_FACTOR) },
     { id: "zoom-fit", label: "Zoom to Fit", key: "0", mods: "⌘", run: () => zoomTo(() => 1) },
+    { id: "unit-in", label: "Inches", run: () => setUnit("in") },
+    { id: "unit-mm", label: "Millimetres", run: () => setUnit("mm") },
+    { id: "unit-pt", label: "Points", run: () => setUnit("pt") },
+    { id: "unit-px", label: "Pixels", run: () => setUnit("px") },
     { id: "theme-system", label: "System", run: () => setTheme("system") },
     { id: "theme-light", label: "Light", run: () => setTheme("light") },
     { id: "theme-dark", label: "Dark", run: () => setTheme("dark") },
@@ -2132,6 +2141,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     layers: sidebarOpen,
     rulers: showRulers,
     guides: showGuides,
+    "unit-in": unit === "in",
+    "unit-mm": unit === "mm",
+    "unit-pt": unit === "pt",
+    "unit-px": unit === "px",
     "theme-system": theme === "system",
     "theme-light": theme === "light",
     "theme-dark": theme === "dark",
@@ -2445,7 +2458,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
               }}>
-            <PreviewCompare ref={previewRef}
+            <PreviewCompare ref={previewRef} unit={unit}
               canvasRender={viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
               layers={drawLayers}
@@ -2487,7 +2500,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             </div>
             {viewMode === "2d" && (
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
-                showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
+                showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
                 onMarginChange={(margin) => editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } }))} manual={manualGuides}
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
@@ -2521,8 +2534,8 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
           {/* Preview toolbar, in every view. */}
           <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
-            {/* The "%" sits inside the border so the readout is one control,
-                like the size button; clicking it focuses the input. */}
+            {/* The "%" sits inside the border so the readout is one control;
+                clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
               value={zoomDraft ?? String(shownZoomPct)}
@@ -2538,23 +2551,6 @@ export const DocumentEditor = memo(function DocumentEditor({
               className="w-8 bg-transparent text-right tabular-nums outline-none" />
             %
             </label>
-            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            {/* The same unit picker as the ruler corner, over the same unit. */}
-            <Popover>
-              <PopoverTrigger
-                title={`Trim size — with bleed the page is ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}. Click to choose units`}
-                aria-label={`Artboard size ${sizeLabel(ART.w, ART.h, rulerUnit)}; click to choose units`}
-                className={`flex shrink-0 items-center gap-0.5 px-1 py-0.5 tabular-nums whitespace-nowrap ${STATUS_CONTROL}`}>
-                {sizeLabel(ART.w, ART.h, rulerUnit)}
-                <ChevronDown className="size-3" aria-hidden="true" />
-              </PopoverTrigger>
-              <PopoverContent align="end" side="top" className="w-56 gap-3">
-                <PopoverHeader>
-                  <PopoverTitle>Units</PopoverTitle>
-                </PopoverHeader>
-                <RulerUnitPicker unit={rulerUnit} onUnitChange={setRulerUnit} />
-              </PopoverContent>
-            </Popover>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             {/* Pick a view directly; keys 1–4 do the same. Mid-split (Compare)
                 none is pressed and the group is described by the Compare
@@ -2633,7 +2629,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             className="gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none">
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
-                unit={dimensionUnit} onUnitChange={setDimensionUnit}
+                unit={unit}
                 layerNames={rows.map((r) => ({ id: r.layer.id, name: r.layer.name }))}
                 overridden={overridden}
                 onChange={(p) => patch(inspected.layer.id, p)}

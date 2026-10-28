@@ -27,10 +27,6 @@ export const SEL_PAD = 4;
 /** The multi-selection group frame sits outside the per-layer rings. */
 export const GROUP_PAD = SEL_PAD * 3;
 
-/** Label points as the inches the readout speaks in — Photoshop's move/resize
- *  badge, three decimals. */
-export const inches = (pt: number) => `${(pt / 72).toFixed(3)} in`;
-
 /** Bleed per side, in label-space points: the gap between the trimmed art box
  *  and the printed page. The die cuts at ART, so the sheet's own corners are
  *  the die's, offset outward by this much. */

@@ -16,7 +16,7 @@ import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
 import { linesProblem, PAGE_ART_ID, patchProblem, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
-import { applyDiff, exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
+import { applyDiff, exportBase, foldLabelScale, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
@@ -696,7 +696,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     const lab = unpacked.label;
     if (lab.masterId !== master.id)
       throw new Error(`label masterId "${lab.masterId}" does not match master "${master.id}"`);
-    jobs = [{ values: lab.values, variants: lab.enabledVariants, overrides: lab.overrides }];
+    // An old label's image scale folds into w/h against its master.
+    jobs = [{ values: lab.values, variants: lab.enabledVariants, overrides: foldLabelScale(lab, master).overrides }];
     if (unpacked.assets.texture) labelExtras.background = unpacked.assets.texture;
     if (unpacked.assets.mask) labelExtras.mask = unpacked.assets.mask;
     for (const [id, a] of Object.entries(unpacked.assets.customImages ?? {}))

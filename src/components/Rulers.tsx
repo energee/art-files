@@ -13,9 +13,10 @@ import { ART, PAGE } from "@/layout";
 import {
   clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
   unitToPoint, VERTICAL_LABEL_GAP, withCornerClear,
-  type GuideAxis, type ManualGuide, type RulerUnit,
+  type GuideAxis, type ManualGuide, type LengthUnit,
 } from "@/rulers";
 import { cn } from "@/lib/utils";
+import { decimalsOf } from "@/numeric";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
 import { ScrubField } from "@/components/ScrubField";
 import { Label } from "@/components/ui/label";
@@ -46,11 +47,16 @@ interface Geometry {
  *  releasing back over a ruler is a cancelled drag rather than a click. */
 type Drag = { axis: GuideAxis; id?: number; point: number; pulled?: boolean };
 
+/** The margin inset's typing and nudge step per unit. Its decimals are what
+ *  the field shows, as for every NumberRoot. */
+const MARGIN_STEP: Record<LengthUnit, number> = { in: 0.125, mm: 0.5, pt: 1, px: 25 };
+
 /** The compact form inside the ruler-corner settings popover: guide
- *  buttons and the unit (session), then the master's margin inset. */
+ *  buttons and the app's length unit (saved per operator, shared with View →
+ *  Units), then the master's margin inset. */
 function RulerSettings(props: {
-  unit: RulerUnit;
-  onUnitChange: (unit: RulerUnit) => void;
+  unit: LengthUnit;
+  onUnitChange: (unit: LengthUnit) => void;
   marginPt: number;
   onMarginChange: (points: number) => void;
   onAddManual: (axis: GuideAxis, point: number) => void;
@@ -64,7 +70,7 @@ function RulerSettings(props: {
   const [marginLocked, setMarginLocked] = useState(true);
   const marginValue = pointToUnit(marginPt, 0, unit);
   const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);
-  const marginStep = unit === "in" ? 0.125 : unit === "px" ? 25 : 1;
+
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -85,8 +91,8 @@ function RulerSettings(props: {
       {/* The inspector's numeric field, so the inset scrubs like every other
           number in the app and clamps/rounds the same way (NumberRoot). */}
       <ScrubField id="guide-margin" label="Margin inset" unit={unit}
-        value={Number(marginValue.toFixed(unit === "in" ? 3 : 0))}
-        min={0} max={marginMax} step={marginStep} disabled={marginLocked}
+        value={Number(marginValue.toFixed(decimalsOf(MARGIN_STEP[unit])))}
+        min={0} max={marginMax} step={MARGIN_STEP[unit]} disabled={marginLocked}
         onChange={(value) => onMarginChange(clampMargin(unitToPoint(value, 0, unit)))} />
       <p className="text-[11px] text-muted-foreground">Changes the master on all four sides; Save Master keeps it.</p>
     </div>
@@ -98,8 +104,8 @@ export function Rulers(props: {
   previewRef: RefObject<PreviewCompareHandle | null>;
   transform: { z: number; x: number; y: number };
   showRulers: boolean;
-  unit: RulerUnit;
-  onUnitChange: (unit: RulerUnit) => void;
+  unit: LengthUnit;
+  onUnitChange: (unit: LengthUnit) => void;
   /** One switch for every guide kind — margin, center, manual — and for
    *  whether dragging off a ruler creates a new one. Decided once in App
    *  (it also gates the View menu), so nothing here re-derives it per kind. */
@@ -422,7 +428,7 @@ export function Rulers(props: {
               title={`Ruler settings — ${unit}`} aria-label={`Ruler settings, current unit ${unit}`}>
               {unit}
             </PopoverTrigger>
-            <PopoverContent align="start" side="bottom" className="w-56 gap-3">
+            <PopoverContent align="start" side="bottom" className="w-80 gap-3">
               <PopoverHeader>
                 <PopoverTitle>Ruler settings</PopoverTitle>
               </PopoverHeader>

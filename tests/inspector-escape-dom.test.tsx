@@ -66,6 +66,38 @@ it("Escape in an inspector ChoiceBox cancels its draft but keeps the inspector a
   expectInspectorOpenAndSelected();
 });
 
+it("Escape in the layer name box puts the name back but keeps the inspector and selection", async () => {
+  const name = document.querySelector("#barcode-name") as HTMLInputElement;
+  const before = name.value;
+  await act(async () => {
+    name.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "Draft");
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(name.value).toBe("Draft");
+  await escape(name);
+  expect(name.value).toBe(before);
+  expectInspectorOpenAndSelected();
+});
+
+it("a rename typed in the name box is one undo step", async () => {
+  const name = () => document.querySelector("#barcode-name") as HTMLInputElement;
+  const before = name().value;
+  for (const text of ["B", "Ba", "Bar"]) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name(), text);
+      name().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  await act(async () => { name().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  expect(name().value).toBe("Bar");
+  await act(async () => {
+    name().blur();
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  });
+  expect(name().value).toBe(before);
+});
+
 it("Escape ending an on-canvas text edit does not deselect", async () => {
   // Stand-in for PreviewCompare's in-place editor: an editable outside the sheet.
   const editor = document.createElement("div");

@@ -109,6 +109,22 @@ describe("view menu", () => {
     ]);
   });
 
+  // The one unit preference (rulers, inspector lengths, drag readout, margin
+  // inset) stays reachable with the rulers hidden.
+  it("offers Units as a submenu of four check rows, next to Rulers and Guides", () => {
+    const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
+    const at = view.items.findIndex((entry) => entry.kind === "submenu" && entry.id === "units-menu");
+    expect(view.items[at - 1]).toMatchObject({ id: "guides" });
+    const units = view.items[at];
+    expect(units).toMatchObject({ text: "Units", symbol: "ruler" });
+    expect(units.kind === "submenu" && units.items).toEqual([
+      expect.objectContaining({ id: "unit-in", text: "Inches", check: true }),
+      expect.objectContaining({ id: "unit-mm", text: "Millimetres", check: true }),
+      expect.objectContaining({ id: "unit-pt", text: "Points", check: true }),
+      expect.objectContaining({ id: "unit-px", text: "Pixels", check: true }),
+    ]);
+  });
+
   it("gives the zoom commands native accelerators macOS can show", () => {
     const run = () => undefined;
     expect(nativeAccelerator({ id: "zoom-in", label: "Zoom In", key: "=", mods: "⌘", run })).toBe("CmdOrCtrl+=");

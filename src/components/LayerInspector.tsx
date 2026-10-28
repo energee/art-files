@@ -1,7 +1,8 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, power and lock icon toggles (no lock on page art), close
+// inline rename (commits on Enter or blur, Escape cancels, like the Layers
+// row's), power and lock icon toggles (no lock on page art), close
 // button, a "editing one of N" note on a multi-selection, an off-variant
 // note), the parent's content editor (no heading: its caption names it),
 // kind-specific geometry/typography, Position (not on page art), Style, and
@@ -31,7 +32,7 @@
 // conversion and the override Badge in LayerInspectorControls.tsx; Position,
 // per-kind geometry and Style in LayerInspectorSections.tsx; the template
 // field settings (fill contract, vocabulary) in LayerInspectorTemplate.tsx.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Barcode, Image, Lock, LockOpen, Power, PowerOff, QrCode, Type, XIcon, type LucideIcon,
 } from "lucide-react";
@@ -40,10 +41,10 @@ import type { OverrideBadges as Overridden } from "@/model/edit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SheetClose } from "@/components/ui/sheet";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-  Badge, Field, LOCK_TITLE, useRequiredText, type Ctx, type DimensionUnit, type Patch,
+  Badge, LOCK_TITLE, type Ctx, type Patch,
 } from "./LayerInspectorControls";
+import type { LengthUnit } from "@/rulers";
 import {
   BarcodeGeometry, ImageGeometry, Position, QrGeometry, StyleSection, TextGeometry,
 } from "./LayerInspectorSections";
@@ -63,8 +64,10 @@ const STALE_POSITION = [
 ] as const;
 
 export function LayerInspector(props: {
-  unit?: DimensionUnit;
-  onUnitChange?: (unit: DimensionUnit) => void;
+  /** The app's length unit (rulers.ts) for X, Y, gap, width, height, wrap
+   *  width, module width and QR size; set from the ruler corner or View →
+   *  Units, never here. Absent = points. */
+  unit?: LengthUnit;
   /** The resolved layer being edited. */
   layer: Layer;
   /** Every layer's id and name, for the "Bind to layer…" picker (the layer
@@ -108,9 +111,17 @@ export function LayerInspector(props: {
     <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
   );
   const ctx: Ctx = { set, badge, unit: props.unit ?? "pt" };
-  // A layer name is required (parseMaster fails on an empty one), so it is
-  // typed through the same guard as a choice's value.
-  const nameProps = useRequiredText(layer.name, (v) => set({ name: v }));
+  // The name box commits like the Layers row's rename (LayerList's
+  // commitRename): on Enter or blur, trimmed, and only when non-empty and
+  // changed — one patch, so one undo step. Escape puts the name back. A name
+  // is required (parseMaster fails on an empty one), so an emptied box is
+  // flagged and leaving it restores the name.
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const commitName = () => {
+    const next = nameDraft?.trim();
+    if (next && next !== layer.name) set({ name: next });
+    setNameDraft(null);
+  };
   const Icon = KIND_ICONS[layer.kind];
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   const enabled = layer.enabled && props.offVariant === undefined;
@@ -128,7 +139,14 @@ export function LayerInspector(props: {
           aria-label="Layer name"
           aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
           className="h-7 flex-1 text-xs font-medium"
-          {...nameProps}
+          value={nameDraft ?? layer.name}
+          aria-invalid={(nameDraft !== null && !nameDraft.trim()) || undefined}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitName();
+            else if (e.key === "Escape") setNameDraft(null);
+          }}
         />
         {/* Power and lock as icon toggles, the Layers row's icons: they stay
             reachable with the sidebar hidden (⌘B). Page art has no lock — it
@@ -164,22 +182,6 @@ export function LayerInspector(props: {
           Added by {props.offVariant}, which is off for this label. Turn on to edit.
         </p>
       )}
-
-      {/* App-wide, not this layer's: it converts the length fields only.
-          Type size, tracking and stroke keep their own units (see their
-          addon titles). Separate from the ruler unit, which is in/pt/px.
-          Page art has no length fields, so it gets no toggle. */}
-      {props.onUnitChange && !page && <Field label="Lengths in">
-        <ToggleGroup aria-label="Lengths in" variant="outline" size="sm" spacing={0}
-          title="Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size"
-          value={[ctx.unit]} onValueChange={(values) => {
-            const unit = values[0];
-            if (unit === "mm" || unit === "pt") props.onUnitChange?.(unit);
-          }}>
-          <ToggleGroupItem value="mm" aria-label="Millimeters" className="h-6 px-2 text-xs">mm</ToggleGroupItem>
-          <ToggleGroupItem value="pt" aria-label="Points" className="h-6 px-2 text-xs">pt</ToggleGroupItem>
-        </ToggleGroup>
-      </Field>}
 
       {props.content !== undefined && (
         // No heading: the editor's own caption (Text, Code, Link, Texture…)
