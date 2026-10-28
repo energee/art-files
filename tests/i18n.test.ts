@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import i18n, { getLanguage, isNote, resolveLanguage, setLanguage, t } from "../src/i18n";
+import i18n, { getLanguage, isNote, languages, resolveLanguage, setLanguage, t } from "../src/i18n";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -9,6 +10,12 @@ afterEach(() => {
 });
 
 describe("language selection", () => {
+  it("declares every UI language to macOS so native panels follow the system language", () => {
+    const plist = readFileSync("src-tauri/Info.plist", "utf8");
+    const declared = [...plist.matchAll(/<string>(\w+)<\/string>/g)].map((m) => m[1]);
+    expect(declared).toEqual(languages.map(({ value }) => value));
+  });
+
   it("still reads a note made before a language switch as a warning", () => {
     setLanguage("de");
     const note = t("Note: {{message}}", { message: "x" });
