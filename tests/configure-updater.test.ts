@@ -16,7 +16,7 @@ function configure(env: Record<string, string>) {
   return JSON.parse(readFileSync(generated, "utf8"));
 }
 
-it("leaves Windows unsigned without the Trusted Signing settings", () => {
+it("leaves Windows unsigned without the Artifact Signing settings", () => {
   const config = configure({});
   expect(config.plugins.updater.pubkey).toBe("test-key");
   expect(config.bundle.windows).toBeUndefined();
