@@ -1,5 +1,8 @@
 // The actual PDF geometry and keyline of the shipped dots QR.
 // Software decoding does not replace the physical phone check in #283.
+// #542: at error correction L the keylined gold dots decoded for 6 of 30
+// ordinary names (the black keyline makes the gold module centres read
+// light); the shipped master's Q decodes every one, so a name corpus guards it.
 import { expect, it } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,7 +15,12 @@ const require = createRequire(import.meta.url);
 prepareZXingModule({ overrides: { wasmBinary: readFileSync(require.resolve("zxing-wasm/reader/zxing_reader.wasm")) } });
 import { buildArtPdf } from "../src/pdf/build";
 import { lolevMaster } from "../src/model/lolevLayers";
+import { qrUrl } from "../src/qr";
 import { assets, lolevPlan } from "./fixtures";
+
+/** Ordinary beer names of every length the shipped layout takes. */
+const NAMES = ["Audit Labradorite", "Lupula", "Hazy", "Obsidian Stout", "Double Dry Hopped Citra",
+  "Golden Hour Lager", "Pils", "Kölsch", "Big Bad Barleywine Reserve", "Topaz IPA"];
 
 function rotate(data: Uint8ClampedArray, side: number) {
   const out = new Uint8ClampedArray(data.length);
@@ -20,10 +28,15 @@ function rotate(data: Uint8ClampedArray, side: number) {
     out.set(data.subarray((y * side + x) * 4, (y * side + x) * 4 + 4), (x * side + side - 1 - y) * 4);
   return out;
 }
-it.each([0, 90])("decodes the printed dots QR at %s degrees (#295)", async (rotation) => {
+
+/** The shipped QR for `name`, built to a real PDF, rasterized at 600 DPI by
+ *  Poppler and read by ZXing; the decoded text at the first orientation that
+ *  reads (finder search on ring finders can be orientation-sensitive, so
+ *  retry turns without changing any symbol or surrounding pixel). */
+async function printedQr(name: string, rotation: 0 | 90): Promise<string | undefined> {
   const dir = mkdtempSync(join(tmpdir(), "qr-print-"));
   try {
-    const plan = await lolevPlan({ values: { name: "Labradorite" }, overrides: { qr: { rotation: rotation as 0 | 90 } } });
+    const plan = await lolevPlan({ values: { name }, overrides: { qr: { rotation } } });
     const qrItems = plan.filter((p) => p.id === "qr");
     const qr = qrItems[0];
     const layer = lolevMaster().layers.find((l) => l.id === "qr")!;
@@ -37,16 +50,24 @@ it.each([0, 90])("decodes the printed dots QR at %s degrees (#295)", async (rota
     expect(p.status, p.stderr.toString()).toBe(0);
     const png = PNG.sync.read(readFileSync(join(dir, "qr.png")));
     let data = new Uint8ClampedArray(png.data);
-    // Finder search can be orientation-sensitive for ring/dot finders.
-    // Retry orientations without changing any symbol or surrounding pixels.
     let decoded: string | undefined;
     for (let turn = 0; turn < 4 && !decoded; turn++) {
       decoded = (await readBarcodes({ data, width: png.width, height: png.height } as ImageData, { formats: ["QRCode"], tryHarder: true }))[0]?.text;
       data = rotate(data, png.width);
     }
-    expect(decoded).toBe("https://lolev.beer/beer/labradorite");
+    return decoded;
   } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+it.each([0, 90])("decodes the printed dots QR at %s degrees (#295)", async (rotation) => {
+  expect(await printedQr("Labradorite", rotation as 0 | 90)).toBe("https://lolev.beer/beer/labradorite");
 });
+
+it("decodes the printed dots QR for every name in the corpus (#542)", async () => {
+  const misses: string[] = [];
+  for (const name of NAMES) if (await printedQr(name, 0) !== qrUrl(name)) misses.push(name);
+  expect(misses).toEqual([]);
+}, 60_000);
 
 it.each([0, 90])("decodes a stroked UPC with no quiet-zone plate at %s degrees", async (rotation) => {
   const dir = mkdtempSync(join(tmpdir(), "barcode-print-"));
