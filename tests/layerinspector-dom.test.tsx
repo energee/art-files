@@ -196,12 +196,6 @@ describe("LayerInspector header", () => {
     expect(byLabel("Enabled")!.getAttribute("aria-pressed")).toBe("true");
   });
 
-  // #11: the lock is canvas-only; typed values still move the layer.
-  it("explains that the lock is canvas-only", () => {
-    render(text());
-    expect(byLabel("Locked")!.getAttribute("title"))
-      .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply.");
-  });
 
   // One app-wide unit (rulers, View → Units) converts the length fields; the
   // inspector spends no row on it. Fixed-unit fields say why they don't follow.

@@ -7,10 +7,10 @@ import { isMacOS } from "@/keys";
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
 // (its row dimmed while that variant is off), a provenance mark when an
-// enabled variant overrides part of it, a lock while locked, then power
-// (`enabled`, at the right edge) — plus drag reordering. Remove: a button
-// on the selected row; right-click any row for Rename, Lock (not on page
-// art) and Remove.
+// enabled variant overrides part of it, then fixed Show, Lock and Remove
+// columns. Visibility and canvas-lock controls are always visible; Remove
+// is available only on selected rows. Right-click any row for Rename,
+// Lock (not on page art) and Remove.
 // The header carries the title, the "Changed" filter that replaced Fill mode,
 // and the "Add layer" menu.
 //
@@ -19,8 +19,8 @@ import { isMacOS } from "@/keys";
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Image, Wallpaper, ListFilter, Lock, Plus, Power,
-  PowerOff, QrCode, Scan, Trash2, Type, type LucideIcon,
+  Barcode, Eye, EyeOff, Image, Wallpaper, ListFilter, Lock, LockOpen, Plus,
+  QrCode, Scan, Trash2, Type, type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
@@ -45,9 +45,9 @@ export interface LayerListProps {
   rows: LayerRow[];
   selected: readonly string[];
   onSelect: (id: string, mods: SelectMods) => void;
-  /** Power (`enabled`) and lock. `enabled` off = the layer never draws
-   *  (recorded, undoable — there is no session-only hide); `locked` = fillers
-   *  cannot move it — set from the row menu, cleared by a locked row's lock. */
+  /** Visibility (`enabled`) and canvas lock. Hidden layers never draw
+   *  (recorded, undoable — there is no session-only hide); locked layers
+   *  cannot be dragged, resized or nudged on the canvas. */
   onToggle: (id: string, prop: "enabled" | "locked", value: boolean) => void;
   /** Inline rename committed (trimmed, non-empty, changed). */
   onRename: (id: string, name: string) => void;
@@ -90,16 +90,11 @@ function iconFor(layer: Layer): LucideIcon {
   }
 }
 
-/** One 24px square control (WCAG 2.2 target size), the idiom every row
- *  control shares. `lit` = always shown: the row's exception (off,
- *  locked) or any control on the selected row. Otherwise hidden until the
- *  row is hovered or the control focused: twenty rows of normal-state icons
- *  hid the few that mattered. */
-const control = (lit: boolean) => cn(
-  "grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
+/** Every row control keeps a 24px keyboard/pointer target in its fixed column. */
+const control = cn(
+  "mx-auto grid size-[24px] shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
   "hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
   "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3.5",
-  !lit && "opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100",
 );
 
 /** Header chip — the Changed filter's look: a small pill, filled while
@@ -142,8 +137,6 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const [renaming, setRenaming] = useState(false);
   // A row selected from the canvas may sit below the fold of a short window.
   const itemRef = useRef<HTMLLIElement>(null);
-  // The lock unmounts once unlocked; its focus moves here, not to the body.
-  const powerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (isSelected) itemRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [isSelected]);
@@ -307,53 +300,51 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             )}
           </SidebarMenuButton>
 
-          {/* One cluster at the right edge, power last so its column lines up
-              down the list. Remove exists on the selected row only — you act
-              on the row you picked, and a stray click on a hovered row can't
-              remove it. (Rename is the inspector's name box, a double-click or
-              the row menu.) The lock exists only while locked (click to
-              unlock; lock from the inspector or the row menu), never on page
-              art. Power shows a muted PowerOff at all times on an off row,
-              and a full-ink Power on hover or on the selected row — the icon
-              is the state, and a stronger icon means "on". */}
-          {isSelected && (
+          <div className="grid shrink-0 grid-cols-[24px_24px_32px] items-center" onClick={stop}>
             <button
               type="button"
-              onClick={(e) => { stop(e); removeSelected(); }}
-              aria-label={`${name}: remove`}
-              title="Remove"
-              className={cn(control(true), "hover:text-destructive-text")}
+              onClick={() => p.onToggle(id, "enabled", inactive)}
+              aria-label={`${name}: enabled`}
+              aria-pressed={!inactive}
+              data-state={inactive ? "off" : "on"}
+              title={inactive
+                ? (row.variant && !row.variant.enabled
+                  ? `Show in preview and exports (also enables ${row.variant.name})`
+                  : "Show in preview and exports")
+                : "Hide from preview and exports"}
+              className={cn(control,
+                inactive ? "text-muted-foreground hover:text-muted-foreground" : "text-sidebar-foreground")}
             >
-              <Trash2 />
+              {inactive ? <EyeOff /> : <Eye />}
             </button>
-          )}
-          {locked && !page && (
-            <button
-              type="button"
-              onClick={(e) => { stop(e); p.onToggle(id, "locked", false); powerRef.current?.focus(); }}
-              aria-label={`${name}: locked`}
-              aria-pressed
-              title={`${LOCK_TITLE} Click to unlock.`}
-              className={control(true)}
-            >
-              <Lock />
-            </button>
-          )}
-          <button
-            ref={powerRef}
-            type="button"
-            onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
-            aria-label={`${name}: enabled`}
-            aria-pressed={!inactive}
-            data-state={inactive ? "off" : "on"}
-            title={inactive ? "Turn on this layer and its variant" : "Turn off this layer"}
-            // Ink strength = on: on is full ink, off the row's muted ink even
-            // under the pointer, so switching a layer off always lightens it.
-            className={cn(control(inactive || isSelected),
-              inactive ? "text-muted-foreground hover:text-muted-foreground" : "text-sidebar-foreground")}
-          >
-            {inactive ? <PowerOff /> : <Power />}
-          </button>
+            <div>
+              {!page && (
+                <button
+                  type="button"
+                  onClick={() => p.onToggle(id, "locked", !locked)}
+                  aria-label={`${name}: locked`}
+                  aria-pressed={locked}
+                  title={`${locked ? "Unlock" : "Lock"} on canvas. ${LOCK_TITLE}`}
+                  className={cn(control, locked && "text-sidebar-foreground")}
+                >
+                  {locked ? <Lock /> : <LockOpen />}
+                </button>
+              )}
+            </div>
+            <div className="pl-[8px]">
+              {isSelected && (
+                <button
+                  type="button"
+                  onClick={removeSelected}
+                  aria-label={`${name}: remove`}
+                  title="Remove layer"
+                  className={cn(control, "hover:text-destructive-text")}
+                >
+                  <Trash2 />
+                </button>
+              )}
+            </div>
+          </div>
         </ContextMenu.Trigger>
         <DropdownMenuContent>
           <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>

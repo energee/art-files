@@ -1,6 +1,6 @@
 ---
 title: Layers
-description: The list, power and lock, Changed, and adding stuff
+description: The list, visibility and canvas lock, Changed, and adding stuff
 ---
 
 Left list is every layer on the resolved label, **front to back**. Background texture and metallic mask sit at the bottom like any other image. No special Document group.
@@ -9,13 +9,13 @@ Each row:
 
 - Kind icon (text, image, barcode, QR; texture and mask have their own)
 - Name. Double-click it to rename (or use the inspector's name box, or right-click → Rename)
-- A **variant badge** when a variant *adds* this layer, or when an enabled variant changes this master layer. Hover it: "Added by the Collab variant" or "Changed by the Collab variant". A row the variant adds turns grey while that variant is off, and its power shows as off
+- A **variant badge** when a variant *adds* this layer, or when an enabled variant changes this master layer. Hover it: "Added by the Collab variant" or "Changed by the Collab variant". A row the variant adds turns grey while that variant is off, and its Show eye is crossed out
 - A **provenance mark** when an enabled variant overrides part of a master layer
-- **Remove** (trash), on the selected row only
-- **Lock**, only on a locked row. You can't drag, resize or nudge it on the preview. Values typed in the inspector still apply. Click the lock to unlock; lock a layer with the inspector's lock button or by right-clicking its row. Page art (Background, Metallic mask) has no lock: it can't be dragged anyway
-- **Power** (`enabled`), at the right edge. Off means it never draws: the row's name turns grey and a grey crossed-out power icon stays on the row; a layer that's on shows a dark power icon. Recorded, undoable. There is no session-only hide
+- **Show**, an eye in a fixed column. A crossed-out eye means the layer is hidden from both preview and exports; its name stays readable in grey. This is the saved, undoable `enabled` setting, not a session-only hide. Showing a layer whose variant is off also enables that variant; the tooltip names it
+- **Lock**, an open or closed padlock in the next fixed column. Click to lock or unlock on the canvas: drag, resize and nudge are prevented, but typed inspector values still apply. Page art (Background, Metallic mask) leaves this cell empty because it can't be dragged
+- **Remove** (trash), separated from the toggles in its own column, available only on selected rows. Undo restores removed layers
 
-Right-click any row for Rename, Lock (or Unlock; not on page art) and Remove. Power stays out of sight on an ordinary row until you point at it, so the off and locked layers are the icons you see.
+Show and Lock stay visible without hovering, in a compact group at the right edge. Hover a control for its action and scope; there are no column headings. Each control keeps a 24px target, and positions stay fixed when you select, hide or lock a layer. Right-click any row for Rename, Lock (or Unlock; not on page art) and Remove.
 
 Drag a row to reorder. Up the list is toward the front. Delete or Backspace on a selected row removes it.
 

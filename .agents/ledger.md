@@ -716,6 +716,49 @@ no status, no attempts, no delta.
 - evidence: npm run build and node scripts/check-release.mjs origin/main passed. Browser smoke at localhost:5173 observed new layer power/zoom titles and opened ruler settings; screenshot confirmed the new margin description fits the popover. Desktop-only updater states and native save dialogs not visually exercised. Copy-only changes; no new tests or behavior changes.
 - release: binary-impacting; Changed bullet queued under Unreleased, version unchanged.
 
+## 2026-10-28 fixed-layer-control-columns
+- finding: user selected mockup B: always-visible Show and Lock controls in fixed columns, with a separate selected-row Remove column.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: LayerList uses eye/eye-off and open/closed lock controls in stable labeled columns; locking works both ways without moving keyboard focus. Trash is separated and selected-row-only; background and mask leave the lock cell empty. Existing enabled, variant, removal and undo semantics retained. Updated Layers and Inspector guides; removed obsolete hover/layout/wording assertions and added lock-focus transition regression coverage.
+- evidence: on ux/casual-ui-copy with these uncommitted changes, layerlist-dom passes 32 tests; npm run build (including TypeScript), npm run lint, and node scripts/check-release.mjs origin/main pass. Build retains its large-chunk advisory. Chromium smoke at localhost:5293 exercised unlock/relock, focus retention, hide/show, stable control coordinates, unchanged selection, removal and keyboard undo, and absent page-art locks; sidebar screenshot inspected at 1280x900. No PDF/export runtime change; export files not generated in this smoke.
+- release: binary-impacting; Changed bullet queued under Unreleased, no version bump or release operation. This interface-only change does not require a standalone release.
+
+## 2026-10-28 native-about-icon
+- finding: user requested the replacement Label Lab icon in the About window.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: macApplicationMenu explicitly passes the bundled defaultWindowIcon into About metadata and owns its resource through menu teardown. Added the narrowly scoped core:app:allow-default-window-icon permission. Ordered the existing 256px PNG first in bundle.icon so the embedded icon is sharp and fills the native About image area instead of using the 32px thumbnail. Removed the incidental whole-menu-shape assertion that pinned About:null.
+- evidence: final native debug app bundle build passes; 37 tests across five menu/capability suites, lint, and release metadata vs origin/main pass. Launched a separate rebuilt native app, waited for the custom application menu, opened About with macOS accessibility automation, and visually inspected /tmp/label-lab-about-final.png: the new Label Lab mark appears at normal size above the name/version. Native smoke caught and corrected a missing permission and low-resolution default icon before handoff. Closed only smoke processes; pre-existing running app left untouched.
+- release: binary-impacting; expanded the existing Unreleased icon note, no version bump, publication or installed-app replacement. Existing running binaries require a rebuild/restart to receive the icon.
+
+## 2026-10-28 compact-layer-controls
+- finding: user screenshot feedback: control positions and the crowded Show/Lock/Remove headings look jarring.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: removed the headings and divider; compact right-aligned 24/24/32px columns retain an 8px gap before trash and stable positions. Explicit 24px targets replace size-6, which measured only 19.5px under the app's 13px root font. Tooltip descriptions and contextual accessible names retained. Updated Layers guide and existing Unreleased note.
+- evidence: Chromium screenshot at 1280x900 inspected; actual pointer targets measured 24x24px, unchanged control coordinates across hide/show, lock/unlock and selection changes, and selected-row-only trash verified. Final npm run build (including TypeScript), npm run lint and node scripts/check-release.mjs origin/main pass on ux/casual-ui-copy with these uncommitted changes; existing build chunk-size advisory remains.
+- evidence: PR isolation in .agents/worktrees/layer-controls-about @ ux/layer-controls-about, based on ux/casual-ui-copy (PR #574): 69 tests across six layer/menu/capability suites, npm run build, npm run lint, and release metadata vs origin/ux/casual-ui-copy pass. Unrelated copy work remains on the parent branch.
+- release: binary-impacting; no version bump or publication. Presentation-only refinement; no standalone release recommended.
+
+## 2026-10-28 pr-575-wording-assertions
+- finding: user-reported CI job 122686763646 in run 40649740014 failed four assertions pinned to wording changed by parent PR #574.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/layer-controls-about @ ux/layer-controls-about
+- delta: removed obsolete off-variant explanation, master-margin description and save-status wording assertions (including paired negative checks); retained variant activation, selection, margin lock/unlock and direct-save behavior coverage. Removed the purely wording-based canvas-lock tooltip test rather than pinning replacement copy. No runtime code changed.
+- evidence: the linked CI log supplies failing-before evidence; did not rerun to confirm the reported failures. After npm ci --ignore-scripts supplied the isolated worktree's own dependencies, npm test passes 160 files / 1690 tests with Vitest 5.0.5. TypeScript, lint and release metadata vs origin/ux/casual-ui-copy also pass. An earlier run using ancestor dependencies lacked worktree-local CLI binaries and hit an art-test race; the clean-dependency full run passes both.
+- release: this follow-up is test-only, non-binary-impacting; existing application Unreleased notes and version remain unchanged.
+
+## 2026-10-28 pr-575-unused-menu-export
+- finding: user-reported Knip failure: MAC_MENUS remained exported after its only external consumer, a wording/layout test, was removed.
+- status: done
+- delta: made MAC_MENUS module-private and removed its obsolete exported-for-tests comment; the native menu still uses the same table.
+- evidence: in .agents/worktrees/layer-controls-about @ fix/575-menu-export, npx --yes knip@6.38.0 passes with no findings; 28 menu tests, TypeScript and release metadata vs origin/ux/casual-ui-copy pass. LSP references unavailable (no server); repository search found only the local declaration and native menu consumer.
+- release: export-only cleanup, no user-visible behavior change; existing Unreleased notes suffice, version unchanged.
 ## 2026-10-28 pr-574-copy-test-failures
 - finding: [tests/high] PR #574 CI run 40649476994 failed four DOM tests because they asserted the UI wording replaced by the PR.
 - status: done
@@ -725,3 +768,10 @@ no status, no attempts, no delta.
 - evidence: npm test -- --maxWorkers=2 passes all 1696 tests across 160 files with unchanged timeout limits. Initial default-worker run passed the four repaired cases but hit 5000ms timeouts in unrelated text-edit and PSD-raster cases. npx tsc --noEmit, npm run lint, npm run build, npx --yes knip@6.38.0 and node scripts/check-release.mjs origin/main pass. Existing build chunk-size advisory and happy-dom fetch-abort diagnostics remain.
 - release: repair is non-binary-impacting (tests and ledger only); PR's existing Unreleased UI-copy bullet remains sufficient. No version bump or release operation; no application behavior changed.
 
+## 2026-10-28 pr-575-base-conflicts
+- finding: user requested resolution of PR #575 conflicts with its updated ux/casual-ui-copy base.
+- status: done
+- delta: merged origin/ux/casual-ui-copy; preserved both additive ledger histories, retained the parent's stronger saved-master archive assertion, and kept obsolete wording checks removed from ruler and save tests. No application behavior changed.
+- evidence: on fix/575-menu-export in .agents/worktrees/layer-controls-about, npm test -- --maxWorkers=2 passes 160 files / 1690 tests; npm run build (including TypeScript), lint, knip@6.38.0 and release metadata vs origin/ux/casual-ui-copy pass. Existing chunk-size advisory and happy-dom fetch-abort diagnostics remain.
+- evidence: parent PR #574 merged as 86fd240f and its branch was deleted during integration. Retargeted #575 to main and merged origin/main, preserving the compact controls and About icon notes. Re-ran the full 1690-test suite (--maxWorkers=2), build, lint, Knip and release metadata against origin/main: all pass.
+- release: conflict resolution adds only tests and ledger changes; existing Unreleased application notes remain sufficient, no version bump or release operation.

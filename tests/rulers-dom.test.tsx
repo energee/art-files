@@ -250,6 +250,7 @@ it("locks the master margin inset until it is unlocked", async () => {
   });
   const margin = document.querySelector<HTMLInputElement>("#guide-margin")!;
   expect(margin.disabled).toBe(true);
+
   await act(async () => {
     margin.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
   });

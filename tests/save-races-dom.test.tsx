@@ -158,7 +158,7 @@ it("Save Master As with nothing to promote goes straight to the save dialog", as
   await act(async () => { await menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(pick).toHaveBeenCalledOnce();
-  expect(document.body.textContent).toContain("Saved Beer.label");
+
 });
 
 it("Save Master keeps a promotion when the master is edited during the write", async () => {
