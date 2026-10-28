@@ -13,6 +13,11 @@ export function qrUrl(beerName: string): string {
   return `https://lolev.beer/beer/${machineName(beerName)}`;
 }
 
+/** Error correction for a QR layer that doesn't set one: what qrShapes
+ *  encodes at and what the inspector shows. The shipped dots master sets Q
+ *  explicitly (#542); a new layer is square style, which scans at L. */
+export const DEFAULT_EC_LEVEL = "L";
+
 export interface QrOptions {
   style?: "square" | "rounded" | "dots";
   ecLevel?: "L" | "M" | "Q" | "H";
@@ -47,7 +52,7 @@ let lastShapes: { key: string; shapes: QrShapes } | null = null;
 
 export function qrShapes(data: string, opts?: QrOptions): QrShapes {
   const style = opts?.style ?? "dots";
-  const ecLevel = opts?.ecLevel ?? "L";
+  const ecLevel = opts?.ecLevel ?? DEFAULT_EC_LEVEL;
   const rotation = opts?.rotation ?? 0;
   // Empty data draws nothing (#72): encoding a stand-in " " would print a
   // real, scannable code. Callers treat count 0 as "no QR" (planLayers).

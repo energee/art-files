@@ -612,3 +612,13 @@ no status, no attempts, no delta.
 - evidence: mounted updater regression failed before (no strong nodes) and passes after; three updater suites / 15 tests, tsc and zero-warning lint pass. Isolated Chrome smoke mounted the real DesktopUpdater with mocked IPC only: three bold spans compute font-weight 700, literal HTML creates no img, unmatched marker preserved, visual screenshot inspected. No update downloaded or installed; temporary smoke entry removed.
 - evidence: production build and release metadata check against origin/main pass for unchanged 0.1.109 with Unreleased notes; existing Vite large-chunk warning remains.
 - release: binary-impacting; Fixed bullet queued under Unreleased, version unchanged. Prepared on fix/updater-bold-notes based on 9c9866f8; no release publication authorized.
+
+## 2026-10-27 qr-dots-decode-542
+- finding: [correctness/high] #542 (AUD-01) — the shipped keylined gold dots QR fails a digital decoder for most ordinary names
+- status: fix in PR, HELD for the printed-Lupula iOS Camera + stock Android scan approval (design change)
+- attempts: 1/3
+- observed-at: branch fix/542-qr-decode on 9c9866f8
+- evidence: 30-name corpus through the real route (planned QR → art PDF → pdftoppm 600 DPI → ZXing tryHarder, 4 turns). EC L (shipped): 6/30 names, 10/120 turns. Square style: 30/30, 120/120. Dots without keyline: 30/30, 120/120. EC M: 30/30, 108/120. EC Q: 30/30, 120/120. Keyline 10/8/5 px at L: 0/30 each, so the halo-size hypothesis was wrong. Cause: gold (luma ≈ 207) reads light inside the black keyline, so a dark module becomes a black ring around a light centre; more error correction recovers it, a thinner keyline does not.
+- delta: shipped master qr ecLevel L → Q (style, colours, keyline, finders unchanged; 29 → 33 modules for typical names). DEFAULT_EC_LEVEL in qr.ts replaces three `?? "L"` copies. Corpus decode regression in tests/qr-print-decode.test.ts (red at L, green at Q). Goldens re-baselined per docs/goldens.md: 600 DPI diffs red only on the QR square (art 147,773 px in a 521 px bbox; mask 123,056 px in a 491 px bbox), PNGs committed.
+- validation: npm test 158 files / 1669 tests, tsc, lint, knip, check-release pass. Not verified: any physical print or phone scan.
+- release: binary-impacting; [Unreleased] bullet with a saved-master caveat

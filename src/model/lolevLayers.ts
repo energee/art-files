@@ -126,7 +126,7 @@ export function lolevMaster(): Master {
         lines: [{ text: "STORE COLD", ...GOLD_METAL, bold: true }] }),
       {
         id: "qr", name: "QR", kind: "qr", enabled: true, x: LEFT_X, anchor: "left", y: 281.44,
-        size: 59, qrStyle: "dots", ecLevel: "L", value: "https://lolev.beer/beer/{name|slug}",
+        size: 59, qrStyle: "dots", ecLevel: "Q", value: "https://lolev.beer/beer/{name|slug}",
         style: { ...GOLD_METAL, stroke: KEYLINE.stroke, strokeWidth: KEYLINE.strokeWidth,
           strokeLayer: DEFAULT_STROKE_LAYER },
       },

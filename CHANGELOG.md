@@ -8,6 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Readable update notes.** Bold text in the update dialog now renders as bold instead of showing literal `**` markers.
+- **The shipped QR scans for ordinary beer names.** The Lolev master's dots QR now uses error correction Q instead of L. At L the black keyline made its gold dots hard to read, and most names failed to decode; at Q every name tested decodes. The code looks the same but is a little denser. A master you saved from the old Lolev master keeps L: set **Error correction** to Q on its QR layer and Save Master.
 
 ## [0.1.109] - 2026-10-27
 
