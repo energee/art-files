@@ -10,6 +10,11 @@ that section to the new version (see .agents/release-steward.md).
 - **Interface library patch updates.** Tauri JS 2.12.4 and its dialog and file-system plugins, React 19.3.1, Lucide icons 1.61, react-dropzone 20.1.4 and zxing-wasm 3.1.6, plus newer build tooling; no change in behaviour.
 - **Settings… is where Mac apps keep it.** On macOS it moved from Edit to the **Label Lab** menu, under Check for Updates…, and it has a shortcut everywhere: `⌘,` (`Ctrl+,` on Windows and Linux, where it stays under Edit).
 - **The quit prompt says you're quitting.** With unsaved tabs, `⌘Q`, Dock → Quit or the window's close button now ask “Save changes to “…” before quitting?”, and say Cancel keeps Label Lab open, instead of offering to close the tab.
+- **Power and lock sit in the inspector's header.** The inspector's Enabled and Locked switch rows are now two icon buttons beside ✕, with the same power and lock icons as the Layers row, so the layer's content comes first and both still work with the sidebar hidden.
+- **Metallic is greyed out with no ink.** While a layer's Fill is "No ink" its Metallic toggle is disabled: there is nothing to plate.
+
+### Removed
+- **Controls that did nothing or repeated another.** Background and Metallic mask no longer offer Lock (in the inspector or the right-click menu); they can't be dragged, so it changed nothing. **Tint raster** shows only for PNG/JPEG art, since SVG art already takes the fill. The selected row's Rename (pencil) button is gone: use the inspector's name box, double-click the row, or right-click → Rename. The inspector's "Content" heading is gone; the field's own caption (Text, Code, Link, Texture…) names it.
 
 ### Fixed
 - **Cancelling a different-master open leaves no empty tab.** Cancel in the “This label was made with a different master” dialog, or in its Locate picker, now closes the Untitled tab that open made, so each cancelled attempt no longer leaves one behind.

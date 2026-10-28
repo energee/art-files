@@ -642,3 +642,12 @@ no status, no attempts, no delta.
 - delta: shipped master qr ecLevel L → Q (style, colours, keyline, finders unchanged; 29 → 33 modules for typical names). DEFAULT_EC_LEVEL in qr.ts replaces three `?? "L"` copies. Corpus decode regression in tests/qr-print-decode.test.ts (red at L, green at Q). Goldens re-baselined per docs/goldens.md: 600 DPI diffs red only on the QR square (art 147,773 px in a 521 px bbox; mask 123,056 px in a 491 px bbox), PNGs committed.
 - validation: npm test 158 files / 1669 tests, tsc, lint, knip, check-release pass. Not verified: any physical print or phone scan.
 - release: binary-impacting; [Unreleased] bullet with a saved-master caveat
+
+## 2026-10-27 inspector-trim
+- finding: [ux/med] UX audit (layer editing) #5, #4, #6, #8, #9, #12 — LayerInspector.tsx:146-160 Enabled/Locked rows repeat the row's power and lock; LayerList.tsx:318 Pencil repeats the inspector name box; LayerInspector.tsx:181 "Content" heading sits over a caption that names it; Lock offered on page art (LayerInspector.tsx:156, LayerList.tsx:368) where hittestLayers skips it; Tint raster shown on SVG art (LayerInspectorSections.tsx:272); Metallic live with Fill "No ink" (LayerInspectorSections.tsx:367)
+- status: in-review
+- attempts: 1/3
+- observed-at: e64285d7
+- attempted-in: .agents/worktrees/inspector-trim @ ux/inspector-trim
+- delta: inspector Enabled/Locked Field rows → two header icon buttons (Power/PowerOff, Lock/LockOpen; aria-pressed, names "Enabled"/"Locked"; badges beside them); no lock in the inspector, the row's lock icon or the row menu on background/mask; selected-row Pencil removed (inspector name box, double-click, right-click Rename remain); Content heading removed; Tint raster gated on the existing App `rasterArt` prop (now passed to ImageGeometry); MetallicToggle disabled (not hidden, matching its existing `disabled` prop) while fill is "none". Not done here: the inspector name box's commit model (audit #4 second half), Lengths in (#3).
+- release: binary-impacting; [Unreleased] Changed + Removed bullets queued, no version bump

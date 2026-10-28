@@ -234,7 +234,7 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
   );
 }
 
-export function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
+export function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: boolean }) {
   const { layer, set, badge } = props;
   const id = layer.id;
   const page = layer.role === "background" || layer.role === "mask";
@@ -269,13 +269,15 @@ export function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
           onChange={(scale) => set({ scale })}
         />
       </Row>
-      {/* Raster only — an SVG already takes the fill. Shown regardless of
-          what is loaded so the setting is discoverable before the drop. */}
-      <SwitchRow
-        label="Tint raster" checked={!!layer.tintRaster}
-        badge={badge(["tintRaster"], "Tint raster")}
-        onChange={(tintRaster) => set({ tintRaster })}
-      />
+      {/* Raster only: an SVG already takes the fill, so the switch would do
+          nothing there. */}
+      {props.rasterArt && (
+        <SwitchRow
+          label="Tint raster" checked={!!layer.tintRaster}
+          badge={badge(["tintRaster"], "Tint raster")}
+          onChange={(tintRaster) => set({ tintRaster })}
+        />
+      )}
     </div>
   );
 }
@@ -368,6 +370,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             <>
               <MetallicToggle
                 pressed={style.layer === "metallic"}
+                disabled={style.fill === "none"}
                 onPressedChange={(on) => setStyle({ layer: on ? "metallic" : "white" })}
                 className="size-6 border border-input"
               />

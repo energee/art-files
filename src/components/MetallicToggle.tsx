@@ -25,8 +25,8 @@ export function MetallicToggle(props: {
   /** Prefixes the accessible name, e.g. "Beer Name: metallic". */
   label?: string;
   className?: string;
-  /** The layers panel disables this for a row that isn't drawing right now
-   *  (master-disabled, or its variant is off) — nothing to restyle. */
+  /** The inspector disables the fill's toggle while Fill is "No ink" —
+   *  nothing to plate. */
   disabled?: boolean;
 }) {
   return (
