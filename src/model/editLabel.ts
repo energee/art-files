@@ -181,18 +181,37 @@ export function learnChoice(master: Master, id: string, text: string): Master {
  *  than an exception to routing — the vocabulary declares what a filler may
  *  put in a layer, which is master data — and the Save Master review is what
  *  stands between it and the file. A UPC-A code is stored without the
- *  spaces and hyphens it is printed with. */
-export function setContentIn(doc: Doc, id: string, value: LayerValue): Doc {
+ *  spaces and hyphens it is printed with.
+ *
+ *  `learn: false` is for a value still being typed (see learnValueIn): the
+ *  content lands, the vocabulary waits for the commit. */
+export function setContentIn(doc: Doc, id: string, value: LayerValue, learn = true): Doc {
   // A UPC typed as printed ("0 36000 29145 2") is stored as its bare digits,
   // the form the encoder draws; a {ref} template is left for expansion.
   const layer = doc.master.layers.find((l) => l.id === id);
   if (layer?.kind === "barcode" && layer.symbology === "upc-a"
     && typeof value === "string" && !fieldRefs(value).length) value = upcDigits(value);
   return {
-    master: doc.master.layers.some((l) => l.id === id && l.choices)
-      ? learnChoice(doc.master, id, drawnText(value)) : doc.master,
+    master: learn ? learnVocabulary(doc.master, id, value) : doc.master,
     label: setValue(doc.label, id, value),
   };
+}
+
+/** learnChoice for a layer that HAS a vocabulary; a layer without one never
+ *  starts a list from its content (filling the beer name must not). */
+const learnVocabulary = (master: Master, id: string, value: LayerValue): Master =>
+  master.layers.some((l) => l.id === id && l.choices) ? learnChoice(master, id, drawnText(value)) : master;
+
+/** The COMMIT half of a value typed live — an in-place canvas session, whose
+ *  keystrokes call setContentIn with `learn` off because every prefix would
+ *  otherwise join the vocabulary (L, La, Lag…). Learns the label's current
+ *  value for `id` once, as the sidebar picker does on Enter or blur. Returns
+ *  `doc` by identity when there is nothing to learn. */
+export function learnValueIn(doc: Doc, id: string): Doc {
+  const value = doc.label.values[id];
+  if (value === undefined) return doc;
+  const master = learnVocabulary(doc.master, id, value);
+  return master === doc.master ? doc : { ...doc, master };
 }
 
 /** Drops a label override (whole entry or one dotted path); the `overrides`

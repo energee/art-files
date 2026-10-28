@@ -1,10 +1,8 @@
 // masterpicker-dom.test.tsx — DOM behavior of MasterPicker
 // (src/components/MasterPicker.tsx): the Design sidebar's "Master: Lolev ▾"
-// selector. Choosing another library master previews the rebind
-// (model/rebindLayers.ts) — the counts of what would move to the bench — and
-// must NOT call onMaster until the inline "Continue" is pressed; a rebind
-// that would bench nothing commits at once. File → Open Master's `offer`
-// shows the same card and runs its own commit on Continue.
+// selector. Choosing another library master switches at once through
+// onMaster — no confirm card: the rebind is one undoable step and App's
+// header note names what it set aside.
 // Scoped to a DOM environment per-file, matching tests/fieldlist-dom.test.ts's
 // setup — no @testing-library/react in this repo, so this drives real DOM
 // nodes through react-dom/client + act, the same as that suite.
@@ -14,7 +12,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MasterPicker, entryDetails } from "../src/components/MasterPicker";
 import { lolevMaster } from "../src/model/lolevLayers";
-import type { LabelFile, Master } from "../src/model/layers";
+import type { Master } from "../src/model/layers";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -30,24 +28,17 @@ afterEach(() => {
   container.remove();
 });
 
-/** A different brewery's master: no variants, so binding onto it always
- *  benches the shipped master's "collab" variant — a guaranteed non-empty
- *  preview for the assertion below. */
+/** A different brewery's master, with no variants. */
 const otherMaster: Master = { ...lolevMaster(), id: "other", name: "Other Brewery", variants: [] };
-
-const label: LabelFile = {
-  formatVersion: 3, masterId: "lolev", enabledVariants: ["collab"],
-  values: { name: [{ text: "Peregrine", fill: "#F3CD80", layer: "metallic" }] },
-};
 
 function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
   const full: Parameters<typeof MasterPicker>[0] = {
-    master: lolevMaster(), label,
+    master: lolevMaster(),
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
     onMaster: vi.fn(), onNewVariant: vi.fn().mockReturnValue("variant-2"),
     onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), saveLabel: "Save Master…", onForget: vi.fn().mockResolvedValue(vi.fn()),
-    masterDirty: true, version: null, onVersion: vi.fn(),
+    templateMoved: true, version: null, onVersion: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -70,7 +61,9 @@ describe("MasterPicker", () => {
     expect(trigger().textContent).toContain("Lolev");
   });
 
-  it("previews the rebind and does not commit until Continue is pressed", async () => {
+  // A switch commits at once, even one that sets filled values aside: it is
+  // one undoable step, and App's header note names what moved and ⌘Z.
+  it("switches at once to a master that sets values aside, with no card", async () => {
     const onMaster = vi.fn();
     const resolve = vi.fn().mockResolvedValue({ master: otherMaster, assets: {} });
     renderPicker({ onMaster, resolve });
@@ -81,59 +74,14 @@ describe("MasterPicker", () => {
       await Promise.resolve();
     });
     expect(resolve).toHaveBeenCalledWith("other");
-    const preview = container.querySelector("#master-picker-preview");
-    expect(preview).not.toBeNull();
-    expect(preview!.textContent).toContain("variant");
-    expect(onMaster).not.toHaveBeenCalled();
-
-    await act(async () => {
-      (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
-    });
     expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
-  });
-
-  // Nothing would be benched, so there is nothing to confirm: the switch
-  // commits at once (⌘Z undoes it like any other edit).
-  it("switches straight to a master that would bench nothing", async () => {
-    const onMaster = vi.fn();
-    const same: Master = { ...lolevMaster(), id: "other", name: "Other Brewery" };
-    const resolve = vi.fn().mockResolvedValue({ master: same, assets: {} });
-    renderPicker({ onMaster, resolve, label: { ...label, enabledVariants: [] } });
-    openMenu();
-    await act(async () => {
-      itemStarting("Other Brewery")!.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
     expect(container.querySelector("#master-picker-preview")).toBeNull();
-    expect(onMaster).toHaveBeenCalledWith(same, {});
+    expect(container.textContent).not.toContain("Continue");
   });
 
-  // With no preview there is no Continue to disable, so the Select itself
-  // stays disabled until the switch lands: a second pick in that window was
-  // silently dropped by commit's guard.
-  it("keeps the picker disabled while a switch with nothing to confirm commits", async () => {
-    let finish!: () => void;
-    const onMaster = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
-    const same: Master = { ...lolevMaster(), id: "other", name: "Other Brewery" };
-    const resolve = vi.fn().mockResolvedValue({ master: same, assets: {} });
-    renderPicker({ onMaster, resolve, label: { ...label, enabledVariants: [] } });
-    openMenu();
-    await act(async () => {
-      itemStarting("Other Brewery")!.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    const trigger = () => container.querySelector("#master-picker") as HTMLButtonElement;
-    expect(onMaster).toHaveBeenCalledTimes(1);
-    expect(trigger().disabled).toBe(true);
-    await act(async () => { finish(); await Promise.resolve(); });
-    expect(trigger().disabled).toBe(false);
-  });
-
-  // onMaster awaits the index write and the asset decode; a second Continue
-  // in that window rebound the label twice.
-  it("commits once however often Continue is pressed while it runs", async () => {
+  // The Select stays disabled until the switch lands: a second pick in that
+  // window would rebind the label twice.
+  it("keeps the picker disabled while a switch commits", async () => {
     let finish!: () => void;
     const onMaster = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
     renderPicker({ onMaster });
@@ -143,114 +91,21 @@ describe("MasterPicker", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    const button = () => container.querySelector("#master-picker-continue") as HTMLButtonElement;
-    await act(async () => { button().click(); });
-    await act(async () => { button().click(); });
-    expect(onMaster).toHaveBeenCalledOnce();
-    await act(async () => { finish(); });
+    expect(onMaster).toHaveBeenCalledTimes(1);
+    expect(trigger().disabled).toBe(true);
+    await act(async () => { finish(); await Promise.resolve(); });
+    expect(trigger().disabled).toBe(false);
   });
 
-  // File → Open Master hands the picker a switch that would hide values:
-  // the same card, but Continue runs the opener's own commit (it binds the
-  // file only then), and Cancel runs nothing.
-  // Keeps the variant, drops the "name" layer: hides exactly 1 filled field.
-  const nameless: Master = { ...lolevMaster(), id: "other", name: "Other Brewery",
-    layers: lolevMaster().layers.filter((l) => l.id !== "name") };
-  const offer = (commit = vi.fn(async () => {})) => ({ target: nameless, assets: {}, commit });
-
-  it("previews an opened master and runs its own commit on Continue, not onMaster", async () => {
-    const onMaster = vi.fn();
-    const props = renderPicker({ onMaster });
-    const o = offer();
-    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
-    const preview = container.querySelector("#master-picker-preview");
-    expect(preview?.textContent).toContain('Switching to "Other Brewery" hides 1 filled field');
-    // Focus lands on Cancel: the command ran from a menu, so focus is elsewhere.
-    expect(document.activeElement?.textContent).toBe("Cancel");
-    await act(async () => {
-      (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
-    });
-    expect(o.commit).toHaveBeenCalledOnce();
-    expect(onMaster).not.toHaveBeenCalled();
-    expect(container.querySelector("#master-picker-preview")).toBeNull();
-  });
-
-  it("Cancel on an opened master commits nothing and reports the offer done", () => {
-    const onOfferDone = vi.fn();
-    const props = renderPicker({ onOfferDone });
-    const o = offer();
-    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
-    expect(container.querySelector("#master-picker-preview")).not.toBeNull();
-    act(() => { (document.activeElement as HTMLButtonElement).click(); });
-    expect(container.querySelector("#master-picker-preview")).toBeNull();
-    expect(o.commit).not.toHaveBeenCalled();
-    expect(props.onMaster).not.toHaveBeenCalled();
-    expect(onOfferDone).toHaveBeenCalledOnce();
-    // Cancel unmounted itself: focus goes back to the picker's trigger.
-    expect(document.activeElement).toBe(trigger());
-    // A re-render with the same offer does not bring the card back.
-    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
-    expect(container.querySelector("#master-picker-preview")).toBeNull();
-  });
-
-  // App withdraws the offer when another switch lands (a second Open Master
-  // that hides nothing): the card must not keep offering the old commit.
-  it("closes an opened master's card when the offer is withdrawn", () => {
-    const props = renderPicker();
-    act(() => { root.render(createElement(MasterPicker, { ...props, offer: offer() })); });
-    expect(container.querySelector("#master-picker-preview")).not.toBeNull();
-    act(() => { root.render(createElement(MasterPicker, { ...props, offer: null })); });
-    expect(container.querySelector("#master-picker-preview")).toBeNull();
-  });
-
-  // Removing the card's master from the library withdraws the card: a
-  // Continue would otherwise put the master straight back.
-  it("closes the card when its master is removed from the library", async () => {
-    const onOfferDone = vi.fn();
-    const props = renderPicker({
-      onOfferDone, library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
-    });
-    const o = offer();
-    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
-    expect(container.querySelector("#master-picker-preview")).not.toBeNull();
-    openMenu();
-    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
-    await act(async () => {
-      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
-        x.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
-      }
-      await Promise.resolve();
-    });
-    expect(props.onForget).toHaveBeenCalledWith("other");
-    expect(container.querySelector("#master-picker-preview")).toBeNull();
-    expect(onOfferDone).toHaveBeenCalledOnce();
-    expect(o.commit).not.toHaveBeenCalled();
-  });
-
-  // The counts follow edits made while the card is open, not the label as
-  // it was when the card opened.
-  it("recounts what the switch hides when the label changes under the card", () => {
-    const props = renderPicker();
-    const o = offer();
-    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
-    const line = () => container.querySelector("#master-picker-preview")?.textContent;
-    expect(line()).toContain("hides 1 filled field");
-    const cleared = { ...label, values: {} };
-    act(() => { root.render(createElement(MasterPicker, { ...props, label: cleared, offer: o })); });
-    expect(line()).toContain("hides nothing");
-  });
-
-  it("returns focus to the trigger when a pick's preview is cancelled", async () => {
-    renderPicker();
+  it("says why when the switch fails", async () => {
+    const onMaster = vi.fn().mockRejectedValue(new Error("disk full"));
+    renderPicker({ onMaster });
     openMenu();
     await act(async () => {
       itemStarting("Other Brewery")!.click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
     });
-    const cancel = [...container.querySelectorAll("#master-picker-preview button")].find((b) => b.textContent === "Cancel") as HTMLButtonElement;
-    act(() => { cancel.click(); });
-    expect(document.activeElement).toBe(trigger());
+    expect(container.querySelector("#master-picker-error")?.textContent).toContain("disk full");
   });
 
   it("lists the current master's variants as versions of it", () => {
@@ -387,8 +242,8 @@ describe("MasterPicker", () => {
     expect(onSaveMaster).toHaveBeenCalled();
   });
 
-  it("shows no Save button when nothing would be written", () => {
-    renderPicker({ masterDirty: false });
+  it("shows no Save button while the master itself is unchanged", () => {
+    renderPicker({ templateMoved: false });
     expect(container.querySelector("#variant-save")).toBeNull();
   });
 

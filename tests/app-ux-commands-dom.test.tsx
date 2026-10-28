@@ -196,6 +196,20 @@ it("makes the blocked-export note a polite status that selects the invalid layer
   expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
 });
 
+// A per-beer override is this label's, saved by ⌘S: the picker's pink
+// Save Master… button stays hidden, while File → Save Master… stays enabled
+// so the override can still be promoted.
+it("hides the picker's Save Master button for an override-only label", async () => {
+  const onOpenSettled = vi.fn();
+  const { container, rerender } = await mount({ onOpenSettled });
+  const bytes = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {}, overrides: { name: { x: 10 } } }, {});
+  await rerender({ fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "moved.label") } });
+  await vi.waitFor(() => expect(onOpenSettled).toHaveBeenCalled());
+  expect(container.querySelector("#variant-save")).toBeNull();
+  await paletteRows();
+  expect(paletteRow("Save Master…").getAttribute("data-disabled")).not.toBe("true");
+});
+
 it("reads the master library once, not on every render", async () => {
   await mount();
   await vi.waitFor(() => expect(counts.masterIndex).toBeGreaterThan(0));
@@ -258,6 +272,9 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
     "New Tab", "Open Label…", "Close Tab", "Save Label", "Save Label As…",
     "Open Master…", "Save Master…", "Save Master As…",
   ]);
+  // The pairs only: single-plate exports were dropped from menus and palette.
+  // (Both titles are 11 characters; the slice drops the note and shortcut.)
+  expect(groups.Export.map((r) => r.slice(0, 11))).toEqual(["Export PDFs", "Export PSDs"]);
   expect(groups.Layer.map((r) => r.replace(/⌫$/, ""))).toEqual([
     "Add Text Layer", "Add Image Layer", "Add Barcode Layer", "Add QR Layer", "Remove Layer",
   ]);

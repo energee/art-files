@@ -16,7 +16,7 @@ import { LABEL_FILTER, LABEL_TYPES, isAbort } from "@/filePickers";
 import { nativeModifiedAt, openThrough } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
-  type TabsState,
+  type Tab, type TabsState,
 } from "@/tabs";
 import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { shortcutLabel } from "@/keys";
@@ -129,15 +129,20 @@ export default function TabsShell() {
   // resolves false and leaves this dialog up).
   const [confirmClose, setConfirmClose] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  // The prompt's Review Master… hands the screen to the tab's Save Master
-  // review; the prompt hides until the review closes, so only one dialog
-  // is ever up.
+  // The prompt's Save hands the screen to the tab's master save (its review,
+  // or the OS save dialog); the prompt hides until that ends, so only one
+  // dialog is ever up.
   const [reviewing, setReviewing] = useState(false);
-  // A window close sweeps every unsaved tab through the same dialog; any
-  // Cancel aborts the sweep and the close. A ref, not state: it is set
-  // before the setConfirmClose that shows the dialog, so that render reads
-  // it for the quit wording (#552), and doClose reads it to move the sweep on.
-  const closingWindow = useRef(false);
+  // A sweep walks every unsaved tab through the same dialog before the app
+  // goes away — a window close or quit, or the updater's Restart Now — and
+  // hears true once each is saved or discarded, false on any Cancel. A ref,
+  // not state: it is set before the setConfirmClose that shows the dialog,
+  // so that render reads it for the quit wording (#552), and doClose reads it
+  // to move the sweep on.
+  const sweep = useRef<((finished: boolean) => void) | null>(null);
+  // How many tabs the one-time prompt before a sweep names (more than one
+  // unsaved tab only), or 0 while it is down.
+  const [sweepCount, setSweepCount] = useState(0);
   const [checkRequest, setCheckRequest] = useState(0);
   // Set once an update is installed on disk: the app menu's Check for
   // Updates… becomes Restart to Update (same click, DesktopUpdater decides).
@@ -361,17 +366,47 @@ export default function TabsShell() {
     apply((s) => closeTab(s, id));
     setConfirmClose(null);
     // Mid-sweep: hand the dialog to the next unsaved tab, or finish the
-    // window close. Computed against the post-close list.
-    if (closingWindow.current) {
-      const rest = stateRef.current.tabs.filter((t) => t.id !== id);
-      const next = rest.find(unsaved);
-      if (next) {
-        apply((s) => activateTab(s, next.id));
-        setConfirmClose(next.id);
-      } else {
-        void currentWindow().then((w) => void w.destroy());
-      }
-    }
+    // sweep. Computed against the post-close list.
+    if (sweep.current) promptNext(stateRef.current.tabs.filter((t) => t.id !== id));
+  };
+
+  /** Mid-sweep: show the prompt for the first unsaved tab in `tabs`, or end
+   *  the sweep when there is none. */
+  const promptNext = (tabs: readonly Tab[]) => {
+    const next = tabs.find(unsaved);
+    if (next) {
+      apply((s) => activateTab(s, next.id));
+      setConfirmClose(next.id);
+    } else endSweep(true);
+  };
+  const endSweep = (finished: boolean) => {
+    const done = sweep.current;
+    sweep.current = null;
+    done?.(finished);
+  };
+
+  /** Walk every unsaved tab through the close prompt before the app goes
+   *  away. True at once when nothing is unsaved; with more than one unsaved
+   *  tab, a one-time prompt first offers Review Changes… (the walk), Discard
+   *  All or Cancel. A sweep already running answers false: the first one
+   *  owns the prompts. */
+  const sweepUnsaved = () => new Promise<boolean>((done) => {
+    const dirty = stateRef.current.tabs.filter(unsaved);
+    if (!dirty.length) { done(true); return; }
+    if (sweep.current) { done(false); return; }
+    sweep.current = done;
+    if (dirty.length > 1) {
+      setConfirmClose(null); // a lone tab's close prompt gives way to the question
+      setSweepCount(dirty.length);
+    } else promptNext(dirty);
+  });
+
+  /** The one-time prompt's Discard All: nothing to recover from any tab,
+   *  and the sweep is over. */
+  const discardAll = async () => {
+    setSweepCount(0);
+    await Promise.all(stateRef.current.tabs.filter(unsaved).map((t) => dropRecovery(recoveryKey(t.id))));
+    endSweep(true);
   };
 
   /** Tab × / File → Close Tab: unsaved work gets the three-way dialog. */
@@ -387,39 +422,34 @@ export default function TabsShell() {
 
   const cancelClose = () => {
     setConfirmClose(null);
-    closingWindow.current = false;
+    setSweepCount(0);
+    endSweep(false);
   };
 
+  /** The prompt's Save: the master's unsaved edits first, through the
+   *  tab's own Save Master (straight to the file, or its review in place of
+   *  the prompt when the label has something to promote), then the .label.
+   *  A cancelled or failed save at either step keeps the tab (and, mid-sweep,
+   *  aborts the window close: a cancel is a cancel). A master save that
+   *  leaves nothing unsaved closes the tab without writing the .label again.
+   *  The editor resolves the master save only after onMeta has reported it,
+   *  so stateRef already holds the tab's post-save meta. */
   const saveAndClose = async (id: number) => {
     setSaving(true);
     try {
-      // false = the user cancelled the save dialog — keep the tab (and,
-      // mid-sweep, abort the window close: a cancel is a cancel).
-      if (await extras.current.get(id)?.saveSlot.current?.()) doClose(id);
+      const e = extras.current.get(id);
+      if (stateRef.current.tabs.find((t) => t.id === id)?.masterUnsaved) {
+        apply((s) => activateTab(s, id)); // the review only shows on the active tab
+        setReviewing(true);
+        const saved = await e?.masterSaveSlot.current?.().finally(() => setReviewing(false));
+        if (!saved) { cancelClose(); return; }
+        const tab = stateRef.current.tabs.find((t) => t.id === id);
+        if (tab && !unsaved(tab)) { doClose(id); return; }
+      }
+      if (await e?.saveSlot.current?.()) doClose(id);
       else cancelClose();
     } finally {
       setSaving(false);
-    }
-  };
-
-  /** Review Master…: the tab's own Save Master review, in place of the
-   *  prompt. A saved master brings the prompt back for the .label (the
-   *  label still needs its Save or Discard), or closes the tab — and moves
-   *  a window-close sweep on — when nothing is left unsaved; a cancelled
-   *  or failed review cancels the close, and mid-sweep the window close.
-   *  The editor resolves only after onMeta has reported the save, so
-   *  stateRef already holds the tab's post-save meta here. */
-  const reviewMaster = async (id: number) => {
-    apply((s) => activateTab(s, id)); // the review only shows on the active tab
-    setReviewing(true);
-    try {
-      if (!await extras.current.get(id)?.masterSaveSlot.current?.()) cancelClose();
-      else {
-        const tab = stateRef.current.tabs.find((t) => t.id === id);
-        if (tab && !unsaved(tab)) doClose(id);
-      }
-    } finally {
-      setReviewing(false);
     }
   };
 
@@ -433,20 +463,20 @@ export default function TabsShell() {
   const activate = useCallback((id: number) => { apply((s) => activateTab(s, id)); }, [apply]);
   const closeReq = useCallback((id: number) => api.current.requestClose(id), []);
 
-  // Desktop window close: intercept, sweep unsaved tabs through the dialog.
+  // Desktop window close: intercept, sweep unsaved tabs through the dialog,
+  // and close for real once the sweep finishes.
+  const sweepRef = useRef(sweepUnsaved);
+  sweepRef.current = sweepUnsaved;
   useEffect(() => {
     if (!isTauri()) return;
     const stopping = currentWindow().then((w) =>
       w.onCloseRequested((event) => {
-        const first = stateRef.current.tabs.find(unsaved);
-        if (!first) return; // nothing unsaved — the close proceeds
+        if (!stateRef.current.tabs.some(unsaved)) return; // the close proceeds
         event.preventDefault();
-        closingWindow.current = true;
-        apply((s) => activateTab(s, first.id));
-        setConfirmClose(first.id);
+        void sweepRef.current().then((finished) => { if (finished) void w.destroy(); });
       }));
     return () => void stopping.then((stop) => stop());
-  }, [apply]);
+  }, []);
 
   // Browser window close: the generic prompt is all a page may show.
   useEffect(() => {
@@ -654,32 +684,22 @@ export default function TabsShell() {
           if (f) openRouted({ file: f });
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
-          editor's own save flow (dialog cancel keeps the tab). Hidden, not
-          dismissed, while Review Master… has the review up. */}
+          editor's own save flows (dialog cancel keeps the tab). Hidden, not
+          dismissed, while Save has the master review up. */}
       <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             {/* A window close or quit (⌘Q, Dock → Quit) ends the app, so the
                 prompt says so rather than offering to keep the tab (#552). */}
             <DialogTitle>
-              {closingWindow.current
+              {sweep.current
                 ? `Save changes to “${confirmTab?.title}” before quitting?`
                 : `Close “${confirmTab?.title}”?`}
             </DialogTitle>
             <DialogDescription>
-              {closingWindow.current
+              {sweep.current
                 ? "This tab has unsaved changes. Save or discard them to quit, or cancel to keep Label Lab open."
                 : "This tab has unsaved changes. Save them, discard them, or keep the tab open."}
-              {/* Save writes only the .label (issue #159): name the master
-                  edits it leaves behind, and offer the review that writes
-                  them as its own button. Inside the description so it is
-                  announced with it. */}
-              {confirmTab?.masterUnsaved && (
-                <>
-                  {" "}This tab also has master changes. They'll be discarded
-                  unless you choose Review Master… and save them first.
-                </>
-              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -690,12 +710,6 @@ export default function TabsShell() {
               onClick={() => confirmClose !== null && doClose(confirmClose)}>
               Discard
             </Button>
-            {confirmTab?.masterUnsaved && (
-              <Button variant="outline" disabled={saving || reviewing}
-                onClick={() => confirmClose !== null && void reviewMaster(confirmClose)}>
-                Review Master…
-              </Button>
-            )}
             <Button disabled={saving}
               onClick={() => confirmClose !== null && void saveAndClose(confirmClose)}>
               {saving ? "Saving…" : "Save"}
@@ -720,7 +734,26 @@ export default function TabsShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <DesktopUpdater dirty={anyUnsaved} checkRequest={checkRequest} statusHost={updateStatusHost}
+      {/* More than one unsaved tab: one question before the per-tab prompts. */}
+      <Dialog open={sweepCount > 0} onOpenChange={(open) => !open && cancelClose()}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Review unsaved changes before quitting?</DialogTitle>
+            <DialogDescription>
+              {sweepCount} tabs have unsaved changes. Review them one at a time, or discard
+              all of them. Cancel keeps Label Lab open.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelClose}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void discardAll()}>Discard All</Button>
+            <Button onClick={() => { setSweepCount(0); promptNext(stateRef.current.tabs); }}>
+              Review Changes…
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <DesktopUpdater beforeRestart={sweepUnsaved} checkRequest={checkRequest} statusHost={updateStatusHost}
         onInstalled={() => setUpdateInstalled(true)} />
     </>
   );

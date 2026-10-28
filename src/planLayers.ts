@@ -75,11 +75,18 @@ interface Prepared { size: { w: number; h: number }; emit(box: Box): PlacedLayer
 
 /** The lines a text layer actually draws: the placeholder when every line is
  *  empty, the suffix on the first line, uppercase applied, and every line
- *  carrying the layer's block style (stroke, tracking) under its own fill /
- *  layer / bold. A header line is bold, as the description's `# ` line has
+ *  carrying the layer's block style (fill, plate, stroke, tracking) under its
+ *  own bold. A header line is bold, as the description's `# ` line has
  *  always been. Control characters are settled here too (printableText):
  *  label values arrive clean from resolveLayers, but master-authored lines,
- *  placeholders and suffixes do not. */
+ *  placeholders and suffixes do not.
+ *
+ *  The block's fill and plate WIN over the copies every stored line carries
+ *  (the editor writes the block's onto each line as you type, so they go
+ *  stale the moment the inspector's Fill or Metallic changes). The one
+ *  per-line deviation the editor can author survives: a line given the
+ *  white-ink underlay stays on the white plate; a `_white_` run keeps its
+ *  own too (parseRuns). */
 function drawableLines(l: TextLayer): TextLine[] {
   const s = l.style;
   let lines = l.lines;
@@ -91,6 +98,8 @@ function drawableLines(l: TextLayer): TextLine[] {
       : [{ fill: s.fill, layer: s.layer, text: l.suffix }];
   return lines.map((ln) => ({
     ...ln,
+    fill: s.fill,
+    layer: ln.layer === "white" ? "white" : s.layer,
     text: printableText(uppercaseOf(l) ? ln.text.toUpperCase() : ln.text),
     bold: !!ln.bold || !!ln.header,
     stroke: s.stroke, strokeLayer: s.strokeLayer, strokeWidth: s.strokeWidth,

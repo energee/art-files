@@ -33,8 +33,12 @@ thing between that edit and a permanent change, and it presents no diff.
 - **Master** sets the template.
 - **Variant** sets alternatives to the master.
 - **Label** saves fill values, the background, and overrides to master fields.
-- **The master never changes implicitly.** Saving `.master` presents every
-  change for review first.
+- **The master never changes implicitly.** Only an explicit Save Master
+  writes it. *Amended 2026-10-28:* the review opens only when the label has
+  an override or value to promote — the one decision a save asks for. With
+  nothing to promote, Save Master (and Save Master As…, before its OS
+  dialog) writes at once and the header note says "Saved <file> — N
+  changes".
 
 Under that rule every property edit is a label override, so `fillable` has
 nothing left to decide and is deleted.
@@ -57,7 +61,8 @@ Three classes of edit, not two:
 - **Structural edits** have no master field to override, so they continue to
   write the master directly. They are surfaced in the Save Master review
   rather than gated per action — no separate "master edit mode".
-- **Save Master presents all changes** before writing.
+- **Save Master presents all changes** before writing — when there is
+  something to promote (amended 2026-10-28, see "The model we want").
 
 ### A master is authored with placeholders, not content
 
@@ -168,9 +173,10 @@ Test file named first in each task; write it failing, then implement.
 - Files: `src/components/MasterSaveReview.tsx` *(new)*, `src/App.tsx`
   (`saveMaster:1279`)
 - Test: `tests/mastersave-review-dom.test.tsx` *(new)*
-- Grouped by layer, one checkable row per change, structural changes listed
-  first and checked-but-disabled (they are already in the master; unchecking
-  is a separate undo, not a save option). `promote` rows default **off**.
+- Grouped by layer, structural changes listed first as plain text (they are
+  already in the master; undoing one is ⌘Z's job, not a save option — the
+  checked-but-disabled boxes they first had were removed 2026-10-28), and a
+  checkbox only on each `promote` row, which defaults **off**.
 - Confirming applies the checked `promote` rows to `master.layers`, clears
   those entries from `label.overrides`, then proceeds into the existing
   `packMaster` path. Cancelling writes nothing.
@@ -181,7 +187,8 @@ Test file named first in each task; write it failing, then implement.
 - Files: `src/App.tsx` (`saveMaster`, commands `master-save` /
   `master-save-as` at `:1625-1626`)
 - Test: `tests/mastersave-review-dom.test.tsx` *(extend)*
-- Both Save Master and Save Master As… go through the review. `masterDirty`
+- Both Save Master and Save Master As… go through the review when there is
+  something to promote, and write directly otherwise (2026-10-28). `masterDirty`
   (`App.tsx:424`) keeps gating the menu item, but is now
   `masterChanges(...).length > 0` so structural-only and promote-only states
   both light it.

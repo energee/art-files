@@ -27,7 +27,6 @@ vi.mock("../src/pdf/fonts", () => ({
   loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
 }));
 import { DocumentEditor } from "../src/App";
-import { fileDrag, png } from "./dom-drag";
 
 /** Mount a real DocumentEditor; `onMeta` records the tab metadata it reports. */
 async function mountEditor() {
@@ -35,17 +34,16 @@ async function mountEditor() {
   document.body.appendChild(container);
   const root = createRoot(container);
   const onMeta = vi.fn();
-  const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   await act(async () => {
     root.render(createElement(DocumentEditor, {
       active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-      saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+      saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
       onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
   const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); };
-  return { container, onMeta, saveSlot, unmount };
+  return { container, onMeta, unmount };
 }
 
 const pressUndo = () => act(async () => {
@@ -387,16 +385,13 @@ it("opens a fresh undo step for inspector typing instead of folding into the pre
  *  them), runs `body`, and unmounts. `p()` reads the latest PreviewCompare
  *  props, so it sees each re-render's layers. */
 async function withCanvasEditor(
-  body: (
-    p: () => PreviewProps, container: HTMLElement, onMeta: ReturnType<typeof vi.fn>,
-    save: () => Promise<boolean>,
-  ) => Promise<void>,
+  body: (p: () => PreviewProps, container: HTMLElement, onMeta: ReturnType<typeof vi.fn>) => Promise<void>,
 ) {
   perf.source = null; // so the wait below waits for THIS mount's assets
-  const { container, onMeta, saveSlot, unmount } = await mountEditor();
+  const { container, onMeta, unmount } = await mountEditor();
   try {
     await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
-    await body(() => perf.preview!, container, onMeta, () => saveSlot.current!());
+    await body(() => perf.preview!, container, onMeta);
   } finally {
     await unmount();
   }
@@ -514,13 +509,14 @@ it("a drag back to its start on one axis restores that axis", async () => {
 
 // #164 part 1 — the in-place editor's first keystroke must open the session's
 // step even when it leaves the text as it was (a rejected character in a
-// number field re-applies the same value), or Escape reverts the edit before.
+// number field re-applies the same value), or ⌘Z after the session reverts
+// the edit before it too.
 it("an in-place session whose first keystroke changes nothing never folds into the previous edit", async () => {
   await renameThenGesture((p) => {
     const { lines } = layerOf(p, "abv") as TextLayer;
     p.onEditText("abv", lines, true);
     p.onEditText("abv", [{ ...lines[0], text: "6.5" }], false);
-  }, (p) => p.onEditCancel());
+  }, () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true })));
 }, 60_000);
 
 it("each arrow nudge has its own undo step (#287)", async () => {
@@ -541,12 +537,6 @@ it("each arrow nudge has its own undo step (#287)", async () => {
     expect(x()).toBeCloseTo(start);
   } finally { await unmount(); }
 });
-
-/** Stubs the browser save picker with a handle whose writes succeed. */
-function stubSavePicker() {
-  const handle = { name: "Beer.label", createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
-  vi.stubGlobal("showSaveFilePicker", async () => handle);
-}
 
 // A held arrow key is ONE gesture: OS auto-repeat keydowns (e.repeat) fold
 // into the step the first press opened, so a long hold can't push the rest
@@ -610,47 +600,29 @@ it("Add layer from the portaled menu leaves the new layer selected", async () =>
   } finally { await unmount(); }
 }, 60_000);
 
-it("cancelling in-place text restores the pre-session dirty state (#278)", async () => {
-  stubSavePicker();
-  try {
-    await withCanvasEditor(async (p, _container, onMeta, save) => {
-      // Start from a saved, untouched doc so a cancel that leaves it dirty fails.
-      await act(async () => { expect(await save()).toBe(true); });
-      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: false, edited: false });
-      const lines = (layerOf(p(), "name") as TextLayer).lines;
-      await act(async () => p().onEditSession?.("name"));
-      await act(async () => p().onEditText("name", [{ ...lines[0], text: "Temporary" }], true));
-      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: true, edited: true });
-      await act(async () => p().onEditCancel());
-      await act(async () => p().onEditSession?.(null));
-      expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
-      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: false, edited: false });
-    });
-  } finally {
-    vi.unstubAllGlobals();
-  }
-}, 60_000);
-
-it("cancelling in-place text after a mid-session save leaves the tab dirty", async () => {
-  stubSavePicker();
-  try {
-    await withCanvasEditor(async (p, _container, onMeta, save) => {
-      await act(async () => { expect(await save()).toBe(true); });
-      const lines = (layerOf(p(), "name") as TextLayer).lines;
-      await act(async () => p().onEditSession?.("name"));
-      await act(async () => p().onEditText("name", [{ ...lines[0], text: "TYPEDTEXT" }], true));
-      // ⌘S inside the field: the file now holds TYPEDTEXT.
-      await act(async () => { expect(await save()).toBe(true); });
-      expect(onMeta.mock.calls.at(-1)![0].dirty).toBe(false);
-      await act(async () => p().onEditCancel());
-      await act(async () => p().onEditSession?.(null));
-      expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
-      // The reverted doc no longer matches the file.
-      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: true, edited: true });
-    });
-  } finally {
-    vi.unstubAllGlobals();
-  }
+// UX audit (2026-10) #2 — App's in-place keystrokes went through setContent,
+// which learns a choice, so typing "Lager" into Style on the canvas left
+// L, La, Lag, Lage and Lager in the master's list. Keystrokes now learn
+// nothing; the session's commit (Enter, Escape or a click away) learns the
+// final value once, inside the session's one undo step.
+it("an in-place session on Style learns its final value once, on commit, as one undo step", async () => {
+  await withCanvasEditor(async (p) => {
+    const before = (layerOf(p(), "styleLine") as TextLayer);
+    const values = () => (layerOf(p(), "styleLine").choices ?? []).map((c) => c.value);
+    const shipped = values();
+    await act(async () => p().onEditSession?.("styleLine"));
+    for (const [i, t] of ["L", "La", "Lag", "Lage", "Lager"].entries())
+      await act(async () => p().onEditText("styleLine", [{ ...before.lines[0], text: t }], i === 0));
+    expect(values()).toEqual(shipped);
+    await act(async () => p().onEditCommit("styleLine"));
+    await act(async () => p().onEditSession?.(null));
+    expect(values()).toEqual([...shipped, "Lager"]);
+    expect((layerOf(p(), "styleLine") as TextLayer).lines[0].text).toBe("Lager");
+    // One ⌘Z takes back the whole session: the typing and the learned choice.
+    await pressUndo();
+    expect(values()).toEqual(shipped);
+    expect((layerOf(p(), "styleLine") as TextLayer).lines).toEqual(before.lines);
+  });
 }, 60_000);
 
 // Undoing an add leaves the added id in the selection. Delete on a still-
@@ -769,27 +741,3 @@ it("the inspector names its one layer in a multi-selection and reads an off vari
   } finally { await unmount(); }
 }, 60_000);
 
-// UX audit #14: the idle hint named only the texture, so the right-half mask
-// target stayed a secret until mid-drag. The halves are the WINDOW's (where
-// globalAssetKind splits), not the preview's, so the hint says so; it goes
-// away once a texture is loaded.
-it("the no-texture hint names both drop targets and leaves once a texture loads", async () => {
-  class FakeBitmap { width = 4; height = 2; close() {} }
-  vi.stubGlobal("ImageBitmap", FakeBitmap);
-  vi.stubGlobal("createImageBitmap", vi.fn(async () => new FakeBitmap()));
-  const ctx = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
-  const blob = vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
-  try {
-    await withCanvasEditor(async (_p, container) => {
-      const text = container.textContent ?? "";
-      expect(text).toContain("left half of the window → background");
-      expect(text).toContain("right half of the window → metallic mask (PNG/WebP)");
-      fileDrag("drop", png); // clientX 10: the left half, so the texture
-      await vi.waitFor(() => expect(container.textContent).not.toContain("drop an image anywhere"));
-    });
-  } finally {
-    ctx.mockRestore();
-    blob.mockRestore();
-    vi.unstubAllGlobals();
-  }
-}, 60_000);
