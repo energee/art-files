@@ -7,7 +7,7 @@ import type { PlacedText } from "../plan";
 type Pt = [number, number];
 type Knot = { linked: false; points: [number, number, number, number, number, number] };
 
-/** Neutral cubic paths structurally compatible with ag-psd's BezierPath. */
+/** Neutral cubic paths; the PSD adapter (psd/build.ts digitGroupPaths) converts them to ag-psd's BezierPath. */
 interface OutlinePath {
   readonly closed: true;
   readonly knots: readonly Knot[];

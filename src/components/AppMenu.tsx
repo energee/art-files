@@ -595,9 +595,9 @@ function useNativeMenu(
         const recentBuiltFrom = JSON.stringify(recentLabels());
         const native = (entry: MenuEntry) =>
           nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources);
-        const roots = await Promise.all((isMacOS()
-          ? visibleEntries(MAC_MENUS, commandsRef.current) as SubmenuEntry[]
-          : menus).map(native));
+        // One filtered table for the rows and their symbols below.
+        const shown = isMacOS() ? visibleEntries(MAC_MENUS, commandsRef.current) as SubmenuEntry[] : menus;
+        const roots = await Promise.all(shown.map(native));
         // On macOS the first submenu is the conventional application menu;
         // the browser renderer must not show it. Other desktop platforms put
         // File first and receive their window-local menu bar normally.
@@ -630,9 +630,7 @@ function useNativeMenu(
         // The Tauri menu API only knows AppKit's old template icons; the SF
         // Symbols go on natively. A failure leaves the rows without icons.
         if (isMacOS()) {
-          await invoke("set_menu_symbols", { symbols: [...menuSymbols(isMacOS()
-            ? visibleEntries(MAC_MENUS, commandsRef.current)
-            : menus), ...SYSTEM_ROWS] })
+          await invoke("set_menu_symbols", { symbols: [...menuSymbols(shown), ...SYSTEM_ROWS] })
             .catch((error: unknown) => console.warn("menu symbols:", error));
         }
         if (!live) {

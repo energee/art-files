@@ -71,8 +71,10 @@ export function useExport({
   const exportFresh = useRef(false);
   const exportStale = () => { exportFresh.current = false; setExportNote(""); };
   // Desktop export destinations, scoped to the label they were chosen from.
-  // The one-file print PDF gets its own memory slot: it must never overwrite
-  // the artwork half of the retained two-file export.
+  // The one-file print PDF remembers its destination separately from the
+  // two-file pair, but both default to `<label>.pdf`: a print export into a
+  // folder holding an older pair replaces its art file and leaves its
+  // `-mask.pdf` behind.
   const exportPaths = useRef<{
     label?: string | null;
     pdf?: string;

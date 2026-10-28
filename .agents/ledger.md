@@ -829,3 +829,12 @@ no status, no attempts, no delta.
 - evidence: on fix/575-menu-export in .agents/worktrees/layer-controls-about, npm test -- --maxWorkers=2 passes 160 files / 1690 tests; npm run build (including TypeScript), lint, knip@6.38.0 and release metadata vs origin/ux/casual-ui-copy pass. Existing chunk-size advisory and happy-dom fetch-abort diagnostics remain.
 - evidence: parent PR #574 merged as 86fd240f and its branch was deleted during integration. Retargeted #575 to main and merged origin/main, preserving the compact controls and About icon notes. Re-ran the full 1690-test suite (--maxWorkers=2), build, lint, Knip and release metadata against origin/main: all pass.
 - release: conflict resolution adds only tests and ledger changes; existing Unreleased application notes remain sufficient, no version bump or release operation.
+
+## 2026-10-28 pr-573-land-after-566
+- finding: #566 squash-merged as 87959863, so #573 conflicted with main in 8 files; a separate review of #573 found no blockers and some inaccurate comments.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/white-ink-pdf @ feat/white-ink-pdf
+- delta: merged #566's final head 771a3dd1 (tree identical to main 87959863; only a ledger conflict, both sides kept), then recorded origin/main with -s ours. Corrected the useExport comment that claimed the print PDF never overwrites the pair's art file (both default to `<label>.pdf`), the outline/PSD comments that called the neutral path structurally ag-psd's BezierPath, and the RenderSettings doc; the native menu now filters MAC_MENUS once for both rows and symbols. Restored tests/fixtures/print-pdf/lupula-art.pdf, which a Finder alias had replaced in the working tree.
+- evidence: tsc, lint, 8 menu/export/PDF suites (94 tests) and check-release vs origin/main pass; diff vs main is the same 42 files as the PR's diff vs its old parent.
+- release: binary-impacting; existing Unreleased bullets suffice, no version bump.

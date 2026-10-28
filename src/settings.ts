@@ -17,7 +17,8 @@ import { decimalsOf } from "@/numeric";
  *  form canScene consumes:
  *    cornerRadius — % of the label's short side
  *    edgeSoftness — foil-edge blur, % of the label's width
- *    twoFilePdfExport — retain the legacy art + mask PDF exports */
+ *  It also carries twoFilePdfExport, a plain on/off that keeps the legacy
+ *  art + mask PDF exports in the menus. */
 export interface RenderSettings {
   cornerRadius: number;
   edgeSoftness: number;
