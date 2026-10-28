@@ -11,6 +11,7 @@ import type {
 import type { DeepPartial } from "@/model/merge";
 import type { Style } from "@/types";
 import { DEFAULT_STROKE_PX } from "@/layout";
+import { DEFAULT_EC_LEVEL } from "@/qr";
 import { strokeLayerOf } from "@/strokes";
 import { minModuleWarning } from "@/model/fields";
 import { Button } from "@/components/ui/button";
@@ -233,7 +234,7 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
   );
 }
 
-export function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
+export function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: boolean }) {
   const { layer, set, badge } = props;
   const id = layer.id;
   const page = layer.role === "background" || layer.role === "mask";
@@ -261,20 +262,15 @@ export function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
         onChange={(h) => set({ h })}
       />
       {fit}
-      <Row badge={badge(["scale"], "Scale")}>
-        <ScrubField
-          id={`${id}-scale`} label="Scale" unit="×" value={layer.scale ?? 1}
-          min={0.1} max={4} step={0.05} dragStep={0.05}
-          onChange={(scale) => set({ scale })}
+      {/* Raster only: an SVG already takes the fill, so the switch would do
+          nothing there. */}
+      {props.rasterArt && (
+        <SwitchRow
+          label="Tint raster" checked={!!layer.tintRaster}
+          badge={badge(["tintRaster"], "Tint raster")}
+          onChange={(tintRaster) => set({ tintRaster })}
         />
-      </Row>
-      {/* Raster only — an SVG already takes the fill. Shown regardless of
-          what is loaded so the setting is discoverable before the drop. */}
-      <SwitchRow
-        label="Tint raster" checked={!!layer.tintRaster}
-        badge={badge(["tintRaster"], "Tint raster")}
-        onChange={(tintRaster) => set({ tintRaster })}
-      />
+      )}
     </div>
   );
 }
@@ -329,9 +325,9 @@ export function QrGeometry(props: Ctx & { layer: QrLayer }) {
       </Row>
       <SelectField id={`${id}-qr-style`} label="Style" ariaLabel="QR style" badge={badge(["qrStyle"], "QR style")}
         items={QR_STYLES} value={layer.qrStyle} onChange={(v) => set({ qrStyle: v as QrLayer["qrStyle"] })} />
-      {/* Match the renderer’s L default when the optional level is absent. */}
+      {/* Match the renderer’s default (DEFAULT_EC_LEVEL) when the optional level is absent. */}
       <SelectField id={`${id}-ec`} label="Error correction" ariaLabel="Error correction" badge={badge(["ecLevel"], "Error correction")}
-        items={EC_LEVELS} value={layer.ecLevel ?? "L"} onChange={(v) => set({ ecLevel: v as QrLayer["ecLevel"] })} />
+        items={EC_LEVELS} value={layer.ecLevel ?? DEFAULT_EC_LEVEL} onChange={(v) => set({ ecLevel: v as QrLayer["ecLevel"] })} />
     </div>
   );
 }
@@ -355,7 +351,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             {/* "No ink" is only offered where it can't break the layer: a
                 code with no fill cannot scan. */}
             <ColorField
-              id={`${id}-fill`} value={style.fill} allowNone={!isCode}
+              id={`${id}-fill`} label="Fill" value={style.fill} allowNone={!isCode}
               onChange={(fill) => setStyle({ fill })}
             />
           </div>
@@ -367,6 +363,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             <>
               <MetallicToggle
                 pressed={style.layer === "metallic"}
+                disabled={style.fill === "none"}
                 onPressedChange={(on) => setStyle({ layer: on ? "metallic" : "white" })}
                 className="size-6 border border-input"
               />
@@ -405,7 +402,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             <div className="flex items-center gap-1.5">
               <div className="min-w-0 flex-1">
                 <ColorField
-                  id={`${id}-stroke-color`} value={style.stroke!} allowNone={false}
+                  id={`${id}-stroke-color`} label="Stroke" value={style.stroke!} allowNone={false}
                   onChange={(stroke) => setStyle({ stroke })}
                 />
               </div>

@@ -1,0 +1,7 @@
+$ npx tsc --noEmit
+cwd=/Users/tedslesinski/Repos/art-files
+exit=0
+elapsed_seconds=7.285
+timed_out=False
+--- stdout ---
+--- stderr ---

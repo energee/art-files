@@ -1,10 +1,12 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, close button, a "editing one of N" note on a
-// multi-selection, enabled/locked with an off-variant note), the parent's
-// content editor, kind-specific geometry/typography, Position (not on page
-// art), Style, and expandable template field settings.
+// inline rename (commits on Enter or blur, Escape cancels, like the Layers
+// row's), power and lock icon toggles (no lock on page art), close
+// button, a "editing one of N" note on a multi-selection, an off-variant
+// note), the parent's content editor (no heading: its caption names it),
+// kind-specific geometry/typography, Position (not on page art), Style, and
+// expandable template field settings.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -30,18 +32,19 @@
 // conversion and the override Badge in LayerInspectorControls.tsx; Position,
 // per-kind geometry and Style in LayerInspectorSections.tsx; the template
 // field settings (fill contract, vocabulary) in LayerInspectorTemplate.tsx.
-import type { ReactNode } from "react";
-import { Barcode, Image, QrCode, Type, XIcon, type LucideIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import {
+  Barcode, Image, Lock, LockOpen, Power, PowerOff, QrCode, Type, XIcon, type LucideIcon,
+} from "lucide-react";
 import type { BindingSide, Layer, LayerKind } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SheetClose } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-  Badge, Field, Heading, LOCK_TITLE, useRequiredText, type Ctx, type DimensionUnit, type Patch,
+  Badge, LOCK_TITLE, type Ctx, type Patch,
 } from "./LayerInspectorControls";
+import type { LengthUnit } from "@/rulers";
 import {
   BarcodeGeometry, ImageGeometry, Position, QrGeometry, StyleSection, TextGeometry,
 } from "./LayerInspectorSections";
@@ -61,8 +64,10 @@ const STALE_POSITION = [
 ] as const;
 
 export function LayerInspector(props: {
-  unit?: DimensionUnit;
-  onUnitChange?: (unit: DimensionUnit) => void;
+  /** The app's length unit (rulers.ts) for X, Y, gap, width, height, wrap
+   *  width, module width and QR size; set from the ruler corner or View →
+   *  Units, never here. Absent = points. */
+  unit?: LengthUnit;
   /** The resolved layer being edited. */
   layer: Layer;
   /** Every layer's id and name, for the "Bind to layer…" picker (the layer
@@ -84,7 +89,8 @@ export function LayerInspector(props: {
   /** The master's typeface, display only. */
   fontFamily?: string;
   /** An image layer holding raster art (PNG/JPEG): it always prints on
-   *  white ink, so Style offers no plate toggle. */
+   *  white ink, so Style offers no plate toggle, and only raster art offers
+   *  Tint raster (an SVG already takes the fill). */
   rasterArt?: boolean;
   /** Shows the header's visible close button. It is a SheetClose, so it
    *  needs the parent Sheet (whose close-press clears the selection, as
@@ -95,8 +101,8 @@ export function LayerInspector(props: {
   selectionCount?: number;
   /** The name of the switched-OFF variant that adds this layer. Such a layer
    *  does not draw and edits to it are dropped (editLabel's patchLayers), so
-   *  Enabled reads off — matching the Layers row — and turning it on enables
-   *  the variant. */
+   *  the header's power reads off — matching the Layers row — and turning
+   *  it on enables the variant. */
   offVariant?: string;
 }) {
   const { layer } = props;
@@ -105,9 +111,17 @@ export function LayerInspector(props: {
     <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
   );
   const ctx: Ctx = { set, badge, unit: props.unit ?? "pt" };
-  // A layer name is required (parseMaster fails on an empty one), so it is
-  // typed through the same guard as a choice's value.
-  const nameProps = useRequiredText(layer.name, (v) => set({ name: v }));
+  // The name box commits like the Layers row's rename (LayerList's
+  // commitRename): on Enter or blur, trimmed, and only when non-empty and
+  // changed — one patch, so one undo step. Escape puts the name back. A name
+  // is required (parseMaster fails on an empty one), so an emptied box is
+  // flagged and leaving it restores the name.
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const commitName = () => {
+    const next = nameDraft?.trim();
+    if (next && next !== layer.name) set({ name: next });
+    setNameDraft(null);
+  };
   const Icon = KIND_ICONS[layer.kind];
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   const enabled = layer.enabled && props.offVariant === undefined;
@@ -125,8 +139,31 @@ export function LayerInspector(props: {
           aria-label="Layer name"
           aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
           className="h-7 flex-1 text-xs font-medium"
-          {...nameProps}
+          value={nameDraft ?? layer.name}
+          aria-invalid={(nameDraft !== null && !nameDraft.trim()) || undefined}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitName();
+            else if (e.key === "Escape") setNameDraft(null);
+          }}
         />
+        {/* Power and lock as icon toggles, the Layers row's icons: they stay
+            reachable with the sidebar hidden (⌘B). Page art has no lock — it
+            can't be dragged, so locking it would do nothing. */}
+        <Button variant="ghost" size="icon-sm" aria-label="Enabled" aria-pressed={enabled}
+          title={enabled ? "Enabled — turn off to stop it drawing" : "Off — turn on to draw this layer"}
+          onClick={() => set({ enabled: !enabled })}>
+          {enabled ? <Power aria-hidden="true" /> : <PowerOff aria-hidden="true" />}
+        </Button>
+        {badge(["enabled"], "Enabled")}
+        {!page && <>
+          <Button variant="ghost" size="icon-sm" aria-label="Locked" aria-pressed={!!layer.locked}
+            title={LOCK_TITLE} onClick={() => set({ locked: !layer.locked })}>
+            {layer.locked ? <Lock aria-hidden="true" /> : <LockOpen aria-hidden="true" />}
+          </Button>
+          {badge(["locked"], "Locked")}
+        </>}
         {props.showCloseButton && (
           <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label="Close inspector" />}>
             <XIcon className="size-4.5" aria-hidden="true" />
@@ -140,51 +177,20 @@ export function LayerInspector(props: {
           Editing {layer.name} only ({props.selectionCount} selected)
         </p>
       )}
-      {/* The two policy switches read as ordinary Fields (label left, control
-          right) like every other row in the panel — crowded onto one line they
-          looked like a toolbar, which they are not. */}
-      <div className="space-y-1.5 pt-2">
-        <Field id={`${layer.id}-enabled`} label="Enabled" badge={badge(["enabled"], "Enabled")}>
-          <Switch id={`${layer.id}-enabled`} aria-label="Enabled" checked={enabled}
-            onCheckedChange={(on) => set({ enabled: on === true })} />
-        </Field>
-        {props.offVariant !== undefined && (
-          <p className="text-[11px] text-muted-foreground">
-            Added by {props.offVariant}, which is off for this label. Turn on to edit.
-          </p>
-        )}
-        <Field id={`${layer.id}-locked`} label="Locked" badge={badge(["locked"], "Locked")}>
-          <Switch id={`${layer.id}-locked`} aria-label="Locked" checked={!!layer.locked}
-            title={LOCK_TITLE}
-            onCheckedChange={(on) => set({ locked: on === true })} />
-        </Field>
-      </div>
-
-      {/* App-wide, not this layer's: it converts the length fields only.
-          Type size, tracking and stroke keep their own units (see their
-          addon titles). Separate from the ruler unit, which is in/pt/px.
-          Page art has no length fields, so it gets no toggle. */}
-      {props.onUnitChange && !page && <Field label="Lengths in">
-        <ToggleGroup aria-label="Lengths in" variant="outline" size="sm" spacing={0}
-          title="Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size"
-          value={[ctx.unit]} onValueChange={(values) => {
-            const unit = values[0];
-            if (unit === "mm" || unit === "pt") props.onUnitChange?.(unit);
-          }}>
-          <ToggleGroupItem value="mm" aria-label="Millimeters" className="h-6 px-2 text-xs">mm</ToggleGroupItem>
-          <ToggleGroupItem value="pt" aria-label="Points" className="h-6 px-2 text-xs">pt</ToggleGroupItem>
-        </ToggleGroup>
-      </Field>}
+      {props.offVariant !== undefined && (
+        <p className="text-[11px] text-muted-foreground">
+          Added by {props.offVariant}, which is off for this label. Turn on to edit.
+        </p>
+      )}
 
       {props.content !== undefined && (
-        <div className="space-y-1.5">
-          <Heading>Content</Heading>
-          {props.content}
-        </div>
+        // No heading: the editor's own caption (Text, Code, Link, Texture…)
+        // names it.
+        <div className="pt-2">{props.content}</div>
       )}
 
       {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
-      {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}
+      {layer.kind === "image" && <ImageGeometry layer={layer} rasterArt={props.rasterArt} {...ctx} />}
       {layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
       {/* A barcode has no `input` to hang a contract off, but its tier list is
           the same vocabulary a style has. */}

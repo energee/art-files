@@ -126,7 +126,7 @@ export function lolevMaster(): Master {
         lines: [{ text: "STORE COLD", ...GOLD_METAL, bold: true }] }),
       {
         id: "qr", name: "QR", kind: "qr", enabled: true, x: LEFT_X, anchor: "left", y: 281.44,
-        size: 59, qrStyle: "dots", ecLevel: "L", value: "https://lolev.beer/beer/{name|slug}",
+        size: 59, qrStyle: "dots", ecLevel: "Q", value: "https://lolev.beer/beer/{name|slug}",
         style: { ...GOLD_METAL, stroke: KEYLINE.stroke, strokeWidth: KEYLINE.strokeWidth,
           strokeLayer: DEFAULT_STROKE_LAYER },
       },
@@ -153,10 +153,10 @@ export function lolevMaster(): Master {
           // Logo top = lead's last baseline + 8 → 8 - descent(3.15).
           collabLeft: image({ id: "collabLeft", name: "Text logo", asset: "",
             x: LEFT_X, anchor: "left", y: { below: "collabLead", gap: 8 - 0.35 * 9 },
-            w: 70, h: 44, scale: 1, tintRaster: false }),
+            w: 70, h: 44, tintRaster: false }),
           collabCenter: image({ id: "collabCenter", name: "Graphic logo", asset: "",
             x: CENTER_X, anchor: "center", y: { below: "logo", gap: 14 },
-            w: 36, h: 36, scale: 1, tintRaster: false }),
+            w: 36, h: 36, tintRaster: false }),
         },
       },
     ],

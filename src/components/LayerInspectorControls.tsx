@@ -1,5 +1,5 @@
 // LayerInspectorControls.tsx — the inspector's shared building blocks: the
-// pt/mm unit conversion every dimensional field goes through, the row and
+// pt -> length-unit conversion every dimensional field goes through, the row and
 // field layouts, the per-source override Badge, the option lists the
 // dropdowns and segmented controls offer, and the `Ctx` each section of
 // LayerInspector.tsx receives. Split out of LayerInspector.tsx (#433); see
@@ -24,6 +24,7 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { NumberRoot, ScrubField, UnitInput } from "./ScrubField";
 import { decimalsOf, PT_STEP, roundToStep } from "@/numeric";
+import { unitPt, type LengthUnit } from "@/rulers";
 
 export type Patch = DeepPartial<Layer>;
 
@@ -32,59 +33,61 @@ export type Patch = DeepPartial<Layer>;
  *  coarse enough to cross the label. */
 export const PT = { step: PT_STEP, dragStep: 0.5 } as const;
 
-// The model stays in PDF points; only dimensional controls convert for display.
-const MM_PER_PT = 25.4 / 72;
-export type DimensionUnit = "mm" | "pt";
+// The model stays in PDF points; only dimensional controls convert for display,
+// into the app's one length unit (rulers.ts unitPt).
 
-// A millimetre is ~2.8 points, so mm needs one more decimal than pt to keep
-// the model's 0.01pt precision — at two, a sub-millimetre value (a barcode's
-// module width) rounds to 0.00 in the field while the layer holds a real one.
-const DISPLAY_STEP = { mm: 0.001, pt: PT_STEP } as const;
+/** The finest reading each unit shows: fine enough that every 0.01pt model
+ *  value (PT_STEP) has its own reading. A millimetre is ~2.8 points, so mm
+ *  needs three decimals — at two, a sub-millimetre value (a barcode's module
+ *  width) rounds to 0.00 in the field while the layer holds a real one; an
+ *  inch needs four, and a 600 DPI pixel (0.12pt) two. */
+const DISPLAY_STEP: Record<LengthUnit, number> = { in: 0.0001, mm: 0.001, pt: PT_STEP, px: 0.01 };
 
 /** A field's reading back to points at the model's `step` — the one
  *  conversion both committing a value and choosing its display go through. */
-const toPoints = (value: number, unit: string, step: number) =>
-  roundToStep(unit === "mm" ? value / MM_PER_PT : value, step);
+const toPoints = (value: number, unit: LengthUnit, step: number) =>
+  roundToStep(value * unitPt(unit), step);
 
 /** A typed or scrubbed reading back to points (toPoints), then clamped to
  *  the field's point bounds — after rounding, so a rounded-up millimetre
  *  reading of a bound (1pt -> 0.353mm -> 1.0006pt) cannot slip past it. */
-const clampedPoints = (value: number, b: { unit: string; step: number; min: number; max: number }) =>
+const clampedPoints = (value: number, b: { unit: LengthUnit; step: number; min: number; max: number }) =>
   Math.min(b.max, Math.max(b.min, toPoints(value, b.unit, b.step)));
 
-/** A stored point value as the field shows it. Millimetres use the FEWEST
- *  decimals (up to DISPLAY_STEP.mm's three) that store back to the same
+/** A stored point value as the field shows it. Other units than points use
+ *  the FEWEST decimals (up to their DISPLAY_STEP) that store back to the same
  *  points: 50mm is kept as 141.73pt, which reads 49.999mm at three decimals —
  *  the drift in #131 — but 50 already stores 141.73, so 50 is what shows. A
- *  value that needs the third decimal (1pt is 0.353mm; 0.35 would store
- *  0.99pt) still gets it. Any other unit shows the value at `step`. */
-function displayValue(points: number, unit: string, step: number): number {
-  if (unit !== "mm") return roundToStep(points, step);
-  const exact = points * MM_PER_PT;
+ *  value that needs the last decimal (1pt is 0.353mm; 0.35 would store
+ *  0.99pt) still gets it. Points show the value at `step`. */
+function displayValue(points: number, unit: LengthUnit, step: number): number {
+  if (unit === "pt") return roundToStep(points, step);
+  const exact = points / unitPt(unit);
   const stored = roundToStep(points, step);
-  for (let d = 0; d < decimalsOf(DISPLAY_STEP.mm); d++) {
+  for (let d = 0; d < decimalsOf(DISPLAY_STEP[unit]); d++) {
     const shown = Number(exact.toFixed(d));
     if (toPoints(shown, unit, step) === stored) return shown;
   }
-  return roundToStep(exact, DISPLAY_STEP.mm);
+  return roundToStep(exact, DISPLAY_STEP[unit]);
 }
 
 /** A point-valued field's bounds, steps and shown value in its display unit
  *  — the one pt->display mapping DimensionField and BlankableField share.
  *  Coming back, clampedPoints returns a reading to points. */
-function unitProps(p: { unit: string; value: number; min: number; max: number; step: number; dragStep?: number }) {
-  const mm = p.unit === "mm";
-  const scale = mm ? MM_PER_PT : 1;
+function unitProps(p: { unit: LengthUnit; value: number; min: number; max: number; step: number; dragStep?: number }) {
+  if (p.unit === "pt") return { value: displayValue(p.value, "pt", p.step), min: p.min, max: p.max, step: p.step, dragStep: p.dragStep };
+  const scale = 1 / unitPt(p.unit);
+  const fine = DISPLAY_STEP[p.unit];
   return {
     value: displayValue(p.value, p.unit, p.step), min: p.min * scale, max: p.max * scale,
     // The pt drag step converted, so an arrow press moves the same physical
-    // distance in either unit (never below the mm display precision).
-    step: mm ? DISPLAY_STEP.mm : p.step,
-    dragStep: mm ? Math.max(DISPLAY_STEP.mm, roundToStep((p.dragStep ?? p.step) * MM_PER_PT, DISPLAY_STEP.mm)) : p.dragStep,
+    // distance in every unit (never below the unit's display precision).
+    step: fine,
+    dragStep: Math.max(fine, roundToStep((p.dragStep ?? p.step) * scale, fine)),
   };
 }
 
-export function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: DimensionUnit }) {
+export function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: LengthUnit }) {
   return <ScrubField {...props} key={props.unit} {...unitProps(props)}
     // Back to points at the MODEL's precision, then clamped (clampedPoints).
     onChange={(value) => props.onChange(clampedPoints(value, props))} />;
@@ -171,14 +174,17 @@ export function Badge(props: {
 /** A number that may be ABSENT (text wrap width, image height): blank means
  *  "none"/"auto" and emits `undefined` — see LayerInspector.tsx's header for
  *  what the parent must do with that. The same NumberField and InputGroup as
- *  ScrubField, without the scrub, so it sits in the same right-hand column. */
+ *  ScrubField, without the scrub, so it sits in the same right-hand column.
+ *  `unit` "" is a plain number (a fill's Minimum/Maximum): no conversion and
+ *  an empty addon. */
 export function BlankableField(props: {
-  id: string; label: string; unit: string; placeholder: string;
+  id: string; label: string; unit: LengthUnit | ""; placeholder: string;
   value: number | undefined; min: number; max: number; step: number; dragStep?: number;
   badge?: ReactNode;
   onChange: (v: number | undefined) => void;
 }) {
-  const shown = unitProps({ ...props, value: props.value ?? 0 });
+  const conv = { ...props, unit: props.unit || "pt" as const };
+  const shown = unitProps({ ...conv, value: props.value ?? 0 });
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
       <NumberRoot
@@ -188,7 +194,7 @@ export function BlankableField(props: {
         // DimensionField does: without it a millimetre reading typed back
         // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
         // master, so the override badge can't be cleared from this field.
-        onChange={(v) => props.onChange(v === null ? undefined : clampedPoints(v, props))}
+        onChange={(v) => props.onChange(v === null ? undefined : clampedPoints(v, conv))}
       >
         <UnitInput unit={props.unit} placeholder={props.placeholder} />
       </NumberRoot>
@@ -310,13 +316,14 @@ export function SelectField<T extends string>(props: {
 /** What every section receives: the layer, the one write, and the badge
  *  factory bound to this layer's overridden set. */
 export interface Ctx {
-  unit: DimensionUnit;
+  unit: LengthUnit;
   set: (patch: Patch) => void;
   badge: (paths: readonly string[], label: string) => ReactNode;
 }
 
-/** A REQUIRED text box: one parseMaster refuses to leave empty (a layer name,
- *  a choice's value). Pushing an emptied box straight at the model threw, App
+/** A REQUIRED text box: one parseMaster refuses to leave empty (a choice's
+ *  value; the layer name box commits on Enter instead, LayerInspector.tsx).
+ *  Pushing an emptied box straight at the model threw, App
  *  caught it into the menu-bar alert, and the text sprang back with a banner
  *  that stayed up. The draft lets the box go empty while you retype, commits
  *  every keystroke that has something in it, and falls back to the last good

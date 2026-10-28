@@ -1,0 +1,326 @@
+[
+  {
+    "viewport": [
+      1440,
+      1000
+    ],
+    "scrollWidth": 1440,
+    "inspector": [
+      {
+        "rect": {
+          "x": 1140,
+          "y": 0,
+          "width": 300,
+          "height": 1000,
+          "top": 0,
+          "right": 1440,
+          "bottom": 1000,
+          "left": 1140
+        },
+        "scrollHeight": 1000,
+        "clientHeight": 1000
+      }
+    ],
+    "canvas": [
+      {
+        "rect": {
+          "x": 258,
+          "y": 240.3515625,
+          "width": 881,
+          "height": 555.046875,
+          "top": 240.3515625,
+          "right": 1139,
+          "bottom": 795.3984375,
+          "left": 258
+        },
+        "width": 1800,
+        "height": 1136
+      },
+      {
+        "rect": {
+          "x": 258,
+          "y": 240.3515625,
+          "width": 881,
+          "height": 555.046875,
+          "top": 240.3515625,
+          "right": 1139,
+          "bottom": 795.3984375,
+          "left": 258
+        },
+        "width": 300,
+        "height": 150
+      }
+    ],
+    "buttons": [
+      {
+        "name": "Layers",
+        "rect": {
+          "x": 265.75,
+          "y": 6.5,
+          "width": 19.5,
+          "height": 19.5,
+          "top": 6.5,
+          "right": 285.25,
+          "bottom": 26,
+          "left": 265.75
+        }
+      },
+      {
+        "name": "Close inspector",
+        "rect": {
+          "x": 1404.25,
+          "y": 9.75,
+          "width": 22.75,
+          "height": 22.75,
+          "top": 9.75,
+          "right": 1427,
+          "bottom": 32.5,
+          "left": 1404.25
+        }
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1024,
+      768
+    ],
+    "scrollWidth": 1024,
+    "inspector": [
+      {
+        "rect": {
+          "x": 724,
+          "y": 0,
+          "width": 300,
+          "height": 768,
+          "top": 0,
+          "right": 1024,
+          "bottom": 768,
+          "left": 724
+        },
+        "scrollHeight": 873,
+        "clientHeight": 768
+      }
+    ],
+    "canvas": [
+      {
+        "rect": {
+          "x": 258,
+          "y": 255.5703125,
+          "width": 465,
+          "height": 292.609375,
+          "top": 255.5703125,
+          "right": 723,
+          "bottom": 548.1796875,
+          "left": 258
+        },
+        "width": 1800,
+        "height": 1136
+      },
+      {
+        "rect": {
+          "x": 258,
+          "y": 255.5703125,
+          "width": 465,
+          "height": 292.609375,
+          "top": 255.5703125,
+          "right": 723,
+          "bottom": 548.1796875,
+          "left": 258
+        },
+        "width": 300,
+        "height": 150
+      }
+    ],
+    "buttons": [
+      {
+        "name": "Layers",
+        "rect": {
+          "x": 265.75,
+          "y": 6.5,
+          "width": 19.5,
+          "height": 19.5,
+          "top": 6.5,
+          "right": 285.25,
+          "bottom": 26,
+          "left": 265.75
+        }
+      },
+      {
+        "name": "Close inspector",
+        "rect": {
+          "x": 988.25,
+          "y": 9.75,
+          "width": 22.75,
+          "height": 22.75,
+          "top": 9.75,
+          "right": 1011,
+          "bottom": 32.5,
+          "left": 988.25
+        }
+      }
+    ]
+  },
+  {
+    "viewport": [
+      768,
+      900
+    ],
+    "scrollWidth": 768,
+    "inspector": [
+      {
+        "rect": {
+          "x": 468,
+          "y": 0,
+          "width": 300,
+          "height": 900,
+          "top": 0,
+          "right": 768,
+          "bottom": 900,
+          "left": 468
+        },
+        "scrollHeight": 900,
+        "clientHeight": 900
+      }
+    ],
+    "canvas": [
+      {
+        "rect": {
+          "x": 258,
+          "y": 402.3203125,
+          "width": 209,
+          "height": 131.109375,
+          "top": 402.3203125,
+          "right": 467,
+          "bottom": 533.4296875,
+          "left": 258
+        },
+        "width": 1800,
+        "height": 1136
+      },
+      {
+        "rect": {
+          "x": 258,
+          "y": 402.3203125,
+          "width": 209,
+          "height": 131.109375,
+          "top": 402.3203125,
+          "right": 467,
+          "bottom": 533.4296875,
+          "left": 258
+        },
+        "width": 300,
+        "height": 150
+      }
+    ],
+    "buttons": [
+      {
+        "name": "Layers",
+        "rect": {
+          "x": 265.75,
+          "y": 6.5,
+          "width": 19.5,
+          "height": 19.5,
+          "top": 6.5,
+          "right": 285.25,
+          "bottom": 26,
+          "left": 265.75
+        }
+      },
+      {
+        "name": "Close inspector",
+        "rect": {
+          "x": 732.25,
+          "y": 9.75,
+          "width": 22.75,
+          "height": 22.75,
+          "top": 9.75,
+          "right": 755,
+          "bottom": 32.5,
+          "left": 732.25
+        }
+      }
+    ]
+  },
+  {
+    "viewport": [
+      375,
+      812
+    ],
+    "scrollWidth": 375,
+    "inspector": [
+      {
+        "rect": {
+          "x": 75,
+          "y": 0,
+          "width": 300,
+          "height": 812,
+          "top": 0,
+          "right": 375,
+          "bottom": 812,
+          "left": 75
+        },
+        "scrollHeight": 873,
+        "clientHeight": 812
+      }
+    ],
+    "canvas": [
+      {
+        "rect": {
+          "x": 258,
+          "y": 423.875,
+          "width": 0,
+          "height": 0,
+          "top": 423.875,
+          "right": 258,
+          "bottom": 423.875,
+          "left": 258
+        },
+        "width": 1800,
+        "height": 1136
+      },
+      {
+        "rect": {
+          "x": 258,
+          "y": 423.875,
+          "width": 0,
+          "height": 0,
+          "top": 423.875,
+          "right": 258,
+          "bottom": 423.875,
+          "left": 258
+        },
+        "width": 300,
+        "height": 150
+      }
+    ],
+    "buttons": [
+      {
+        "name": "Layers",
+        "rect": {
+          "x": 265.75,
+          "y": 6.5,
+          "width": 19.5,
+          "height": 19.5,
+          "top": 6.5,
+          "right": 285.25,
+          "bottom": 26,
+          "left": 265.75
+        }
+      },
+      {
+        "name": "Close inspector",
+        "rect": {
+          "x": 339.25,
+          "y": 9.75,
+          "width": 22.75,
+          "height": 22.75,
+          "top": 9.75,
+          "right": 362,
+          "bottom": 32.5,
+          "left": 339.25
+        }
+      }
+    ]
+  }
+]

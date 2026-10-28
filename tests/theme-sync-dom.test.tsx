@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 // theme-sync-dom.test.tsx — every useTheme reader follows a change made
-// through any of them: the View → Appearance checks (App) and the Settings
-// switch (ThemeSwitch) must never disagree about the current theme.
+// through any of them, so no two surfaces showing the theme can disagree.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";

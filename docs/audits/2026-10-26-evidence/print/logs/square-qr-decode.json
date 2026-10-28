@@ -1,0 +1,21 @@
+{
+  "crop": {
+    "dpi": 600,
+    "x": 156,
+    "y": 2262,
+    "w": 658,
+    "h": 658
+  },
+  "decoder": {
+    "formats": [
+      "QRCode"
+    ],
+    "tryHarder": true
+  },
+  "rotations": [
+    "https://lolev.beer/beer/audit-labradorite",
+    "https://lolev.beer/beer/audit-labradorite",
+    "https://lolev.beer/beer/audit-labradorite",
+    "https://lolev.beer/beer/audit-labradorite"
+  ]
+}

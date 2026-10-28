@@ -21,7 +21,7 @@ it("quietly advertises updates, keeps Later discoverable, and reuses the update 
   document.body.append(container, bar, nextBar);
   const root = createRoot(container);
   const render = (host: HTMLElement, request = 0) => root.render(
-    <DesktopUpdater dirty checkRequest={request} statusHost={host} />,
+    <DesktopUpdater checkRequest={request} statusHost={host} />,
   );
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
   try {
@@ -51,7 +51,34 @@ it("quietly advertises updates, keeps Later discoverable, and reuses the update 
   expect(update.close).toHaveBeenCalledTimes(1);
 });
 
-it("shows Up to date after the launch check and keeps it after closing a manual check", async () => {
+it("renders bold release-note spans without interpreting HTML or unmatched markers", async () => {
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockResolvedValue({
+    version: "0.2.0", currentVersion: "0.1.0",
+    body: "### **Fixed**\n- **Blank barcodes** export; use **Browse**\n  to select files.\nPlain <img src=x onerror=alert(1)> and **unfinished",
+    close: vi.fn().mockResolvedValue(undefined),
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={1} />));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect([...dialog.querySelectorAll("strong")].map((el) => el.textContent))
+      .toEqual(["Fixed", "Blank barcodes", "Browse"]);
+    expect(dialog.textContent).toContain("Blank barcodes export; use Browse to select files.");
+    expect(dialog.textContent).toContain("Plain <img src=x onerror=alert(1)> and **unfinished");
+    expect(dialog.querySelector("img")).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+// Up to date is not something to act on, so the status bar stays empty; a
+// manual check still answers in its dialog.
+it("leaves the status bar empty when up to date, and a manual check answers in its dialog", async () => {
   vi.useFakeTimers();
   mocks.invoke.mockResolvedValue(true);
   mocks.check.mockResolvedValue(null);
@@ -60,17 +87,18 @@ it("shows Up to date after the launch check and keeps it after closing a manual 
   document.body.append(container, bar);
   const root = createRoot(container);
   try {
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} />));
     expect(bar.textContent).toBe("");
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-    expect(bar.querySelector('[role="status"]')?.textContent?.trim()).toBe("Up to date");
+    expect(mocks.check).toHaveBeenCalledTimes(1);
+    expect(bar.textContent).toBe("");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={1} statusHost={bar} />));
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.textContent).toContain("Label Lab is up to date");
     const close = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Close")!;
     await act(async () => close.click());
-    expect(bar.textContent?.trim()).toBe("Up to date");
+    expect(bar.textContent).toBe("");
   } finally {
     await act(async () => root.unmount());
     container.remove(); bar.remove();
@@ -93,7 +121,7 @@ it("moves download progress into the status bar once Install is chosen", async (
   const root = createRoot(container);
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
   try {
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} />));
     await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     await act(async () => button("Update available").click());
     await act(async () => button("Install").click());
@@ -126,8 +154,9 @@ it("installs without relaunching, then offers Restart to finish from the status 
   const root = createRoot(container);
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
   try {
+    const beforeRestart = vi.fn().mockResolvedValue(true);
     await act(async () => root.render(
-      <DesktopUpdater dirty checkRequest={0} statusHost={bar} onInstalled={onInstalled} />));
+      <DesktopUpdater checkRequest={0} statusHost={bar} onInstalled={onInstalled} beforeRestart={beforeRestart} />));
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     await act(async () => button("Update available").click());
     await act(async () => button("Install").click());
@@ -137,10 +166,9 @@ it("installs without relaunching, then offers Restart to finish from the status 
     expect(onInstalled).toHaveBeenCalledTimes(1);
     expect(bar.textContent).toContain("Restart to finish · 0.2.0");
     await act(async () => button("Restart to finish").click());
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("unsaved changes");
-    expect(button("Restart Now").disabled).toBe(true);
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} onInstalled={onInstalled} />));
+    expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain("unsaved changes");
     await act(async () => button("Restart Now").click());
+    expect(beforeRestart).toHaveBeenCalledOnce();
     expect(mocks.invoke).toHaveBeenCalledWith("relaunch_app");
   } finally {
     await act(async () => root.unmount());
@@ -165,13 +193,13 @@ it("a manual check during a download shows the download, and Restart Now reports
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
   const dialog = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
   try {
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} />));
     await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     await act(async () => button("Update available").click());
     await act(async () => button("Install").click());
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     // Check for Updates… while downloading: a titled dialog, not a blank one.
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={1} statusHost={bar} />));
     expect(dialog()).toContain("Installing Label Lab 0.2.0");
     await act(async () => button("Close").click());
     expect(bar.textContent).toContain("Installing 0.2.0");
@@ -187,7 +215,7 @@ it("a manual check during a download shows the download, and Restart Now reports
     // dialog rather than a blank one (issue #123).
     await act(async () => button("Close").click());
     expect(bar.textContent).toContain("Restart to finish · 0.2.0");
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={2} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={2} statusHost={bar} />));
     expect(dialog()).toContain("Restart to finish updating");
     expect(update.close).not.toHaveBeenCalled();
   } finally {
@@ -206,7 +234,7 @@ it("re-checks quietly when the window regains focus, at most once per throttle w
   document.body.append(container, bar);
   const root = createRoot(container);
   try {
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} />));
     await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     expect(mocks.check).toHaveBeenCalledTimes(1);
     // Focus right after launch is throttled.
@@ -227,34 +255,46 @@ it("re-checks quietly when the window regains focus, at most once per throttle w
   }
 });
 
-it("blocks restarting over dirty tabs and permits it after saving (#292)", async () => {
+// Restart Now is never greyed out: it walks the unsaved tabs the way a quit
+// does (the shell's beforeRestart), and Cancel there keeps the app running
+// (#292).
+it("Restart Now walks the unsaved tabs first, and a cancelled walk keeps the app running (#292)", async () => {
   mocks.invoke.mockResolvedValue(true);
   mocks.check.mockResolvedValue({ version: "0.2.0", currentVersion: "0.1.0", close: vi.fn().mockResolvedValue(undefined), downloadAndInstall: vi.fn().mockResolvedValue(undefined) });
   const host = document.createElement("div"); const bar = document.createElement("div"); document.body.append(host, bar);
   const root = createRoot(host);
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
+  const beforeRestart = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
   try {
-    await act(async () => root.render(<DesktopUpdater dirty checkRequest={0} statusHost={bar} />));
-    await act(async () => root.render(<DesktopUpdater dirty checkRequest={1} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} beforeRestart={beforeRestart} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={1} statusHost={bar} beforeRestart={beforeRestart} />));
     await act(async () => button("Install").click());
     await act(async () => (bar.querySelector("button") as HTMLButtonElement).click());
-    expect(button("Restart Now").disabled).toBe(true);
+    expect(button("Restart Now").disabled).toBe(false);
+    expect(document.body.textContent).not.toContain("Save or discard");
     await act(async () => button("Restart Now").click());
+    expect(beforeRestart).toHaveBeenCalledTimes(1);
     expect(mocks.invoke).not.toHaveBeenCalledWith("relaunch_app");
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    // The dialog stepped aside for the walk; the status bar still offers it.
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(bar.textContent).toContain("Restart to finish");
+    await act(async () => (bar.querySelector("button") as HTMLButtonElement).click());
     await act(async () => button("Restart Now").click());
+    expect(beforeRestart).toHaveBeenCalledTimes(2);
     expect(mocks.invoke).toHaveBeenCalledWith("relaunch_app");
   } finally { await act(async () => root.unmount()); host.remove(); bar.remove(); }
 });
-it("keeps failed installs discoverable and offers a fresh check (#318)", async () => {
+it("keeps failed installs discoverable, and Try again retries the install itself (#318)", async () => {
   mocks.invoke.mockResolvedValue(true);
-  mocks.check.mockResolvedValue({ version: "0.2.0", currentVersion: "0.1.0", close: vi.fn().mockResolvedValue(undefined), downloadAndInstall: vi.fn().mockRejectedValue(new Error("offline")) });
+  const update = { version: "0.2.0", currentVersion: "0.1.0", close: vi.fn().mockResolvedValue(undefined),
+    downloadAndInstall: vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(undefined) };
+  mocks.check.mockResolvedValue(update);
   const host = document.createElement("div"); const bar = document.createElement("div"); document.body.append(host, bar);
   const root = createRoot(host);
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
   try {
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={1} statusHost={bar} />));
     await act(async () => button("Install").click());
     // Install closed the dialog for status-bar progress; the rejection reopens it.
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Could not install the update: offline");
@@ -262,8 +302,11 @@ it("keeps failed installs discoverable and offers a fresh check (#318)", async (
     expect(bar.textContent).toContain("Update failed");
     await act(async () => (bar.querySelector("button") as HTMLButtonElement).click());
     await act(async () => button("Try again").click());
-    expect(mocks.check).toHaveBeenCalledTimes(2);
-    expect(document.body.textContent).toContain("Update available");
+    // One click: the same update installs again, with no fresh check first.
+    expect(mocks.check).toHaveBeenCalledTimes(1);
+    expect(update.downloadAndInstall).toHaveBeenCalledTimes(2);
+    expect(bar.textContent).toContain("Restart to finish · 0.2.0");
+    expect(update.close).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); host.remove(); bar.remove(); }
 });
 
@@ -275,7 +318,7 @@ it("logs a failed automatic check without opening the dialog or marking the stat
   const host = document.createElement("div"); const bar = document.createElement("div"); document.body.append(host, bar);
   const root = createRoot(host);
   try {
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} />));
     await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     expect(mocks.check).toHaveBeenCalledTimes(1);
     // Exactly one call: the silenced spy must not hide any other console error.
@@ -296,8 +339,8 @@ it("a failed manual check leaves no failure in the status bar once closed", asyn
   const root = createRoot(host);
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
   try {
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
-    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater checkRequest={1} statusHost={bar} />));
     expect(document.body.textContent).toContain("offline");
     await act(async () => button("Close").click());
     // Nothing failed to install, so there is nothing to retry from the bar.

@@ -19,6 +19,8 @@ import {
 // saved config) — the rule numeric.ts states for callers that predict it.
 import { decimalsOf } from "@/numeric";
 
+const WIDE_UNITS = new Set(["in", "mm", "px"]);
+
 /** Text NumberField (en-US, no grouping) parses as a number. */
 const PARSEABLE = /^[-+]?(\d+\.?\d*|\.\d+)$/;
 
@@ -68,10 +70,12 @@ export function NumberRoot(props: {
   );
 }
 
-/** The input and its unit addon; render inside a NumberRoot. */
+/** The input and its unit addon; render inside a NumberRoot. Wider for the
+ *  length units whose readings run to more digits than points (0.0139 in,
+ *  0.353 mm, 4800.25 px). */
 export function UnitInput(props: { unit: string; unitTitle?: string; placeholder?: string }) {
   return (
-    <InputGroup className={props.unit === "mm" ? "h-6 w-28" : "h-6 w-24"}>
+    <InputGroup className={WIDE_UNITS.has(props.unit) ? "h-6 w-28" : "h-6 w-24"}>
       <NumberField.Input
         render={<InputGroupInput className="h-6 text-xs" />}
         placeholder={props.placeholder}
@@ -94,8 +98,8 @@ export function ScrubField(props: {
   icon?: LucideIcon;
   /** Shown as the InputGroup's trailing addon, e.g. "pt" or "px". */
   unit: string;
-  /** The addon's tooltip, for a field whose unit the inspector's mm/pt
-   *  toggle does not convert ("Type size is always points"). */
+  /** The addon's tooltip, for a field the app's length unit does not
+   *  convert ("Type size is always points"). */
   unitTitle?: string;
   value: number;
   min: number;

@@ -1,0 +1,32 @@
+[
+  {
+    "hint": "../outside/sentinel.master",
+    "resolved": "/tmp/label-lab-audit-2026-10-26/input/outside/sentinel.master",
+    "trusted": false
+  },
+  {
+    "hint": "/tmp/label-lab-audit-2026-10-26/outside/sentinel.master",
+    "resolved": "/tmp/label-lab-audit-2026-10-26/outside/sentinel.master",
+    "trusted": false
+  },
+  {
+    "hint": "./sibling.master",
+    "resolved": "/tmp/label-lab-audit-2026-10-26/input/safe/sibling.master",
+    "trusted": true
+  },
+  {
+    "hint": "/tmp/label-lab-audit-2026-10-26/input/safe/sibling.master",
+    "resolved": "/tmp/label-lab-audit-2026-10-26/input/safe/sibling.master",
+    "trusted": true
+  },
+  {
+    "hint": "C:\\outside\\sentinel.master",
+    "resolved": "C:\\outside\\sentinel.master",
+    "trusted": false
+  },
+  {
+    "hint": "safe/../sentinel.master",
+    "resolved": "/tmp/label-lab-audit-2026-10-26/input/safe/sentinel.master",
+    "trusted": true
+  }
+]

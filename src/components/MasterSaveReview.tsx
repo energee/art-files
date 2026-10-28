@@ -1,12 +1,13 @@
 // MasterSaveReview.tsx — the dialog between an edit and the template
-// (docs/plans/label-first-editing.md, Task 7). The master never changes
-// implicitly: every Save Master shows what it is about to write first.
+// (docs/plans/label-first-editing.md, Task 7). It opens only when the label
+// has overrides that could be promoted — the one decision a save asks for;
+// with none, App's Save Master writes straight away and its header note says
+// how many changes went into the file.
 //
 // Two kinds of row, and the difference is the whole point:
 //   * STRUCTURAL and fill-contract rows (added / removed / moved / renamed /
-//     property) are already in the edited master. They are checked and
-//     DISABLED — unchecking one would be an undo, which is Cmd-Z's job, not a
-//     save option.
+//     property) are already in the edited master. They are plain text, no
+//     checkbox — undoing one is ⌘Z's job, not a save option.
 //   * PROMOTE rows are the label's own deviations — its overrides (design) and
 //     its values (content, on the layer's own `lines` / `asset` / `value`
 //     path) — offered for folding into the template. Off by default, because
@@ -20,6 +21,7 @@ import { useMemo, useState } from "react";
 import type { MasterChange } from "@/model/edit";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle,
 } from "@/components/ui/dialog";
@@ -136,7 +138,7 @@ export function MasterSaveReview(props: {
 
   // Every promotable row, in list order — what the "all overrides" tick
   // covers. The structural rows are not offered: they are already in the
-  // master and their checkboxes are disabled.
+  // master.
   const promotable = useMemo(
     () => props.changes.filter((c) => c.kind === "promote").map(rowId),
     [props.changes]);
@@ -176,18 +178,16 @@ export function MasterSaveReview(props: {
               <p className="text-xs font-medium text-muted-foreground">{g.name}</p>
               {g.rows.map((c) => {
                 const row = rowId(c);
-                return (
-                <label key={row} className="mt-1 flex items-center gap-2">
-                  <Checkbox
-                    data-row={row}
-                    disabled={c.kind !== "promote"}
-                    checked={c.kind !== "promote" || ticked.has(row)}
-                    onCheckedChange={() => toggle(row)} />
-                  <span className={c.kind === "promote" ? "text-attention-text"
-                    : c.kind === "removed" ? "text-destructive-text" : "text-muted-foreground"}>
+                return c.kind === "promote" ? (
+                  <label key={row} className="mt-1 flex items-center gap-2">
+                    <Checkbox data-row={row} checked={ticked.has(row)} onCheckedChange={() => toggle(row)} />
+                    <span className="text-attention-text">{rowText(c)}</span>
+                  </label>
+                ) : (
+                  <p key={row} data-row={row}
+                    className={cn("mt-1", c.kind === "removed" ? "text-destructive-text" : "text-muted-foreground")}>
                     {rowText(c)}
-                  </span>
-                </label>
+                  </p>
                 );
               })}
             </div>

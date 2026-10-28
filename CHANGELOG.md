@@ -4,6 +4,55 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **New Label Lab icon.** Updated the application icon across desktop platforms and the browser favicon.
+- **Interface library patch updates.** Tauri JS 2.12.4 and its dialog and file-system plugins, React 19.3.1, Lucide icons 1.61, react-dropzone 20.1.4 and zxing-wasm 3.1.6, plus newer build tooling; no change in behaviour.
+- **Settings… is where Mac apps keep it.** On macOS it moved from Edit to the **Label Lab** menu, under Check for Updates…, and it has a shortcut everywhere: `⌘,` (`Ctrl+,` on Windows and Linux, where it stays under Edit).
+- **The quit prompt says you're quitting.** With unsaved tabs, `⌘Q`, Dock → Quit or the window's close button now ask “Save changes to “…” before quitting?”, and say Cancel keeps Label Lab open, instead of offering to close the tab.
+- **Power and lock sit in the inspector's header.** The inspector's Enabled and Locked switch rows are now two icon buttons beside ✕, with the same power and lock icons as the Layers row, so the layer's content comes first and both still work with the sidebar hidden.
+- **Metallic is greyed out with no ink.** While a layer's Fill is "No ink" its Metallic toggle is disabled: there is nothing to plate.
+- **Save Master… under the picker appears only when the master changed.** Moving, restyling or filling a layer for this beer is a label override that `⌘S` saves, so it no longer brings up the pink button (or pushes the Layers list down). File → Save Master… stays enabled while the label has overrides, so promoting them works as before.
+- **Switching masters happens at once.** Picking another master, or File → Open Master…, no longer stops at a Continue card when the switch would hide filled fields; it switches straight away, and the header note names what was set aside with “⌘Z to restore”. Open Master no longer pops the sidebar open. One ⌘Z puts the label back on its old master; art the switch filled into an empty texture, mask or image slot stays.
+- **Save Master skips the review when there is nothing to decide.** With no override or filled value to promote, Save Master writes straight away (Save Master As goes straight to the save dialog) and the header says “Saved lolev.master — 3 changes”. When the review does open, changes already in the master are a plain list; only the overrides and values you can promote have checkboxes.
+- **Save in the close prompt keeps master edits too.** When a tab has unsaved master edits, the close or quit prompt's Save now saves the master first (straight to the file, or through the review when there are overrides to promote) and then the label. The extra **Review Master…** button and the warning that Save would discard the master edits are gone.
+- **One question before quitting with several unsaved tabs.** With more than one unsaved tab, quitting or closing the window first asks once: **Review Changes…** (the prompt per tab, as before), **Discard All** or **Cancel**. A single unsaved tab still gets its own prompt straight away.
+- **Restart Now works with unsaved tabs.** Restart Now (and Install and Restart on Windows) is no longer greyed out with a “save first” note: it walks the unsaved tabs the way quitting does, then restarts; Cancel keeps Label Lab running and the update waiting in the status bar.
+- **Try again retries a failed update install.** After a failed install, Try again installs the same update again in one click instead of starting a fresh check.
+- **Settings → Resolution is now PSD resolution.** It only sets the PSD raster resolution and the pixel ruler's scale; the PDFs are unaffected.
+- **Esc keeps what you typed on the preview.** Pressing Esc while editing text in place on the preview now finishes the edit and keeps your typing, like Enter or a click away (and like Figma and Illustrator). Before, Esc threw the typing away. `⌘Z` still takes the whole edit back in one step, and a new Style typed this way joins the master's choices once.
+- **One unit for every length, remembered.** Pick Inches, Millimetres, Points or Pixels once, in the ruler corner or the new View → Units menu, and the rulers, the inspector's X / Y / width / height / gap / wrap / module / QR size fields, the move and resize badge on the canvas and the margin inset all use it. It is remembered between sessions. Type size and letter spacing stay in points, and stroke width in pixels at 600 DPI.
+- **Renaming in the inspector commits when you finish.** The layer name box now renames on Enter or when you click away, as one undo step, and Esc puts the old name back, the same as renaming a Layers row. It used to rename (and add an undo step) on every keystroke.
+
+### Removed
+- **The per-layer "Lengths in" mm / pt toggle and the status bar's "8 × 5 in" size readout.** The single unit above replaces both.
+- **The image Scale field.** It multiplied the drawn size behind Width and Height's back, so a typed Width was not the drawn width. Width and Height are now the drawn size. Labels and masters saved with a Scale open with it folded into their width and height and print exactly as before; save them to keep it that way. One caveat: where a label changed an image's size or Scale and its master or variant also had a Scale other than 1, the label's own change no longer picks up that master Scale; check that image's Width and Height.
+- **Controls that did nothing or repeated another.** Background and Metallic mask no longer offer Lock (in the inspector or the right-click menu); they can't be dragged, so it changed nothing. **Tint raster** shows only for PNG/JPEG art, since SVG art already takes the fill. The selected row's Rename (pencil) button is gone: use the inspector's name box, double-click the row, or right-click → Rename. The inspector's "Content" heading is gone; the field's own caption (Text, Code, Link, Texture…) names it.
+- **The DPI readout in the status bar.** Change it in Settings → PSD resolution.
+- **Settings → Appearance.** Choose System, Light or Dark from View → Appearance or the `⌘K` palette.
+- **Single-plate exports.** File → Export and the palette keep **Export PDFs** (`⌘E`) and **Export PSDs** (`⇧⌘E`), which write the art and mask together; Export Artwork / Mask PDF and PSD are gone.
+- **“Up to date” in the status bar.** The status bar shows the updater only while it is checking, has an update, is installing, needs a restart or failed; Check for Updates… still says when you're up to date.
+- **The resting drop hint under the preview.** Dragging an image over the window still shows the background and metallic-mask drop zones.
+
+### Fixed
+- **Fill and Metallic recolour a text layer.** Changing a text layer's **Fill** or switching **Metallic** in the inspector now changes the drawn text straight away, on every line. Before, the text kept its old colour and plate until you typed into it. A line or run you gave the toolbar's **White ink underlay** stays on white ink. Labels and masters open unchanged, and the shipped Lolev master prints exactly as before.
+- **Typing a new Style on the canvas adds one choice, not every prefix.** Double-clicking a choice field such as Style on the preview now opens the same plain box as the sidebar, and a new value joins the master's choices once, when you press Enter or Esc, or click away. Before, typing “Lager” added L, La, Lag, Lage and Lager to the list.
+- **Cancelling a different-master open leaves no empty tab.** Cancel in the “This label was made with a different master” dialog, or in its Locate picker, now closes the Untitled tab that open made, so each cancelled attempt no longer leaves one behind.
+- **Opening a file that isn't a `.label` says so.** Open With on another file, or a `.label` shortcut that points at a file of another type, now shows “isn't a .label file” in the tab strip instead of doing nothing. The file is not read.
+- **Release builds are ready for code signing.** Once the Apple Developer ID and Azure Trusted Signing credentials are added to the release setup, published Mac builds are signed and notarized (no Gatekeeper warning) and the Windows installer is signed (no SmartScreen warning). Until then builds are signed exactly as before.
+- **Readable update notes.** Bold text in the update dialog now renders as bold instead of showing literal `**` markers.
+- **The shipped QR scans for ordinary beer names.** The Lolev master's dots QR now uses error correction Q instead of L. At L the black keyline made its gold dots hard to read, and most names failed to decode; at Q every name tested decodes. The code looks the same but is a little denser. A master you saved from the old Lolev master keeps L: set **Error correction** to Q on its QR layer and Save Master.
+
+## [0.1.109] - 2026-10-27
+
+### Changed
+- **Image wells have a Browse button.** Texture, Metallic mask and custom image slots now open the file picker from a named **Browse** button; drop a file anywhere on the well as before. Clicking the well itself no longer opens the picker.
+
+### Fixed
+- **Blank and disabled barcodes no longer block export.** Clearing a label's barcode or switching its layer off now follows the same rule as a blank or disabled master barcode. Enabled, nonblank invalid codes still block export, including references and variant overrides.
+- **Accessible inspector and layer controls.** Keyboard focus is visible on layer names without changing selection styling; fill and stroke color controls and image-selection actions have contextual accessible names.
+
 ## [0.1.108] - 2026-10-22
 
 ### Added

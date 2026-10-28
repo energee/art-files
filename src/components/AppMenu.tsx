@@ -8,8 +8,8 @@ import type {
   CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
 import {
-  Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  Grid2x2, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
+  ALargeSmall, Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
+  Grid2x2, Grid3x3, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
   Redo2, Ruler, Settings, Sparkles, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
   ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
@@ -64,6 +64,8 @@ const SYMBOL_GLYPH = {
   "sun.max": Sun,
   "moon": Moon,
   "paintpalette": Palette,
+  "textformat.size": ALargeSmall,
+  "square.grid.3x3": Grid3x3,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
@@ -123,12 +125,7 @@ export const APP_MENUS: SubmenuEntry[] = [
       {
         kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
           { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc" },
-          { kind: "action", id: "export-art", text: "Export Artwork PDF", symbol: "photo" },
-          { kind: "action", id: "export-mask", text: "Export Mask PDF", symbol: "circle.lefthalf.filled" },
-          { kind: "separator", id: "export-formats" },
           { kind: "action", id: "export-psd", text: "Export PSDs", symbol: "square.3.layers.3d" },
-          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD", symbol: "photo" },
-          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD", symbol: "circle.lefthalf.filled" },
         ],
       },
     ],
@@ -137,7 +134,8 @@ export const APP_MENUS: SubmenuEntry[] = [
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
       { kind: "action", id: "undo", text: "Undo", symbol: "arrow.uturn.backward" },
       { kind: "action", id: "redo", text: "Redo", symbol: "arrow.uturn.forward" },
-      { kind: "separator", id: "edit-variants" },
+      // Both rows move to the application menu on the Mac (MAC_MENUS).
+      { kind: "separator", id: "edit-settings" },
       { kind: "action", id: "settings", text: "Settings…", symbol: "gear" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
@@ -174,12 +172,22 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "action", id: "layers", text: "Layers", check: true, keywords: ["Show sidebar", "Hide sidebar"], symbol: "sidebar.left" },
       { kind: "action", id: "rulers", text: "Rulers", check: true, keywords: ["Show rulers", "Hide rulers"], symbol: "ruler" },
       { kind: "action", id: "guides", text: "Guides", check: true, keywords: ["Show guides", "Hide guides"], symbol: "rectangle.split.2x1" },
+      // The app's one length unit, as the ruler corner's picker sets it; here
+      // so it stays reachable with the rulers hidden. One is always checked.
+      {
+        kind: "submenu", id: "units-menu", text: "Units", symbol: "ruler", items: [
+          { kind: "action", id: "unit-in", text: "Inches", check: true, keywords: ["Units"], symbol: "ruler" },
+          { kind: "action", id: "unit-mm", text: "Millimetres", check: true, keywords: ["Units", "Millimeters"], symbol: "ruler" },
+          { kind: "action", id: "unit-pt", text: "Points", check: true, keywords: ["Units"], symbol: "textformat.size" },
+          { kind: "action", id: "unit-px", text: "Pixels", check: true, keywords: ["Units"], symbol: "square.grid.3x3" },
+        ],
+      },
       { kind: "separator", id: "view-zoom" },
       { kind: "action", id: "zoom-in", text: "Zoom In", symbol: "plus.magnifyingglass" },
       { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
       { kind: "action", id: "zoom-fit", text: "Zoom to Fit", symbol: "arrow.up.left.and.down.right.magnifyingglass" },
       { kind: "separator", id: "view-appearance" },
-      // The same three choices as Settings → Appearance; one is always checked.
+      // System / Light / Dark, also in the ⌘K palette; one is always checked.
       {
         kind: "submenu", id: "appearance-menu", text: "Appearance", symbol: "paintpalette", items: [
           { kind: "action", id: "theme-system", text: "System", check: true, keywords: ["Theme"], symbol: "desktopcomputer" },
@@ -194,6 +202,15 @@ export const APP_MENUS: SubmenuEntry[] = [
     ],
   },
 ];
+
+/** The Mac menu bar's table: Settings… (and its separator) leave Edit for
+ *  the application menu, where macOS puts it (#551; macApplicationMenu).
+ *  Windows, Linux and the in-window menu keep APP_MENUS. Exported for tests. */
+export const MAC_MENUS: SubmenuEntry[] = APP_MENUS.map((menu) => ({
+  ...menu,
+  items: menu.items.filter((e) => !("id" in e && (e.id === "settings" || e.id === "edit-settings"))),
+}));
+const SETTINGS_ROW = actionsIn(APP_MENUS).find((e) => e.id === "settings")!;
 
 function isCheckAction(entry: ActionEntry): entry is CheckAction {
   return !!entry.check;
@@ -330,12 +347,15 @@ async function closeResources(resources: NativeResource[]) {
 /** The macOS application menu. Quit is a custom item, not the predefined
  *  one: that sends NSApp `terminate:`, which exits without a window
  *  close-requested event, so ⌘Q skipped the unsaved-tabs prompt (#80).
- *  `quit` must run the window close flow instead. Exported for tests. */
+ *  `quit` must run the window close flow instead. `settings` is the
+ *  Settings… row, built like every other command row, shown under About
+ *  where macOS users look for it (#551). Exported for tests. */
 export async function macApplicationMenu(
   api: MenuApi,
   resources: NativeResource[],
   checkForUpdates: () => void,
   quit: () => void,
+  settings: NativeEntry,
 ) {
   const definitions = [
     { item: { About: null } as const },
@@ -360,6 +380,10 @@ export async function macApplicationMenu(
   });
   resources.push(updater);
   items.splice(1, 0, updater);
+  const separator = await api.PredefinedMenuItem.new({ item: "Separator" });
+  resources.push(separator);
+  // About, Check for Updates…, separator, Settings…, separator, Services…
+  items.splice(3, 0, settings, separator);
   const quitItem = await api.MenuItem.new({
     id: "quit",
     text: "Quit Label Lab",
@@ -531,8 +555,9 @@ function useNativeMenu(
         // What Open Recent's first rows show; a change before the subscribe
         // below would otherwise never reach the menu.
         const recentBuiltFrom = JSON.stringify(recentLabels());
-        const roots = await Promise.all(APP_MENUS.map((entry) =>
-          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources)));
+        const native = (entry: MenuEntry) =>
+          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources);
+        const roots = await Promise.all((isMacOS() ? MAC_MENUS : APP_MENUS).map(native));
         // On macOS the first submenu is the conventional application menu;
         // the browser renderer must not show it. Other desktop platforms put
         // File first and receive their window-local menu bar normally.
@@ -542,7 +567,8 @@ function useNativeMenu(
           const quit = () => void import("@tauri-apps/api/window")
             .then((m) => m.getCurrentWindow().close())
             .catch((error) => errorRef.current(`Could not quit: ${errMsg(error)}`));
-          roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
+          roots.unshift(await macApplicationMenu(
+            api, resources, () => updateRef.current(), quit, await native(SETTINGS_ROW)));
         } else {
           const updater = await api.MenuItem.new({
             id: "check-for-updates", text: UPDATE_ITEM_TEXT.check,

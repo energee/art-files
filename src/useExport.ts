@@ -131,7 +131,7 @@ export function useExport({
   const exportError = useOwnedError(setBuildError);
   async function exportPair(
     extension: "pdf" | "psd", type: string,
-    build: () => Promise<(Uint8Array | null)[]>,
+    build: () => Promise<[art: Uint8Array, mask: Uint8Array]>,
   ) {
     if (exportRunning.current) return;
     exportRunning.current = true;
@@ -151,7 +151,6 @@ export function useExport({
       // the art file. Notes and errors name the derived path either way.
       let mask: { path: string; target?: FileTarget } | undefined;
       for (const [index, bytes] of pair.entries()) {
-        if (!bytes) continue;
         pending = index && mask ? mask.path : `${exportBase}${index ? "-mask" : ""}.${extension}`;
         const result = await saveVia(bytes, pending, type, index ? mask?.target : undefined);
         if (!result) {
@@ -159,7 +158,7 @@ export function useExport({
           return;
         }
         saved.push(result.name);
-        if (!index && pair[1] && result.target && "path" in result.target) {
+        if (!index && result.target && "path" in result.target) {
           const path = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
           const taken = await nativePathExists(path).catch(() => true);
           mask = { path, target: taken ? undefined : { path } };
@@ -175,8 +174,8 @@ export function useExport({
     }
   }
 
-  /** Build full-resolution plates before opening either save dialog. */
-  async function buildFull(which: "art" | "mask" | "both") {
+  /** Build both full-resolution plates before opening either save dialog. */
+  async function buildFull() {
     await exportPair("pdf", "application/pdf", async () => {
       const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
         import("@/pdf/build"), loadFonts(family), exportPlan(),
@@ -191,18 +190,14 @@ export function useExport({
         },
       };
       // Both files build BEFORE the first dialog opens.
-      return await Promise.all([
-        which !== "mask" ? buildArtPdf(plan, assets) : null,
-        which !== "art" ? buildMaskPdf(plan, assets) : null,
-      ]);
+      return await Promise.all([buildArtPdf(plan, assets), buildMaskPdf(plan, assets)]);
     });
   }
 
   /** Layered Photoshop files, built full-resolution on demand like the PDFs,
    *  off the main thread (psd/offThread.ts). Image decoding (psdImages) still
-   *  runs here: it needs a canvas. `which` picks a single plate or (default)
-   *  both. */
-  async function exportPsd(which: "both" | "art" | "mask" = "both") {
+   *  runs here: it needs a canvas. */
+  async function exportPsd() {
     await exportPair("psd", "image/vnd.adobe.photoshop", async () => {
       const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
@@ -217,10 +212,7 @@ export function useExport({
       const geometry = { bleedIn: render.bleedIn, dpi: render.dpi };
       const plate = (mode: "art" | "mask") =>
         buildPsdOffThread({ items: plan, assets, mode, opts: { layers: drawLayers }, geometry });
-      return await Promise.all([
-        which !== "mask" ? plate("art") : null,
-        which !== "art" ? plate("mask") : null,
-      ]);
+      return await Promise.all([plate("art"), plate("mask")]);
     });
   }
 

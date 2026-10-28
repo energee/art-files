@@ -64,6 +64,8 @@ it("imports Settings, the Save Master review and the ⌘K palette only when each
     await act(async () => { probe.actions.find((c) => c.id === "settings")!.run(); });
     await vi.waitFor(() => expect(shown("render-settings")).not.toBeNull(), { timeout: 5000 });
 
+    // An override to promote: with none, Save Master skips the review.
+    await act(async () => (document.querySelector('[data-layer-id="warning"] button[aria-label$=": enabled"]') as HTMLButtonElement).click());
     await act(async () => { probe.actions.find((c) => c.id === "master-save-as")!.run(); });
     await vi.waitFor(() => expect(shown("master-review")).not.toBeNull(), { timeout: 5000 });
 

@@ -166,6 +166,21 @@ describe("LayerList", () => {
     expect(props.onToggle).toHaveBeenCalledWith("name", "locked", true);
   });
 
+  // Page art can't be dragged, so a lock does nothing there: no lock icon
+  // (the shipped background and mask are locked) and no Lock menu item.
+  it("offers no lock on page art", async () => {
+    render(baseProps());
+    expect(byLabel("Background: locked")).toBeNull();
+    expect(byLabel("Metallic mask: locked")).toBeNull();
+    await act(async () => {
+      rowFor("background").firstElementChild!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(menuItem("Rename")).toBeDefined();
+    expect(menuItem("Lock")).toBeUndefined();
+    expect(menuItem("Unlock")).toBeUndefined();
+  });
+
   // #11: the lock is canvas-only, so the row must not promise "cannot be moved".
   it("titles a locked row's lock as canvas-only", () => {
     const props = baseProps();
@@ -413,18 +428,6 @@ describe("LayerList", () => {
 describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   const rowBox = (id: string) => rowFor(id).firstElementChild as HTMLElement;
 
-  it("marks the selected row with a primary tint, not the hover grey and no edge bar", () => {
-    render(baseProps({ selected: ["name"] }));
-    expect(rowBox("name").className).toContain("bg-sidebar-primary/15");
-    expect(rowBox("name").className).not.toContain("shadow-");
-    expect(rowBox("wordmark").className).not.toContain("bg-sidebar-primary/15");
-    // The button must not paint the old accent over the row's tint.
-    const button = rowFor("name").querySelector('[data-sidebar="menu-button"]')!;
-    expect(button.className).toContain("data-active:bg-transparent");
-    // Nor ring the name: the tint is the row's one mark.
-    expect(button.className).toContain("focus-visible:ring-0");
-  });
-
   it("shows the exception: power-off while off, the lock while locked, else only on hover", () => {
     const props = baseProps();
     props.rows = props.rows.map((r) =>
@@ -451,7 +454,7 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
 
   it("sizes every row switch to a 24px target", () => {
     render(baseProps({ selected: ["name"] }));
-    for (const label of ["Name: enabled", "Name: rename", "Name: remove"])
+    for (const label of ["Name: enabled", "Name: remove"])
       expect(byLabel(label).className).toContain("size-6");
   });
 
@@ -478,20 +481,15 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     }
   });
 
-  it("renames from the selected row's Rename button without reselecting", () => {
-    const props = render(baseProps({ selected: ["wordmark"] }));
-    click(byLabel("Brand: rename"));
-    expect(rowFor("wordmark").querySelector('input[aria-label="Rename Brand"]')).not.toBeNull();
-    expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
   const controls = (id: string) => Array.from(rowBox(id).querySelectorAll(":scope > button[aria-label]"))
     .map((b) => b.getAttribute("aria-label"));
 
-  it("shows Rename and Remove on the selected row only, always visible there; power at the right edge", () => {
+  // No Rename button: the inspector's name box (open for the selected row),
+  // a double-click and the row menu already rename it.
+  it("shows Remove on the selected row only, always visible there; power at the right edge", () => {
     render(baseProps({ selected: ["name"] }));
-    expect(controls("name")).toEqual(["Name: rename", "Name: remove", "Name: enabled"]);
-    expect(byLabel("Name: rename").className).not.toContain("opacity-0");
+    expect(controls("name")).toEqual(["Name: remove", "Name: enabled"]);
+    expect(byLabel("Name: rename")).toBeNull();
     // Its power is shown at full ink too, never fainter than an off icon.
     expect(byLabel("Name: enabled").className).not.toMatch(/opacity-(0|40)(\s|$)/);
     expect(byLabel("Name: remove").className).not.toContain("opacity-0");
@@ -536,7 +534,7 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
 
   it("right-click in the rename field keeps editing; no row menu opens over it", async () => {
     const props = render(baseProps({ selected: ["wordmark"] }));
-    click(byLabel("Brand: rename"));
+    dblclick(rowFor("wordmark").querySelector("button span")!);
     const input = rowFor("wordmark").querySelector("input")!;
     await act(async () => {
       input.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));

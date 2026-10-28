@@ -123,8 +123,11 @@ export function uppercaseOf(l: { style?: Style; uppercase?: boolean }): boolean 
 }
 
 /** One line of a text layer: the description's per-run rich model, plus the
- *  header flag the description's `# ` line used to carry. Every run keeps
- *  its own fill / white-ink layer / bold, exactly as StyledLine does. */
+ *  header flag the description's `# ` line used to carry. A line still
+ *  STORES a fill and layer (required, so older readers keep opening the
+ *  file), but they are copies of the block style: planLayers draws every
+ *  line in the layer's `style.fill`, on `style.layer` unless the line's own
+ *  layer is "white" (the white-ink underlay). Bold stays per line / run. */
 export interface TextLine extends StyledLine { header?: boolean }
 
 export interface TextLayer extends LayerBase {
@@ -160,8 +163,9 @@ export interface TextLayer extends LayerBase {
   /** Which font weights the layer sets in: `base` for plain runs, `bold`
    *  for **bold** runs. Absent = regular / semibold. */
   faces?: { base: "regular" | "semibold" | "bold"; bold: "regular" | "semibold" | "bold" };
-  /** Block style: base fill / plate, outer stroke, tracking. A run's own
-   *  fill/layer/bold wins over it (parseRuns semantics). */
+  /** Block style: fill / plate, outer stroke, tracking — what the inspector
+   *  edits, and what every line draws in. Only a line's or run's white-ink
+   *  underlay and its bold deviate from it (see TextLine). */
   style: Style;
 }
 
@@ -178,8 +182,6 @@ export interface ImageLayer extends LayerBase {
   /** How the asset meets a w×h box. contain = fit inside (collab slots),
    *  cover = fill and crop (background texture, mask). Absent = contain. */
   fit?: "contain" | "cover";
-  /** Multiplier on the fitted size (collab slots' scale). Absent = 1. */
-  scale?: number;
   /** Raster art only: repaint non-transparent pixels in `style.fill`. */
   tintRaster?: boolean;
   /** The background texture ("background") and the metallic mask ("mask")
@@ -431,6 +433,34 @@ export function validateBindings(layers: Layer[], ctx: string, report: (msg: str
   }
 }
 
+/** The size keys of an image layer or diff, plus the `scale` older files
+ *  carry: until it was removed, the drawn box was w × scale by h × scale. */
+type ScaledSize = { w?: unknown; h?: unknown; scale?: unknown; asset?: unknown };
+
+/** Fold an old image `scale` into w and h, in place, and drop the key, so the
+ *  drawn size does not move and the Width you type is the width drawn.
+ *  `base` is the UNFOLDED layer a diff lands on (absent for a whole layer):
+ *  a diff that sets a different scale but no size takes the base's size
+ *  times it, and a diff that sets a size but no scale inherits the base's.
+ *  The laurel (builtin:logo) never drew its scale — parseLogo reads w alone —
+ *  so there the key is only dropped. A no-op on anything without a scale. */
+export function foldScale(p: ScaledSize, base?: ScaledSize): void {
+  const own = p.scale;
+  delete p.scale;
+  if ((p.asset ?? base?.asset) === "builtin:logo") return;
+  const under = typeof base?.scale === "number" ? base.scale : 1;
+  // No scale of its own inherits; null (a label override clearing the key)
+  // is back to the default, 1.
+  let s = under;
+  if (own !== undefined) s = typeof own === "number" ? own : 1;
+  const pin = s !== under;
+  if (typeof p.w === "number") p.w *= s;
+  else if (pin && typeof base?.w === "number") p.w = base.w * s;
+  // An explicit null height stays null: "follow the asset's aspect".
+  if (typeof p.h === "number") p.h *= s;
+  else if (pin && p.h === undefined && typeof base?.h === "number") p.h = base.h * s;
+}
+
 export function parseMaster(json: unknown): Master {
   const m = json as Master;
   if (!m || typeof m !== "object") fail("not an object");
@@ -472,5 +502,14 @@ export function parseMaster(json: unknown): Master {
     }
     validateBindings(merged, `variant "${v.id}"`);
   }
+  // Older files' image scale. The variants fold against the master layers as
+  // written, so they go first (see foldScale).
+  for (const v of m.variants) {
+    for (const [id, patch] of Object.entries(v.layers)) {
+      const base = m.layers.find((l) => l.id === id);
+      if ((base ?? patch).kind === "image") foldScale(patch as ScaledSize, base as ScaledSize);
+    }
+  }
+  for (const l of m.layers) if (l.kind === "image") foldScale(l as ScaledSize);
   return m;
 }

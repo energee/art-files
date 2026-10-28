@@ -75,11 +75,18 @@ interface Prepared { size: { w: number; h: number }; emit(box: Box): PlacedLayer
 
 /** The lines a text layer actually draws: the placeholder when every line is
  *  empty, the suffix on the first line, uppercase applied, and every line
- *  carrying the layer's block style (stroke, tracking) under its own fill /
- *  layer / bold. A header line is bold, as the description's `# ` line has
+ *  carrying the layer's block style (fill, plate, stroke, tracking) under its
+ *  own bold. A header line is bold, as the description's `# ` line has
  *  always been. Control characters are settled here too (printableText):
  *  label values arrive clean from resolveLayers, but master-authored lines,
- *  placeholders and suffixes do not. */
+ *  placeholders and suffixes do not.
+ *
+ *  The block's fill and plate WIN over the copies every stored line carries
+ *  (the editor writes the block's onto each line as you type, so they go
+ *  stale the moment the inspector's Fill or Metallic changes). The one
+ *  per-line deviation the editor can author survives: a line given the
+ *  white-ink underlay stays on the white plate; a `_white_` run keeps its
+ *  own too (parseRuns). */
 function drawableLines(l: TextLayer): TextLine[] {
   const s = l.style;
   let lines = l.lines;
@@ -91,6 +98,8 @@ function drawableLines(l: TextLayer): TextLine[] {
       : [{ fill: s.fill, layer: s.layer, text: l.suffix }];
   return lines.map((ln) => ({
     ...ln,
+    fill: s.fill,
+    layer: ln.layer === "white" ? "white" : s.layer,
     text: printableText(uppercaseOf(l) ? ln.text.toUpperCase() : ln.text),
     bold: !!ln.bold || !!ln.header,
     stroke: s.stroke, strokeLayer: s.strokeLayer, strokeWidth: s.strokeWidth,
@@ -233,11 +242,11 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
   const entry = assets.custom?.[l.asset];
   if (!entry) return null;
   // The envelope the art contain-fits into: w x h (h absent = the asset's
-  // aspect at w), times the scale knob. The envelope is the layer's box; the
-  // fitted art sits at its top, on the anchor's side.
-  const scale = l.scale ?? 1;
-  const maxW = l.w * scale;
-  const maxH = (l.h ?? l.w / entry.aspect) * scale;
+  // aspect at w). The envelope is the layer's box; the fitted art sits at its
+  // top, on the anchor's side. (An old file's scale was folded into w/h when
+  // it was read: model/layers.ts foldScale.)
+  const maxW = l.w;
+  const maxH = l.h ?? l.w / entry.aspect;
   const placeX = (box: Box, w: number) => box.x + anchorFraction(l.anchor) * (box.w - w);
   const size = { w: maxW, h: maxH };
   if (entry.art?.kind === "svg") {
@@ -389,7 +398,7 @@ function prepareBarcode(layer: BarcodeLayer, m: MeasureFace): Prepared | null {
 /** Null for an empty value (no modules), like an invalid barcode. */
 function prepareQr(l: QrLayer): Prepared | null {
   const id = l.id;
-  const shapes = qrShapes(l.value, { style: l.qrStyle, ecLevel: l.ecLevel ?? "L", rotation: l.rotation });
+  const shapes = qrShapes(l.value, { style: l.qrStyle, ecLevel: l.ecLevel, rotation: l.rotation });
   if (shapes.count === 0) return null;
   const style = l.style;
   return {

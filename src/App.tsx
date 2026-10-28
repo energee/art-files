@@ -31,7 +31,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
@@ -46,11 +46,11 @@ import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
 import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
-import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
+import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -76,13 +76,13 @@ import { useOwnedError } from "@/useOwnedError";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
+  BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
-import { MasterPicker, type LibraryEntry, type MasterOffer } from "@/components/MasterPicker";
+import { MasterPicker, type LibraryEntry } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
@@ -92,13 +92,10 @@ import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
 import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
-import { RulerUnitPicker } from "@/components/RulerUnitPicker";
-import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronDown } from "lucide-react";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, sizeLabel,
-  type GuideAxis, type ManualGuide, type RulerUnit,
+  DEFAULT_MARGIN_PT, LENGTH_UNITS,
+  type GuideAxis, type LengthUnit, type ManualGuide,
 } from "@/rulers";
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
@@ -227,23 +224,25 @@ function HeaderAlert({ children, tone = "destructive" }: { children: React.React
   );
 }
 
-/** Where the two view toggles (rulers/guides) persist — localStorage, like
- *  every other per-operator setting (settings.ts, masters.ts). Only the two
- *  known keys are read, so an entry written by an earlier build sheds its
- *  extras on the next write instead of leaking them in. */
+/** Where the view preferences (the rulers/guides toggles and the length
+ *  unit) persist — localStorage, like every other per-operator setting
+ *  (settings.ts, masters.ts). Only the known keys are read, so an entry
+ *  written by an earlier build sheds its extras on the next write instead of
+ *  leaking them in. Reads and writes are both guarded: storage can be missing
+ *  or full, and a view preference is never worth an error. */
 const VIEW_KEY = "lolev-view";
-type ViewToggles = { showRulers: boolean; showGuides: boolean };
-function loadViewToggles(): ViewToggles {
-  const toggles: ViewToggles = { showRulers: true, showGuides: true };
+type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit };
+function loadViewPrefs(): ViewPrefs {
+  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in" };
   try {
     const stored = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
-    for (const k of Object.keys(toggles) as (keyof ViewToggles)[]) {
-      if (typeof stored[k] === "boolean") toggles[k] = stored[k];
-    }
+    if (typeof stored.showRulers === "boolean") prefs.showRulers = stored.showRulers;
+    if (typeof stored.showGuides === "boolean") prefs.showGuides = stored.showGuides;
+    if (LENGTH_UNITS.includes(stored.unit as LengthUnit)) prefs.unit = stored.unit as LengthUnit;
   } catch {
     // a hand-mangled entry falls back to the defaults rather than crashing boot
   }
-  return toggles;
+  return prefs;
 }
 
 /** The "N value(s) benched" notes a rebind reports for what didn't fit. */
@@ -295,7 +294,7 @@ type ViewMode = "2d" | "can" | "rendered";
  *  both read this, so they can't disagree. Exported for tests. */
 export const viewState = (mode: ViewMode, split: number) =>
   mode !== "2d" ? mode : split === 0 ? "label" : split === 100 ? "mask" : "compare";
-/** The status bar's clickable readouts (zoom, trim size, DPI): a faint idle
+/** The status bar's clickable readouts (zoom, trim size): a faint idle
  *  border so they read as controls, not as text like the readouts beside them.
  *  Zoom puts it on a wrapping label so the "%" sits inside the border. */
 const STATUS_CONTROL = "rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
@@ -339,16 +338,19 @@ type DocumentEditorProps = {
   active: boolean;
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
-   *  shell can drop the queued entry. */
-  onOpenSettled: (seq: number) => void;
+   *  shell can drop the queued entry. `cancelled`: the operator backed out
+   *  (the different-master prompt's Cancel, or its Locate picker's), so a
+   *  tab made only for this open can go again (#553). */
+  onOpenSettled: (seq: number, cancelled: boolean) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its save fn into on every render;
    *  resolves false when the user cancels the save dialog. */
   saveSlot: { current: (() => Promise<boolean>) | null };
-  /** Shell-owned slot for the close prompt's Review Master…: opens this
-   *  editor's Save Master review and resolves true only once the master
-   *  file is written (false on Cancel or a failed save). Omitted by tests
-   *  mounting a lone editor. */
+  /** Shell-owned slot for the close prompt's Save on a tab with master
+   *  edits: runs this editor's Save Master (straight to the file, or the
+   *  review when the label has something to promote) and resolves true only
+   *  once the master file is written (false on Cancel or a failed save).
+   *  Omitted by tests mounting a lone editor. */
   masterSaveSlot?: { current: (() => Promise<boolean>) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
@@ -391,6 +393,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  resetDocument / asset writes. openedSeq !== 0 means an open has claimed
    *  this editor — restore must not run (or continue) after that. */
   const openedSeq = useRef(0);
+  // Set by missingMasterChoice when the operator cancels; reset by each
+  // fileToOpen attempt and reported through onOpenSettled.
+  const openCancelled = useRef(false);
   const openChain = useRef<Promise<void>>(Promise.resolve());
   // The master as of the last open/save — the baseline the "unsaved master
   // edits" dot (Save Master) compares against, itemised by masterChanges.
@@ -407,7 +412,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const version = label.enabledVariants.at(-1) ?? null;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
-  /** The close prompt's Review Master… waiting on the review (masterSaveSlot):
+  /** The close prompt's Save waiting on a master save (masterSaveSlot):
    *  told whether it ended in a written master. A ref, so a replaced
    *  pendingSave or an unmount can't strand it. */
   const reviewDone = useRef<((saved: boolean) => void) | null>(null);
@@ -431,9 +436,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     [pendingSave, master, label, version, savedTick]);
   // The dirty flag is the cheap superset of the same question: the template
   // moved, or the label holds an override that a save could offer to promote.
-  // It can light Save Master for an override that happens to equal what the
-  // master already says — the review then opens with nothing in it, which is
-  // the honest answer to "what would this save write?".
+  // It enables File → Save Master… (so overrides can still be promoted) and
+  // can do so for an override that happens to equal what the master already
+  // says — the review then opens with nothing in it, which is the honest
+  // answer to "what would this save write?". The picker's pink button reads
+  // templateMoved alone: an override is this beer's, saved by ⌘S.
   // Only the master compare is worth memoizing, and it depends on `master`
   // alone — keeping `label.overrides` out of the deps stops a drag's
   // per-pointermove override writes from re-walking the whole master.
@@ -454,12 +461,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const [changedOnly, setChangedOnly] = useState(false);
-  /** Controlled so Open Master can reveal its preview card in a collapsed
-   *  sidebar, and View → Layers and the palette can toggle and check it;
+  /** Controlled so View → Layers and the palette can toggle and check it;
    *  ⌘B stays the provider's guarded listener. */
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  /** File → Open Master…'s pending switch, previewed by MasterPicker (see openMasterBytes). */
-  const [masterOffer, setMasterOffer] = useState<MasterOffer | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -587,7 +591,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (isFinite(pct)) zoomTo(() => pct / 100);
   };
   // Published to layout.ts during render, not from an effect: the rulers
-  // and the toolbar's size readout read PAGE and OUTPUT_DPI while rendering.
+  // and the px length unit read PAGE and OUTPUT_DPI while rendering.
   // ACTIVE editor only: a hidden editor's memo bail freezes its `render`.
   if (active) {
     setLayoutBleed(render.bleedIn);
@@ -651,12 +655,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
   const previewRef = useRef<PreviewCompareHandle>(null);
-  // Rulers and guides are view state: they assist the operator but are not
-  // label content, so none enters history/exports. Both persist per operator.
-  const [showRulers, setShowRulers] = useState(() => loadViewToggles().showRulers);
-  const [dimensionUnit, setDimensionUnit] = useState<"mm" | "pt">("mm");
-  const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
-  const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
+  // Rulers, guides and the length unit are view state: they assist the
+  // operator but are not label content, so none enters history/exports. All
+  // persist per operator. The one unit drives the rulers, the inspector's
+  // length fields, the canvas drag readout and the margin inset.
+  const [showRulers, setShowRulers] = useState(() => loadViewPrefs().showRulers);
+  const [unit, setUnit] = useState(() => loadViewPrefs().unit);
+  const [showGuides, setShowGuides] = useState(() => loadViewPrefs().showGuides);
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -670,8 +675,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
   useEffect(() => {
-    localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides }));
-  }, [showRulers, showGuides]);
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit }));
+    } catch {
+      // full or missing storage: the preference lasts this session only
+    }
+  }, [showRulers, showGuides, unit]);
 
   /** Whether the document differs from the last saved/opened project —
    *  File → Save Label disables while clean. Clear it ONLY after a completed open
@@ -680,13 +689,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Whether the user has actually touched this document — the shell
    *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
   const [edited, setEdited] = useState(false);
-  const editFlags = useRef({ dirty, edited });
-  editFlags.current = { dirty, edited };
-  const beforeTextEdit = useRef(editFlags.current);
-  const onEditSession = useCallback((id: string | null) => {
-    if (id) beforeTextEdit.current = editFlags.current;
-    setEditSession(id);
-  }, []);
   const editedRef = useRef(edited);
   editedRef.current = edited;
   /** Boot-restore's resetDocument goes through swapLoaded, which markDirty.
@@ -1392,9 +1394,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   }, []);
 
-  const downloadArt = () => void buildFull("art");
-  const downloadMask = () => void buildFull("mask");
-  const exportPdfs = () => void buildFull("both");
+  const exportPdfs = () => void buildFull();
 
   /** The same save-identity pattern for the .master this document's master
    *  was last saved to or opened from — tagged with that master's id, since
@@ -1410,8 +1410,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  without one, Save Master binds to the library's path for the id. */
   function resetDocument(next: Doc, masterPath?: string) {
     resetDoc(next);
-    // A pending Open Master switch was offered for the document being replaced.
-    setMasterOffer(null);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
     const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
@@ -1447,9 +1445,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     const unchanged = docRef.current === doc && current.texture === texture
       && current.mask === mask && current.customImages === customImages;
     setDirty(!unchanged);
-    // A save inside an in-place text session moves the baseline its cancel
-    // would restore: the reverted text no longer matches the file.
-    beforeTextEdit.current = { dirty: true, edited: true };
     setLoadError("");
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
@@ -1467,7 +1462,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
     reviewDone.current = done;
-    setPendingSave({ as: false });
+    requestMasterSave(false);
   });
   // Declared after the onMeta effect, so in a shared commit it runs second:
   // the shell decides the close on meta that already says the master saved.
@@ -1517,9 +1512,34 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   }
 
-  /** File → Save Master… / Save Master As…, always downstream of the review
-   *  dialog (MasterSaveReview), which is where `promote` comes from: the label
-   *  overrides the reviewer ticked to fold into the template.
+  /** Start a master write. Only the save the close prompt is waiting on
+   *  (reviewDone) reports back: a plain Save Master still writing when a
+   *  later close prompt's Save starts must not settle that newer one. A
+   *  throw before saveMaster's own try still ends it (unsaved), then
+   *  rejects as before. */
+  function writeMaster(as: boolean, promote: readonly MasterChange[] = []) {
+    const waiting = reviewDone.current;
+    const report = (saved: boolean) => {
+      if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
+    };
+    void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
+  }
+
+  /** File → Save Master… / Save Master As…, the picker's button and the
+   *  close prompt's Save. The review (MasterSaveReview) opens only when the
+   *  label has an override or value to promote — the one decision a save
+   *  asks for; otherwise the write starts at once and its header note says
+   *  how many changes went in. */
+  function requestMasterSave(as: boolean) {
+    const promotable = masterChanges(pristineMaster.current, master, label, version ?? undefined)
+      .some((c) => c.kind === "promote");
+    if (promotable) setPendingSave({ as });
+    else writeMaster(as);
+  }
+
+  /** The write behind File → Save Master… / Save Master As… (see
+   *  requestMasterSave). `promote` is the review's ticked rows: the label
+   *  overrides and values to fold into the template.
    *
    *  Save As also FORKS — a fresh master id, the document rebound onto it, and
    *  the file written. That is what "Duplicate as new master…" used to do
@@ -1539,6 +1559,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       setLoadError(`Could not save master: ${errMsg(err)}`);
       return false;
     }
+    /** What goes into the file, for the header note: the master's own
+     *  changes since its last open/save, plus each promotion. */
+    const written = masterChanges(pristineMaster.current, master, label, version ?? undefined)
+      .filter((c) => c.kind !== "promote").length + promote.length;
     const forked = as
       ? { ...promoted.master, id: newMasterId() }
       : promoted.master;
@@ -1595,9 +1619,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
-      if (ours) setLoadError(!missing ? ""
-        : missing === 1 ? "Note: 1 image has no file to save — it will be blank when this master reopens"
-        : `Note: ${missing} images have no file to save — they will be blank when this master reopens`);
+      if (ours) setLoadError([
+        `Note: Saved ${saved.name}${written ? ` — ${written} change${written === 1 ? "" : "s"}` : ""}`,
+        ...(!missing ? []
+          : missing === 1 ? ["1 image has no file to save — it will be blank when this master reopens"]
+          : [`${missing} images have no file to save — they will be blank when this master reopens`]),
+      ].join(" · "));
       return true;
     } catch (err) {
       setLoadError(`Could not save master: ${errMsg(err)}`);
@@ -1623,8 +1650,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  label already loaded wins — only EMPTY slots fall back to the master's,
    *  and image bytes fill in only for ids the store doesn't hold (checked
    *  again as they commit, so an id filled meanwhile mints no thumbnail).
-   *  Slots are read from savedAssetsRef, not this render's state: Open
-   *  Master's commit can run long after the render that built it (#516). */
+   *  Slots are read from savedAssetsRef, not this render's state: a switch
+   *  adopts only after its awaits (the library write), so art dropped in
+   *  that window must still win (#516). */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
     const { texture, mask, customImages } = savedAssetsRef.current;
     await Promise.all([
@@ -1645,63 +1673,44 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** Re-aim THIS document at `target`: the label routed through rebindLabel
    *  (non-destructive — whatever doesn't match is benched on `dormant`) and
-   *  the master swapped, in one history step. `clean` says whether the
-   *  freshly bound master reads as saved (Open Master / the library pick)
-   *  or not (a never-written duplicate, so Save Master stays live). */
+   *  the master swapped, in one history step. No confirm: the header note
+   *  names what was set aside and that ⌘Z restores it. ⌘Z restores the
+   *  master and label only — art adoptMasterAssets put into an EMPTY
+   *  texture, mask or image slot stays, as asset slots sit outside the undo
+   *  history. `clean` says whether the freshly bound master reads as saved
+   *  (Open Master / the library pick) or not (a never-written duplicate, so
+   *  Save Master stays live). */
   function commitRebind(target: Master, clean = true) {
     const { master: from, label: current } = docRef.current;
     const { label: next, dropped } = rebindLabel(current, from, target);
     markDirty();
     setDoc({ master: target, label: next });
-    // Any switch retires a pending Open Master card: its commit is stale now.
-    setMasterOffer(null);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     const notes = benchedNotes(dropped);
-    setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+    setLoadError(notes.length
+      ? `Note: Switched to “${target.name}” · ${notes.join(" · ")} · ${shortcutLabel("⌘Z")} to restore` : "");
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
-   *  handle, hidden input). The switch previews first, like a picker pick:
-   *  one that would bench nothing happens now, one that would joins the
-   *  library and hides behind MasterPicker's Continue. On Cancel the master
-   *  stays in the library and the label is untouched. */
+   *  handle, hidden input): remembered in the library and switched to at
+   *  once, like a picker pick. */
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
-    // A second open supersedes the first one's card, whichever way it goes.
-    setMasterOffer(null);
-    const commit = async () => {
-      // Bytes again: the master may have left the library while its card
-      // was open, and LAST_KEY must not name an id with no cached copy.
-      await rememberMaster(r.master, name, bytes);
-      refreshLibrary();
-      commitRebind(r.master);
-      // Bind Save Master only once the doc is on this master (#81).
-      const id = r.master.id;
-      masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
-      masterFilePath.current = src.path ? { id, target: src.path } : null;
-      await adoptMasterAssets(r.assets);
-    };
-    const { master: from, label: current } = docRef.current;
-    const { dropped } = rebindLabel(current, from, r.master);
-    if (!dropped.values.length && !dropped.variants.length) { await commit(); return; }
-    // Into the library now, not yet applied: a cancelled switch must not
-    // become the master the next untitled tab starts on. A file with the
-    // current master's own id is already listed, and caching it now would
-    // make a reload resolve this label to the file Cancel declined.
-    if (r.master.id !== from.id) {
-      await rememberMaster(r.master, name, bytes, { applied: false });
-      refreshLibrary();
-    }
-    // The card lives in the sidebar, so open it if it was collapsed.
-    setSidebarOpen(true);
-    setMasterOffer({ target: r.master, assets: r.assets, commit });
+    await rememberMaster(r.master, name, bytes);
+    refreshLibrary();
+    commitRebind(r.master);
+    // Bind Save Master only once the doc is on this master (#81).
+    const id = r.master.id;
+    masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
+    masterFilePath.current = src.path ? { id, target: src.path } : null;
+    await adoptMasterAssets(r.assets);
   }
 
-  /** MasterPicker's library pick (the preview's Continue). The bytes are
+  /** MasterPicker's library pick. The bytes are
    *  already in the master cache (the picker resolved them from disk or the
    *  cache), so only the index / last-applied record needs touching. */
   async function pickLibraryMaster(target: Master, assets: MasterAssets) {
@@ -1837,6 +1846,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const choice = await new Promise<"current" | "locate" | null>((choose) =>
       setMissingMaster({ id, where, current: docRef.current.master.name, choose }));
     setMissingMaster(null);
+    if (choice === null) openCancelled.current = true;
     // Read after the dialog: the tab may have switched masters meanwhile.
     const current = docRef.current.master;
     // Through this tab's own file: the library may name another file with the
@@ -1852,7 +1862,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
       if (target === undefined) { setLoadError("Could not open master: this browser has no file picker. Use File → Open Master… first."); return null; }
-      if (target === null) return null;
+      if (target === null) { openCancelled.current = true; return null; }
       [bytes, path] = "path" in target
         ? [await readNativeFile(target.path), target.path]
         : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
@@ -1927,7 +1937,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         masterAssets = resolved.assets;
         masterPath = resolved.path;
         let l: LabelFile;
-        if (unpacked.label) l = unpacked.label;
+        // An old label's image scale folds into w/h against this master.
+        if (unpacked.label) l = foldLabelScale(unpacked.label, resolved.master);
         else {
           const r = convertLabelV2(unpacked.v2!, resolved.master);
           l = r.label;
@@ -2009,6 +2020,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { path, handle, file, recovered, recoveredPath } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
+      openCancelled.current = false;
       try {
         if (path) {
           const name = await basename(path);
@@ -2047,7 +2059,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       } catch (err) {
         reportOpenError(err);
       } finally {
-        onOpenSettled(mySeq);
+        onOpenSettled(mySeq, openCancelled.current);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2076,16 +2088,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
     // Names the version it writes into, like the picker's button (saveLabel).
     { id: "master-save", label: saveLabel, disabled: !masterDirty,
-      run: () => setPendingSave({ as: false }) },
-    { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
+      run: () => requestMasterSave(false) },
+    { id: "master-save-as", label: "Save Master As…", run: () => requestMasterSave(true) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
       disabled: pdfExportBlocked, note: pdfNote, run: exportPdfs },
-    { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, note: pdfNote, run: downloadArt },
-    { id: "export-mask", label: "Export Mask PDF", disabled: pdfExportBlocked, note: pdfNote, run: downloadMask },
     { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
       disabled: exportBlocked, run: () => void exportPsd() },
-    { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
-    { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
     { id: "variant-new", label: "New Variant", run: onNewVariant },
@@ -2097,7 +2105,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // which stands aside in text fields; the shortcut here is display-only.
     { id: "layer-remove", label: "Remove Layer", shortcut: "⌫", disabled: !removable,
       run: () => onRemoveLayer(selected[selected.length - 1]) },
-    { id: "settings", label: "Settings…", run: () => setSettingsOpen(true) },
+    { id: "settings", label: "Settings…", key: ",", mods: "⌘", run: () => setSettingsOpen(true) },
     { id: "view-label", label: "Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Mask", key: "2", run: () => show2d("mask") },
     { id: "view-rendered", label: "Rendered", key: "3", run: () => setViewMode("rendered") },
@@ -2114,6 +2122,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "zoom-in", label: "Zoom In", key: "=", mods: "⌘", run: () => zoomTo((z) => z * ZOOM_FACTOR) },
     { id: "zoom-out", label: "Zoom Out", key: "-", mods: "⌘", run: () => zoomTo((z) => z / ZOOM_FACTOR) },
     { id: "zoom-fit", label: "Zoom to Fit", key: "0", mods: "⌘", run: () => zoomTo(() => 1) },
+    { id: "unit-in", label: "Inches", run: () => setUnit("in") },
+    { id: "unit-mm", label: "Millimetres", run: () => setUnit("mm") },
+    { id: "unit-pt", label: "Points", run: () => setUnit("pt") },
+    { id: "unit-px", label: "Pixels", run: () => setUnit("px") },
     { id: "theme-system", label: "System", run: () => setTheme("system") },
     { id: "theme-light", label: "Light", run: () => setTheme("light") },
     { id: "theme-dark", label: "Dark", run: () => setTheme("dark") },
@@ -2129,6 +2141,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     layers: sidebarOpen,
     rulers: showRulers,
     guides: showGuides,
+    "unit-in": unit === "in",
+    "unit-mm": unit === "mm",
+    "unit-pt": unit === "pt",
+    "unit-px": unit === "px",
     "theme-system": theme === "system",
     "theme-light": theme === "light",
     "theme-dark": theme === "dark",
@@ -2321,16 +2337,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             onConfirm={(promote) => {
               const { as } = pendingSave;
               setPendingSave(null);
-              // Only the review the close prompt is waiting on reports back:
-              // a plain Save Master still writing when a later Review Master…
-              // opens must not settle that newer review. A throw before
-              // saveMaster's own try still ends the review (unsaved), then
-              // rejects as before.
-              const waiting = reviewDone.current;
-              const report = (saved: boolean) => {
-                if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
-              };
-              void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
+              writeMaster(as, promote);
             }} />
         </Suspense>
       )}
@@ -2346,12 +2353,12 @@ export const DocumentEditor = memo(function DocumentEditor({
             if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
-            <MasterPicker master={master} label={label}
+            <MasterPicker master={master}
               library={library} resolve={resolveLibraryMaster}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
-              onSaveMaster={() => setPendingSave({ as: false })} saveLabel={saveLabel} masterDirty={masterDirty}
-              onForget={forgetLibraryMaster} offer={masterOffer} onOfferDone={() => setMasterOffer(null)}
+              onSaveMaster={() => requestMasterSave(false)} saveLabel={saveLabel} templateMoved={templateMoved}
+              onForget={forgetLibraryMaster}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={pick}
@@ -2451,7 +2458,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
               }}>
-            <PreviewCompare ref={previewRef}
+            <PreviewCompare ref={previewRef} unit={unit}
               canvasRender={viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
               layers={drawLayers}
@@ -2459,17 +2466,17 @@ export const DocumentEditor = memo(function DocumentEditor({
               selected={selected}
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit
-              // feedback, folded into one undo step per session.
+              // feedback, folded into one undo step per session. Keystrokes
+              // learn no choice (every prefix would join the list); the
+              // session's final value is learned once, on commit, inside
+              // that same undo step.
               onEditUppercase={(id, uppercase, first) => patch(id, { style: { uppercase } }, !first)}
-              onEditText={(id, lines, first) => {
-                const layer = drawLayers.find((l) => l.id === id);
-                if (layer) setContent(layer, lines, !first);
-              }}
-              onEditCancel={() => { undo(); setDirty(beforeTextEdit.current.dirty); setEdited(beforeTextEdit.current.edited); }}
+              onEditText={(id, lines, first) => edit((d) => setContentIn(d, id, lines, false), !first)}
+              onEditCommit={(id) => edit((d) => learnValueIn(d, id), true)}
               onDrag={onDrag}
               onResize={onResize}
               onDragCancel={cancelGesture}
-              onEditSession={onEditSession}
+              onEditSession={setEditSession}
               onSplit={setSplit}
               bleed={showGuides}
               cornerRadiusPct={render.cornerRadius}
@@ -2493,7 +2500,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             </div>
             {viewMode === "2d" && (
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
-                showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
+                showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
                 onMarginChange={(margin) => editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } }))} manual={manualGuides}
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
@@ -2509,15 +2516,6 @@ export const DocumentEditor = memo(function DocumentEditor({
                 {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
               </>}
             </span>
-            {/* 2D only: over the can it would sit on the label. A texture
-                still drops in every view. */}
-            {!texture && !exporting && previewReady && viewMode === "2d" && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
-                <span className="mx-4 rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-center text-xs text-muted-foreground backdrop-blur-sm">
-                  drop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)
-                </span>
-              </div>
-            )}
             {/* Drop a texture or mask anywhere in the window; the overlay
                 draws over this pane only, so the sidebar and the inspector's
                 drop wells stay visible. Only the active tab mounts the
@@ -2536,8 +2534,8 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
           {/* Preview toolbar, in every view. */}
           <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
-            {/* The "%" sits inside the border so the readout is one control,
-                like the size and DPI buttons; clicking it focuses the input. */}
+            {/* The "%" sits inside the border so the readout is one control;
+                clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
               value={zoomDraft ?? String(shownZoomPct)}
@@ -2553,30 +2551,6 @@ export const DocumentEditor = memo(function DocumentEditor({
               className="w-8 bg-transparent text-right tabular-nums outline-none" />
             %
             </label>
-            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            {/* The same unit picker as the ruler corner, over the same unit. */}
-            <Popover>
-              <PopoverTrigger
-                title={`Trim size — with bleed the page is ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}. Click to choose units`}
-                aria-label={`Artboard size ${sizeLabel(ART.w, ART.h, rulerUnit)}; click to choose units`}
-                className={`flex shrink-0 items-center gap-0.5 px-1 py-0.5 tabular-nums whitespace-nowrap ${STATUS_CONTROL}`}>
-                {sizeLabel(ART.w, ART.h, rulerUnit)}
-                <ChevronDown className="size-3" aria-hidden="true" />
-              </PopoverTrigger>
-              <PopoverContent align="end" side="top" className="w-56 gap-3">
-                <PopoverHeader>
-                  <PopoverTitle>Units</PopoverTitle>
-                </PopoverHeader>
-                <RulerUnitPicker unit={rulerUnit} onUnitChange={setRulerUnit} />
-              </PopoverContent>
-            </Popover>
-            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            <button type="button" onClick={() => byId("settings").run()}
-              title="PSD raster resolution and pixel-ruler scale. Click to change it in Settings"
-              aria-label={`${render.dpi} DPI; click to change the resolution in Settings`}
-              className={`shrink-0 px-1 py-0.5 tabular-nums whitespace-nowrap ${STATUS_CONTROL}`}>
-              {render.dpi} DPI
-            </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             {/* Pick a view directly; keys 1–4 do the same. Mid-split (Compare)
                 none is pressed and the group is described by the Compare
@@ -2632,8 +2606,9 @@ export const DocumentEditor = memo(function DocumentEditor({
           // "outside-press", and honouring it wiped ⇧/⌘ selections.
           // Escape is deliberate only when nothing else claimed it: Base UI
           // listens on the document and ignores defaultPrevented, so Escape
-          // that cancels a field's draft/suggestions, an on-canvas text edit
-          // or a canvas drag would otherwise also close this and deselect.
+          // that cancels a field's draft/suggestions or a canvas drag, or
+          // finishes an on-canvas text edit, would otherwise also close this
+          // and deselect.
           onOpenChange={(open, details) => {
             if (open) return;
             if (details.reason === "escape-key") {
@@ -2654,7 +2629,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             className="gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none">
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
-                unit={dimensionUnit} onUnitChange={setDimensionUnit}
+                unit={unit}
                 layerNames={rows.map((r) => ({ id: r.layer.id, name: r.layer.name }))}
                 overridden={overridden}
                 onChange={(p) => patch(inspected.layer.id, p)}

@@ -2,7 +2,9 @@
 // what to open it on instead of failing: "Use current" opens the label on the
 // tab's master (values kept), Cancel leaves the tab as it was and does not
 // re-ask on the quiet retries, and a failed Locate says why instead of
-// re-asking.
+// re-asking. Only a Cancel is reported to the shell as cancelled (#553),
+// which closes a tab made just for the open; a failed Locate keeps its
+// error on screen.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -59,20 +61,23 @@ async function openOrphan(pick: string) {
   const title = onMeta.mock.calls.at(-1)?.[0]?.title;
   const reasked = !!button(pick);
   const text = document.body.textContent ?? "";
+  const cancelled = onOpenSettled.mock.calls.at(-1)?.[1];
   await act(async () => { root.unmount(); });
-  return { title, reasked, text };
+  return { title, reasked, text, cancelled };
 }
 
 it("Use current opens the label on this tab's master", async () => {
   const r = await openOrphan("Use “");
   expect(r.title).toBe("Orphan");
   expect(r.reasked).toBe(false);
+  expect(r.cancelled).toBe(false);
 }, 30_000);
 
 it("Cancel leaves the tab alone and does not ask again", async () => {
   const r = await openOrphan("Cancel");
   expect(r.title).not.toBe("Orphan");
   expect(r.reasked).toBe(false);
+  expect(r.cancelled).toBe(true);
 }, 30_000);
 
 it("Locate shows why it failed instead of quietly asking again", async () => {
@@ -83,6 +88,7 @@ it("Locate shows why it failed instead of quietly asking again", async () => {
     expect(r.title).not.toBe("Orphan");
     expect(r.reasked).toBe(false);
     expect(r.text).toContain("Could not open master: disk went away");
+    expect(r.cancelled).toBe(false);
   } finally {
     delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
   }

@@ -1,13 +1,8 @@
 // MasterPicker.tsx — the head of the sidebar, above the Layers list: a Select
 // listing known masters (the library index — masters.ts), and nothing else.
-// Picking another library master previews the rebind (model/rebindLayers.ts)
-// — the counts of what would move to the bench — before committing: the one
-// confirmation the spec's no-dialogs rule permits, because a rebind is not a
-// single undoable canvas act. A rebind that would bench nothing commits at
-// once, with no preview. File → Open Master… lands here too (the `offer`
-// prop): App registers the opened file in the library, and a switch that
-// would bench something shows this same card, whose Continue runs App's own
-// commit — the one that binds Save Master to the file (#81).
+// Picking another library master switches at once, with no confirm card: the
+// rebind (model/rebindLayers.ts) is one undoable step, and App's header note
+// names what it set aside and that ⌘Z restores it — as Delete Variant does.
 //
 // The file verbs stay in the File menu — Open Master…, and forking the
 // template with File → Save Master As…, which mints a new master id, rebinds
@@ -16,8 +11,8 @@
 // "Save Master…/Save Variant…" button below, shown only while there is
 // something to save: a save writes into whichever version this Select names,
 // so the picker is where you can see the target while choosing to write it.
-// It runs the File menu's own `master-save` command — same review dialog,
-// same dirty gate, no second path.
+// It runs the File menu's own Save Master (App's requestMasterSave) — the
+// same direct write or review, same dirty gate, no second path.
 //
 // The menu answers one question — WHICH VERSION AM I EDITING — in three
 // registers (docs/plans/label-first-editing.md, Task 12):
@@ -25,8 +20,8 @@
 //     Picking one switches to it, which is what makes a promotion land in
 //     `variants.<id>.layers` instead of the base master. The same selection
 //     shows that version on this label.
-//   * the other masters in the library, which are a REBIND and go through the
-//     bench preview below. A remembered one carries an X at the right of its
+//   * the other masters in the library, which are a REBIND: picking one
+//     switches this label onto it at once. A remembered one carries an X at the right of its
 //     row that takes it off the library without picking it. The removal is
 //     said in plain view under the Select — the file stays where it is — with
 //     an Undo, since re-adding it would otherwise mean browsing to the file.
@@ -44,12 +39,11 @@
 // Only the middle one resolves a file, so the sentinels are intercepted in
 // onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { shortcutLabel } from "@/keys";
-import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
-import type { LabelFile, Master } from "@/model/layers";
+import type { Master } from "@/model/layers";
 import type { MasterIndexEntry } from "@/masters";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue,
@@ -65,12 +59,6 @@ const NEW_VARIANT = "__new-variant";
 const RENAME_VARIANT = "__rename-variant";
 const DELETE_VARIANT = "__delete-variant";
 const VERSION = "__version:";
-
-/** A switch waiting on the preview card and — for File → Open Master's
- *  `offer` — the opener's own commit, which Continue runs instead of
- *  `onMaster`. What it would bench is counted at render from the current
- *  label, so edits made while the card is open keep the counts true. */
-export type MasterOffer = { target: Master; assets: MasterAssets; commit?: () => Promise<void> };
 
 /** One dropdown row — just enough to render and pick. The full Master is
  *  resolved lazily (see `resolve`), only once something is actually picked,
@@ -110,9 +98,6 @@ function MasterRow({ name, detail }: { name: string; detail: string }) {
 export function MasterPicker(props: {
   /** The master currently bound to this document. */
   master: Master;
-  /** The document's label — values, enabled variants, dormant bench — which
-   *  is what the preview's rebind runs against. */
-  label: LabelFile;
   /** Library listing: every master this machine knows about, id -> name,
    *  file path and lastSeen (masters.ts's masterIndex() plus the shipped
    *  master), for the rows and their detail lines. */
@@ -128,13 +113,10 @@ export function MasterPicker(props: {
    *  a `.label`'s masterHint, the exact file that label was saved against,
    *  before the index's path for that id (#405). */
   resolve: (id: string) => Promise<{ master: Master; assets: MasterAssets } | null>;
-  /** Commits a rebind onto `target` — called after the inline preview's
-   *  "Continue" is pressed, or straight away when the rebind would bench
-   *  nothing. The caller re-runs rebind itself against its own
-   *  live document snapshot (App.tsx's commitRebind), so this never trusts a
-   *  rebind result computed against a possibly-stale `label` prop. The
-   *  resolved template assets ride along so the caller adopts them without
-   *  a second file read. */
+  /** Commits a rebind onto `target`, as soon as it is picked and resolved.
+   *  The caller rebinds its own live document (App.tsx's commitRebind) and
+   *  reports what was set aside. The resolved template assets ride along so
+   *  the caller adopts them without a second file read. */
   onMaster: (target: Master, assets: MasterAssets) => void | Promise<void>;
   /** The variant being edited, or null for the base master. */
   version: string | null;
@@ -148,37 +130,25 @@ export function MasterPicker(props: {
   onRenameVersion: (id: string, name: string) => void;
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
-  /** File → Save Master…, the button under the Select while `masterDirty`:
-   *  opens the review that writes into whichever version the Select names. */
+  /** File → Save Master…, the button under the Select while `templateMoved`:
+   *  writes into whichever version the Select names, through the review
+   *  when the label has something to promote. */
   onSaveMaster: () => void;
   /** The save button's text — File → Save Master…'s own title ("Save
    *  Master…", or "Save Variant…" on a variant), so the two always match. */
   saveLabel: string;
-  /** Whether a save would have anything to write (App's masterDirty). */
-  masterDirty: boolean;
-  /** File → Open Master…'s switch, when it would bench something: shown in
-   *  the preview card as a library pick's is. A new object opens the card
-   *  (focus moves to its Cancel, since the command came from a menu);
-   *  Cancel commits nothing. Back to null closes the card: App withdraws
-   *  the offer once any switch lands. */
-  offer?: MasterOffer | null;
-  /** The card showing `offer` closed (Cancel, Continue, or another pick
-   *  from the menu), so App can drop the offer and its commit. */
-  onOfferDone?: () => void;
+  /** Whether the master itself changed (App's templateMoved). Label
+   *  overrides alone don't show the button: they are this beer's, ⌘S saves
+   *  them, and File → Save Master… still offers to promote them. */
+  templateMoved: boolean;
   /** Drop a remembered master from this computer's library. The file stays.
    *  Resolves to an undo that puts it back (masters.ts's removeFromLibrary). */
   onForget: (id: string) => Promise<() => Promise<void>>;
 }): React.JSX.Element {
-  const previewId = useId();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<MasterOffer | null>(null);
-  /** The last `offer` taken into the card, so a re-render with the same one
-   *  doesn't bring a cancelled card back. */
-  const [offered, setOffered] = useState<MasterOffer | null>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState("");
-  /** Continue is running onMaster (index write, asset decode): a second press
-   *  in that window would rebind the label twice. */
+  /** onMaster is running (index write, asset decode): a second pick in that
+   *  window would rebind the label twice, so the Select is disabled. */
   const [committing, setCommitting] = useState(false);
   /** The last library removal, shown with its Undo until the next one or
    *  until the menu is used again. */
@@ -193,28 +163,10 @@ export function MasterPicker(props: {
   // State adjusted during render, React's pattern for reacting to a prop.
   if (deleted && !deleted.after && !props.master.variants.some((v) => v.id === deleted.id))
     setDeleted({ ...deleted, after: props.master });
-  if (props.offer && props.offer !== offered) {
-    setOffered(props.offer);
-    setPreview(props.offer);
-    setError("");
-  }
-  // Withdrawn: close the card if it still shows that offer, never a pick's.
-  if (!props.offer && offered) {
-    setOffered(null);
-    if (preview === offered) setPreview(null);
-  }
-  /** What the card's switch would bench, from the label as it is now. */
-  const hides = useMemo(
-    () => preview && rebindLabel(props.label, props.master, preview.target).dropped,
-    [preview, props.label, props.master],
-  );
-  useEffect(() => { if (props.offer) cancelRef.current?.focus(); }, [props.offer]);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
 
   const closeAll = () => {
-    if (preview && preview === offered) props.onOfferDone?.();
-    setPreview(null);
     setResolvingId(null);
     setError("");
     setRemoved(null);
@@ -236,11 +188,6 @@ export function MasterPicker(props: {
     const name = props.library[id]?.name ?? id;
     try {
       const undo = await props.onForget(id);
-      // A card still offering the removed master would put it straight back.
-      if (preview?.target.id === id) {
-        if (preview === offered) props.onOfferDone?.();
-        setPreview(null);
-      }
       setDeleted(null);
       setRemoved({ name, undo });
     } finally {
@@ -248,8 +195,8 @@ export function MasterPicker(props: {
     }
   };
 
-  /** Resolve the selected master and preview the rebind before committing,
-   *  or commit at once when the rebind would bench nothing. */
+  /** Resolve the selected master and switch to it. ⌘Z undoes the switch
+   *  like any other edit, so there is nothing to confirm. */
   const pickEntry = async (id: string) => {
     if (id === props.master.id) return;
     setError("");
@@ -257,12 +204,15 @@ export function MasterPicker(props: {
     const r = await props.resolve(id);
     setResolvingId(null);
     if (!r) { setError(`Could not open master "${props.library[id]?.name ?? id}".`); return; }
-    const { dropped } = rebindLabel(props.label, props.master, r.master);
-    const next = { target: r.master, assets: r.assets };
-    // Nothing would be benched, so there is nothing to confirm: switch now.
-    // ⌘Z undoes it like any other edit.
-    if (!dropped.values.length && !dropped.variants.length) await commit(next);
-    else setPreview(next);
+    setCommitting(true);
+    try {
+      await props.onMaster(r.master, r.assets);
+      closeAll();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setCommitting(false);
+    }
   };
 
   /** The working version, narrowed once so the variant verbs below need no
@@ -287,25 +237,11 @@ export function MasterPicker(props: {
     setNaming(null);
   };
 
-  const commit = async (target = preview) => {
-    if (!target || committing) return;
-    setCommitting(true);
-    try {
-      await (target.commit ? target.commit() : props.onMaster(target.target, target.assets));
-      closeAll();
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setCommitting(false);
-    }
-  };
-
   return (
     <div className="px-2 py-2">
       <Select
         value={props.version === null ? props.master.id : VERSION + props.version}
-        // Also while a switch with nothing to confirm commits: there is no
-        // Continue to disable then, and commit would drop a second pick.
+        // Also while a switch commits: a second pick would rebind twice.
         disabled={resolvingId !== null || committing}
         onValueChange={(id) => {
           if (!id) return;
@@ -397,7 +333,7 @@ export function MasterPicker(props: {
             if (e.key === "Escape") setNaming(null);
           }}
         />
-      ) : props.masterDirty && (
+      ) : props.templateMoved && (
         <Button type="button" id="variant-save" size="xs" variant="attention"
           className="mt-1" onClick={props.onSaveMaster}>
           {props.saveLabel}
@@ -429,39 +365,6 @@ export function MasterPicker(props: {
       {error && (
         <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
       )}
-
-      {preview && hides && (
-        <div id="master-picker-preview" role="group" aria-labelledby={previewId}
-          className="mt-1 rounded-md border border-sidebar-border p-2 text-xs text-sidebar-foreground">
-          <p id={previewId}>{previewLine(preview.target, hides)}</p>
-          <div className="mt-1.5 flex justify-end gap-1.5">
-            <Button
-              ref={cancelRef} type="button" variant="outline" size="xs"
-              // Cancel unmounts with the card: hand focus back to the picker.
-              onClick={() => { closeAll(); triggerRef.current?.focus(); }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button" id="master-picker-continue" disabled={committing} onClick={() => { void commit(); }} size="xs"
-            >
-              Continue
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-/** The card's sentence. `hides` can empty while the card is open (the
- *  hidden fields were cleared), and then says so. */
-function previewLine(target: Master, hides: { values: string[]; variants: string[] }): string {
-  const parts: string[] = [];
-  if (hides.values.length)
-    parts.push(`${hides.values.length} filled field${hides.values.length === 1 ? "" : "s"}`);
-  if (hides.variants.length)
-    parts.push(`${hides.variants.length} variant${hides.variants.length === 1 ? "" : "s"}`);
-  if (!parts.length) return `Switching to "${target.name}" hides nothing. Continue?`;
-  return `Switching to "${target.name}" hides ${parts.join(" and ")} that it cannot display. Their contents are kept if you switch back. Continue?`;
 }

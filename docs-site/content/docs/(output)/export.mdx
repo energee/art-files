@@ -8,12 +8,9 @@ File → Export, the palette, `⌘E` and `⇧⌘E`:
 | Action | Files |
 | --- | --- |
 | Export PDFs | `{name}.pdf` and `{name}-mask.pdf` |
-| Export Artwork PDF | art only |
-| Export Mask PDF | mask only |
 | Export PSDs | `{name}.psd` and `{name}-mask.psd` |
-| Export Artwork / Mask PSD | one plate |
 
-Exporting both plates asks where to save once, for the art file. In the desktop app the mask goes beside it as `{chosen name}-mask.pdf` (or `.psd`). If a file with that name is already there, a second dialog opens on that name, so you can confirm replacing it or pick another, rather than it being overwritten silently. In a browser each file still has its own save dialog or download.
+Each export writes both plates and asks where to save once, for the art file. In the desktop app the mask goes beside it as `{chosen name}-mask.pdf` (or `.psd`). If a file with that name is already there, a second dialog opens on that name, so you can confirm replacing it or pick another, rather than it being overwritten silently. In a browser each file still has its own save dialog or download.
 
 Export greys out while the label is invalid. The reason sits in the header next to the menus. Click it to select and inspect the first invalid layer. The Layers list marks every invalid layer with a red dot.
 
@@ -21,7 +18,7 @@ The PDF exports also wait for the preview to finish rendering; until then their 
 
 When an export finishes, the header names the files it saved, and screen readers announce it. The note clears on your next edit, since the files no longer match the label. An export you edit during shows no note, because its files hold the label as it was when the export began.
 
-Exports rebuild from the full-size assets. PDFs preserve vector geometry and embed uploaded images at their original resolution. **Settings → Resolution** controls PSD raster resolution (default 600 DPI). Live preview uses downscaled images.
+Exports rebuild from the full-size assets. PDFs preserve vector geometry and embed uploaded images at their original resolution. **Settings → PSD resolution** controls PSD raster resolution (default 600 DPI). Live preview uses downscaled images.
 
 The filename is the beer name, slugged like the QR. The PDF title is `{Name} label art` (and the mask equivalent).
 
@@ -44,6 +41,8 @@ Barcodes ship as near-black bars inside a white halo over white ink. The white-i
 
 Export checks the code each barcode will actually print, after any `{layer}` refs expand, wherever it came from: this label, a variant, or the master. A code that isn't valid for the barcode's symbology blocks export with an error instead of leaving the barcode off. A blank or switched-off barcode doesn't block anything.
 
+This includes a barcode cleared in the label's Code field (or values JSON), and a layer disabled by a variant or label override. Whitespace-only codes count as blank. Re-enabling a nonblank invalid code restores the export error.
+
 ## Photoshop
 
 Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
@@ -64,3 +63,5 @@ The app outputs RGB. Before you send it:
 brew install ghostscript   # once
 tools/to-cmyk.sh LABRADORITE.pdf LABRADORITE-mask.pdf
 ```
+
+The script preserves the PDF's authored page orientation. Conversion is not scan certification: verify the exact QR and barcode payloads on the converted artwork and on the printer's proof/stock. The shipped dots QR encodes at error correction Q, the level at which its keylined gold dots decode for ordinary names (at L most names failed a digital decoder). Changing approved QR artwork still requires the printed-label scan approval.

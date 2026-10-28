@@ -28,8 +28,9 @@ import {
 import { labelFontCss } from "@/fonts";
 import { modsOf, type SelectMods } from "@/selection";
 import { errMsg } from "@/lib/utils";
+import { lengthLabel, type LengthUnit } from "@/rulers";
 import {
-  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, inches, pageBox,
+  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, pageBox,
   SEL_PAD,
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
@@ -107,10 +108,13 @@ export const PreviewCompare = forwardRef<
      *  new lines. `first` is true on the session's opening keystroke; App
      *  uses it to fold the whole session into one undo step. */
     onEditText: (id: string, lines: TextLine[], first: boolean) => void;
+    /** An in-place session that changed something ended — Enter, Escape,
+     *  click-away, or the preview going away; every end keeps the typing.
+     *  Called once, after the last onEditText; App learns the final value
+     *  into the layer's choices here, never per keystroke (the sidebar
+     *  picker's commit rule). */
+    onEditCommit: (id: string) => void;
     onEditUppercase: (id: string, uppercase: boolean, first: boolean) => void;
-    /** Escape mid-session: App undoes the session's single step. Never
-     *  called when nothing was typed. */
-    onEditCancel: () => void;
     /** Drag-to-move: called on every pointermove past the 3px threshold with
      *  the CUMULATIVE delta from the drag's start, in label points, `first`
      *  true on the movement that crosses the threshold — App applies moveBy
@@ -146,11 +150,13 @@ export const PreviewCompare = forwardRef<
     bleedIn: number;
     /** A failed frame, for App's error strip; "" on the next good frame. */
     onRenderError?: (message: string) => void;
+    /** The app's length unit (rulers.ts), which the drag/resize readout speaks. */
+    unit: LengthUnit;
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
-    onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
+    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditCommit, onEditUppercase, onDrag,
+    onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError, unit,
   },
   ref,
 ) {
@@ -286,7 +292,7 @@ export const PreviewCompare = forwardRef<
   // The pill portals to <body>, so click-away must ask it separately.
   const toolbarRef = useRef<HTMLDivElement>(null);
   // Whether this session has applied any keystroke yet — the first one opens
-  // the undo step, and Escape has nothing to undo before it.
+  // the undo step, and a session that typed nothing commits nothing.
   const edited = useRef(false);
 
   // Drag-to-move: pointerdown on an unlocked layer arms a two-axis drag;
@@ -402,10 +408,16 @@ export const PreviewCompare = forwardRef<
   useEffect(() => { if (!canvasRender) setEditing(null); }, [canvasRender]);
 
   // Report the open session so App can skip the layer from the render for
-  // its duration. One effect covers every open/close path.
+  // its duration, and COMMIT the one that just ended if it changed anything.
+  // One effect covers every open/close path.
+  const openSession = useRef<string | null>(null);
   useEffect(() => {
+    const ended = openSession.current;
+    openSession.current = editing;
+    if (ended && ended !== editing && edited.current) onEditCommit(ended);
     onEditSession(editing);
-    // onEditSession is a useState setter in App — identity-stable.
+    // onEditSession is a useState setter in App — identity-stable; this
+    // render's onEditCommit already sees the session's last keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
@@ -429,7 +441,7 @@ export const PreviewCompare = forwardRef<
     const id = hitOf(e);
     const layer = id ? layers.find((l) => l.id === id) : undefined;
     if (!id || !layer || layer.kind !== "text" || !canvasRender) return;
-    if (!layer.input) {
+    if (!layer.input && !layer.choices?.length) {
       // Anchor the pill over the layer's box, mapped page → viewport px off
       // the same rect the click math uses. Captured once, because the pill
       // portals to <body>: App's CSS zoom can't scale it there.
@@ -551,8 +563,8 @@ export const PreviewCompare = forwardRef<
       {readout && boxesById.get(readout.id) && (() => {
         const b = boxesById.get(readout.id)!;
         const rows = readout.moved
-          ? [`X ${inches(readout.moved.dx)}`, `Y ${inches(readout.moved.dy)}`]
-          : [`W ${inches(b.w)}`, `H ${inches(b.h)}`];
+          ? [`X ${lengthLabel(readout.moved.dx, unit)}`, `Y ${lengthLabel(readout.moved.dy, unit)}`]
+          : [`W ${lengthLabel(b.w, unit)}`, `H ${lengthLabel(b.h, unit)}`];
         return (
           <div
             className="pointer-events-none absolute"
@@ -632,8 +644,9 @@ export const PreviewCompare = forwardRef<
       {/* IN-PLACE editor — the one editor every text layer gets. The render
           source skips the layer for the session (see onEditSession), so the
           editor's styled text IS the layer while you type. Rich layers get
-          the lines field with its pill toolbar; a number/code layer the plain
-          box (InPlacePlainField), turned with the text for a rotated layer. */}
+          the lines field with its pill toolbar; a number/code layer, or one
+          with choices, the plain box (InPlacePlainField), turned with the
+          text for a rotated layer. */}
       {editing && editLayer?.kind === "text" && editBox && canvasRender && (() => {
         const layer = editLayer;
         const b = editBox;
@@ -642,11 +655,10 @@ export const PreviewCompare = forwardRef<
           onEditText(editing, lines, !edited.current);
           edited.current = true;
         };
-        const close = (cancel: boolean) => {
-          if (cancel && edited.current) onEditCancel();
-          setEditing(null);
-        };
-        if (!layer.input) {
+        const close = () => setEditing(null);
+        // A layer with choices gets the plain box, as the sidebar's picker
+        // field is one plain line (TextEditor's PlainLineField rule).
+        if (!layer.input && !layer.choices?.length) {
           return (
             <InPlaceRichField
               layer={layer}

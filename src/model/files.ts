@@ -108,7 +108,8 @@ function parseValues(v: unknown): Record<string, LayerValue> {
 }
 
 /** Override keys the renderer does geometry with: a finite number, or null
- *  (applyDiff's "delete this key"). */
+ *  (applyDiff's "delete this key"). `scale` is read from older files only,
+ *  then folded into w/h when the label opens (resolveLayers.ts foldLabelScale). */
 const NUMERIC_KEYS = ["x", "size", "leading", "headerScale", "width", "min", "max", "w", "h", "scale", "moduleW"];
 
 /** Overrides by layer id (#392). A patch carrying `kind` is a whole added

@@ -189,7 +189,7 @@ it("adds and clears a command's note on its native row", async () => {
     await render("rendering…");
     await render("rendering…");
     expect(native.items.get("export-both")!.text).toBe("Export PDFs (rendering…)");
-    expect(native.items.get("export-art")!.text).toBe("Export Artwork PDF");
+    expect(native.items.get("export-psd")!.text).toBe("Export PSDs");
     await render();
     expect(native.items.get("export-both")!.text).toBe("Export PDFs");
   } finally {

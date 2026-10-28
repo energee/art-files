@@ -1,0 +1,92 @@
+[
+  {
+    "destination": "audit-snapshot.label",
+    "mode": "delay",
+    "sha256": "3d81c2c3056e1ef9ef32001da31fc029cc3e6ed43659158cbb41f059475f8524",
+    "label": {
+      "formatVersion": 3,
+      "masterId": "audit-stress-200",
+      "enabledVariants": [],
+      "values": {
+        "name": [
+          {
+            "fill": "#F3CD80",
+            "layer": "metallic",
+            "stroke": "#000000",
+            "strokeLayer": "white",
+            "strokeWidth": 15,
+            "uppercase": true,
+            "text": "Aurora12"
+          }
+        ],
+        "barcode": "850051366224"
+      },
+      "overrides": {
+        "barcode": {
+          "enabled": true
+        }
+      },
+      "masterHint": "stress-200.master"
+    }
+  },
+  {
+    "destination": "failed-destination.label",
+    "mode": "fail",
+    "sha256": "062d56821af13d87ebae75a813a14c22239bd7b134b07d5d78f8c439988780f5",
+    "label": {
+      "formatVersion": 3,
+      "masterId": "audit-stress-200",
+      "enabledVariants": [],
+      "values": {
+        "name": [
+          {
+            "fill": "#F3CD80",
+            "layer": "metallic",
+            "stroke": "#000000",
+            "strokeLayer": "white",
+            "strokeWidth": 15,
+            "uppercase": true,
+            "text": "After Snapshot"
+          }
+        ],
+        "barcode": "850051366224"
+      },
+      "overrides": {
+        "barcode": {
+          "enabled": true
+        }
+      },
+      "masterHint": "stress-200.master"
+    }
+  },
+  {
+    "destination": "audit-snapshot.label",
+    "mode": "delay",
+    "sha256": "062d56821af13d87ebae75a813a14c22239bd7b134b07d5d78f8c439988780f5",
+    "label": {
+      "formatVersion": 3,
+      "masterId": "audit-stress-200",
+      "enabledVariants": [],
+      "values": {
+        "name": [
+          {
+            "fill": "#F3CD80",
+            "layer": "metallic",
+            "stroke": "#000000",
+            "strokeLayer": "white",
+            "strokeWidth": 15,
+            "uppercase": true,
+            "text": "After Snapshot"
+          }
+        ],
+        "barcode": "850051366224"
+      },
+      "overrides": {
+        "barcode": {
+          "enabled": true
+        }
+      },
+      "masterHint": "stress-200.master"
+    }
+  }
+]

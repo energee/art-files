@@ -1,0 +1,20 @@
+Tool versions: pdfinfo/pdftoppm 26.02.0; Ghostscript 10.08.0; Photoshop bundle metadata 27.11.0.
+
+PDF boxes (pdfinfo -box):
+F1 art and mask: Media/Bleed 0,0,585.12,369.12; Trim 4.56,4.56,580.56,364.56; Producer Label Lab 0.1.108; titles respectively "Audit Labradorite label art" and "Audit Labradorite white-ink layer".
+F3 art and mask: Media/Bleed 0,0,594,378; Trim 9,9,585,369; Producer Label Lab 0.1.108; titles respectively "Audit Custom label art" and "Audit Custom white-ink layer".
+
+CMYK command:
+tools/to-cmyk.sh outputs/single-all/audit-labradorite.pdf outputs/single-all/audit-labradorite-mask.pdf
+stdout: wrote ...audit-labradorite-cmyk.pdf; wrote ...audit-labradorite-mask-cmyk.pdf; exit 0.
+
+600-DPI ZXing decode observations:
+- audit-labradorite (F1 name "Audit Labradorite") original QR crop, all four rotations: null; original and CMYK full-page raster UPC-A: 0850051366224.
+- reference "Labradorite" original QR crop rotations 0..3: null, null, null, https://lolev.beer/beer/labradorite.
+- reference "Labradorite" after documented CMYK conversion, rotations 0..3: null, null, null, null.
+
+PSD ag-psd inspection: F1 art and mask each 4876x3076 pixels; ResolutionInfo horizontal/vertical 600 PPI; emitted layer groups include text type layers, QR vector shapes, barcode vector shape and stroke effects. Full structured console output is captured in the tool transcript; PSD source artifacts are retained.
+
+Photoshop access attempts: version request reached installed Adobe Photoshop 2026; AppleScript open attempts returned (-1728, then -43) before a document opened. `open -a "Adobe Photoshop 2026" <generated F1 PSD>` returned exit 0 with no diagnostics. No generated PSD raster was retrieved, no file saved, and no user document was addressed.
+
+600-DPI Poppler repeat comparison, generated twice from same F1 inputs: art changed 0 px (0.0000%), bbox none; mask changed 0 px (0.0000%), bbox none. This is repeatability evidence only, not a comparison to an approved historical PDF reference.

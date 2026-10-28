@@ -311,14 +311,16 @@ no status, no attempts, no delta.
 
 ## 2026-10-05 ux-color-labels
 - finding: [a11y/high] src/components/ColorField.tsx:164 — Fill and stroke hex fields have no accessible names
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
 - observed-at: 1b0024900e92d56e90b3f212865e15ecb99fd260
 - evidence: Chrome browser reproduction and DOM/accessibility measurements; full steps and source trace in docs/audits/2026-10-05-ux-color-labels.md
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-color-labels documentation diff based on 1b00249; no application suite run
 - re-check 2026-10-11 @ 0bb506c: still open. ColorField's hex Input (ColorField.tsx:160) has an id but no aria-label, and LayerInspectorSections.tsx:351/386 label the groups with an h2 Heading, not a <label htmlFor>
+- re-check 2026-10-26 @ eac33714bbfbc7df704fb4959d32ab7a0793cb1b: confirmed in real Chrome inspector; unnamed fill/stroke textboxes and two generic Pick color buttons remain. AUD-05 in docs/audits/2026-10-26-audit-results.md; retained accessibility observation under 2026-10-26-evidence/ui/. Existing finding remains open, not duplicated.
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: #546 corrected in the existing finding, not duplicated. Required ColorField context names Fill color / Stroke color and contextual picker/no-ink actions; inspector and direct component test callers migrated. Real Chrome ABV inspector exposes both distinct input and picker names; actual screen-reader speech remains unverified. Full suite 1668/1668, tsc/lint/build/knip pass; binary-impacting, Unreleased note queued.
 
 ## 2026-10-05 ux-decimal-input
 - finding: [UX/low] src/components/TextEditor.tsx:731 — ABV decimals conflict with native input validation and stepping
@@ -511,3 +513,196 @@ no status, no attempts, no delta.
 - status: in-review
 - delta: plan docs/plans/sidebar-ux.md; selected = sidebar-primary/15 (no edge bar, no name focus ring); PowerOff/Lock shown as exceptions, Power/LockOpen on hover; size-6 controls; no strikethrough; Rename/Delete Variant as picker sentinels, Save only while masterDirty; Changed in the group label; hint folded into the row title; scrollIntoView nearest; follow-up: "…" menu replaced by Pencil/Trash2 buttons on the selected row only + Base UI ContextMenu (Rename/Remove at the pointer) on every row (Rename / Lock|Unlock / Remove); lock button only while locked (click unlocks), so hover shows power only; power ink = on (off PowerOff muted even on hover, on/selected Power full ink, selected-row opacity-40 branch removed); lock title says click to unlock and focus moves to power after unlocking
 - evidence: branch feat/sidebar-ux; layerlist + masterpicker DOM tests 78/78 after review fixes (/code-review xhigh: 16 findings, 11 fixed), tsc and lint clean; full vitest 1655 pass, 3 fail only from the worktree lacking node_modules/.bin/tsx (generate-cli, golden-diff); browser-checked dark and light on localhost:5197
+
+## 2026-10-26 risk-based-audit-plan
+- finding: [user request] create an application audit plan from the recommended ten-area risk matrix
+- status: done
+- attempts: 1/3
+- observed-at: d0d1ad513dc15b4a4065b3d41d5f0ba7c00abc11
+- delta: docs/audits/2026-10-26-audit-plan.md defines 41 scenarios across work preservation, print output, UPC/QR, document handling, desktop integration, editing consistency, accessibility, CLI, performance and engineering health; includes execution waves, acceptance authorities, fixture/environment manifests, evidence requirements and explicit physical/native proof gaps
+- evidence: planning document validated against the working tree based on d0d1ad5: 41 unique sequential scenario IDs across ten areas, 14 resolving local links, three shell blocks passing bash -n and every referenced npm run script present in its package.json. Audit commands and application tests were not executed; no application pass is claimed.
+- evidence: release handoff check `node scripts/check-release.mjs origin/main` failed because this checkout is version 0.1.107 while origin/main is 0.1.108. No release metadata was changed for this documentation-only task; the version mismatch remains outside this plan's scope.
+- release: non-binary-impacting (audit plan and agent memory only); no Unreleased entry, version bump or release operation
+
+## 2026-10-26 application-audit-execution
+- finding: [user request] execute the ten-area, 41-scenario risk-based application audit
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- delta: docs/audits/2026-10-26-audit-results.md accounts for all 41 scenarios, seven confirmed findings (including the existing color-label finding), runtime/browser/CLI/print evidence, baseline failures and explicit native/Photoshop/physical proof gaps; no application fix applied
+- evidence: real browser save/reopen, delayed-save snapshot and failed/cancelled Save As, recovery reload/restore/discard, text undo/redo, export/edit snapshot, image routing, accessibility/layout and 215-layer resource probes; actual CLI mode/error matrix, 600-DPI QR controls and CMYK conversion; macOS source-matched package build/process launch; 183 retained artifacts indexed with hashes
+- evidence: Node 24.19.0, macOS arm64; tsc/lint/build/knip/npm runtime audit/docs checks pass; Rust fmt/check and 13 tests pass on 1.99.0 (CI pin 1.98.1 unverified); cargo audit exits 0 with six warnings; npm test fails 32/1658 (11 timeouts, 21 assertion/type failures), not rerun. Report validation checks all 41 scenario rows exactly once and 57 resolving local links.
+- evidence: execution-revision release metadata gate passes for 0.1.108; earlier planning-revision 0.1.107 mismatch is historical, not the current result. External source transition during preparation recorded in report; no audit edits to application source.
+- ruling: completed investigation with outstanding defects/proof gaps, not a clean application/production-print certification. Native AX trust false; Windows/Linux runtime, signed updater install, Photoshop rendered parity, physical print/scans, screen-reader speech and agreed performance budgets remain unverified.
+- release: non-binary-impacting (audit documents/evidence and agent memory only); no Unreleased entry, version bump, release publication or public-feed change
+
+## 2026-10-26 audit-dots-qr-payload
+- finding: [correctness/high] src/qr.ts:48-58, src/planLayers.ts:391-393 — ordinary name-derived default dots QR does not decode from the actual 600-DPI PDF in any rotation; square styling with the same payload/geometry decodes in all four rotations
+- status: parked(authority)
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-01; payload https://lolev.beer/beer/audit-labradorite; retained source PDF, dots/square crops, crop coordinates and ZXing decoder observations in docs/audits/2026-10-26-evidence/print/
+- acceptance: intended payload decodes from supported styled exports and representative physical stock; preserve the existing printed-Lupula approval gate before changing the approved artwork
+- follow-up 2026-10-27 @ eac33714: independent retained-crop ZXing smoke reconfirms dots 0/4 vs square 4/4 exact payloads. No QR artwork changed. Styling/keyline topology is implicated by the matched control, not a payload encoding defect.
+- ruling: printed-Lupula iOS Camera and stock Android approval/proof is absent; obtain that gate before altering approved geometry, polarity, backing, quiet zone or default style. Physical scans remain unverified.
+
+## 2026-10-26 audit-cmyk-qr-decode
+- finding: [correctness/high] tools/to-cmyk.sh:10-15 — documented Ghostscript conversion exits 0 but loses the previously available short-reference QR decode at all four rotations
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-02; RGB Labradorite reference decodes at rotation 270 degrees, converted copy nowhere; UPC survives. Original/converted PDFs and 600-DPI crops retained in docs/audits/2026-10-26-evidence/print/. No physical scan certificate claimed.
+- acceptance: documented printer conversion preserves exact code payloads on matched digital/physical proofs; investigate styling/color and conversion together rather than assuming one flag is the cause
+- correction 2026-10-27: #543 decode-loss claim disproved. Retained CMYK Page rot 90 vs RGB 0; original crop sampled text. Correct transformed crop x=156,y=156 at 600 DPI decodes the exact Labradorite URL in one rotation. tools/to-cmyk.sh now passes -dAutoRotatePages=/None; fresh conversion retains 585.12×369.12pt, rotation 0, and original-position crop x=156,y=2262 decodes at 270°. No QR design change; digital fragility remains #542. Historical artifacts untouched; audit report carries explicit erratum.
+
+## 2026-10-26 audit-blank-disabled-barcode
+- finding: [correctness/high] src/model/resolveLayers.ts:61-76,153-162,174-181 — stored empty barcode fails applyValue before the later blank/disabled guard, blocking CLI and live editor export even after the layer is disabled
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-03; values JSON barcode empty exits 1; actual browser blank Code reports export blocked, Enabled checked=false retains that error. Retained CLI and browser observations under docs/audits/2026-10-26-evidence/. This is a shared resolver defect, not CLI coercion alone.
+- acceptance: blank/disabled stored barcode values follow the documented non-blocking rule while enabled invalid literals and expanded references still block export
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: applyValue validates only enabled, nonblank literal barcodes; shape validation and enabled invalid-code fallback remain. CLI blank fixture --check failed exit 1 before, passes after and generates both PDFs; disabled garbage override also passes. Chrome blank/off has no export block; enabled 12345 blocks, disabling clears the error. Deterministic tests cover whitespace, disabled values, variant/override enablement and invalid expanded refs. Full suite 1668/1668, tsc/lint/build/knip/release gate pass; binary-impacting Unreleased note, no version bump.
+
+## 2026-10-26 audit-layer-focus-invisible
+- finding: [a11y/high] src/components/LayerList.tsx:231-235 — unselected layer-name button has no visible keyboard focus indication
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-04; actual Style button focus-visible=true, aria-pressed=false, outline none, 0px ring/shadows and transparent row; screenshot and computed measurements retained. Enter and keyboard reorder work; activation failure is not alleged.
+- acceptance: keyboard focus is identifiable before activation on selected/unselected names in both themes; resolve conflict with prior sidebar no-name-focus-ring design without silently changing it in this investigation
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: inherited keyboard-only sidebar ring restored; selected-row tint unchanged. docs/plans/sidebar-ux.md explicitly supersedes the earlier no-name-ring decision because focus and selection serve different purposes. Real Tab/Shift+Tab and Enter show unselected/selected focus; light ring rgb(37,99,235), dark rgb(96,165,250), 2px shadow. Both themes visually inspected. Removed obsolete class-only styling test rather than re-pinning it.
+
+## 2026-10-26 audit-file-target-semantics
+- finding: [a11y/med] src/components/FileDrop.tsx:74-83,95-99,121 — click-to-browse drop well is a focusable presentation/generic node; nested file input is only named file upload, without slot context
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-06; mounted Metallic mask root DOM and Chrome accessibility tree retained at docs/audits/2026-10-26-evidence/ui/file-target-aria.txt. Keyboard handlers exist; missing semantics/context is the finding.
+- acceptance: empty/loaded texture, mask and custom-image selection actions expose meaningful contextual names and roles without nested interactive-control conflicts
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: passive drop target plus sibling Browse/Remove buttons, contextual file input name, retained drop routing. Chrome empty/loaded Texture, Metallic mask and custom Image expose Browse <slot>; Remove mask/texture focuses Undo and Undo returns to Browse; custom image removal returns to Browse with document-undo hint. DOM regressions cover slot names, sibling controls, drop routing and removal focus. Native chooser and screen-reader speech remain unverified.
+
+## 2026-10-26 audit-default-suite-red
+- finding: [evidence/high] package.json:16, tests/save-races-dom.test.tsx and seven other suites — default npm test exits 1, leaving no green full-suite evidence for the audited environment
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-07; 150/158 files and 1626/1658 tests pass; 32 fail (11 timeouts, 21 assertion/type diagnostics). Full compressed log and classification retained in docs/audits/2026-10-26-evidence/baseline/. Functional audit work was concurrent; resource contention/cascading failures are hypotheses, not established causes.
+- acceptance: diagnose the earliest failed transition/timeout under controlled resources and provide explicitly new evidence for any correction; do not infer 32 independent product defects or suppress checks to manufacture a pass
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: retained diagnostics inspected before experiment. Earliest completed failed suite included generate's 5.817s legacy export; save-races timeouts precede the missing-DOM cascade. Audited Vitest default concurrent ceiling was 9 on 10 CPUs (158 workers spawned is cumulative, not simultaneous). maxWorkers:4 preserves isolation and 5s timeout. Controlled 1-worker four-suite experiment passes 140/140; final default npm test passes 158 files / 1668 tests in 26.71s without concurrent build/print/browser work. Original resource contention/cascade causality remains a supported hypothesis, not a proven independent product bug. Happy-dom teardown AbortError diagnostics remain visible, not suppressed.
+- correction 2026-10-27 @ eac33714 + branch fix/audit-2026-10-26: maxWorkers:4 dropped. With the default ceiling (--maxWorkers=9) at load average ~10 the full suite passes 158 files / 1668 tests in 19.3s (vs 32.1s capped), so the cap is not needed for green and the audit's red run is attributed to its own concurrent build/print/browser work. No config change ships for #548.
+- integration evidence: an intermediate new-code run exposed missing ColorField labels in direct test callers and a config-test closing-delimiter error introduced during agent cleanup; both corrected before final green run. Final targeted six suites 156/156, tsc, lint, production build, knip and release metadata gate pass. Docs typecheck passes; docs build compiled/generated 48 pages but exited 1 on Next.js SecurityFatalError upgrade gate. No dependency upgrade or gate bypass attempted.
+
+## 2026-10-27 native-macos-pass
+- finding: [user request] run the audit's blocked native macOS scenarios (A4, A5, D3, D4, E1, E2, E3) now that AX trust is granted
+- status: done
+- attempts: 1/3
+- observed-at: d320002f (branch fix/audit-2026-10-26), macOS 27.0.1 arm64, 0.1.108 built with identifier com.labellab.audit / productName "Label Lab Audit" so its IndexedDB, master index and cache never touch the installed app
+- evidence: E1 pass — Apple-event open of a .label gives one tab; reopening via dotted and relative paths focuses it, no duplicate. E2 pass — Cmd+S rewrites the bound file without a dialog; paired Export PDFs asks once and writes art + -mask beside it; re-export: macOS Replace for the art, existing mask is not overwritten, a second dialog opens on dirty-edit-mask, Cancel leaves the mask untouched and the status note names what was saved and what was cancelled. A4 pass — Cmd+W, Cmd+Q, the window close button and an AppleScript quit (Dock's terminate:) each show Save/Discard/Cancel; Cancel keeps tab and app. A5 pass — kill -9 after >2 s dirty, relaunch offers "Recover unsaved work?"; Restore returns the dirty tab and Cmd+S writes back to the unchanged original without a dialog. D3 pass — "./x.master" hint beside the label resolves; master moved away opens from the library cache; unknown id shows the different-master dialog (Use / Locate / Cancel). D4 — a .label symlink to a valid label stored outside (.bin) never opened (cold or warm) while a regular copy opened; no read observed, but LaunchServices may resolve the link before the app sees it, so plugin-fs scope enforcement itself is still unproven. #546 names (Fill color / Stroke color) confirmed in the native build.
+- observations (low): Settings… sits in Edit with no Cmd+, (macOS puts it in the app menu); quit reuses the "Close “<tab>”?" title; cancelling the different-master dialog leaves an empty Untitled tab (by design per TabsShell pending comment); a symlinked .label that doesn't resolve to a .label does nothing with no message.
+- blocked: the macOS 27 out-of-process save panel ignores synthetic clicks and drops AX references after Go to Folder, so Save As to a typed destination was not driven (Return/Escape do reach it). Windows/Linux, signed updater, Photoshop, print and screen-reader proof unchanged.
+- release: non-binary-impacting (ledger only)
+
+## 2026-10-27 native-ux-551-554
+- finding: [ux/low] the four native-macos-pass observations, filed as #551 (Settings… in Edit, no ⌘,), #552 (quit prompt titled "Close"), #553 (cancelled different-master open leaves an empty tab), #554 (non-.label OS open does nothing)
+- status: done (PR open, unmerged)
+- attempts: 1/3
+- observed-at: branch fix/native-ux-551-554 on 9c9866f8
+- delta: Settings… gets ⌘, and moves to the Mac application menu (MAC_MENUS drops it from Edit); the close prompt reads "Save changes to “…” before quitting?" during a window-close sweep; onOpenSettled reports `cancelled` (different-master Cancel or its Locate picker cancel) and the shell closes a pristine tab openRouted made for that open, never a reused one; macOS Opened no longer filters by extension in Rust, the shell rejects a non-.label canonical path with a strip error and never reads it (shared isLabelName also serves the drop handler).
+- evidence: new assertions red on main's src (appmenu, close-review-sweep, missing-master, tabs-os-open), green after; npm test 158 files / 1672 tests, tsc, lint, knip, cargo test 13/13, check-release pass. Not driven in the native app: real menu bar placement, ⌘, through muda, and the LaunchServices symlink path (D4 scope enforcement still unproven).
+- release: binary-impacting; bullets under [Unreleased]
+
+## 2026-10-27 signing-397
+- finding: [security/medium] #397 — release builds are ad-hoc signed on macOS and unsigned on Windows
+- status: done (PR open, unmerged; inert until credentials exist)
+- attempts: 1/3
+- observed-at: branch fix/397-signing on 9c9866f8
+- delta: release.yml exports the six APPLE_* secrets to GITHUB_ENV only when APPLE_CERTIFICATE is set (all-or-none, fail-fast); tauri then signs with the Developer ID and notarizes. Windows: AZURE_TRUSTED_SIGNING_ENDPOINT/_ACCOUNT/_PROFILE repo vars make configure-updater.mjs add bundle.windows.signCommand (artifact-signing-cli 0.12.0, the renamed successor of the deprecated trusted-signing-cli, version-pinned because it runs beside the updater key; installed only when configured), AZURE_CLIENT_ID/SECRET/TENANT_ID secrets reach tauri-action.
+- evidence: tests/configure-updater.test.ts (unset, all-set, half-set); Apple gate script run locally under /bin/bash 3.2 for none/partial/full; npm test 159 files / 1671 tests, tsc, lint, knip, check-release pass. Not verified: a real signed/notarized build (no credentials), YAML not linted (actionlint unavailable). Provider choice (Trusted Signing vs an OV/EV cert) is the user's.
+- release: binary-impacting per check-release (packaged config input); [Unreleased] bullet queued
+
+  ## 2026-10-27 qr-dots-decode-542
+
+## 2026-10-27 updater-bold-notes
+- finding: [correctness/med] src/components/DesktopUpdater.tsx — release-note headings and bullets were classified, but inline `**bold**` was displayed literally in the update dialog.
+- status: done
+- attempts: 1/3
+- observed-at: 9c9866f8
+- delta: render matched inline bold spans as React strong nodes after wrapped bullet continuation folding; plain text, unmatched markers and HTML-looking content remain text. No Markdown dependency or HTML interpretation added.
+- evidence: mounted updater regression failed before (no strong nodes) and passes after; three updater suites / 15 tests, tsc and zero-warning lint pass. Isolated Chrome smoke mounted the real DesktopUpdater with mocked IPC only: three bold spans compute font-weight 700, literal HTML creates no img, unmatched marker preserved, visual screenshot inspected. No update downloaded or installed; temporary smoke entry removed.
+- evidence: production build and release metadata check against origin/main pass for unchanged 0.1.109 with Unreleased notes; existing Vite large-chunk warning remains.
+- release: binary-impacting; Fixed bullet queued under Unreleased, version unchanged. Prepared on fix/updater-bold-notes based on 9c9866f8; no release publication authorized.
+
+## 2026-10-27 qr-dots-decode-542
+- finding: [correctness/high] #542 (AUD-01) — the shipped keylined gold dots QR fails a digital decoder for most ordinary names
+- status: fix in PR, HELD for the printed-Lupula iOS Camera + stock Android scan approval (design change)
+- attempts: 1/3
+- observed-at: branch fix/542-qr-decode on 9c9866f8
+- evidence: 30-name corpus through the real route (planned QR → art PDF → pdftoppm 600 DPI → ZXing tryHarder, 4 turns). EC L (shipped): 6/30 names, 10/120 turns. Square style: 30/30, 120/120. Dots without keyline: 30/30, 120/120. EC M: 30/30, 108/120. EC Q: 30/30, 120/120. Keyline 10/8/5 px at L: 0/30 each, so the halo-size hypothesis was wrong. Cause: gold (luma ≈ 207) reads light inside the black keyline, so a dark module becomes a black ring around a light centre; more error correction recovers it, a thinner keyline does not.
+- delta: shipped master qr ecLevel L → Q (style, colours, keyline, finders unchanged; 29 → 33 modules for typical names). DEFAULT_EC_LEVEL in qr.ts replaces three `?? "L"` copies. Corpus decode regression in tests/qr-print-decode.test.ts (red at L, green at Q). Goldens re-baselined per docs/goldens.md: 600 DPI diffs red only on the QR square (art 147,773 px in a 521 px bbox; mask 123,056 px in a 491 px bbox), PNGs committed.
+- validation: npm test 158 files / 1669 tests, tsc, lint, knip, check-release pass. Not verified: any physical print or phone scan.
+- release: binary-impacting; [Unreleased] bullet with a saved-master caveat
+
+## 2026-10-27 text-fill-style-choices
+- finding: [correctness/high] UX audit #1 — the inspector's Fill and Metallic did not change a text layer's drawn text (each stored line's copy of fill/plate won in planLayers drawableLines). [correctness/med] UX audit #2 — typing a new Style on the canvas learned every prefix as a master choice (the canvas opened the rich editor for choice fields; App's per-keystroke setContent learned each time).
+- status: in-review (PR open, unmerged)
+- attempts: 1/3
+- observed-at: branch fix/text-fill-style-choices on e64285d7
+- delta: drawableLines draws every line in `style.fill` and on `style.layer` unless the line's own layer is "white" (underlay); `_white_` runs unchanged. No file-format change (lines still store fill/layer). Choice layers open InPlacePlainField on the canvas; setContentIn takes `learn` (default true); in-place keystrokes pass false; PreviewCompare calls the new onEditCommit once when a non-cancelled session that edited ends, and App learns via new learnValueIn in the session's undo step. Same-pattern sweep: InPlacePlainField on an input+choices layer is covered by the same commit path. The QR Link box still learns per keystroke if a QR carries choices, but the inspector offers no QR vocabulary, so only a hand-edited .master can reach it; left as is. A metallic line inside a Metallic-off block now prints on white ink (the line toggle can only add an underlay).
+- evidence: red before fix → green after: tests/plan-layers.test.ts (3 new), tests/model-choice.test.ts (2 new), tests/inplace-editor-dom.test.tsx (3 new), tests/app-v3-dom.test.tsx (1 new, red against main's App.tsx: 5 prefixes learned). `npx vitest run --testTimeout=180000 --hookTimeout=180000` 159 files / 1686 tests pass, collab/print goldens unchanged (byte-identical); `npx tsc --noEmit`, `npm run lint`, `npx knip@6.38.0` clean. Under machine load average 50–400, save-races-dom / close-save-master-dom (hard-coded 4 s waitFor) failed different tests per run, on main's src too. Not driven in the real app (no live Tauri/browser check).
+- release: binary-impacting; two Fixed bullets under [Unreleased], version unchanged
+
+## 2026-10-28 escape-keeps
+- finding: [ux/med] src/components/InPlacePlainField.tsx:99, src/components/InPlaceRichField.tsx:143 — Escape in the canvas in-place text editors cancelled the session and undid the typing; user decision: Escape keeps the text and exits (Figma/Illustrator), same end as Enter/click-away
+- status: in-review (PR open, unmerged; stacked on fix/text-fill-style-choices #564)
+- attempts: 1/3
+- observed-at: branch ux/escape-keeps on 91faf758
+- delta: Escape calls the same onClose as Enter/click-away, so PreviewCompare's session-end effect fires onEditCommit once (choice learned once) and the session stays one undo step. Dead cancel path removed: onClose's `cancel` flag, PreviewCompare's onEditCancel prop, App's beforeTextEdit/editFlags baseline (and its reset in onProjectSaved). Other Escape-discards-the-draft editors left as is (out of scope): LayerList row rename, MasterPicker variant name, TextEditor choice picker draft, status-bar zoom % field.
+- evidence: tests/inplace-editor-dom.test.tsx Escape tests red before (cancel path ran, editor stayed) → green after; tests/app-v3-dom.test.tsx Style session now asserts one ⌘Z reverts text + learned choice, #164 test uses ⌘Z instead of cancel, the two #278 cancel-dirty-state tests deleted with the path. `npx vitest run --maxWorkers=2 --testTimeout=180000 --hookTimeout=180000` 159 files / 1686 tests pass; tsc, lint, knip@6.38.0, build, check-release vs origin/fix/text-fill-style-choices pass. Not driven in the live app (DOM suites mount the real editors).
+- release: binary-impacting; Changed bullet under [Unreleased], version unchanged
+
+## 2026-10-27 ux-shell-trim
+- finding: [ux/low] UX audit (ux-shell #10, #11, #13, #15; ux-master #1, #10) — UI that adds steps or noise: the picker's pink Save Master… lit for any label override (App.tsx masterDirty), a status-bar DPI control that only affects PSD/pixel ruler, a Settings → Appearance group duplicating View → Appearance, four single-plate export rows, and a resting drop hint that repeats the drag overlay
+- status: in-review (PR open, unmerged)
+- attempts: 1/3
+- observed-at: e64285d7 (branch ux/shell-trim)
+- delta: picker button gated on templateMoved (File → Save Master… still on masterDirty); status-bar DPI button deleted, Settings field renamed "PSD resolution"; Settings Appearance group and ThemeSwitch.tsx deleted; Export submenu/palette keep Export PDFs + Export PSDs only, useExport buildFull/exportPsd always build the pair (`which` parameter and null-plate handling removed); resting drop hint deleted (AssetDropOverlay already shows both zones mid-drag). Docs: masters-and-labels, variants, settings, export, workspace, preview, getting-started.
+- release: binary-impacting; Changed/Removed bullets under [Unreleased], no version bump
+
+## 2026-10-28 ux-dialog-trim
+- finding: [ux/low] UX audit (ux-shell #2, #3, #4, #8, #9, #14; ux-master #3, #4) — dialogs and steps that decide nothing: the master-switch Continue card, a Save Master review with nothing to promote (and disabled pre-checked structural checkboxes), the close prompt's Save dropping master edits behind a Review Master… button, one quit dialog per unsaved tab, a greyed-out Restart Now with a "save first" note, Try again re-running a check, and a permanent "Up to date" status-bar chip
+- status: in-review (PR open, unmerged; stacked on ux/shell-trim #563)
+- attempts: 1/3
+- observed-at: e16eb123 (branch ux/dialog-trim)
+- delta: MasterPicker switches at once (offer/preview card, Open Master's applied:false staging and forced sidebar opening deleted); commitRebind's note reads "Switched to “X” · N value(s) benched: … · ⌘Z to restore". App requestMasterSave skips MasterSaveReview when masterChanges has no promote row and notes "Saved <file> — N changes"; review renders structural rows as text. TabsShell close-prompt Save runs masterSaveSlot then saveSlot (Review Master… and its warning deleted); one sweep (sweepUnsaved) serves window close/quit and DesktopUpdater's beforeRestart, with a one-time Review Changes… / Discard All / Cancel prompt for >1 unsaved tab. DesktopUpdater: `dirty` prop and amber note removed, Restart Now / Windows Install and Restart walk the sweep, Try again after a failed install re-runs install (update kept), "Up to date" no longer portaled to the status bar (reverses 2026-09-05 updater-current-status by user request).
+- evidence: full suite 159 files / 1672 tests (--maxWorkers=2), tsc, lint, knip, build, check-release vs origin/ux/shell-trim pass. Browser check (vite :5271): Save Master review shows "Added to the master" as plain text and a checkbox only on the promote row. Not verified in a browser: the direct-save note (would open Chrome's native save picker), the quit/restart prompts (Tauri-only; covered by DOM tests with mocked IPC).
+- caveat: ⌘Z after a master switch restores master and label but not art the switch put into an EMPTY texture/mask/image slot (asset slots are outside undo history); documented in commitRebind, docs and CHANGELOG. Filled label values count as promotable, so a filled label still opens the review.
+- release: binary-impacting; Changed/Removed bullets under [Unreleased], no version bump
+
+## 2026-10-27 inspector-trim
+- finding: [ux/med] UX audit (layer editing) #5, #4, #6, #8, #9, #12 — LayerInspector.tsx:146-160 Enabled/Locked rows repeat the row's power and lock; LayerList.tsx:318 Pencil repeats the inspector name box; LayerInspector.tsx:181 "Content" heading sits over a caption that names it; Lock offered on page art (LayerInspector.tsx:156, LayerList.tsx:368) where hittestLayers skips it; Tint raster shown on SVG art (LayerInspectorSections.tsx:272); Metallic live with Fill "No ink" (LayerInspectorSections.tsx:367)
+- status: in-review
+- attempts: 1/3
+- observed-at: e64285d7
+- attempted-in: .agents/worktrees/inspector-trim @ ux/inspector-trim
+- delta: inspector Enabled/Locked Field rows → two header icon buttons (Power/PowerOff, Lock/LockOpen; aria-pressed, names "Enabled"/"Locked"; badges beside them); no lock in the inspector, the row's lock icon or the row menu on background/mask; selected-row Pencil removed (inspector name box, double-click, right-click Rename remain); Content heading removed; Tint raster gated on the existing App `rasterArt` prop (now passed to ImageGeometry); MetallicToggle disabled (not hidden, matching its existing `disabled` prop) while fill is "none". Not done here: the inspector name box's commit model (audit #4 second half), Lengths in (#3).
+- release: binary-impacting; [Unreleased] Changed + Removed bullets queued, no version bump
+
+## 2026-10-28 units-scale
+- finding: [ux/med] UX audit (layer editing) #3, #4 second half, #7; master audit #9 — App.tsx:662-663 two unit states (inspector mm|pt, rulers in|pt|px), neither persisted; LayerInspector.tsx "Lengths in" row on every layer; PreviewCompare.tsx:554 drag readout always inches; status-bar trim readout only opened a third unit picker; image Scale (LayerInspectorSections.tsx:265, planLayers.ts:238) drew w × scale while resize and Width wrote w/h; inspector name box committed per keystroke
+- status: in-review
+- attempts: 1/3
+- observed-at: 2dad999e
+- attempted-in: .agents/worktrees/units-scale @ ux/units-scale (stacked on ux/inspector-trim, #562)
+- delta: one LengthUnit (in/mm/pt/px, rulers.ts) in App state, persisted in the existing `lolev-view` localStorage entry (read and write guarded); drives rulers, inspector length fields, drag/resize readout (lengthLabel) and margin inset; RulerUnitPicker gains Millimetres; View → Units submenu (four check rows, both menus and ⌘K) replaces the status-bar readout, which is deleted with sizeLabel and the inches() helper. Type size and letter spacing stay pt, stroke width stays px at 600 DPI (DESIGN_DPI, not the output-DPI px unit). Image `scale` removed from ImageLayer: parseMaster folds it into w/h for master layers and variant diffs (against the unfolded master), foldLabelScale folds label overrides on open (App openProject, generate-lib), converters fold v1/v2 collab scale. Known limit: a label override of size or scale over a master/variant scale ≠ 1 folds against the already-folded master. Inspector name box: draft, commit on Enter/blur (trimmed, non-empty, changed), Escape restores.
+- evidence: tests/image-scale-fold.test.ts pins the pre-change planLayers boxes for a master+label with scale on master layers, a variant diff, a variant-added layer, label overrides and the laurel; collab-variant-goldens (byte digests) unchanged.
+- release: binary-impacting; [Unreleased] Changed + Removed bullets queued, no version bump
+
+## 2026-10-28 new-application-icon
+- finding: user supplied replacement LabelLab.icns and label-lab-icon.svg.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ main (uncommitted working tree)
+- delta: replaced src-tauri/app-icon.svg with the supplied vector, regenerated existing platform icon variants with Tauri CLI, and installed the supplied macOS ICNS unchanged. Existing favicon and touch-icon links consume the refreshed PNGs.
+- evidence: npm run tauri -- icon src-tauri/app-icon.svg succeeded; generated icon.png visually inspected; npm run build passed and emitted updated favicon/touch PNGs; node scripts/check-release.mjs origin/main passed; cmp confirmed SVG and ICNS match supplied originals byte-for-byte. Installed desktop/Dock appearance not exercised.
+- release: binary-impacting; Changed bullet queued under Unreleased, version unchanged. Cosmetic change alone does not warrant cutting a release.

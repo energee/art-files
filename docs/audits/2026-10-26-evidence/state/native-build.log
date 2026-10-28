@@ -1,0 +1,357 @@
+## Completed (1)
+
+### bg_5 [bash] — completed
+Label: npm run desktop:build -- --bundles app
+Delivery: delivered directly to wait.
+```
+
+> tauri build --bundles app
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> tsc && vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 2829 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/metalnessMask.worker-IBEMjxCN.js           0.27 kB
+dist/assets/32x32-BvEXJEQL.png                         0.51 kB
+dist/index.html                                        1.61 kB │ gzip:   0.70 kB
+dist/assets/128x128-Cd0qZjCQ.png                       1.75 kB
+dist/assets/BarlowCondensed-Regular-u9oSiJc6.ttf     102.48 kB
+dist/assets/BarlowCondensed-SemiBold-B7YG4rBL.ttf    109.42 kB
+dist/assets/BarlowCondensed-Bold-v1X23fbx.ttf        109.91 kB
+dist/assets/Poppins-Bold-CdT-0Mts.ttf                155.99 kB
+dist/assets/Poppins-SemiBold-DVCj-rhG.ttf            157.31 kB
+dist/assets/Poppins-Regular-B2YTLo9r.ttf             160.31 kB
+dist/assets/worker-DFQM60M-.js                     1,087.81 kB
+dist/assets/index-7vPm0RdC.css                        96.20 kB │ gzip:  15.71 kB
+dist/assets/dist-js-BnTUryob.js                        0.28 kB │ gzip:   0.17 kB
+dist/assets/offThread-DXyv5-a3.js                      0.64 kB │ gzip:   0.41 kB
+dist/assets/rolldown-runtime-hePW80VL.js               0.71 kB │ gzip:   0.42 kB
+dist/assets/dist-js-D6kuGl7P.js                        1.11 kB │ gzip:   0.51 kB
+dist/assets/fonts-CcdDL0Z4.js                          1.28 kB │ gzip:   0.65 kB
+dist/assets/event-CxLWIub9.js                          1.35 kB │ gzip:   0.64 kB
+dist/assets/layout-OJWDd2H4.js                         1.51 kB │ gzip:   0.88 kB
+dist/assets/RenderSettings-Pae7E0-O.js                 1.92 kB │ gzip:   0.86 kB
+dist/assets/core-BdRrNHc2.js                           2.11 kB │ gzip:   0.91 kB
+dist/assets/dpi-DXToqxYv.js                            2.56 kB │ gzip:   0.68 kB
+dist/assets/textheight-CkT84_Jp.js                     2.62 kB │ gzip:   1.38 kB
+dist/assets/dist-js-DtZl9E0f.js                        2.96 kB │ gzip:   1.05 kB
+dist/assets/menu-B9FsAtX3.js                           8.35 kB │ gzip:   1.82 kB
+dist/assets/MasterSaveReview-w_UMh_1M.js               9.25 kB │ gzip:   3.94 kB
+dist/assets/window-CH4V-6se.js                        10.83 kB │ gzip:   2.69 kB
+dist/assets/input-group-DfmIJ49T.js                   14.30 kB │ gzip:   5.51 kB
+dist/assets/useControlled-Skhsowl7.js                 29.11 kB │ gzip:  11.03 kB
+dist/assets/utils-Djh7eZm4.js                         36.05 kB │ gzip:  11.87 kB
+dist/assets/CommandPalette-oOOkTMzo.js                52.52 kB │ gzip:  17.76 kB
+dist/assets/planLayers-B3MDzGM0.js                    59.40 kB │ gzip:  21.57 kB
+dist/assets/build-Bc9iZ4gu.js                        291.08 kB │ gzip:  87.19 kB
+dist/assets/build-Bi87_5NU.js                        379.24 kB │ gzip: 162.92 kB
+dist/assets/CanView-C4gZHJ_3.js                      653.20 kB │ gzip: 165.58 kB
+dist/assets/index-D32s5hxG.js                        740.07 kB │ gzip: 242.56 kB
+dist/assets/fontkit-DGty4SKn.js                      756.28 kB │ gzip: 343.60 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 843ms
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling libc v0.2.189
+   Compiling serde_core v1.0.229
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.10
+   Compiling icu_normalizer_data v2.2.0
+   Compiling icu_properties_data v2.2.0
+   Compiling siphasher v1.0.3
+   Compiling cc v1.4.2
+   Compiling zmij v1.0.23
+   Compiling phf_shared v0.13.1
+   Compiling fastrand v2.5.0
+   Compiling cfg-if v1.0.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling phf_generator v0.13.1
+   Compiling memchr v2.8.3
+   Compiling smallvec v1.15.2
+   Compiling serde v1.0.229
+   Compiling thiserror v2.0.20
+   Compiling itoa v1.0.18
+   Compiling typeid v1.0.3
+   Compiling time-core v0.1.9
+   Compiling num-conv v0.2.2
+   Compiling phf_codegen v0.13.1
+   Compiling litemap v0.8.2
+   Compiling strsim v0.11.1
+   Compiling erased-serde v0.4.10
+   Compiling ident_case v1.0.1
+   Compiling serde_json v1.0.154
+   Compiling writeable v0.6.3
+   Compiling getrandom v0.4.3
+   Compiling bitflags v2.13.1
+   Compiling utf8_iter v1.0.4
+   Compiling parking_lot_core v0.9.12
+   Compiling syn v2.0.119
+   Compiling syn v3.0.3
+   Compiling scopeguard v1.2.0
+   Compiling new_debug_unreachable v1.0.6
+   Compiling anyhow v1.0.104
+   Compiling lock_api v0.4.14
+   Compiling string_cache_codegen v0.6.1
+   Compiling precomputed-hash v0.1.1
+   Compiling objc2-exception-helper v0.1.1
+   Compiling winnow v1.0.4
+   Compiling parking_lot v0.12.5
+   Compiling dtoa v1.0.11
+   Compiling web_atoms v0.2.6
+   Compiling percent-encoding v2.3.2
+   Compiling string_cache v0.9.0
+   Compiling log v0.4.33
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling autocfg v1.5.1
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling form_urlencoded v1.2.2
+   Compiling dtoa-short v0.3.5
+   Compiling tendril v0.5.1
+   Compiling selectors v0.38.0
+   Compiling aho-corasick v1.1.5
+   Compiling regex-syntax v0.8.11
+   Compiling indexmap v1.9.3
+   Compiling camino v1.2.5
+   Compiling alloc-no-stdlib v3.0.0
+   Compiling objc2 v0.6.5
+   Compiling alloc-stdlib v0.3.0
+   Compiling servo_arc v0.4.3
+   Compiling hashbrown v0.12.3
+   Compiling fnv v1.0.7
+   Compiling powerfmt v0.2.0
+   Compiling rustc-hash v2.1.3
+   Compiling hashbrown v0.17.1
+   Compiling schemars v0.8.22
+   Compiling objc2-encode v4.1.0
+   Compiling deranged v0.5.8
+   Compiling semver v1.0.28
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling uuid v1.24.0
+   Compiling equivalent v1.0.2
+   Compiling web-time v1.1.0
+   Compiling toml v1.1.4+spec-1.1.0
+   Compiling bit-vec v0.8.0
+   Compiling indexmap v2.14.0
+   Compiling bit-set v0.8.0
+   Compiling time v0.3.55
+   Compiling cfb v0.14.0
+   Compiling regex-automata v0.4.18
+   Compiling brotli-decompressor v6.0.1
+   Compiling quick-xml v0.41.0
+   Compiling base64 v0.22.1
+   Compiling same-file v1.0.6
+   Compiling synstructure v0.13.2
+   Compiling darling_core v0.23.0
+   Compiling serde_derive_internals v0.29.1
+   Compiling bytes v1.12.1
+   Compiling dyn-clone v1.0.20
+   Compiling base64 v0.21.7
+   Compiling foldhash v0.2.0
+   Compiling dunce v1.0.5
+   Compiling serde_derive v1.0.229
+   Compiling displaydoc v0.2.7
+   Compiling thiserror-impl v2.0.20
+   Compiling cssparser-macros v0.7.1
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerovec-derive v0.11.3
+   Compiling phf_macros v0.13.1
+   Compiling derive_more-impl v2.1.1
+   Compiling regex v1.13.1
+   Compiling phf v0.13.1
+   Compiling schemars_derive v0.8.22
+   Compiling http v1.5.0
+   Compiling brotli v9.0.0
+   Compiling darling_macro v0.23.0
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling derive_more v2.1.1
+   Compiling cssparser v0.37.0
+   Compiling walkdir v2.5.0
+   Compiling darling v0.23.0
+   Compiling serde_with_macros v3.22.0
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling markup5ever v0.39.0
+   Compiling html5ever v0.39.0
+   Compiling serde-untagged v0.1.9
+   Compiling infer v0.22.0
+   Compiling serde_with v3.22.0
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling ctor v1.0.13
+   Compiling icu_collections v2.2.0
+   Compiling icu_locale_core v2.2.0
+   Compiling glob v0.3.4
+   Compiling version_check v0.9.5
+   Compiling block2 v0.6.2
+   Compiling core-foundation-sys v0.8.7
+   Compiling objc2-core-foundation v0.3.2
+   Compiling dom_query v0.28.0
+   Compiling crc32fast v1.5.0
+   Compiling icu_provider v2.2.0
+   Compiling swift-rs v1.0.8
+   Compiling cargo-platform v0.1.9
+   Compiling jsonptr v0.7.1
+   Compiling icu_properties v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling cargo_metadata v0.19.2
+   Compiling json-patch v4.2.0
+   Compiling plist v1.10.0
+   Compiling objc2-foundation v0.3.2
+   Compiling pin-project-lite v0.2.17
+   Compiling once_cell v1.21.4
+   Compiling rustc_version v0.4.1
+   Compiling option-ext v0.2.0
+   Compiling idna_adapter v1.2.2
+   Compiling embed-resource v3.0.11
+   Compiling dirs-sys v0.5.0
+   Compiling idna v1.1.0
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.2
+   Compiling heck v0.5.0
+   Compiling url v2.5.8
+   Compiling tauri-winres v0.3.6
+   Compiling dirs v7.0.0
+   Compiling cargo_toml v1.0.1
+   Compiling generic-array v0.14.7
+   Compiling tokio v1.53.1
+   Compiling futures-core v0.3.33
+   Compiling simd-adler32 v0.3.10
+   Compiling urlpattern v0.6.0
+   Compiling core-foundation v0.10.1
+   Compiling time-macros v0.2.32
+   Compiling typenum v1.20.1
+   Compiling tauri-utils v2.10.1
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling ring v0.17.14
+   Compiling crossbeam-utils v0.8.22
+   Compiling raw-window-handle v0.6.2
+   Compiling flate2 v1.1.9
+   Compiling fdeflate v0.3.7
+   Compiling dpi v0.1.2
+   Compiling cookie v0.18.2
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling foreign-types-macros v0.2.4
+   Compiling getrandom v0.2.17
+   Compiling untrusted v0.9.0
+   Compiling foreign-types-shared v0.3.1
+   Compiling bitflags v1.3.2
+   Compiling zeroize v1.9.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling foreign-types v0.5.0
+   Compiling png v0.17.16
+   Compiling tauri-build v2.7.2
+   Compiling tauri-plugin v2.7.1
+   Compiling crossbeam-channel v0.5.16
+   Compiling digest v0.10.7
+   Compiling wry v0.57.0
+   Compiling core-graphics-types v0.2.0
+   Compiling http-body v1.1.0
+   Compiling dispatch2 v0.3.1
+   Compiling futures-macro v0.3.33
+   Compiling cpufeatures v0.2.17
+   Compiling futures-task v0.3.33
+   Compiling rustls v0.23.46
+   Compiling httparse v1.10.1
+   Compiling slab v0.4.12
+   Compiling system-configuration-sys v0.6.0
+   Compiling byteorder v1.5.0
+   Compiling tauri-runtime v2.12.1
+   Compiling futures-util v0.3.33
+   Compiling ico v0.5.0
+   Compiling objc2-quartz-core v0.3.2
+   Compiling tauri v2.12.2
+   Compiling sha2 v0.10.9
+   Compiling core-graphics v0.25.0
+   Compiling objc2-app-kit v0.3.2
+   Compiling rustls-webpki v0.103.16
+   Compiling png v0.18.1
+   Compiling subtle v2.6.1
+   Compiling tower-service v0.3.3
+   Compiling tauri-runtime-wry v2.12.1
+   Compiling try-lock v0.2.5
+   Compiling rustix v1.1.4
+   Compiling getrandom v0.3.4
+   Compiling muda v0.20.0
+   Compiling tauri-codegen v2.7.1
+   Compiling want v0.3.1
+   Compiling tauri-plugin-fs v2.7.1
+   Compiling futures-channel v0.3.33
+   Compiling tracing-core v0.1.36
+   Compiling keyboard-types v0.8.3
+   Compiling core-foundation v0.9.4
+   Compiling serialize-to-javascript-impl v0.1.2
+   Compiling errno v0.3.14
+   Compiling atomic-waker v1.1.2
+   Compiling tauri-macros v2.7.1
+   Compiling hyper v1.11.0
+   Compiling serialize-to-javascript v0.1.2
+   Compiling system-configuration v0.7.0
+   Compiling tracing v0.1.44
+   Compiling sync_wrapper v1.0.2
+   Compiling security-framework-sys v2.17.0
+   Compiling serde_repr v0.1.21
+   Compiling embed_plist v1.2.2
+   Compiling mime v0.3.17
+   Compiling ipnet v2.12.1
+   Compiling tower-layer v0.3.3
+   Compiling tower v0.5.3
+   Compiling security-framework v3.7.0
+   Compiling hyper-util v0.1.20
+   Compiling tauri-plugin-dialog v2.8.3
+   Compiling tauri-plugin-updater v2.14.0
+   Compiling futures-sink v0.3.33
+   Compiling rfd v0.16.0
+   Compiling tokio-util v0.7.19
+   Compiling tower-http v0.6.11
+   Compiling xattr v1.6.1
+   Compiling http-body-util v0.1.4
+   Compiling filetime v0.2.29
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling tar v0.4.46
+   Compiling hyper-rustls v0.27.9
+   Compiling tempfile v3.27.0
+   Compiling reqwest v0.13.4
+   Compiling label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+   Compiling minisign-verify v0.3.0
+   Compiling objc2-web-kit v0.3.2
+   Compiling tao v0.37.1
+   Compiling window-vibrancy v0.8.1
+   Compiling objc2-osa-kit v0.3.2
+   Compiling osakit v0.3.1
+    Finished `release` profile [optimized] target(s) in 1m 42s
+       Built application at: /Users/tedslesinski/Repos/art-files/src-tauri/target/release/label-lab
+    Bundling Label Lab.app (/Users/tedslesinski/Repos/art-files/src-tauri/target/release/bundle/macos/Label Lab.app)
+     Signing with identity "-"
+Signing with identity "-"
+Signing /Users/tedslesinski/Repos/art-files/src-tauri/target/release/bundle/macos/Label Lab.app/Contents/MacOS/label-lab
+/Users/tedslesinski/Repos/art-files/src-tauri/target/release/bundle/macos/Label Lab.app/Contents/MacOS/label-lab: replacing existing signature
+Signing with identity "-"
+Signing /Users/tedslesinski/Repos/art-files/src-tauri/target/release/bundle/macos/Label Lab.app
+/Users/tedslesinski/Repos/art-files/src-tauri/target/release/bundle/macos/Label Lab.app: replacing existing signature
+        Warn skipping app notarization, no APPLE_ID & APPLE_PASSWORD & APPLE_TEAM_ID or APPLE_API_KEY & APPLE_API_ISSUER & APPLE_API_KEY_PATH environment variables found
+    Finished 1 bundle at:
+        /Users/tedslesinski/Repos/art-files/src-tauri/target/release/bundle/macos/Label Lab.app (13.58 MiB)
+
+[raw output: artifact://186]
+
+
+Wall time: 109.15 seconds
+```

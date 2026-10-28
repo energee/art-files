@@ -39,9 +39,9 @@ it("a cancelled drag leaves the next tap to select", () => {
   act(() => {
     root.render(createElement(PreviewCompare, {
       canvasRender: source, layers: [layer], editLayerOf: (l) => l, selected: [],
-      onPick, onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCancel: vi.fn(),
+      onPick, onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCommit: vi.fn(),
       onDrag: () => ({ x: null, y: null, dx: 0, dy: 0 }), onDragCancel: vi.fn(), onResize: vi.fn(),
-      onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN,
+      onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN, unit: "in",
     }));
   });
   const sheet = container.querySelector('[data-slot="label-sheet"]') as HTMLDivElement;
@@ -66,9 +66,9 @@ it("a cancelled drag leaves the next tap to select", () => {
 it("keeps the divider grip inside the sheet at both ends", () => {
   const props = {
     canvasRender: source, layers: [layer], editLayerOf: (l: TextLayer) => l, selected: [],
-    onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCancel: vi.fn(),
+    onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCommit: vi.fn(),
     onDrag: () => ({ x: null, y: null, dx: 0, dy: 0 }), onDragCancel: vi.fn(), onResize: vi.fn(),
-    onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN,
+    onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN, unit: "in",
   };
   const handle = { current: null as null | { showMask: () => void } };
   act(() => { root.render(createElement(PreviewCompare, { ...props, ref: handle } as never)); });

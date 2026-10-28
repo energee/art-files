@@ -1,0 +1,36 @@
+$ cargo tree -i tokio@1.53.1
+cwd=/Users/tedslesinski/Repos/art-files/src-tauri
+exit=0
+--- stdout ---
+tokio v1.53.1
+├── hyper v1.11.0
+│   ├── hyper-rustls v0.27.9
+│   │   └── reqwest v0.13.4
+│   │       └── tauri-plugin-updater v2.14.0
+│   │           └── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│   ├── hyper-util v0.1.20
+│   │   ├── hyper-rustls v0.27.9 (*)
+│   │   └── reqwest v0.13.4 (*)
+│   └── reqwest v0.13.4 (*)
+├── hyper-rustls v0.27.9 (*)
+├── hyper-util v0.1.20 (*)
+├── reqwest v0.13.4 (*)
+├── tauri v2.12.2
+│   ├── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│   ├── tauri-plugin-dialog v2.8.3
+│   │   └── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│   ├── tauri-plugin-fs v2.7.1
+│   │   ├── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+│   │   └── tauri-plugin-dialog v2.8.3 (*)
+│   └── tauri-plugin-updater v2.14.0 (*)
+├── tauri-plugin-updater v2.14.0 (*)
+├── tokio-rustls v0.26.4
+│   ├── hyper-rustls v0.27.9 (*)
+│   └── reqwest v0.13.4 (*)
+├── tokio-util v0.7.19
+│   └── reqwest v0.13.4 (*)
+└── tower v0.5.3
+    ├── reqwest v0.13.4 (*)
+    └── tower-http v0.6.11
+        └── reqwest v0.13.4 (*)
+--- stderr ---

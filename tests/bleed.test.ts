@@ -14,7 +14,7 @@ import * as L from "../src/layout";
 import { readPsd } from "ag-psd";
 import { buildMaskPdf } from "../src/pdf/build";
 import { buildPsd } from "../src/psd/build";
-import { sizeLabel } from "../src/rulers";
+import { pointToUnit } from "../src/rulers";
 import {
   BLEED_STEP_IN, DEFAULT_RENDER, commitBleedIn, displayBleedIn,
 } from "../src/settings";
@@ -41,8 +41,6 @@ describe("bleed — the shipped default", () => {
     expect(L.PAGE.h).toBe(369.12);
     expect(L.ART.x).toBe(4.56);
     expect(L.ART.y).toBe(4.56);
-    // The sizeLabel spellings of these same numbers are already asserted in
-    // rulers.test.ts; the raw values above are the stricter statement anyway.
   });
 
   it("ships the default at a round 0.0635 even though it measured 4.56pt", () => {
@@ -50,14 +48,15 @@ describe("bleed — the shipped default", () => {
     // 4.56pt = 0.063333...in, which is what BLEED_SHIFT is computed from...
     expect(L.SHIPPED_BLEED_IN * 72).toBe(4.56);
     // ...while the app ships the round figure the artboard has always been
-    // quoted at: the toolbar reads 8.127in, and (8.127 - 8) / 2 is 0.0635.
+    // quoted at: 8.127in, and (8.127 - 8) / 2 is 0.0635.
     expect(DEFAULT_RENDER.bleedIn).toBe(0.0635);
     // The cost is a slightly larger page and a non-zero shift.
     L.setBleed(DEFAULT_RENDER.bleedIn);
     expect(L.BLEED_SHIFT).toBeCloseTo(0.012, 10);
     expect(L.PAGE.w).toBeCloseTo(585.144, 10);
-    // 8.127in exactly, which is what the readout claimed all along.
-    expect(sizeLabel(L.PAGE.w, L.PAGE.h, "in")).toBe("8.127 × 5.127 in");
+    // 8.127in exactly, the figure the artboard has always been quoted at.
+    expect(pointToUnit(L.PAGE.w, 0, "in")).toBeCloseTo(8.127, 10);
+    expect(pointToUnit(L.PAGE.h, 0, "in")).toBeCloseTo(5.127, 10);
   });
 
   it("moves nothing on the die by shipping that rounded default", () => {
@@ -134,9 +133,10 @@ describe("bleed — the knob", () => {
     L.setBleed(WIDE_IN);
     expect(L.ART.x).toBe(9);
     expect(L.ART.y).toBe(9);
-    expect(sizeLabel(L.PAGE.w, L.PAGE.h, "in")).toBe("8.25 × 5.25 in");
+    expect(pointToUnit(L.PAGE.w, 0, "in")).toBeCloseTo(8.25, 10);
+    expect(pointToUnit(L.PAGE.h, 0, "in")).toBeCloseTo(5.25, 10);
     // The trim is what the label is ordered at; it must not move with the knob.
-    expect(sizeLabel(L.ART.w, L.ART.h, "in")).toBe("8 × 5 in");
+    expect([pointToUnit(L.ART.w, 0, "in"), pointToUnit(L.ART.h, 0, "in")]).toEqual([8, 5]);
     expect(L.ART.w).toBe(L.TRIM.w);
     expect(L.ART.h).toBe(L.TRIM.h);
   });

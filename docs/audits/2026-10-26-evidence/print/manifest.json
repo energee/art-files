@@ -1,0 +1,15 @@
+{
+  "audit": "2026-10-26 B1-B5 C1-C3 H1-H4 J4 CLI documentation portion",
+  "planningSourceRevision": "d0d1ad513dc15b4a4065b3d41d5f0ba7c00abc11",
+  "executionSourceRevision": "eac33714bbfbc7df704fb4959d32ab7a0793cb1b",
+  "createdBeforeExecution": true,
+  "fixtures": [
+    {"id":"F1-shipped","origin":"synthetic packed current lolevMaster()","master":"fixtures/shipped.master","values":"fixtures/shipped-values.json","expectedPayloads":{"qr":"https://lolev.beer/beer/audit-labradorite","upc":"850051366224"},"expectedOutputs":"audit-labradorite{,-mask}.{pdf,psd}"},
+    {"id":"F2-plate","origin":"synthetic packed lolevMaster() plus generated dark PNG background and PNG mask","master":"fixtures/shipped.master","values":"fixtures/plate-values.json","assets":"fixtures/dark.png, fixtures/mask.png","expectedPayloads":{"qr":"https://lolev.beer/beer/audit-plate","upc":"850051366224"},"expectedOutputs":"audit-plate{,-mask}.{pdf,psd}"},
+    {"id":"F3-custom","origin":"synthetic packed custom master created from shipped master with bleed/resolution/variant/custom image layers","master":"fixtures/custom.master","values":"fixtures/custom-values.json","expectedPayloads":{"qr":"https://lolev.beer/beer/audit-custom","upc":"850051366224"},"expectedOutputs":"audit-custom{,-mask}.{pdf,psd}"},
+    {"id":"F4-invalid","origin":"synthetic JSON batches and argv","files":"fixtures/bad*.json","expected":"rejected with exit 1 or 2 and no output"},
+    {"id":"F5-paths","origin":"synthetic copied F1 in spaced/Unicode/dotted path","expected":"relative invocation works"}
+  ],
+  "references": {"approved":"tests/collab-variant-goldens.test.ts source fixture contract and tests/goldens existing Poppler 600-DPI evidence", "candidate":"same-engine CLI PDF exports"},
+  "physical": {"printer":null,"scanner":null,"status":"unavailable"}
+}

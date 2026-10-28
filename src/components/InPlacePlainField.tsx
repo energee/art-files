@@ -24,8 +24,8 @@ export function InPlacePlainField(props: {
   /** The canvas's own measure, so a suffix lands where the render puts it. */
   measure: MeasureFace;
   onApply: (lines: TextLine[]) => void;
-  /** Ends the session: Escape asks to undo it (`cancel`), Enter keeps it. */
-  onClose: (cancel: boolean) => void;
+  /** Ends the session, keeping what was typed: Enter or Escape. */
+  onClose: () => void;
   /** Click-away guard (see PreviewCompare's pointerdown capture effect). */
   fieldRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -95,8 +95,7 @@ export function InPlacePlainField(props: {
           }}
           onChange={(e) => onApply([{ ...st, text: e.target.value }])}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onClose(false);
-            if (e.key === "Escape") onClose(true);
+            if (e.key === "Enter" || e.key === "Escape") onClose();
           }}
           className={cn("h-full bg-transparent outline-none caret-sky-400",
             !layer.suffix && "px-1")}

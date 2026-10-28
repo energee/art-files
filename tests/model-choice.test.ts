@@ -8,7 +8,7 @@
 // edit.ts) rather than an exception to routing, and the Save Master review is
 // what stands between it and the .master file.
 import { describe, expect, it } from "vitest";
-import { learnChoice, setContentIn, type Doc } from "../src/model/edit";
+import { learnChoice, learnValueIn, setContentIn, type Doc } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { Choice, LabelFile, Master } from "../src/model/layers";
 import { GOLD } from "../src/layout";
@@ -108,5 +108,33 @@ describe("filling a layer that has a vocabulary", () => {
     const d = setContentIn(before, "barcode", "860009737631");
     expect(d.label.values.barcode).toBe("860009737631");
     expect(choicesOf(d.master, "barcode")?.at(-1)).toEqual({ value: "860009737631" });
+  });
+});
+
+// UX audit (2026-10) #2 — the canvas editor applies on every keystroke, and
+// each apply learned a choice: typing "Lager" into Style on the canvas left
+// L, La, Lag, Lage and Lager in the master's list. A session's keystrokes now
+// set content without learning, and its final value is learned once when the
+// session commits — the sidebar picker's rule (it learns on Enter / blur).
+describe("an in-place session learns once, on commit", () => {
+  const doc = (master: Master): Doc => ({ master, label: newLabel(master) });
+  const typeLive = (d: Doc, id: string, word: string) =>
+    [...word].reduce((acc, _c, i) => setContentIn(acc, id, [line(word.slice(0, i + 1))], false), d);
+
+  it("typing L…Lager live learns nothing; the commit learns Lager alone", () => {
+    const typed = typeLive(doc(withChoices(STYLES)), "styleLine", "Lager");
+    expect(choicesOf(typed.master)).toEqual(STYLES);
+    expect(typed.label.values.styleLine).toEqual([line("Lager")]);
+    expect(choicesOf(learnValueIn(typed, "styleLine").master)).toEqual([...STYLES, { value: "Lager" }]);
+  });
+
+  it("commit is a no-op by identity when there is nothing to learn", () => {
+    const blank = doc(withChoices(STYLES));
+    expect(learnValueIn(blank, "styleLine")).toBe(blank); // no value yet
+    const offered = setContentIn(blank, "styleLine", [line("Ultra Hopped Ale")], false);
+    expect(learnValueIn(offered, "styleLine")).toBe(offered);
+    // A layer with no vocabulary never starts one, as setContentIn's rule.
+    const named = setContentIn(doc(lolevMaster()), "name", [line("Peregrine")], false);
+    expect(learnValueIn(named, "name")).toBe(named);
   });
 });

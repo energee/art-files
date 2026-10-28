@@ -1,0 +1,95 @@
+{
+  "navigation": [
+    {
+      "name": "http://127.0.0.1:5197/",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 212.69999998807907,
+      "navigationId": 576,
+      "initiatorType": "navigation",
+      "deliveryType": "cache",
+      "nextHopProtocol": "",
+      "renderBlockingStatus": "non-blocking",
+      "contentType": "text/html",
+      "contentEncoding": "",
+      "workerStart": 0,
+      "workerRouterEvaluationStart": 0,
+      "workerCacheLookupStart": 0,
+      "workerMatchedSourceType": "",
+      "workerFinalSourceType": "",
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 24.69999998807907,
+      "domainLookupStart": 24.69999998807907,
+      "domainLookupEnd": 24.69999998807907,
+      "connectStart": 24.69999998807907,
+      "secureConnectionStart": 0,
+      "connectEnd": 24.69999998807907,
+      "requestStart": 26.899999976158142,
+      "responseStart": 52.5,
+      "firstInterimResponseStart": 0,
+      "finalResponseHeadersStart": 52.5,
+      "responseEnd": 52.89999997615814,
+      "transferSize": 300,
+      "encodedBodySize": 1131,
+      "decodedBodySize": 1131,
+      "responseStatus": 200,
+      "serverTiming": [],
+      "unloadEventStart": 57.5,
+      "unloadEventEnd": 57.5,
+      "domInteractive": 70.59999996423721,
+      "domContentLoadedEventStart": 212,
+      "domContentLoadedEventEnd": 212,
+      "domComplete": 212.69999998807907,
+      "loadEventStart": 212.69999998807907,
+      "loadEventEnd": 212.69999998807907,
+      "type": "reload",
+      "redirectCount": 0,
+      "activationStart": 0,
+      "criticalCHRestart": 0,
+      "notRestoredReasons": null,
+      "confidence": {}
+    }
+  ],
+  "memory": {
+    "used": 65958318,
+    "total": 98322262,
+    "limit": 4395630592
+  },
+  "canvases": [
+    {
+      "width": 900,
+      "height": 568,
+      "rect": {
+        "x": 399.5,
+        "y": 234.984375,
+        "width": 898,
+        "height": 565.7734375,
+        "top": 234.984375,
+        "right": 1297.5,
+        "bottom": 800.7578125,
+        "left": 399.5
+      }
+    },
+    {
+      "width": 300,
+      "height": 150,
+      "rect": {
+        "x": 399.5,
+        "y": 234.984375,
+        "width": 898,
+        "height": 565.7734375,
+        "top": 234.984375,
+        "right": 1297.5,
+        "bottom": 800.7578125,
+        "left": 399.5
+      }
+    }
+  ],
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+  "viewport": [
+    1440,
+    1000,
+    1
+  ]
+}

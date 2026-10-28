@@ -1,0 +1,8 @@
+$ npm audit --omit=dev --audit-level=high
+cwd=/Users/tedslesinski/Repos/art-files
+exit=0
+elapsed_seconds=1.437
+timed_out=False
+--- stdout ---
+found 0 vulnerabilities
+--- stderr ---

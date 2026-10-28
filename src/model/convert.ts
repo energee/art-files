@@ -20,6 +20,7 @@ import type { DeepPartial } from "./merge";
 import type { GuideLines } from "./position";
 import type { FontFamilyId } from "../fontCatalog";
 import { lolevMaster } from "./lolevLayers";
+import { foldScale } from "./layers";
 import { parseDescription } from "../description";
 import { segments } from "./format";
 import { defaultConfig, stripPercent } from "../defaults";
@@ -181,7 +182,8 @@ function applyPatch(layer: Layer, p: ElementPatch | undefined): Layer {
     }
   } else if (out.kind === "image") {
     if (p.asset !== undefined) out.asset = p.asset;
-    if (p.scale !== undefined) out.scale = p.scale;
+    // The old slot scale multiplied the drawn size; v3 has only w/h.
+    if (p.scale !== undefined) foldScale(Object.assign(out, { scale: p.scale }));
     if (p.tintRaster !== undefined) out.tintRaster = p.tintRaster;
   } else if (out.kind === "barcode" && p.value !== undefined) out.value = p.value;
   return out;
@@ -206,8 +208,13 @@ function overrideFrom(base: Layer, p: ElementPatch, hasValue = false): DeepParti
     const restyled = p.style?.fill !== undefined || p.style?.layer !== undefined;
     if (p.text !== undefined || p.bold !== undefined || (restyled && !hasValue)) o.lines = applied.lines;
   }
-  for (const k of ["asset", "value", "scale", "tintRaster"] as const)
+  for (const k of ["asset", "value", "tintRaster"] as const)
     if (p[k] !== undefined) o[k] = applied[k];
+  // A scale arrives as the size it drew at (applyPatch folded it).
+  if (p.scale !== undefined && applied.kind === "image") {
+    o.w = applied.w;
+    if (applied.h !== undefined) o.h = applied.h;
+  }
   return o as DeepPartial<Layer>;
 }
 

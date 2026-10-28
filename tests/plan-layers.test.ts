@@ -14,6 +14,8 @@ import type {
 } from "../src/model/layers";
 import { qrPath, qrShapes } from "../src/qr";
 import { defaultConfig } from "../src/defaults";
+import { lolevMaster } from "../src/model/lolevLayers";
+import { resolveLayers } from "../src/model/resolveLayers";
 import * as L from "./legacy/layout";
 
 const m: MeasureFace = (text, size, face) =>
@@ -194,11 +196,11 @@ describe("planLayers image", () => {
     expect(item.paths.length).toBeGreaterThan(0);
   });
 
-  it("contain-fits a raster asset into w x h, scaled, carrying the asset key", () => {
+  it("contain-fits a raster asset into w x h, carrying the asset key", () => {
     const custom = { art1: { aspect: 2 } };
     const [full] = planLayers([image({ id: "i", asset: "art1", w: 70, h: 44, x: 10, y: 20 })], m, { ...assets, custom }) as PlacedImage[];
     expect(full).toMatchObject({ kind: "image", id: "i", asset: "art1", x: 10, y: 20, w: 70, h: 35 });
-    const [half] = planLayers([image({ id: "i", asset: "art1", w: 70, h: 44, scale: 0.5, x: 100, y: 20, anchor: "center" })], m, { ...assets, custom }) as PlacedImage[];
+    const [half] = planLayers([image({ id: "i", asset: "art1", w: 35, h: 22, x: 100, y: 20, anchor: "center" })], m, { ...assets, custom }) as PlacedImage[];
     expect(half).toMatchObject({ x: 100 - 17.5, w: 35, h: 17.5 });
     // No h: the box follows the asset's aspect at w.
     const [free] = planLayers([image({ id: "i", asset: "art1", w: 100, x: 0, y: 0 })], m, { ...assets, custom }) as PlacedImage[];
@@ -420,4 +422,36 @@ it.each([0, 90] as const)("keeps each paragraph's last line naturally spaced at 
   expect(runs.map((r) => r.text)).toEqual(["aa bb", "aa", "bb", "cc"]);
   expect(runs[0].w).toBe(25);
   expect(rotation ? runs[1].y - runs[2].y : runs[2].x - runs[1].x).toBe(20);
+});
+
+// The inspector's Fill and Metallic write the layer's block style, but every
+// stored line carries its own copy of fill and plate (the editor writes them
+// on each keystroke), and planning used to let that copy win — so on the
+// shipped master's Name, Fill → #FF0000 left the text gold until the next
+// keystroke. The block now drives every line; a line keeps only the white-ink
+// underlay the toolbar gave it, and a `_white_` run keeps its own.
+describe("planLayers text: the block's Fill and Metallic drive every line", () => {
+  const pairs = (items: readonly unknown[], id: string) =>
+    texts(items, id).map((r) => [r.text, r.fill, r.layer]);
+
+  it("draws a label's stored gold/metallic Name in the inspector's red, off the metallic plate", () => {
+    const { layers } = resolveLayers(lolevMaster(), [], { name: [line("Hello")] },
+      { name: { style: { fill: "#FF0000", layer: "white" } } });
+    expect(pairs(planLayers(layers, m, assets), "name")).toEqual([["HELLO", "#FF0000", "white"]]);
+  });
+
+  it("keeps a line's own white-ink underlay and a _white_ run under a metallic block", () => {
+    const items = planLayers([text({ id: "t", x: 0, y: 0, style: { fill: "#FF0000", layer: "metallic" },
+      lines: [line("A"), line("B", { layer: "white" }), line("C _D_")] })], m, assets);
+    expect(pairs(items, "t")).toEqual([
+      ["A", "#FF0000", "metallic"], ["B", "#FF0000", "white"],
+      ["C ", "#FF0000", "metallic"], ["D", "#FF0000", "white"],
+    ]);
+  });
+
+  it("puts every line of a block whose Metallic is off on the white plate", () => {
+    const items = planLayers([text({ id: "t", x: 0, y: 0, style: { fill: "#123456", layer: "white" },
+      lines: [line("A"), line("B", { layer: "white" })] })], m, assets);
+    expect(pairs(items, "t")).toEqual([["A", "#123456", "white"], ["B", "#123456", "white"]]);
+  });
 });

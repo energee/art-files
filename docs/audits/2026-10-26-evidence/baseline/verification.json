@@ -1,0 +1,166 @@
+[
+  {
+    "name": "tsc",
+    "command": [
+      "npx",
+      "tsc",
+      "--noEmit"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 7.285,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/tsc.log"
+  },
+  {
+    "name": "lint",
+    "command": [
+      "npm",
+      "run",
+      "lint"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 4.748,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/lint.log"
+  },
+  {
+    "name": "test",
+    "command": [
+      "npm",
+      "test"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 1,
+    "elapsed_seconds": 132.246,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/test.log"
+  },
+  {
+    "name": "build",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 40.289,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/build.log"
+  },
+  {
+    "name": "knip",
+    "command": [
+      "npx",
+      "--yes",
+      "knip@6.38.0"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 3.488,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/knip.log"
+  },
+  {
+    "name": "npm-audit-runtime",
+    "command": [
+      "npm",
+      "audit",
+      "--omit=dev",
+      "--audit-level=high"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 1.437,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/npm-audit-runtime.log"
+  },
+  {
+    "name": "cargo-fmt",
+    "command": [
+      "cargo",
+      "fmt",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--check"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 0.445,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/cargo-fmt.log"
+  },
+  {
+    "name": "cargo-test",
+    "command": [
+      "cargo",
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 135.135,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/cargo-test.log"
+  },
+  {
+    "name": "cargo-check-all-targets",
+    "command": [
+      "cargo",
+      "check",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--all-targets"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 204.745,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/cargo-check-all-targets.log"
+  },
+  {
+    "name": "cargo-audit",
+    "command": [
+      "cargo",
+      "audit"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files/src-tauri",
+    "exit": 0,
+    "elapsed_seconds": 4.863,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/cargo-audit.log"
+  },
+  {
+    "name": "docs-types-check",
+    "command": [
+      "npm",
+      "run",
+      "types:check",
+      "--prefix",
+      "docs-site"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 7.437,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/docs-types-check.log"
+  },
+  {
+    "name": "docs-build",
+    "command": [
+      "npm",
+      "run",
+      "build",
+      "--prefix",
+      "docs-site"
+    ],
+    "cwd": "/Users/tedslesinski/Repos/art-files",
+    "exit": 0,
+    "elapsed_seconds": 71.897,
+    "timed_out": false,
+    "log": "/tmp/label-lab-audit-2026-10-26/baseline/logs/docs-build.log"
+  }
+]

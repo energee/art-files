@@ -1,0 +1,5 @@
+Correction to initial expanded-invalid observation: that command used shipped-values.json, whose valid barcode field overrode expanded.master's barcode value. It was not an equivalent invalid-expanded-reference case and does not establish a defect.
+
+Effective expanded reference command: npm run -s generate -- fixtures/expanded.master fixtures/expanded-no-barcode.json outputs/expanded-effective; exit 1; stderr: barcode: "123" is not a valid UPC-A code (12 digits).
+
+Dots QR control: square-qr.master changes only qr.qrStyle from dots to square; uses the same shipped-values.json name Audit Labradorite, size and position. Raster crop command: pdftoppm -png -singlefile -r 600 -x 156 -y 2262 -W 658 -H 658 outputs/square-qr/audit-labradorite.pdf outputs/square-qr/qr-square-600. Decoder: zxing-wasm/reader, formats [QRCode], tryHarder true, RGBA PNG input; four 90-degree clockwise rotations. Result: URL decoded in all four rotations; details logs/square-qr-decode.json.

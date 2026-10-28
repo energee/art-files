@@ -37,6 +37,7 @@ const rect = { x: 0, y: 0, left: 0, top: 0, right: W, bottom: H, width: W, heigh
 function openEditor(id: string, opts: {
   layers?: Layer[]; editLayerOf?: (l: Layer) => Layer;
   onEditText?: (id: string, lines: TextLine[], first: boolean) => void;
+  onEditCommit?: (id: string) => void;
 } = {}) {
   const layers = opts.layers ?? lolevLayers();
   const planAssets = { logoSvg };
@@ -49,8 +50,9 @@ function openEditor(id: string, opts: {
     root.render(createElement(PreviewCompare, {
       canvasRender: source, layers, editLayerOf: opts.editLayerOf ?? ((l) => l), selected: [], onPick: noop,
       onEditText: opts.onEditText ?? noop, onEditUppercase: noop,
-      onEditCancel: noop, onDrag: snap, onDragCancel: noop, onResize: snap, onEditSession: noop,
-      cornerRadiusPct: 0, zoom: 1, bleedIn: 0,
+      onEditCommit: opts.onEditCommit ?? noop,
+      onDrag: snap, onDragCancel: noop, onResize: snap, onEditSession: noop,
+      cornerRadiusPct: 0, zoom: 1, bleedIn: 0, unit: "in",
     } as Parameters<typeof PreviewCompare>[0]));
   });
   const sheet = container.querySelector<HTMLDivElement>('[data-slot="label-sheet"]')!;
@@ -150,5 +152,85 @@ describe("in-place number/code field validation", () => {
     const empty = container.querySelector<HTMLInputElement>('[aria-label="Edit abv text"]')!;
     expect(empty.getAttribute("aria-invalid")).toBeNull();
     expect(empty.getAttribute("aria-describedby")).toBeNull();
+  });
+});
+
+// UX audit (2026-10) #2 — Style (a layer with choices) opened the rich lines
+// field on the canvas, which applies every keystroke, and every apply learned
+// a choice. The canvas now opens the plain box the sidebar's picker field is,
+// and reports the session's COMMIT once, when it ends, so App learns only the
+// final value.
+describe("in-place session on a choice field (Style)", () => {
+  const type = (input: HTMLInputElement, text: string) => act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  it("opens the plain box, as the sidebar does, not the rich lines field", () => {
+    openEditor("styleLine");
+    expect(container.querySelector('[aria-label="Edit style text"]')?.tagName).toBe("INPUT");
+    expect(container.querySelector("[contenteditable]")).toBeNull();
+  });
+
+  it("commits once when the session ends, however many keystrokes it took", () => {
+    const onEditText = vi.fn();
+    const onEditCommit = vi.fn();
+    openEditor("styleLine", { onEditText, onEditCommit });
+    const input = container.querySelector<HTMLInputElement>('[aria-label="Edit style text"]')!;
+    for (const t of ["L", "La", "Lag", "Lage", "Lager"]) type(input, t);
+    expect(onEditText).toHaveBeenCalledTimes(5);
+    expect(onEditCommit).not.toHaveBeenCalled();
+    act(() => { document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
+    expect(onEditCommit.mock.calls).toEqual([["styleLine"]]);
+  });
+
+});
+
+// UX decision (2026-10): Escape in a canvas text editor used to cancel the
+// session and throw the typing away. Like Figma and Illustrator it now KEEPS
+// the text and leaves the editor — the same end as Enter or a click away, so
+// the session commits once and stays one undo step (App's side of that is in
+// tests/app-v3-dom.test.tsx).
+describe("Escape ends an in-place session keeping the text", () => {
+  const escape = (el: Element) => act(() => {
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+
+  it("in the plain box: the typing stays and the session commits once", () => {
+    const onEditText = vi.fn();
+    const onEditCommit = vi.fn();
+    openEditor("styleLine", { onEditText, onEditCommit });
+    const input = container.querySelector<HTMLInputElement>('[aria-label="Edit style text"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Lager");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    escape(input);
+    expect(container.querySelector('[aria-label="Edit style text"]')).toBeNull();
+    expect(onEditText.mock.lastCall?.[1][0].text).toBe("Lager");
+    expect(onEditCommit.mock.calls).toEqual([["styleLine"]]);
+  });
+
+  it("in the rich field: the typing stays and the session commits once", () => {
+    const onEditText = vi.fn();
+    const onEditCommit = vi.fn();
+    openEditor("name", { onEditText, onEditCommit });
+    const field = container.querySelector<HTMLElement>('[aria-label="Edit name text"]')!;
+    act(() => {
+      field.innerHTML = "<div>Peregrine</div>";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    escape(field);
+    expect(container.querySelector('[aria-label="Edit name text"]')).toBeNull();
+    expect(onEditText.mock.lastCall?.[1][0].text).toBe("Peregrine");
+    expect(onEditCommit.mock.calls).toEqual([["name"]]);
+  });
+
+  it("with nothing typed: the editor closes and commits nothing", () => {
+    const onEditCommit = vi.fn();
+    openEditor("styleLine", { onEditCommit });
+    escape(container.querySelector('[aria-label="Edit style text"]')!);
+    expect(container.querySelector('[aria-label="Edit style text"]')).toBeNull();
+    expect(onEditCommit).not.toHaveBeenCalled();
   });
 });

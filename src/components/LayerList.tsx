@@ -8,9 +8,9 @@ import { isMacOS } from "@/keys";
 // row menu to rename inline), a variant badge when a variant ADDS the layer
 // (its row dimmed while that variant is off), a provenance mark when an
 // enabled variant overrides part of it, a lock while locked, then power
-// (`enabled`, at the right edge) — plus drag reordering. Rename / Remove:
-// buttons on the selected row; right-click any row for Rename, Lock and
-// Remove.
+// (`enabled`, at the right edge) — plus drag reordering. Remove: a button
+// on the selected row; right-click any row for Rename, Lock (not on page
+// art) and Remove.
 // The header carries the title, the "Changed" filter that replaced Fill mode,
 // and the "Add layer" menu.
 //
@@ -19,7 +19,7 @@ import { isMacOS } from "@/keys";
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Image, Wallpaper, ListFilter, Lock, Pencil, Plus, Power,
+  Barcode, Image, Wallpaper, ListFilter, Lock, Plus, Power,
   PowerOff, QrCode, Scan, Trash2, Type, type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -137,6 +137,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   // the variant that adds it is off.
   const inactive = !layer.enabled || (row.variant !== undefined && !row.variant.enabled);
   const locked = !!layer.locked;
+  // Page art can't be dragged (hittestLayers skips it), so it offers no lock.
+  const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   const [renaming, setRenaming] = useState(false);
   // A row selected from the canvas may sit below the fold of a short window.
   const itemRef = useRef<HTMLLIElement>(null);
@@ -174,7 +176,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
 
   // Keys on the row's name button: Delete/Backspace = the Remove button,
   // ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so the keys
-  // act on exactly the row its Rename/Remove buttons are showing for.
+  // act on exactly the row its Remove button is showing for.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isSelected) return;
     if (e.key === "Delete" || e.key === "Backspace") {
@@ -229,10 +231,10 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
             title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
             className={cn(
-              // The row paints hover and selection; the button stays clear, with
-              // no focus ring (a review call): the selected tint is the row's one
-              // mark, so a Tab-focused row shows nothing until Enter selects it.
-              "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing focus-visible:ring-0",
+              // The row paints hover and selection; its keyboard-focused name
+              // keeps the sidebar ring. Focus identifies the next target;
+              // selection identifies the active row, so they remain distinct.
+              "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing",
               // The button's own hover/active/selected accent ink would repaint
               // an inactive row's name at full strength; keep it muted (#440).
               inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
@@ -306,36 +308,26 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           </SidebarMenuButton>
 
           {/* One cluster at the right edge, power last so its column lines up
-              down the list. Rename and Remove exist on the selected row only —
-              you act on the row you picked, and a stray click on a hovered
-              row can't remove it. The lock exists only while locked (click
-              to unlock; lock from the inspector or the row menu). Power shows
-              a muted PowerOff at all times on an off row, and a full-ink Power
-              on hover or on the selected row — the icon is the state, and a
-              stronger icon means "on". */}
+              down the list. Remove exists on the selected row only — you act
+              on the row you picked, and a stray click on a hovered row can't
+              remove it. (Rename is the inspector's name box, a double-click or
+              the row menu.) The lock exists only while locked (click to
+              unlock; lock from the inspector or the row menu), never on page
+              art. Power shows a muted PowerOff at all times on an off row,
+              and a full-ink Power on hover or on the selected row — the icon
+              is the state, and a stronger icon means "on". */}
           {isSelected && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => { stop(e); setRenaming(true); }}
-                aria-label={`${name}: rename`}
-                title="Rename"
-                className={control(true)}
-              >
-                <Pencil />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { stop(e); removeSelected(); }}
-                aria-label={`${name}: remove`}
-                title="Remove"
-                className={cn(control(true), "hover:text-destructive-text")}
-              >
-                <Trash2 />
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={(e) => { stop(e); removeSelected(); }}
+              aria-label={`${name}: remove`}
+              title="Remove"
+              className={cn(control(true), "hover:text-destructive-text")}
+            >
+              <Trash2 />
+            </button>
           )}
-          {locked && (
+          {locked && !page && (
             <button
               type="button"
               onClick={(e) => { stop(e); p.onToggle(id, "locked", false); powerRef.current?.focus(); }}
@@ -365,7 +357,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
         </ContextMenu.Trigger>
         <DropdownMenuContent>
           <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? "Unlock" : "Lock"}</DropdownMenuItem>
+          {!page && <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? "Unlock" : "Lock"}</DropdownMenuItem>}
           <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>Remove</DropdownMenuItem>
         </DropdownMenuContent>
       </ContextMenu.Root>
