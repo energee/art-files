@@ -14,6 +14,9 @@ that section to the new version (see .agents/release-steward.md).
 - **Switching masters happens at once.** Picking another master, or File → Open Master…, no longer stops at a Continue card when the switch would hide filled fields; it switches straight away, and the header note names what was set aside with “⌘Z to restore”. Open Master no longer pops the sidebar open. One ⌘Z puts the label back on its old master; art the switch filled into an empty texture, mask or image slot stays.
 - **Save Master skips the review when there is nothing to decide.** With no override or filled value to promote, Save Master writes straight away (Save Master As goes straight to the save dialog) and the header says “Saved lolev.master — 3 changes”. When the review does open, changes already in the master are a plain list; only the overrides and values you can promote have checkboxes.
 - **Save in the close prompt keeps master edits too.** When a tab has unsaved master edits, the close or quit prompt's Save now saves the master first (straight to the file, or through the review when there are overrides to promote) and then the label. The extra **Review Master…** button and the warning that Save would discard the master edits are gone.
+- **One question before quitting with several unsaved tabs.** With more than one unsaved tab, quitting or closing the window first asks once: **Review Changes…** (the prompt per tab, as before), **Discard All** or **Cancel**. A single unsaved tab still gets its own prompt straight away.
+- **Restart Now works with unsaved tabs.** Restart Now (and Install and Restart on Windows) is no longer greyed out with a “save first” note: it walks the unsaved tabs the way quitting does, then restarts; Cancel keeps Label Lab running and the update waiting in the status bar.
+- **Try again retries a failed update install.** After a failed install, Try again installs the same update again in one click instead of starting a fresh check.
 - **Settings → Resolution is now PSD resolution.** It only sets the PSD raster resolution and the pixel ruler's scale; the PDFs are unaffected.
 - **Esc keeps what you typed on the preview.** Pressing Esc while editing text in place on the preview now finishes the edit and keeps your typing, like Enter or a click away (and like Figma and Illustrator). Before, Esc threw the typing away. `⌘Z` still takes the whole edit back in one step, and a new Style typed this way joins the master's choices once.
 
@@ -21,6 +24,7 @@ that section to the new version (see .agents/release-steward.md).
 - **The DPI readout in the status bar.** Change it in Settings → PSD resolution.
 - **Settings → Appearance.** Choose System, Light or Dark from View → Appearance or the `⌘K` palette.
 - **Single-plate exports.** File → Export and the palette keep **Export PDFs** (`⌘E`) and **Export PSDs** (`⇧⌘E`), which write the art and mask together; Export Artwork / Mask PDF and PSD are gone.
+- **“Up to date” in the status bar.** The status bar shows the updater only while it is checking, has an update, is installing, needs a restart or failed; Check for Updates… still says when you're up to date.
 - **The resting drop hint under the preview.** Dragging an image over the window still shows the background and metallic-mask drop zones.
 
 ### Fixed
