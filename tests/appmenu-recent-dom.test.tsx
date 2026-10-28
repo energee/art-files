@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 // appmenu-recent-dom.test.tsx — the native File → Open Recent submenu lists the
 // remembered .label paths (src/recent.ts) by file name, opens one through the
-// registered opener, rebuilds when the list changes, and Clear Menu empties it.
+// registered opener, rebuilds when the list changes, and Clear Menu empties it;
+// and a row's click reaches the live tab's commands when an older tab's
+// install finishes late (0.1.109: menu Export/Settings did nothing).
 // The Tauri menu API is faked in memory, as in appmenu-native-checks-dom.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -67,13 +69,13 @@ beforeEach(() => {
 });
 afterEach(() => { document.body.replaceChildren(); });
 
-async function mount() {
+async function mount(run: (id: string) => void = () => undefined) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
     root.render(createElement(AppMenu, {
-      actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => undefined })),
+      actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => run(entry.id) })),
       checked: {},
       onNativeError: (message: string) => { throw new Error(message); },
       onCheckForUpdates: () => undefined,
@@ -153,3 +155,24 @@ it.each(["remove", "new"] as const)(
     expect(native.created.filter((r) => !r.closed)).toEqual([]);
   },
 );
+
+it("a click reaches the live tab when a switched-away tab's install finishes last", async () => {
+  // Tauri routes a click by item id to the channel registered LAST (closing an
+  // item never drops it), as `native.items` does here. Tab A's install stalls,
+  // the user lands on tab B, then A's rows get created after B's.
+  let release = () => {};
+  native.hold.new = new Promise<void>((r) => { release = r; });
+  const ran: string[] = [];
+  const unmountA = await mount((id) => ran.push(`A:${id}`));
+  native.hold.new = Promise.resolve();
+  await unmountA();
+  const unmountB = await mount((id) => ran.push(`B:${id}`));
+  try {
+    release();
+    await settle();
+    await act(async () => { native.items.get("export-both")!.opts.action!(); });
+    expect(ran).toEqual(["B:export-both"]);
+  } finally {
+    await unmountB();
+  }
+});
