@@ -4,6 +4,7 @@ import { isMacOS } from "@/keys";
 // desktop menu also carries File → Open Recent, rebuilt from src/recent.ts.
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { defaultWindowIcon } from "@tauri-apps/api/app";
 import type {
   CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
@@ -213,8 +214,8 @@ export const APP_MENUS: SubmenuEntry[] = [
 
 /** The Mac menu bar's table: Settings… (and its separator) leave Edit for
  *  the application menu, where macOS puts it (#551; macApplicationMenu).
- *  Windows, Linux and the in-window menu keep APP_MENUS. Exported for tests. */
-export const MAC_MENUS: SubmenuEntry[] = APP_MENUS.map((menu) => ({
+ *  Windows, Linux and the in-window menu keep APP_MENUS. */
+const MAC_MENUS: SubmenuEntry[] = APP_MENUS.map((menu) => ({
   ...menu,
   items: menu.items.filter((e) => !("id" in e && (e.id === "settings" || e.id === "edit-settings"))),
 }));
@@ -376,8 +377,11 @@ export async function macApplicationMenu(
   quit: () => void,
   settings: NativeEntry,
 ) {
+  const icon = await defaultWindowIcon();
+  if (!icon) throw new Error("The bundled application icon is unavailable.");
+  resources.push(icon);
   const definitions = [
-    { item: { About: null } as const },
+    { item: { About: { icon } } as const },
     { item: "Separator" as const },
     { item: "Services" as const },
     { item: "Separator" as const },

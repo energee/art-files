@@ -111,7 +111,7 @@ export function FillContract(props: Ctx & { layer: TextLayer }) {
   const numeric = layer.input === "number";
   return (
     <div className="space-y-1.5">
-      <p className="text-xs text-muted-foreground">These settings define the field in the master for labels that use it.</p>
+      <p className="text-xs text-muted-foreground">Set up this field for labels that use this master.</p>
       <Row badge={badge(["placeholder"], "Placeholder")}>
         <InputRow
           id={`${id}-placeholder`} label="Placeholder" value={layer.placeholder ?? ""}

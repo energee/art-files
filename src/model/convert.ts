@@ -306,7 +306,7 @@ function fillableProps(f: FieldDecl, kind: Layer["kind"], warnings: string[]): P
     const suffixOnly = kind === "text" && s.length === 2 && "id" in s[0] && s[0].id === f.id
       && !s[0].tr && "lit" in s[1];
     if (suffixOnly) p.suffix = (s[1] as { lit: string }).lit;
-    else warnings.push(`Field "${f.id}" format "${f.format}" dropped: v3 has no format strings — author fixed text in the layer's lines.`);
+    else warnings.push(`Field "${f.id}" format "${f.format}" was dropped. Format strings aren't supported in v3. Add fixed text to the layer's lines instead.`);
   }
   return p;
 }

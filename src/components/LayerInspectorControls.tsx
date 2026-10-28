@@ -145,10 +145,10 @@ export function Badge(props: {
 }) {
   const who = props.overridden.variantName ?? "A variant";
   const marks = ([
-    { source: "variant", cls: "bg-current", title: `${who} sets ${props.label} — reset it in the master`,
+    { source: "variant", cls: "bg-current", title: `${who} sets ${props.label}. Click to reset it in the master.`,
       aria: `Reset ${props.label} to the master`,
       path: props.paths.find((p) => props.overridden.variant.has(p)) },
-    { source: "label", cls: "border border-current", title: `This label sets ${props.label} — reset it to the master`,
+    { source: "label", cls: "border border-current", title: `This label sets ${props.label}. Click to use the master value.`,
       aria: `Reset ${props.label} to this label's master value`,
       path: props.paths.find((p) => props.overridden.label.has(p)) },
   ] as const).filter((m) => m.path);

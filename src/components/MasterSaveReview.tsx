@@ -156,12 +156,12 @@ export function MasterSaveReview(props: {
         <DialogTitle>{props.as ? "Save Master As" : "Save Master"}</DialogTitle>
         <DialogDescription>
           {props.as
-            ? "Create a new master file from these changes. Tick a label override to include it. The original master stays unchanged."
+            ? "Save these changes as a new master. Pick any label overrides you want to include. The original stays as it is."
             : props.changes.length === 0
-            ? "Nothing has changed in the master."
+            ? "No changes to save in the master."
             : props.target === undefined
-              ? "These changes will be written to the template. Tick a label override to fold it in too."
-              : `These changes will be written to the template. Ticked overrides go into the ${props.target} version.`}
+              ? "Save these changes to the master. Pick any label overrides you want to keep there too."
+              : `Save these changes to the master. Selected overrides go into the ${props.target} version.`}
         </DialogDescription>
         {promotable.length > 1 && (
           <label className="flex items-center gap-2 text-sm">

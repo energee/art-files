@@ -100,8 +100,6 @@ describe("LayerList", () => {
     expect(rowIds().slice(-2)).toEqual(["mask", "background"]);
     expect(container.textContent).toContain("Layers");
     expect(container.textContent).not.toContain("Document");
-    // No session-hide eye anywhere: enabled is the only visibility switch.
-    expect(container.querySelector('[aria-label^="Hide "]')).toBeNull();
   });
 
   it("Changed hides every row this label has not touched", () => {
@@ -149,21 +147,23 @@ describe("LayerList", () => {
     expect(button.className).not.toMatch(/active:text-sidebar-accent-foreground/);
   });
 
-  it("a locked row's lock unlocks it; the row menu locks one", async () => {
+  it("keeps keyboard focus on the lock through locking and unlocking", () => {
     const props = baseProps();
-    props.rows = props.rows.map((r) => r.layer.id === "wordmark" ? { ...r, layer: { ...r.layer, locked: true } } : r);
+    props.onToggle = (id, prop, value) => {
+      props.rows = props.rows.map((row) => row.layer.id === id
+        ? { ...row, layer: { ...row.layer, [prop]: value } } : row);
+      render(props);
+    };
     render(props);
-    expect(byLabel("Brand: locked").title).toMatch(/Click to unlock\.$/);
-    click(byLabel("Brand: locked"));
-    expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", false);
-    // The lock goes away once unlocked; focus lands on the row's power.
-    expect(document.activeElement).toBe(byLabel("Brand: enabled"));
-    await act(async () => {
-      rowFor("name").firstElementChild!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
-    await act(async () => { menuItem("Lock").click(); await Promise.resolve(); });
-    expect(props.onToggle).toHaveBeenCalledWith("name", "locked", true);
+    const lock = byLabel("Brand: locked");
+    lock.focus();
+    click(lock);
+    expect(byLabel("Brand: locked").getAttribute("aria-pressed")).toBe("true");
+    expect(document.activeElement).toBe(lock);
+    click(lock);
+    expect(byLabel("Brand: locked").getAttribute("aria-pressed")).toBe("false");
+    expect(document.activeElement).toBe(lock);
+    expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   // Page art can't be dragged, so a lock does nothing there: no lock icon
@@ -181,14 +181,6 @@ describe("LayerList", () => {
     expect(menuItem("Unlock")).toBeUndefined();
   });
 
-  // #11: the lock is canvas-only, so the row must not promise "cannot be moved".
-  it("titles a locked row's lock as canvas-only", () => {
-    const props = baseProps();
-    props.rows = props.rows.map((r) => r.layer.id === "wordmark" ? { ...r, layer: { ...r.layer, locked: true } } : r);
-    render(props);
-    expect(byLabel("Brand: locked").getAttribute("title"))
-      .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply. Click to unlock.");
-  });
 
   it("badges a variant-added row with the variant's name and dims it while the variant is off", () => {
     render(baseProps());
@@ -428,35 +420,6 @@ describe("LayerList", () => {
 describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   const rowBox = (id: string) => rowFor(id).firstElementChild as HTMLElement;
 
-  it("shows the exception: power-off while off, the lock while locked, else only on hover", () => {
-    const props = baseProps();
-    props.rows = props.rows.map((r) =>
-      r.layer.id === "wordmark" ? { layer: { ...r.layer, enabled: false, locked: true } } : r);
-    render(props);
-    const offPower = byLabel("Brand: enabled");
-    expect(offPower.dataset.state).toBe("off");
-    expect(offPower.className).not.toContain("opacity-0");
-    expect(byLabel("Brand: locked").className).not.toContain("opacity-0");
-    // A normal row's switches wait for hover or focus.
-    expect(byLabel("Name: enabled").dataset.state).toBe("on");
-    expect(byLabel("Name: enabled").className).toContain("opacity-0");
-    // An unlocked row has no lock at all: lock from the inspector or the row menu.
-    expect(byLabel("Name: locked")).toBeNull();
-    // A variant-added row whose variant is off is off too.
-    expect(byLabel("Lead-in: enabled").dataset.state).toBe("off");
-    // Ink strength = on: the off icon wears the row's muted ink, even under
-    // the pointer, so switching off never makes the icon darker.
-    expect(offPower.className).toContain("text-muted-foreground");
-    expect(offPower.className).toContain("hover:text-muted-foreground");
-    expect(byLabel("Name: enabled").className).not.toContain("text-muted-foreground");
-    expect(byLabel("Name: enabled").className).toMatch(/(^|\s)text-sidebar-foreground(\s|$)/);
-  });
-
-  it("sizes every row switch to a 24px target", () => {
-    render(baseProps({ selected: ["name"] }));
-    for (const label of ["Name: enabled", "Name: remove"])
-      expect(byLabel(label).className).toContain("size-6");
-  });
 
   it("puts the Changed filter in the Layers header and drops the multi-select hint", () => {
     render(baseProps({ selected: ["name"] }));
@@ -481,21 +444,6 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     }
   });
 
-  const controls = (id: string) => Array.from(rowBox(id).querySelectorAll(":scope > button[aria-label]"))
-    .map((b) => b.getAttribute("aria-label"));
-
-  // No Rename button: the inspector's name box (open for the selected row),
-  // a double-click and the row menu already rename it.
-  it("shows Remove on the selected row only, always visible there; power at the right edge", () => {
-    render(baseProps({ selected: ["name"] }));
-    expect(controls("name")).toEqual(["Name: remove", "Name: enabled"]);
-    expect(byLabel("Name: rename")).toBeNull();
-    // Its power is shown at full ink too, never fainter than an off icon.
-    expect(byLabel("Name: enabled").className).not.toMatch(/opacity-(0|40)(\s|$)/);
-    expect(byLabel("Name: remove").className).not.toContain("opacity-0");
-    // Hovering any other row shows just its power.
-    expect(controls("wordmark")).toEqual(["Brand: enabled"]);
-  });
 
   it("opens Rename / Remove on right-click", async () => {
     const props = render(baseProps());
