@@ -11,6 +11,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { strToU8, zipSync } from "fflate";
 import { packLabel, unpackLabel } from "../src/model/files";
+import { setLanguage } from "../src/i18n";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -27,7 +28,7 @@ vi.mock("../src/fonts", () => ({
 
 const { DocumentEditor } = await import("../src/App");
 
-afterEach(() => { localStorage.clear(); document.body.innerHTML = ""; });
+afterEach(() => { setLanguage("en"); localStorage.clear(); document.body.innerHTML = ""; });
 
 type Ctx = {
   container: HTMLElement; save: () => Promise<void>; writes: Uint8Array[];
@@ -91,6 +92,17 @@ it("benches and reports orphan value and variant ids when a label opens on its o
     expect(saved.values["gone-layer"]).toBeUndefined();
     expect(saved.values.name?.[0]).toMatchObject({ text: "Alpha" });
     expect(saved.dormant).toMatchObject({ values: { "gone-layer": "stale" }, variants: ["gone-variant"] });
+  });
+}, 30_000);
+
+// The note is marked a warning where it is made, so it stays amber after the
+// UI language changes (its text keeps the language it was made in).
+it("keeps the open's note a warning after a language switch", async () => {
+  await openLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { "gone-layer": "stale" } }, async ({ container }) => {
+    const alert = () => container.querySelector('[role="alert"]');
+    expect(alert()?.querySelector(".text-warning-text")?.textContent).toContain("gone-layer");
+    await act(async () => { setLanguage("de"); });
+    expect(alert()?.querySelector(".text-warning-text")?.textContent).toContain("gone-layer");
   });
 }, 30_000);
 
