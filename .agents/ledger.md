@@ -643,6 +643,24 @@ no status, no attempts, no delta.
 - validation: npm test 158 files / 1669 tests, tsc, lint, knip, check-release pass. Not verified: any physical print or phone scan.
 - release: binary-impacting; [Unreleased] bullet with a saved-master caveat
 
+## 2026-10-27 text-fill-style-choices
+- finding: [correctness/high] UX audit #1 — the inspector's Fill and Metallic did not change a text layer's drawn text (each stored line's copy of fill/plate won in planLayers drawableLines). [correctness/med] UX audit #2 — typing a new Style on the canvas learned every prefix as a master choice (the canvas opened the rich editor for choice fields; App's per-keystroke setContent learned each time).
+- status: in-review (PR open, unmerged)
+- attempts: 1/3
+- observed-at: branch fix/text-fill-style-choices on e64285d7
+- delta: drawableLines draws every line in `style.fill` and on `style.layer` unless the line's own layer is "white" (underlay); `_white_` runs unchanged. No file-format change (lines still store fill/layer). Choice layers open InPlacePlainField on the canvas; setContentIn takes `learn` (default true); in-place keystrokes pass false; PreviewCompare calls the new onEditCommit once when a non-cancelled session that edited ends, and App learns via new learnValueIn in the session's undo step. Same-pattern sweep: InPlacePlainField on an input+choices layer is covered by the same commit path. The QR Link box still learns per keystroke if a QR carries choices, but the inspector offers no QR vocabulary, so only a hand-edited .master can reach it; left as is. A metallic line inside a Metallic-off block now prints on white ink (the line toggle can only add an underlay).
+- evidence: red before fix → green after: tests/plan-layers.test.ts (3 new), tests/model-choice.test.ts (2 new), tests/inplace-editor-dom.test.tsx (3 new), tests/app-v3-dom.test.tsx (1 new, red against main's App.tsx: 5 prefixes learned). `npx vitest run --testTimeout=180000 --hookTimeout=180000` 159 files / 1686 tests pass, collab/print goldens unchanged (byte-identical); `npx tsc --noEmit`, `npm run lint`, `npx knip@6.38.0` clean. Under machine load average 50–400, save-races-dom / close-save-master-dom (hard-coded 4 s waitFor) failed different tests per run, on main's src too. Not driven in the real app (no live Tauri/browser check).
+- release: binary-impacting; two Fixed bullets under [Unreleased], version unchanged
+
+## 2026-10-28 escape-keeps
+- finding: [ux/med] src/components/InPlacePlainField.tsx:99, src/components/InPlaceRichField.tsx:143 — Escape in the canvas in-place text editors cancelled the session and undid the typing; user decision: Escape keeps the text and exits (Figma/Illustrator), same end as Enter/click-away
+- status: in-review (PR open, unmerged; stacked on fix/text-fill-style-choices #564)
+- attempts: 1/3
+- observed-at: branch ux/escape-keeps on 91faf758
+- delta: Escape calls the same onClose as Enter/click-away, so PreviewCompare's session-end effect fires onEditCommit once (choice learned once) and the session stays one undo step. Dead cancel path removed: onClose's `cancel` flag, PreviewCompare's onEditCancel prop, App's beforeTextEdit/editFlags baseline (and its reset in onProjectSaved). Other Escape-discards-the-draft editors left as is (out of scope): LayerList row rename, MasterPicker variant name, TextEditor choice picker draft, status-bar zoom % field.
+- evidence: tests/inplace-editor-dom.test.tsx Escape tests red before (cancel path ran, editor stayed) → green after; tests/app-v3-dom.test.tsx Style session now asserts one ⌘Z reverts text + learned choice, #164 test uses ⌘Z instead of cancel, the two #278 cancel-dirty-state tests deleted with the path. `npx vitest run --maxWorkers=2 --testTimeout=180000 --hookTimeout=180000` 159 files / 1686 tests pass; tsc, lint, knip@6.38.0, build, check-release vs origin/fix/text-fill-style-choices pass. Not driven in the live app (DOM suites mount the real editors).
+- release: binary-impacting; Changed bullet under [Unreleased], version unchanged
+
 ## 2026-10-27 ux-shell-trim
 - finding: [ux/low] UX audit (ux-shell #10, #11, #13, #15; ux-master #1, #10) — UI that adds steps or noise: the picker's pink Save Master… lit for any label override (App.tsx masterDirty), a status-bar DPI control that only affects PSD/pixel ruler, a Settings → Appearance group duplicating View → Appearance, four single-plate export rows, and a resting drop hint that repeats the drag overlay
 - status: in-review (PR open, unmerged)

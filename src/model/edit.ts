@@ -37,7 +37,7 @@ export {
   addVariant, removeVariant, removeVariantIn, renameVariant, showVersion, toggleVariant,
 } from "./editVariants";
 export {
-  checkLabelBindings, clearLabelOverride, clearValue, learnChoice, patchLayers, setContentIn,
+  checkLabelBindings, clearLabelOverride, clearValue, learnChoice, learnValueIn, patchLayers, setContentIn,
   setLabelOverride, setValue,
 } from "./editLabel";
 export {

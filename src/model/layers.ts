@@ -123,8 +123,11 @@ export function uppercaseOf(l: { style?: Style; uppercase?: boolean }): boolean 
 }
 
 /** One line of a text layer: the description's per-run rich model, plus the
- *  header flag the description's `# ` line used to carry. Every run keeps
- *  its own fill / white-ink layer / bold, exactly as StyledLine does. */
+ *  header flag the description's `# ` line used to carry. A line still
+ *  STORES a fill and layer (required, so older readers keep opening the
+ *  file), but they are copies of the block style: planLayers draws every
+ *  line in the layer's `style.fill`, on `style.layer` unless the line's own
+ *  layer is "white" (the white-ink underlay). Bold stays per line / run. */
 export interface TextLine extends StyledLine { header?: boolean }
 
 export interface TextLayer extends LayerBase {
@@ -160,8 +163,9 @@ export interface TextLayer extends LayerBase {
   /** Which font weights the layer sets in: `base` for plain runs, `bold`
    *  for **bold** runs. Absent = regular / semibold. */
   faces?: { base: "regular" | "semibold" | "bold"; bold: "regular" | "semibold" | "bold" };
-  /** Block style: base fill / plate, outer stroke, tracking. A run's own
-   *  fill/layer/bold wins over it (parseRuns semantics). */
+  /** Block style: fill / plate, outer stroke, tracking — what the inspector
+   *  edits, and what every line draws in. Only a line's or run's white-ink
+   *  underlay and its bold deviate from it (see TextLine). */
   style: Style;
 }
 

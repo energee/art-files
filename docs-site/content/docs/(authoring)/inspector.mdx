@@ -3,7 +3,7 @@ title: Inspector
 description: One layer. Content, type, position, colour
 ---
 
-Pick a layer in the list or on the preview and the right-hand inspector opens. The **✕** at the top right, Esc, or a click on the empty pasteboard clears the selection and shuts it. One panel at a time. Esc inside a field, an on-preview text edit, or a drag only cancels that; the inspector stays open.
+Pick a layer in the list or on the preview and the right-hand inspector opens. The **✕** at the top right, Esc, or a click on the empty pasteboard clears the selection and shuts it. One panel at a time. Esc inside a field or during a drag only cancels that, and Esc in an on-preview text edit finishes it, keeping what you typed; the inspector stays open.
 
 With several layers selected, the inspector edits only the last one you picked and says so ("Editing Brand only (3 selected)"). Drag, reorder and Delete still act on the whole selection.
 
@@ -50,8 +50,8 @@ QR: square size, style (square, rounded, dots), and error correction (L, M, Q, H
 
 ## Colour
 
-- **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. Those have to scan. Colours are 3- or 6-digit hex (`#fff` reads as `#ffffff`); a hand-edited `.label` or `.master` with a named colour such as `gold` is refused on open, naming the layer.
-- **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it. Raster images (PNG, JPEG) always print on white ink, so their inspector has no Metallic toggle; use an SVG for metallic art.
+- **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. On a text layer it recolours every line at once. Those have to scan. Colours are 3- or 6-digit hex (`#fff` reads as `#ffffff`); a hand-edited `.label` or `.master` with a named colour such as `gold` is refused on open, naming the layer.
+- **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it — on a text layer, under every line; a line or run given the toolbar's White ink underlay is on white ink either way. Raster images (PNG, JPEG) always print on white ink, so their inspector has no Metallic toggle; use an SVG for metallic art.
 - **Stroke.** One reset badge: beside the switch while the stroke is off, beside its colour while it is on. Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline. A barcode can also turn on **Solid background**: the stroke colour fills the whole barcode box, quiet zone included, instead of only outlining the bars and digits.
 
 ## Override badges
@@ -65,6 +65,6 @@ A **filled dot** means an enabled variant sets this property. A **ring** means t
 - Field label (caption above the fill widget). Left blank, the caption names the input: **Number**, **Code**, or **Text**
 - **Input**: Rich text, Number, or Code. Number makes the fill a number box; Code validates it like a barcode, with its **Symbology**
 - **Minimum** and **Maximum** for a Number input (blank means no limit)
-- Choices (a list you can pick from; typing something new is still allowed and can be learned)
+- Choices (a list you can pick from; typing something new is still allowed and is learned once you commit it with Enter or by clicking away, on the canvas as in the sidebar)
 - Placeholder on empty text
 - Suffix after a Number or Code value (`% alc by vol` and friends)

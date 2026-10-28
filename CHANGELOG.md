@@ -12,6 +12,7 @@ that section to the new version (see .agents/release-steward.md).
 - **The quit prompt says you're quitting.** With unsaved tabs, `⌘Q`, Dock → Quit or the window's close button now ask “Save changes to “…” before quitting?”, and say Cancel keeps Label Lab open, instead of offering to close the tab.
 - **Save Master… under the picker appears only when the master changed.** Moving, restyling or filling a layer for this beer is a label override that `⌘S` saves, so it no longer brings up the pink button (or pushes the Layers list down). File → Save Master… stays enabled while the label has overrides, so promoting them works as before.
 - **Settings → Resolution is now PSD resolution.** It only sets the PSD raster resolution and the pixel ruler's scale; the PDFs are unaffected.
+- **Esc keeps what you typed on the preview.** Pressing Esc while editing text in place on the preview now finishes the edit and keeps your typing, like Enter or a click away (and like Figma and Illustrator). Before, Esc threw the typing away. `⌘Z` still takes the whole edit back in one step, and a new Style typed this way joins the master's choices once.
 
 ### Removed
 - **The DPI readout in the status bar.** Change it in Settings → PSD resolution.
@@ -20,6 +21,8 @@ that section to the new version (see .agents/release-steward.md).
 - **The resting drop hint under the preview.** Dragging an image over the window still shows the background and metallic-mask drop zones.
 
 ### Fixed
+- **Fill and Metallic recolour a text layer.** Changing a text layer's **Fill** or switching **Metallic** in the inspector now changes the drawn text straight away, on every line. Before, the text kept its old colour and plate until you typed into it. A line or run you gave the toolbar's **White ink underlay** stays on white ink. Labels and masters open unchanged, and the shipped Lolev master prints exactly as before.
+- **Typing a new Style on the canvas adds one choice, not every prefix.** Double-clicking a choice field such as Style on the preview now opens the same plain box as the sidebar, and a new value joins the master's choices once, when you press Enter or Esc, or click away. Before, typing “Lager” added L, La, Lag, Lage and Lager to the list.
 - **Cancelling a different-master open leaves no empty tab.** Cancel in the “This label was made with a different master” dialog, or in its Locate picker, now closes the Untitled tab that open made, so each cancelled attempt no longer leaves one behind.
 - **Opening a file that isn't a `.label` says so.** Open With on another file, or a `.label` shortcut that points at a file of another type, now shows “isn't a .label file” in the tab strip instead of doing nothing. The file is not read.
 - **Release builds are ready for code signing.** Once the Apple Developer ID and Azure Trusted Signing credentials are added to the release setup, published Mac builds are signed and notarized (no Gatekeeper warning) and the Windows installer is signed (no SmartScreen warning). Until then builds are signed exactly as before.

@@ -31,7 +31,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
@@ -50,7 +50,7 @@ import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/re
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -687,13 +687,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Whether the user has actually touched this document — the shell
    *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
   const [edited, setEdited] = useState(false);
-  const editFlags = useRef({ dirty, edited });
-  editFlags.current = { dirty, edited };
-  const beforeTextEdit = useRef(editFlags.current);
-  const onEditSession = useCallback((id: string | null) => {
-    if (id) beforeTextEdit.current = editFlags.current;
-    setEditSession(id);
-  }, []);
   const editedRef = useRef(edited);
   editedRef.current = edited;
   /** Boot-restore's resetDocument goes through swapLoaded, which markDirty.
@@ -1452,9 +1445,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     const unchanged = docRef.current === doc && current.texture === texture
       && current.mask === mask && current.customImages === customImages;
     setDirty(!unchanged);
-    // A save inside an in-place text session moves the baseline its cancel
-    // would restore: the reverted text no longer matches the file.
-    beforeTextEdit.current = { dirty: true, edited: true };
     setLoadError("");
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
@@ -2462,17 +2452,17 @@ export const DocumentEditor = memo(function DocumentEditor({
               selected={selected}
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit
-              // feedback, folded into one undo step per session.
+              // feedback, folded into one undo step per session. Keystrokes
+              // learn no choice (every prefix would join the list); the
+              // session's final value is learned once, on commit, inside
+              // that same undo step.
               onEditUppercase={(id, uppercase, first) => patch(id, { style: { uppercase } }, !first)}
-              onEditText={(id, lines, first) => {
-                const layer = drawLayers.find((l) => l.id === id);
-                if (layer) setContent(layer, lines, !first);
-              }}
-              onEditCancel={() => { undo(); setDirty(beforeTextEdit.current.dirty); setEdited(beforeTextEdit.current.edited); }}
+              onEditText={(id, lines, first) => edit((d) => setContentIn(d, id, lines, false), !first)}
+              onEditCommit={(id) => edit((d) => learnValueIn(d, id), true)}
               onDrag={onDrag}
               onResize={onResize}
               onDragCancel={cancelGesture}
-              onEditSession={onEditSession}
+              onEditSession={setEditSession}
               onSplit={setSplit}
               bleed={showGuides}
               cornerRadiusPct={render.cornerRadius}
@@ -2619,8 +2609,9 @@ export const DocumentEditor = memo(function DocumentEditor({
           // "outside-press", and honouring it wiped ⇧/⌘ selections.
           // Escape is deliberate only when nothing else claimed it: Base UI
           // listens on the document and ignores defaultPrevented, so Escape
-          // that cancels a field's draft/suggestions, an on-canvas text edit
-          // or a canvas drag would otherwise also close this and deselect.
+          // that cancels a field's draft/suggestions or a canvas drag, or
+          // finishes an on-canvas text edit, would otherwise also close this
+          // and deselect.
           onOpenChange={(open, details) => {
             if (open) return;
             if (details.reason === "escape-key") {
