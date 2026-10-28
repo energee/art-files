@@ -122,10 +122,60 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Code signing (#397) switches on per platform once its settings exist;
+      # until then macOS stays ad-hoc signed and Windows unsigned, as today.
+      #
+      # macOS — secrets APPLE_CERTIFICATE (the Developer ID Application
+      # certificate's .p12 as one-line base64: `base64 -i cert.p12`),
+      # APPLE_CERTIFICATE_PASSWORD,
+      # APPLE_SIGNING_IDENTITY ("Developer ID Application: … (TEAMID)"),
+      # APPLE_ID, APPLE_PASSWORD (an app-specific password) and APPLE_TEAM_ID;
+      # tauri signs with the first three and notarizes with the rest. They go
+      # through GITHUB_ENV only when set: tauri reads APPLE_* even when empty,
+      # and an empty identity or certificate would break the ad-hoc build.
+      - name: Enable macOS signing and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [[ -z "$APPLE_CERTIFICATE" ]]; then
+            echo "No APPLE_CERTIFICATE secret: building ad-hoc signed"
+            exit 0
+          fi
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                      APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "$name is missing: set all six Apple secrets or none" >&2
+              exit 1
+            fi
+            echo "$name=${!name}" >> "$GITHUB_ENV"
+          done
+
+      # Windows — Azure Artifact Signing (formerly Trusted Signing): repository variables
+      # AZURE_TRUSTED_SIGNING_ENDPOINT (e.g. https://eus.codesigning.azure.net),
+      # AZURE_TRUSTED_SIGNING_ACCOUNT and AZURE_TRUSTED_SIGNING_PROFILE put the
+      # sign command into the release config (scripts/configure-updater.mjs);
+      # secrets AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and AZURE_TENANT_ID are
+      # the service principal artifact-signing-cli signs as. Pinned like the
+      # actions above (#393): tauri runs it while the updater key is in env.
+      - name: Install Windows signing tool
+        if: runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING_ACCOUNT != ''
+        run: cargo install artifact-signing-cli --version 0.12.0 --locked
+
       - name: Configure signed updater
         run: npm run desktop:release-config
         env:
           TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          # Only Windows builds read bundle.windows.signCommand.
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ vars.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ vars.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          AZURE_TRUSTED_SIGNING_PROFILE: ${{ vars.AZURE_TRUSTED_SIGNING_PROFILE }}
 
       - name: Build and publish GitHub release
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
@@ -136,6 +186,10 @@ jobs:
           # Compiled into updater_enabled(); the value is public, but keeping
           # all three key settings together makes release setup less error-prone.
           TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          # artifact-signing-cli's credentials; unused unless the sign command is set.
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         with:
           tagName: label-lab-v__VERSION__
           releaseName: Label Lab v__VERSION__

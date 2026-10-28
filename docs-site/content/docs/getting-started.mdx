@@ -29,7 +29,7 @@ rustup toolchain install stable
 npm run desktop:dev
 ```
 
-`npm run desktop:build` drops the installer in `src-tauri/target/release/bundle/`. macOS gets a `.app` and a DMG, Windows an NSIS `setup.exe`, Linux an AppImage (Debian 13 "trixie" and newer). Local Mac builds are ad-hoc signed. Shipping to other Macs without Gatekeeper yelling means Apple signing and notarization.
+`npm run desktop:build` drops the installer in `src-tauri/target/release/bundle/`. macOS gets a `.app` and a DMG, Windows an NSIS `setup.exe`, Linux an AppImage (Debian 13 "trixie" and newer). Local Mac builds are ad-hoc signed. Shipping to other Macs without Gatekeeper yelling means Apple signing and notarization, and Windows needs a signed installer to get past SmartScreen. The release workflow does both once its signing secrets are set (see the signing steps in `.github/workflows/release.yml`). Until then, published Mac builds are ad-hoc signed and Windows builds unsigned.
 
 Double-click a `.label` and it opens in Label Lab, even if the app is already running: the window comes to the front, even from minimized. New tab, or it focuses the tab that already has that file. On Linux the association shows up once the AppImage is desktop-integrated. `Label_Lab.AppImage path/to/file.label` works either way.
 
