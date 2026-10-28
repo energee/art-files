@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+- **Readable update notes.** Bold text in the update dialog now renders as bold instead of showing literal `**` markers.
+
 ## [0.1.109] - 2026-10-27
 
 ### Changed

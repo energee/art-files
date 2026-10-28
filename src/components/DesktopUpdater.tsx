@@ -60,8 +60,7 @@ async function checkForUpdate(): Promise<CheckResult> {
 // CHANGELOG section, whose bullets wrap at 80 columns). Classify each line so
 // the dialog can style headings and bullets without a markdown dependency;
 // an indented line after a bullet is that bullet's continuation.
-// ponytail: headings and bullets only; add a renderer if release notes ever
-// use links or emphasis.
+// Inline **bold** becomes React <strong> nodes; HTML remains plain text.
 const HEADING_RE = /^#{1,6}\s+(.*)/;
 const BULLET_RE = /^[-*]\s+(.*)/;
 
@@ -336,7 +335,11 @@ export function DesktopUpdater(props: {
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">What's new</p>
             <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md bg-muted p-3 text-xs">
               {releaseNoteLines(status.body).map((line, i) => (
-                <p key={i} className={NOTE_CLASS[line.kind]}>{line.text}</p>
+                <p key={i} className={NOTE_CLASS[line.kind]}>
+                  {line.text.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
+                    j % 2 === 1
+                      ? <strong key={j}>{part.slice(2, -2)}</strong> : part)}
+                </p>
               ))}
             </div>
           </div>
