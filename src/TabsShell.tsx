@@ -129,9 +129,9 @@ export default function TabsShell() {
   // resolves false and leaves this dialog up).
   const [confirmClose, setConfirmClose] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  // The prompt's Review Master… hands the screen to the tab's Save Master
-  // review; the prompt hides until the review closes, so only one dialog
-  // is ever up.
+  // The prompt's Save hands the screen to the tab's master save (its review,
+  // or the OS save dialog); the prompt hides until that ends, so only one
+  // dialog is ever up.
   const [reviewing, setReviewing] = useState(false);
   // A window close sweeps every unsaved tab through the same dialog; any
   // Cancel aborts the sweep and the close. A ref, not state: it is set
@@ -390,36 +390,30 @@ export default function TabsShell() {
     closingWindow.current = false;
   };
 
+  /** The prompt's Save: the master's unsaved edits first, through the
+   *  tab's own Save Master (straight to the file, or its review in place of
+   *  the prompt when the label has something to promote), then the .label.
+   *  A cancelled or failed save at either step keeps the tab (and, mid-sweep,
+   *  aborts the window close: a cancel is a cancel). A master save that
+   *  leaves nothing unsaved closes the tab without writing the .label again.
+   *  The editor resolves the master save only after onMeta has reported it,
+   *  so stateRef already holds the tab's post-save meta. */
   const saveAndClose = async (id: number) => {
     setSaving(true);
     try {
-      // false = the user cancelled the save dialog — keep the tab (and,
-      // mid-sweep, abort the window close: a cancel is a cancel).
-      if (await extras.current.get(id)?.saveSlot.current?.()) doClose(id);
+      const e = extras.current.get(id);
+      if (stateRef.current.tabs.find((t) => t.id === id)?.masterUnsaved) {
+        apply((s) => activateTab(s, id)); // the review only shows on the active tab
+        setReviewing(true);
+        const saved = await e?.masterSaveSlot.current?.().finally(() => setReviewing(false));
+        if (!saved) { cancelClose(); return; }
+        const tab = stateRef.current.tabs.find((t) => t.id === id);
+        if (tab && !unsaved(tab)) { doClose(id); return; }
+      }
+      if (await e?.saveSlot.current?.()) doClose(id);
       else cancelClose();
     } finally {
       setSaving(false);
-    }
-  };
-
-  /** Review Master…: the tab's own Save Master review, in place of the
-   *  prompt. A saved master brings the prompt back for the .label (the
-   *  label still needs its Save or Discard), or closes the tab — and moves
-   *  a window-close sweep on — when nothing is left unsaved; a cancelled
-   *  or failed review cancels the close, and mid-sweep the window close.
-   *  The editor resolves only after onMeta has reported the save, so
-   *  stateRef already holds the tab's post-save meta here. */
-  const reviewMaster = async (id: number) => {
-    apply((s) => activateTab(s, id)); // the review only shows on the active tab
-    setReviewing(true);
-    try {
-      if (!await extras.current.get(id)?.masterSaveSlot.current?.()) cancelClose();
-      else {
-        const tab = stateRef.current.tabs.find((t) => t.id === id);
-        if (tab && !unsaved(tab)) doClose(id);
-      }
-    } finally {
-      setReviewing(false);
     }
   };
 
@@ -654,8 +648,8 @@ export default function TabsShell() {
           if (f) openRouted({ file: f });
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
-          editor's own save flow (dialog cancel keeps the tab). Hidden, not
-          dismissed, while Review Master… has the review up. */}
+          editor's own save flows (dialog cancel keeps the tab). Hidden, not
+          dismissed, while Save has the master review up. */}
       <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
@@ -670,16 +664,6 @@ export default function TabsShell() {
               {closingWindow.current
                 ? "This tab has unsaved changes. Save or discard them to quit, or cancel to keep Label Lab open."
                 : "This tab has unsaved changes. Save them, discard them, or keep the tab open."}
-              {/* Save writes only the .label (issue #159): name the master
-                  edits it leaves behind, and offer the review that writes
-                  them as its own button. Inside the description so it is
-                  announced with it. */}
-              {confirmTab?.masterUnsaved && (
-                <>
-                  {" "}This tab also has master changes. They'll be discarded
-                  unless you choose Review Master… and save them first.
-                </>
-              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -690,12 +674,6 @@ export default function TabsShell() {
               onClick={() => confirmClose !== null && doClose(confirmClose)}>
               Discard
             </Button>
-            {confirmTab?.masterUnsaved && (
-              <Button variant="outline" disabled={saving || reviewing}
-                onClick={() => confirmClose !== null && void reviewMaster(confirmClose)}>
-                Review Master…
-              </Button>
-            )}
             <Button disabled={saving}
               onClick={() => confirmClose !== null && void saveAndClose(confirmClose)}>
               {saving ? "Saving…" : "Save"}

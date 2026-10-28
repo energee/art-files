@@ -347,10 +347,11 @@ type DocumentEditorProps = {
   /** Shell-owned slot this editor assigns its save fn into on every render;
    *  resolves false when the user cancels the save dialog. */
   saveSlot: { current: (() => Promise<boolean>) | null };
-  /** Shell-owned slot for the close prompt's Review Master…: opens this
-   *  editor's Save Master review and resolves true only once the master
-   *  file is written (false on Cancel or a failed save). Omitted by tests
-   *  mounting a lone editor. */
+  /** Shell-owned slot for the close prompt's Save on a tab with master
+   *  edits: runs this editor's Save Master (straight to the file, or the
+   *  review when the label has something to promote) and resolves true only
+   *  once the master file is written (false on Cancel or a failed save).
+   *  Omitted by tests mounting a lone editor. */
   masterSaveSlot?: { current: (() => Promise<boolean>) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
@@ -412,7 +413,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const version = label.enabledVariants.at(-1) ?? null;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
-  /** The close prompt's Review Master… waiting on the review (masterSaveSlot):
+  /** The close prompt's Save waiting on a master save (masterSaveSlot):
    *  told whether it ended in a written master. A ref, so a replaced
    *  pendingSave or an unmount can't strand it. */
   const reviewDone = useRef<((saved: boolean) => void) | null>(null);

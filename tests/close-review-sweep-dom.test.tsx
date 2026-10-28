@@ -1,7 +1,8 @@
-// close-review-sweep-dom.test.tsx — the close prompt's Review Master… during
-// a desktop window close (UX audit item 16): a cancelled review aborts the
-// whole sweep and the window stays up; a review that saves the master of a
-// tab whose .label is already saved closes that tab and moves the sweep on.
+// close-review-sweep-dom.test.tsx — the close prompt's Save on a tab with
+// master edits during a desktop window close (UX audit item 16): a cancelled
+// master save aborts the whole sweep and the window stays up; one that saves
+// the master of a tab whose .label is already saved closes that tab and moves
+// the sweep on.
 // The prompt is worded for quitting during the sweep, for closing a tab
 // otherwise (#552). The editor is stubbed so the test drives masterSaveSlot
 // directly.
@@ -74,11 +75,12 @@ async function twoTabsClosingWindow() {
   await vi.waitFor(() => expect(prompt()?.textContent).toContain("“A”"));
 }
 
-/** Clicks Review Master… on the prompt, resolving the stub review with `saved`. */
+/** Clicks Save on the prompt for tab A (master edits), resolving the stub
+ *  master save with `saved`. */
 async function review(saved: boolean, beforeResolve?: () => void) {
   let resolve!: (saved: boolean) => void;
   mocks.editors[0].masterSaveSlot.current = () => new Promise((r) => { resolve = r; });
-  await act(async () => { button("Review Master…").click(); });
+  await act(async () => { button("Save").click(); });
   expect(prompt()).toBeNull(); // hidden while the review is up
   await act(async () => { beforeResolve?.(); resolve(saved); });
 }

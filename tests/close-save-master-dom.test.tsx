@@ -1,13 +1,12 @@
 // close-save-master-dom.test.tsx — closing a tab with unsaved master edits
-// (issue #159): the close prompt's Save (the editor's saveSlot, which
-// TabsShell's saveAndClose awaits) saves the .label and closes, never
-// opening the Save Master review; the prompt itself carries one extra line
-// warning that the master changes will be discarded, driven by the tab's
-// masterUnsaved meta, and a Review Master… button that opens the review in
-// place of the prompt (never both at once): a saved review brings the prompt
-// back for the .label (or closes the tab, leaving no dialog mounted, when the
-// .label was already saved), a cancelled one cancels the close, and an editor
-// that unmounts mid-review resolves it as not saved.
+// (issue #159). The editor's own saveSlot still writes only the .label; the
+// close prompt's Save writes BOTH: the master first (masterSaveSlot — straight
+// to the file when the label has nothing to promote, else the Save Master
+// review in place of the prompt, never both at once), then the .label, and
+// closes the tab. A cancelled or failed master save cancels the close; a
+// master save that leaves nothing unsaved closes the tab without saving the
+// .label again; an editor that unmounts mid-review resolves it as not saved.
+// The prompt has three buttons and no master warning.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -100,18 +99,16 @@ it.each([true, false])(
     expect(savedNames[0]).toMatch(/\.label$/);
   });
 
-it("the close prompt warns that unsaved master changes will be discarded", async () => {
+it("the close prompt offers Cancel, Discard and Save, with no master warning", async () => {
   await render(createElement(TabsShell));
   await addTextLayer();
   const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
   await act(async () => { close.click(); });
   const prompt = closePrompt();
   expect(prompt).not.toBeNull();
-  expect(prompt!.textContent).toContain("This tab also has master changes");
-  expect(prompt!.textContent).toContain("Review Master…");
-  // The three choices plus the review, which only a master edit offers.
+  expect(prompt!.textContent).not.toContain("master changes");
   expect(Array.from(prompt!.querySelectorAll("button")).map((b) => b.textContent))
-    .toEqual(["Cancel", "Discard", "Review Master…", "Save"]);
+    .toEqual(["Cancel", "Discard", "Save"]);
   // No second dialog (the Save Master review) alongside the prompt. Counted
   // by dialog-content: the narrow happy-dom viewport also mounts the
   // sidebar as a role="dialog" sheet.
@@ -124,13 +121,40 @@ const tabCount = () => document.querySelectorAll('[role="tab"]').length;
 const dialogCount = () => document.querySelectorAll('[data-slot="dialog-content"]:not([data-closed])').length;
 const button = (scope: ParentNode, text: string) =>
   Array.from(scope.querySelectorAll("button")).find((b) => b.textContent === text) as HTMLButtonElement;
+/** A label override (the warning switched on), so a master save has a
+ *  promotion to offer and opens the review. */
+const overrideWarning = () => act(async () => {
+  (document.querySelector('[data-layer-id="warning"] button[aria-label$=": enabled"]') as HTMLButtonElement).click();
+});
+/** Nothing left mounted: a closed-but-mounted prompt keeps its blurred
+ *  backdrop over the window and swallows every click. */
+const nothingMounted = () => vi.waitFor(() => expect(document.querySelectorAll(
+  '[data-slot="dialog-overlay"], [data-slot="dialog-content"]')).toHaveLength(0));
+
+async function pressCloseSave() {
+  const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
+  await act(async () => { close.click(); });
+  await act(async () => { button(closePrompt()!, "Save").click(); });
+}
+
+it("Save with master edits and nothing to promote writes the master, then the label, and closes", async () => {
+  await render(createElement(TabsShell));
+  await addTextLayer();
+  const layersBefore = document.querySelectorAll('[data-layer-id]').length;
+  await pressCloseSave();
+  await vi.waitFor(() => expect(savedNames).toHaveLength(2));
+  expect(savedNames).toEqual([expect.stringMatching(/\.master$/), expect.stringMatching(/\.label$/)]);
+  expect(reviewOpen()).toBe(false);
+  await nothingMounted();
+  // A fresh Untitled with no added layer replaces the closed tab.
+  expect(document.querySelectorAll('[data-layer-id]').length).toBeLessThan(layersBefore);
+});
 
 async function openReviewFromPrompt() {
   await render(createElement(TabsShell));
   await addTextLayer();
-  const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
-  await act(async () => { close.click(); });
-  await act(async () => { button(closePrompt()!, "Review Master…").click(); });
+  await overrideWarning();
+  await pressCloseSave();
   // The review loads on first open (#410).
   await vi.waitFor(() => expect(reviewOpen()).toBe(true), { timeout: 5000 });
 }
@@ -139,7 +163,7 @@ const review = () =>
   Array.from(document.querySelectorAll('[data-slot="dialog-content"]'))
     .find((d) => d.textContent?.includes("Save Master"))!;
 
-it("Review Master… swaps the close prompt for the review; cancelling it cancels the close", async () => {
+it("Save with something to promote swaps the prompt for the review; cancelling it cancels the close", async () => {
   await openReviewFromPrompt();
   expect(closePrompt()).toBeNull();
   expect(dialogCount()).toBe(1);
@@ -149,19 +173,15 @@ it("Review Master… swaps the close prompt for the review; cancelling it cancel
   expect(savedNames).toHaveLength(0);
 });
 
-it("a saved review brings the close prompt back for the .label, without the master line", async () => {
+it("a saved review goes on to save the .label and close the tab", async () => {
   await openReviewFromPrompt();
   await act(async () => { button(review(), "Save Master").click(); });
-  await vi.waitFor(() => expect(closePrompt()).not.toBeNull());
-  expect(savedNames).toEqual([expect.stringMatching(/\.master$/)]);
-  expect(reviewOpen()).toBe(false);
-  expect(closePrompt()!.textContent).not.toContain("master changes");
-  expect(tabCount()).toBe(1);
-  await act(async () => { button(closePrompt()!, "Discard").click(); });
-  await vi.waitFor(() => expect(closePrompt()).toBeNull());
+  await vi.waitFor(() => expect(savedNames).toHaveLength(2));
+  expect(savedNames).toEqual([expect.stringMatching(/\.master$/), expect.stringMatching(/\.label$/)]);
+  await nothingMounted();
 });
 
-it("a saved review closes the tab outright when the .label was already saved", async () => {
+it("Save closes the tab after the master when the .label was already saved", async () => {
   await render(createElement(TabsShell));
   await addTextLayer();
   // ⌘S writes the .label; only the master edit is left unsaved.
@@ -169,26 +189,16 @@ it("a saved review closes the tab outright when the .label was already saved", a
     document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "s", metaKey: true }));
   });
   await vi.waitFor(() => expect(savedNames).toHaveLength(1));
-  const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
-  await act(async () => { close.click(); });
-  await act(async () => { button(closePrompt()!, "Review Master…").click(); });
-  await vi.waitFor(() => expect(reviewOpen()).toBe(true), { timeout: 5000 });
-  const layersBefore = document.querySelectorAll('[data-layer-id]').length;
-  await act(async () => { button(review(), "Save Master").click(); });
-  // Nothing left to decide: the tab closes with no prompt, and a fresh
-  // Untitled with no layers replaces the last one.
-  await vi.waitFor(() => expect(dialogCount()).toBe(0));
-  // Nothing left mounted either: a closed-but-mounted prompt keeps its
-  // blurred backdrop over the window and swallows every click.
-  await vi.waitFor(() => expect(document.querySelectorAll(
-    '[data-slot="dialog-overlay"], [data-slot="dialog-content"]')).toHaveLength(0));
-  expect(document.querySelectorAll('[data-layer-id]').length).toBeLessThan(layersBefore);
-  expect(savedNames[1]).toMatch(/\.master$/);
+  await pressCloseSave();
+  await nothingMounted();
+  // The master only: nothing was left for a second .label write.
+  expect(savedNames).toEqual([expect.stringMatching(/\.label$/), expect.stringMatching(/\.master$/)]);
 }, 15000);
 
 it("an editor that unmounts mid-review resolves the close prompt's review as not saved", async () => {
   const { masterSaveSlot } = await mountEditor();
   await addTextLayer();
+  await overrideWarning();
   let result: boolean | undefined;
   await act(async () => { void masterSaveSlot.current!().then((saved) => { result = saved; }); });
   await vi.waitFor(() => expect(reviewOpen()).toBe(true), { timeout: 5000 });
