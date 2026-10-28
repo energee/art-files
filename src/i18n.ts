@@ -13,7 +13,7 @@ import validation from "./locales/validation";
 // Every UI consumer loads the configured instance, including isolated dialogs.
 export { useTranslation } from "react-i18next";
 
-export type Language = "en" | "es" | "fr" | "de";
+export type Language = "en" | "es" | "fr" | "de" | "pt";
 export type LanguagePreference = Language | "system";
 const STORAGE_KEY = "labellab.language";
 export const languages: ReadonlyArray<{ value: Language; label: string }> = [
@@ -21,6 +21,7 @@ export const languages: ReadonlyArray<{ value: Language; label: string }> = [
   { value: "es", label: "Español" },
   { value: "fr", label: "Français" },
   { value: "de", label: "Deutsch" },
+  { value: "pt", label: "Português" },
 ];
 
 function isLanguage(value: string | null): value is Language {

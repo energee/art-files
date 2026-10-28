@@ -8,7 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Added
 - **One PDF with a White Ink spot layer.** Export PDF (`⌘E`) now saves the artwork and an outlined, overprinting **White Ink** separation in one file. Uploaded PNG masks preserve transparency, and outlined type uses the same ligatures as the artwork. Inspect it in Acrobat's Output Preview with Overprint Preview enabled; viewers without overprint preview can show magenta and white over the art. **Settings → Two-file PDF export (art + mask)** reveals the unchanged paired and individual PDF exports. Headless generation uses the same single PDF by default; `--two-file` keeps the old pair. PSDs are unchanged. Printer proof approval is still required.
-- **Choose your app language.** Label Lab now supports English, Spanish, French, and German. Settings → Language follows your system by default or remembers your choice. Menus, controls, descriptions, and app messages switch without changing your label artwork.
+- **Choose your app language.** Label Lab now supports English, Spanish, French, German, and Portuguese (Brazilian). Settings → Language follows your system by default or remembers your choice. Menus, controls, descriptions, and app messages switch without changing your label artwork.
 
 ### Changed
 - **Fixed layer controls.** The Layers list keeps Show, Lock and Remove in a compact, right-aligned group without crowded column headings. Eye and open/closed lock icons stay visible without hovering; hiding affects preview and exports, and the canvas lock can be switched both ways directly in the row. Each control has a 24px target, trash is spaced apart and available only on selected rows, and positions stay fixed. Background and mask keep an empty lock cell.

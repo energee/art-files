@@ -21,6 +21,8 @@ describe("language selection", () => {
     expect(resolveLanguage("system", ["ja-JP", "fr-CA", "de-DE"])).toBe("fr");
     expect(resolveLanguage("system", ["ES-mx"])).toBe("es");
     expect(resolveLanguage("system", ["de_AT"])).toBe("de");
+    expect(resolveLanguage("system", ["pt-BR"])).toBe("pt");
+    expect(resolveLanguage("system", ["pt-PT", "en-US"])).toBe("pt");
     expect(resolveLanguage("system", ["it-IT", "ja-JP"])).toBe("en");
     expect(resolveLanguage("system", [])).toBe("en");
     expect(resolveLanguage("de", ["es-ES"])).toBe("de");
@@ -28,14 +30,14 @@ describe("language selection", () => {
 
   it("switches translations and document language immediately and remembers an explicit choice", () => {
     const output: string[] = [];
-    for (const language of ["en", "es", "fr", "de"] as const) {
+    for (const language of ["en", "es", "fr", "de", "pt"] as const) {
       setLanguage(language);
       expect(getLanguage()).toBe(language);
       expect(document.documentElement.lang).toBe(language);
       expect(localStorage.getItem("labellab.language")).toBe(language);
       output.push(t("Language"));
     }
-    expect(output).toEqual(["Language", "Idioma", "Langue", "Sprache"]);
+    expect(output).toEqual(["Language", "Idioma", "Langue", "Sprache", "Idioma"]);
   });
 
   it("selects locale-specific plural forms, including French zero, and interpolates counts", () => {
@@ -50,6 +52,9 @@ describe("language selection", () => {
     setLanguage("de");
     expect(t("{{count}} layer", { count: 1 })).toBe("1 Ebene");
     expect(t("{{count}} layer", { count: 2 })).toBe("2 Ebenen");
+    setLanguage("pt");
+    expect(t("{{count}} layer", { count: 1 })).toBe("1 camada");
+    expect(t("{{count}} layer", { count: 2 })).toBe("2 camadas");
   });
 
   it("uses English for an unknown resource key without losing interpolated user content", () => {

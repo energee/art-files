@@ -858,3 +858,13 @@ no status, no attempts, no delta.
 - delta: rebased the language commit alone onto main. Kept #575's eye/lock/trash row and #573's export commands, settings toggle, menu install queue and visibleEntries; translated their strings in all four catalogs (Spanish "Export PDFs" is now "Exportar los PDF" so it no longer collides with "Export PDF" in symbol matching) and the language switch now rebuilds the native menu (labels dep). About/Hide keys name the app; Node resolves English; isNote() reads the prefix in every language; the override rewrite uses the translated prefix; restored settings-focus (now asserts the Language picker) and the Label filter assertion; restored ScrubField, choices, options, lock and validateBindings comments; shortDate uses the system's region of the UI language.
 - evidence: see the commit's verification run below.
 - release: binary-impacting; existing Added bullet under Unreleased, version unchanged.
+
+## 2026-10-28 ui-portuguese
+- finding: user asked to add Portuguese to the UI languages (#577).
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/ui-portuguese @ feat/ui-portuguese
+- delta: added Brazilian Portuguese (`pt`, "Português") to the language list and a complete `pt` catalog in all eight locale files (618 keys, tsc-enforced parity with en) from a shared pt-BR glossary; pt-BR and pt-PT system tags both resolve to it. "Add layer" is "Nova camada" so the Layers header button stays on one line (measured: "Adicionar camada" needs ~118px of ~94px available). Settings guide and the Unreleased language bullet name Portuguese.
+- evidence: tsc, full Vitest 165 files / 1734 tests, lint, knip@6.38.0 and check-release vs origin/main pass; new i18n assertions (pt-BR/pt-PT resolution, picker label, 1 camada / 2 camadas) failed before the change. Throwaway probe: pt native menu titles unique, every pt "Note:" message passes isNote; no key translated differently across catalogs. Browser smoke at 127.0.0.1:5288 in pt: menus, Layers list, view switcher and Settings render translated; layer header fits.
+- note: French ("Ajouter un calque") and German ("Ebene hinzufügen") Add layer buttons still wrap to two lines in the Layers header (pre-existing from #577).
+- release: binary-impacting; existing Unreleased Added bullet updated, version unchanged.
