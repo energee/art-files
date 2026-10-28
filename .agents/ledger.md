@@ -716,3 +716,30 @@ no status, no attempts, no delta.
 - evidence: npm run build and node scripts/check-release.mjs origin/main passed. Browser smoke at localhost:5173 observed new layer power/zoom titles and opened ruler settings; screenshot confirmed the new margin description fits the popover. Desktop-only updater states and native save dialogs not visually exercised. Copy-only changes; no new tests or behavior changes.
 - release: binary-impacting; Changed bullet queued under Unreleased, version unchanged.
 
+## 2026-10-28 fixed-layer-control-columns
+- finding: user selected mockup B: always-visible Show and Lock controls in fixed columns, with a separate selected-row Remove column.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: LayerList uses eye/eye-off and open/closed lock controls in stable labeled columns; locking works both ways without moving keyboard focus. Trash is separated and selected-row-only; background and mask leave the lock cell empty. Existing enabled, variant, removal and undo semantics retained. Updated Layers and Inspector guides; removed obsolete hover/layout/wording assertions and added lock-focus transition regression coverage.
+- evidence: on ux/casual-ui-copy with these uncommitted changes, layerlist-dom passes 32 tests; npm run build (including TypeScript), npm run lint, and node scripts/check-release.mjs origin/main pass. Build retains its large-chunk advisory. Chromium smoke at localhost:5293 exercised unlock/relock, focus retention, hide/show, stable control coordinates, unchanged selection, removal and keyboard undo, and absent page-art locks; sidebar screenshot inspected at 1280x900. No PDF/export runtime change; export files not generated in this smoke.
+- release: binary-impacting; Changed bullet queued under Unreleased, no version bump or release operation. This interface-only change does not require a standalone release.
+
+## 2026-10-28 native-about-icon
+- finding: user requested the replacement Label Lab icon in the About window.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: macApplicationMenu explicitly passes the bundled defaultWindowIcon into About metadata and owns its resource through menu teardown. Added the narrowly scoped core:app:allow-default-window-icon permission. Ordered the existing 256px PNG first in bundle.icon so the embedded icon is sharp and fills the native About image area instead of using the 32px thumbnail. Removed the incidental whole-menu-shape assertion that pinned About:null.
+- evidence: final native debug app bundle build passes; 37 tests across five menu/capability suites, lint, and release metadata vs origin/main pass. Launched a separate rebuilt native app, waited for the custom application menu, opened About with macOS accessibility automation, and visually inspected /tmp/label-lab-about-final.png: the new Label Lab mark appears at normal size above the name/version. Native smoke caught and corrected a missing permission and low-resolution default icon before handoff. Closed only smoke processes; pre-existing running app left untouched.
+- release: binary-impacting; expanded the existing Unreleased icon note, no version bump, publication or installed-app replacement. Existing running binaries require a rebuild/restart to receive the icon.
+
+## 2026-10-28 compact-layer-controls
+- finding: user screenshot feedback: control positions and the crowded Show/Lock/Remove headings look jarring.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ ux/casual-ui-copy (uncommitted working tree)
+- delta: removed the headings and divider; compact right-aligned 24/24/32px columns retain an 8px gap before trash and stable positions. Explicit 24px targets replace size-6, which measured only 19.5px under the app's 13px root font. Tooltip descriptions and contextual accessible names retained. Updated Layers guide and existing Unreleased note.
+- evidence: Chromium screenshot at 1280x900 inspected; actual pointer targets measured 24x24px, unchanged control coordinates across hide/show, lock/unlock and selection changes, and selected-row-only trash verified. Final npm run build (including TypeScript), npm run lint and node scripts/check-release.mjs origin/main pass on ux/casual-ui-copy with these uncommitted changes; existing build chunk-size advisory remains.
+- evidence: PR isolation in .agents/worktrees/layer-controls-about @ ux/layer-controls-about, based on ux/casual-ui-copy (PR #574): 69 tests across six layer/menu/capability suites, npm run build, npm run lint, and release metadata vs origin/ux/casual-ui-copy pass. Unrelated copy work remains on the parent branch.
+- release: binary-impacting; no version bump or publication. Presentation-only refinement; no standalone release recommended.

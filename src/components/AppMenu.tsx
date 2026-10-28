@@ -4,6 +4,7 @@ import { isMacOS } from "@/keys";
 // desktop menu also carries File → Open Recent, rebuilt from src/recent.ts.
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { defaultWindowIcon } from "@tauri-apps/api/app";
 import type {
   CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
@@ -357,8 +358,11 @@ export async function macApplicationMenu(
   quit: () => void,
   settings: NativeEntry,
 ) {
+  const icon = await defaultWindowIcon();
+  if (!icon) throw new Error("The bundled application icon is unavailable.");
+  resources.push(icon);
   const definitions = [
-    { item: { About: null } as const },
+    { item: { About: { icon } } as const },
     { item: "Separator" as const },
     { item: "Services" as const },
     { item: "Separator" as const },
