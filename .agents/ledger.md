@@ -706,3 +706,12 @@ no status, no attempts, no delta.
 - delta: useExport remembers each tab's last PDF and PSD art path in memory and rewrites the pair there with no dialog; the first export's dialog opens on `<.label stem>.<ext>` beside the tab's .label (bare export name without one); the mask is always `<art stem>-mask.<ext>` beside the art file, never a dialog (nativePathExists and the `-mask` fs:allow-exists globs deleted); Export PDFs As… / Export PSDs As… (menu, palette, native menu; no shortcut, ⇧⌘E is Export PSDs) ask again, opening on the remembered file; resetDocument forgets the paths, and a change of the tab's .label path (Save Label As, a first save) drops them (review: Save As then ⌘E silently rewrote the previous beer's PDFs; tests/export-pair-dialog-dom.test.tsx red before, green after). PDF export gated like PSD; Command.note / titleOf deleted (the "(rendering…)" note was its only user). A disabled export-* key selects the first invalid layer (shared with the header note's click).
 - release: binary-impacting; Changed bullets under [Unreleased], no version bump
 - evidence: 12 new/changed assertions red on the parent's src (export-pair-dialog, app-ux-commands, tauri-capabilities), green after; full `npx vitest run --maxWorkers=2` 159 files / 1681 tests, tsc, lint, knip 6.38.0, npm run build, check-release vs origin/ux/shell-trim pass. Runtime-scope persistence read in tauri-plugin-dialog 2.8.3 `save` (fs_scope.allow_file, in memory). Not driven in the native app (real dialogs, silent rewrite).
+
+## 2026-10-28 new-application-icon
+- finding: user supplied replacement LabelLab.icns and label-lab-icon.svg.
+- status: done
+- attempts: 1/3
+- attempted-in: repository root @ main (uncommitted working tree)
+- delta: replaced src-tauri/app-icon.svg with the supplied vector, regenerated existing platform icon variants with Tauri CLI, and installed the supplied macOS ICNS unchanged. Existing favicon and touch-icon links consume the refreshed PNGs.
+- evidence: npm run tauri -- icon src-tauri/app-icon.svg succeeded; generated icon.png visually inspected; npm run build passed and emitted updated favicon/touch PNGs; node scripts/check-release.mjs origin/main passed; cmp confirmed SVG and ICNS match supplied originals byte-for-byte. Installed desktop/Dock appearance not exercised.
+- release: binary-impacting; Changed bullet queued under Unreleased, version unchanged. Cosmetic change alone does not warrant cutting a release.
