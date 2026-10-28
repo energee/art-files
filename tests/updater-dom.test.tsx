@@ -51,6 +51,31 @@ it("quietly advertises updates, keeps Later discoverable, and reuses the update 
   expect(update.close).toHaveBeenCalledTimes(1);
 });
 
+it("renders bold release-note spans without interpreting HTML or unmatched markers", async () => {
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockResolvedValue({
+    version: "0.2.0", currentVersion: "0.1.0",
+    body: "### **Fixed**\n- **Blank barcodes** export; use **Browse**\n  to select files.\nPlain <img src=x onerror=alert(1)> and **unfinished",
+    close: vi.fn().mockResolvedValue(undefined),
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} />));
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} />));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect([...dialog.querySelectorAll("strong")].map((el) => el.textContent))
+      .toEqual(["Fixed", "Blank barcodes", "Browse"]);
+    expect(dialog.textContent).toContain("Blank barcodes export; use Browse to select files.");
+    expect(dialog.textContent).toContain("Plain <img src=x onerror=alert(1)> and **unfinished");
+    expect(dialog.querySelector("img")).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
 it("shows Up to date after the launch check and keeps it after closing a manual check", async () => {
   vi.useFakeTimers();
   mocks.invoke.mockResolvedValue(true);

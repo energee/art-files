@@ -603,6 +603,16 @@ no status, no attempts, no delta.
 - blocked: the macOS 27 out-of-process save panel ignores synthetic clicks and drops AX references after Go to Folder, so Save As to a typed destination was not driven (Return/Escape do reach it). Windows/Linux, signed updater, Photoshop, print and screen-reader proof unchanged.
 - release: non-binary-impacting (ledger only)
 
+## 2026-10-27 updater-bold-notes
+- finding: [correctness/med] src/components/DesktopUpdater.tsx — release-note headings and bullets were classified, but inline `**bold**` was displayed literally in the update dialog.
+- status: done
+- attempts: 1/3
+- observed-at: 9c9866f8
+- delta: render matched inline bold spans as React strong nodes after wrapped bullet continuation folding; plain text, unmatched markers and HTML-looking content remain text. No Markdown dependency or HTML interpretation added.
+- evidence: mounted updater regression failed before (no strong nodes) and passes after; three updater suites / 15 tests, tsc and zero-warning lint pass. Isolated Chrome smoke mounted the real DesktopUpdater with mocked IPC only: three bold spans compute font-weight 700, literal HTML creates no img, unmatched marker preserved, visual screenshot inspected. No update downloaded or installed; temporary smoke entry removed.
+- evidence: production build and release metadata check against origin/main pass for unchanged 0.1.109 with Unreleased notes; existing Vite large-chunk warning remains.
+- release: binary-impacting; Fixed bullet queued under Unreleased, version unchanged. Prepared on fix/updater-bold-notes based on 9c9866f8; no release publication authorized.
+
 ## 2026-10-27 qr-dots-decode-542
 - finding: [correctness/high] #542 (AUD-01) — the shipped keylined gold dots QR fails a digital decoder for most ordinary names
 - status: fix in PR, HELD for the printed-Lupula iOS Camera + stock Android scan approval (design change)
