@@ -716,3 +716,12 @@ no status, no attempts, no delta.
 - evidence: npm run build and node scripts/check-release.mjs origin/main passed. Browser smoke at localhost:5173 observed new layer power/zoom titles and opened ruler settings; screenshot confirmed the new margin description fits the popover. Desktop-only updater states and native save dialogs not visually exercised. Copy-only changes; no new tests or behavior changes.
 - release: binary-impacting; Changed bullet queued under Unreleased, version unchanged.
 
+## 2026-10-28 pr-574-copy-test-failures
+- finding: [tests/high] PR #574 CI run 40649476994 failed four DOM tests because they asserted the UI wording replaced by the PR.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/574-tests @ fix/574-tests, based on 2e62e8ec (PR branch ux/casual-ui-copy)
+- delta: removed obsolete copy assertions and stale negative checks from inspector, ruler and save suites while retaining off-variant enablement, multi-selection and margin-lock behavior coverage. The direct Save Master test now unpacks the saved archive and checks the reordered layers instead of punctuation in the notice.
+- evidence: npm test -- --maxWorkers=2 passes all 1696 tests across 160 files with unchanged timeout limits. Initial default-worker run passed the four repaired cases but hit 5000ms timeouts in unrelated text-edit and PSD-raster cases. npx tsc --noEmit, npm run lint, npm run build, npx --yes knip@6.38.0 and node scripts/check-release.mjs origin/main pass. Existing build chunk-size advisory and happy-dom fetch-abort diagnostics remain.
+- release: repair is non-binary-impacting (tests and ledger only); PR's existing Unreleased UI-copy bullet remains sufficient. No version bump or release operation; no application behavior changed.
+
