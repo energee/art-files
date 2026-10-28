@@ -169,35 +169,6 @@ for (const [platform, userAgent] of [
   });
 }
 
-// A command's note (the PDF exports' "rendering…") rides on the native row's
-// title, and the row goes back to its plain title once the note clears.
-it("adds and clears a command's note on its native row", async () => {
-  native.items.clear();
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const render = (note?: string) => act(async () => {
-    root.render(createElement(AppMenu, {
-      actions: actionsIn(APP_MENUS).map((entry) => ({
-        id: entry.id, label: entry.text, run: () => {}, ...(entry.id === "export-both" && note ? { note } : {}),
-      })),
-      checked: {}, onNativeError: (error) => { throw new Error(error); }, onCheckForUpdates: () => undefined,
-    }));
-    await new Promise((r) => setTimeout(r, 0));
-  });
-  try {
-    await render("rendering…");
-    await render("rendering…");
-    expect(native.items.get("export-both")!.text).toBe("Export PDFs (rendering…)");
-    expect(native.items.get("export-psd")!.text).toBe("Export PSDs");
-    await render();
-    expect(native.items.get("export-both")!.text).toBe("Export PDFs");
-  } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
-  }
-});
-
 // File → Save Master… is a `live` row: installed under its plain title (the
 // SF Symbol lookup's key), it then reads the command's label, which says
 // Save Variant… while a variant is the version.

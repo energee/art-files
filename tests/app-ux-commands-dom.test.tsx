@@ -3,9 +3,10 @@
 // Layer and Remove Layer, and Delete/Backspace removes the selection outside
 // a text field or a focused button; a blocked export's reason is announced
 // through a polite status region and its header note selects the first
-// invalid layer, which the Layers list marks with an error dot; the PDF
-// export entries say "rendering…" until the preview is ready; and the master
-// library is re-read from localStorage only when it changes, not per render.
+// invalid layer, which the Layers list marks with an error dot, as ⌘E and
+// ⇧⌘E on a blocked label do; the PDF exports don't wait for the preview; and
+// the master library is re-read from localStorage only when it changes, not
+// per render.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,7 +16,7 @@ import { packLabel } from "../src/model/files";
 
 const counts = vi.hoisted(() => ({ masterIndex: 0 }));
 // The preview's font load never settles here (unless a test makes it fail),
-// so the preview stays "rendering" and the PDF exports keep their note.
+// so the preview stays "rendering" throughout.
 const fonts = vi.hoisted(() => ({ pending: new Promise<never>(() => {}), fail: false }));
 vi.mock("../src/masterCache", () => ({ cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {} }));
 vi.mock("../src/masters", async (importOriginal) => {
@@ -133,23 +134,33 @@ it("removes the selected layer with Delete or Backspace, but not while typing", 
   expect(await press({ key: "Delete" })).toBe(false);
 });
 
-it("offers Add … Layer and Remove Layer in the palette, and the PDF exports wait for the preview", async () => {
+it("offers Add … Layer and Remove Layer in the palette", async () => {
   await mount();
   const rows = await paletteRows();
   for (const label of ["Add Text Layer", "Add Image Layer", "Add Barcode Layer", "Add QR Layer", "Remove Layer"])
     expect(rows.some((r) => r.startsWith(label)), label).toBe(true);
-  expect(rows.some((r) => r.startsWith("Export PDFs (rendering…)"))).toBe(true);
-  expect(rows.some((r) => r.startsWith("Export PSDs (rendering"))).toBe(false);
 });
 
-it("drops the rendering note once the preview build has failed, and shows the bare reason", async () => {
+// The PDF builds load their own fonts and full-size art; the preview's
+// render source is not an input, so the exports don't wait for it.
+it("offers every export, As… rows included, while the preview is still rendering", async () => {
+  await mount();
+  await paletteRows();
+  const items = [...document.querySelectorAll<HTMLElement>("[data-slot=command-item]")];
+  for (const label of ["Export PDFs", "Export PDFs As…", "Export PSDs", "Export PSDs As…"]) {
+    const shortcut = (el: HTMLElement) => el.querySelector("[data-slot=command-shortcut]")?.textContent ?? "";
+    const row = items.find((el) => el.textContent?.replace(shortcut(el), "") === label);
+    expect(row, label).toBeDefined();
+    expect(row!.getAttribute("data-disabled"), label).not.toBe("true");
+  }
+  expect(items.some((el) => el.textContent?.includes("rendering"))).toBe(false);
+});
+
+it("shows a failed preview build's bare reason", async () => {
   fonts.fail = true;
   const { container } = await mount();
   await vi.waitFor(() => expect(container.textContent).toContain("font file is gone"), { timeout: 5000 });
   expect(container.textContent).not.toContain("Error: font file is gone");
-  const rows = await paletteRows();
-  expect(rows.some((r) => r.startsWith("Export PDFs"))).toBe(true);
-  expect(rows.some((r) => r.includes("rendering…"))).toBe(false);
 });
 
 it("adds a layer from the palette", async () => {
@@ -195,6 +206,19 @@ it("makes the blocked-export note a polite status that selects the invalid layer
   expect(await press({ key: "Backspace" }, note)).toBe(false);
   expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
 });
+
+// ⌘E (and ⇧⌘E) on a blocked label does what the header note does, rather
+// than nothing: it selects the invalid layer.
+for (const [name, init] of [["⌘E", { key: "e", metaKey: true }], ["⇧⌘E", { key: "E", metaKey: true, shiftKey: true }]] as const) {
+  it(`selects the invalid layer on ${name} while export is blocked`, async () => {
+    const { container, rerender } = await mount();
+    await rerender({ fileToOpen: badLabel() });
+    await vi.waitFor(() => expect(container.querySelector("[data-blocked-export]")).not.toBeNull());
+    expect(rowSelected(container, "barcode")).toBe(false);
+    expect(await press(init)).toBe(true);
+    expect(rowSelected(container, "barcode")).toBe(true);
+  });
+}
 
 // A per-beer override is this label's, saved by ⌘S: the picker's pink
 // Save Master… button stays hidden, while File → Save Master… stays enabled
@@ -272,9 +296,11 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
     "New Tab", "Open Label…", "Close Tab", "Save Label", "Save Label As…",
     "Open Master…", "Save Master…", "Save Master As…",
   ]);
-  // The pairs only: single-plate exports were dropped from menus and palette.
-  // (Both titles are 11 characters; the slice drops the note and shortcut.)
-  expect(groups.Export.map((r) => r.slice(0, 11))).toEqual(["Export PDFs", "Export PSDs"]);
+  // The pairs only (single-plate exports were dropped from menus and
+  // palette), each with an As… row that asks where again.
+  expect(groups.Export.map((r) => r.replace(/(⇧?⌘|Ctrl).*$/, ""))).toEqual([
+    "Export PDFs", "Export PDFs As…", "Export PSDs", "Export PSDs As…",
+  ]);
   expect(groups.Layer.map((r) => r.replace(/⌫$/, ""))).toEqual([
     "Add Text Layer", "Add Image Layer", "Add Barcode Layer", "Add QR Layer", "Remove Layer",
   ]);

@@ -37,11 +37,12 @@ describe("desktop master-file access", () => {
   });
 
   // An export pair asks once: the mask is written beside the art file the
-  // dialog chose, after checking nothing is already there (useExport.ts).
-  it("can check for and write an export's mask beside its art file", () => {
+  // dialog chose, replacing whatever is there (useExport.ts), so nothing
+  // checks for it first.
+  it("can write an export's mask beside its art file, and needs no exists check for it", () => {
     const mask = ["**/*-mask.[pP][dD][fF]", "**/*-mask.[pP][sS][dD]"];
     expect(scopedPaths("fs:allow-write-file")).toEqual(expect.arrayContaining(mask));
-    expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(mask));
+    for (const glob of mask) expect(scopedPaths("fs:allow-exists")).not.toContain(glob);
   });
 
   // #390: the atomic save writes a temp .label/.master beside the target,

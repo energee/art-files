@@ -4,8 +4,8 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
 // scope allows reading, writing, renaming and removing .label and .master
-// paths (rename/remove serve the atomic save), plus checking for and writing
-// an export pair's `-mask.pdf`/`-mask.psd` beside the art file.
+// paths (rename/remove serve the atomic save), plus writing an export pair's
+// `-mask.pdf`/`-mask.psd` beside the art file.
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
@@ -14,15 +14,6 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 export async function readNativeFile(path: string): Promise<Uint8Array> {
   const { readFile } = await import("@tauri-apps/plugin-fs");
   return readFile(path);
-}
-
-/** Whether a desktop path already holds a file. Export pairs use it before
- *  writing the mask beside the art file the dialog chose: that dialog's
- *  overwrite prompt covered only the art file. Scoped by fs:allow-exists in
- *  src-tauri/capabilities/default.json. */
-export async function nativePathExists(path: string): Promise<boolean> {
-  const { exists } = await import("@tauri-apps/plugin-fs");
-  return exists(path);
 }
 
 /** When a desktop file was last written (ms since the epoch), or null when it
@@ -74,7 +65,8 @@ export async function openThrough(options: FileOptions): Promise<FileTarget | nu
  *  is null; a browser picker that fails to open downloads instead, but write
  *  failures always propagate rather than becoming downloads.
  *  On desktop a dialog-chosen path is writable because the dialog plugin adds
- *  it to the runtime scope; a reused `target.path` (Finder/argv opens,
+ *  it to the runtime scope for the rest of the session (so a remembered
+ *  export path can be rewritten); a reused `target.path` (Finder/argv opens,
  *  remembered masters), an export pair's mask beside its art file, and the
  *  atomic-save temp beside a .label/.master are writable only through the
  *  globs in

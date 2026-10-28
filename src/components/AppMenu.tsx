@@ -13,7 +13,7 @@ import {
   Redo2, Ruler, Settings, Sparkles, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
   ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
-import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
+import { shortcutOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
 import { clearRecent, openRecent, recentLabels, recentTitles, subscribeRecent } from "@/recent";
 import {
@@ -125,7 +125,9 @@ export const APP_MENUS: SubmenuEntry[] = [
       {
         kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
           { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc" },
+          { kind: "action", id: "export-both-as", text: "Export PDFs As…", symbol: "doc.on.doc" },
           { kind: "action", id: "export-psd", text: "Export PSDs", symbol: "square.3.layers.3d" },
+          { kind: "action", id: "export-psd-as", text: "Export PSDs As…", symbol: "square.3.layers.3d" },
         ],
       },
     ],
@@ -217,9 +219,9 @@ function isCheckAction(entry: ActionEntry): entry is CheckAction {
 }
 
 /** What a row reads on every surface (both menus and the ⌘K palette): its
- *  own text, or the command's label for a `live` row, plus any note. */
+ *  own text, or the command's label for a `live` row. */
 export const rowTitle = (entry: ActionEntry, command: Command) =>
-  titleOf(command, entry.live ? command.label : entry.text);
+  entry.live ? command.label : entry.text;
 
 /** The ⌘K palette's groups: one per menu and submenu, in menu order, each
  *  holding that menu's own rows (a submenu's rows are its own group). */
@@ -460,8 +462,8 @@ async function nativeEntry(
   const command = commands[entry.id];
   const options = {
     id: entry.id,
-    // The plain title: menu_symbols.rs finds the row by it. A command's note
-    // goes on afterwards, through the state sync's setText.
+    // The plain title: menu_symbols.rs finds the row by it. A `live` row's
+    // label goes on afterwards, through the state sync's setText.
     text: entry.text,
     enabled: !command.disabled,
     accelerator: nativeAccelerator(command),

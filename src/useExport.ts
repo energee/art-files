@@ -1,10 +1,11 @@
 // useExport.ts — the editor's full-resolution exports, split out of App.tsx
 // (#416): the PDF and PSD pairs built on demand from the same layers the
 // preview draws, the export-in-flight and "Saved …" note state the header
-// shows, and the batch of download URLs every save (exports, Save Label,
-// Save Master) hands its plain-download fallback through.
+// shows, where this tab's desktop exports were last written (so a repeat
+// export needs no dialog), and the batch of download URLs every save
+// (exports, Save Label, Save Master) hands its plain-download fallback through.
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { nativePathExists, saveThrough, type FileTarget } from "@/files";
+import { saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
 import { useOwnedError } from "@/useOwnedError";
 import type { Fill } from "@/types";
@@ -51,6 +52,11 @@ type ExportInputs = {
   setBuildError: Dispatch<SetStateAction<string>>;
 };
 
+/** Where an export writes. `labelPath` is the tab's bound .label (desktop
+ *  only): a first export's dialog opens beside it, under its name. `ask`
+ *  (Export … As…) opens the dialog even when a file is remembered. */
+type ExportRequest = { labelPath?: string | null; ask?: boolean };
+
 export function useExport({
   drawLayers, family, liveImages, planAssets, pageArt, title, exportBase, render, setBuildError,
 }: ExportInputs) {
@@ -64,6 +70,14 @@ export function useExport({
   const [exportNote, setExportNote] = useState("");
   const exportFresh = useRef(false);
   const exportStale = () => { exportFresh.current = false; setExportNote(""); };
+  // The art file each desktop pair export last wrote, by extension: the
+  // next export of that kind rewrites it and its `-mask` sibling with no
+  // dialog. In memory, per tab (each tab runs its own editor); a tab that
+  // opens another document forgets them (forgetExportPaths). The dialog
+  // plugin added each path to the fs scope when it was chosen, for the rest
+  // of the session, so the rewrite is allowed.
+  const exportPaths = useRef<Partial<Record<"pdf" | "psd", string>>>({});
+  const forgetExportPaths = () => { exportPaths.current = {}; };
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT save batch — or until the tab closes, which releases them so
@@ -130,7 +144,7 @@ export function useExport({
   // A later successful export clears only the error an export set (#473).
   const exportError = useOwnedError(setBuildError);
   async function exportPair(
-    extension: "pdf" | "psd", type: string,
+    extension: "pdf" | "psd", type: string, { labelPath, ask }: ExportRequest,
     build: () => Promise<[art: Uint8Array, mask: Uint8Array]>,
   ) {
     if (exportRunning.current) return;
@@ -143,25 +157,30 @@ export function useExport({
     let pending = "";
     try {
       const pair = await build();
-      // On desktop the mask is written beside the art file the dialog chose,
-      // as `<stem>-mask.<extension>` (the export's own extension, so the
-      // capability globs cover it), without asking again. If a file is
-      // already there, or the check fails, the mask gets its own dialog,
-      // opened on that path: the art dialog's overwrite prompt covered only
-      // the art file. Notes and errors name the derived path either way.
-      let mask: { path: string; target?: FileTarget } | undefined;
+      // The art file: the remembered one, written with no dialog unless
+      // `ask`; otherwise the dialog opens on it, or beside the tab's .label
+      // under its name, or (neither) on the bare export name.
+      const remembered = exportPaths.current[extension];
+      const artTarget = ask ? undefined : remembered;
+      const artName = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, `.${extension}`)
+        ?? `${exportBase}.${extension}`;
+      // On desktop the mask is written beside the art file, as
+      // `<stem>-mask.<extension>` (the export's own extension, so the
+      // capability globs cover it), replacing any file there: confirming the
+      // art file confirms the pair. Notes and errors name the derived path.
+      let maskPath: string | undefined;
       for (const [index, bytes] of pair.entries()) {
-        pending = index && mask ? mask.path : `${exportBase}${index ? "-mask" : ""}.${extension}`;
-        const result = await saveVia(bytes, pending, type, index ? mask?.target : undefined);
+        pending = index ? maskPath ?? `${exportBase}-mask.${extension}` : artName;
+        const target = index ? maskPath : artTarget;
+        const result = await saveVia(bytes, pending, type, target ? { path: target } : undefined);
         if (!result) {
           exportError.set(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
           return;
         }
         saved.push(result.name);
         if (!index && result.target && "path" in result.target) {
-          const path = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
-          const taken = await nativePathExists(path).catch(() => true);
-          mask = { path, target: taken ? undefined : { path } };
+          exportPaths.current[extension] = result.target.path;
+          maskPath = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
         }
       }
       exportError.clear();
@@ -174,9 +193,10 @@ export function useExport({
     }
   }
 
-  /** Build both full-resolution plates before opening either save dialog. */
-  async function buildFull() {
-    await exportPair("pdf", "application/pdf", async () => {
+  /** Export PDFs (Export PDFs As… with `ask`): build both full-resolution
+   *  plates before opening any save dialog. */
+  async function buildFull(request: ExportRequest = {}) {
+    await exportPair("pdf", "application/pdf", request, async () => {
       const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
         import("@/pdf/build"), loadFonts(family), exportPlan(),
       ]);
@@ -196,9 +216,9 @@ export function useExport({
 
   /** Layered Photoshop files, built full-resolution on demand like the PDFs,
    *  off the main thread (psd/offThread.ts). Image decoding (psdImages) still
-   *  runs here: it needs a canvas. */
-  async function exportPsd() {
-    await exportPair("psd", "image/vnd.adobe.photoshop", async () => {
+   *  runs here: it needs a canvas. Saved like the PDFs (see buildFull). */
+  async function exportPsd(request: ExportRequest = {}) {
+    await exportPair("psd", "image/vnd.adobe.photoshop", request, async () => {
       const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
       ]);
@@ -216,5 +236,5 @@ export function useExport({
     });
   }
 
-  return { exporting, exportNote, exportStale, startSaveBatch, saveBytes, buildFull, exportPsd };
+  return { exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes, buildFull, exportPsd };
 }

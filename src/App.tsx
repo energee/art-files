@@ -893,7 +893,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
-      if (!cmd.disabled && !dialogOpen()) cmd.run();
+      if (dialogOpen()) return;
+      if (!cmd.disabled) cmd.run();
+      // A blocked export key does what the header's blocked note does,
+      // rather than nothing: it selects the invalid layer.
+      else if (cmd.id.startsWith("export-")) selectInvalidRef.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -951,9 +955,17 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   // Invalid filled values (such as a bad UPC) block exports. The header note
-  // selects the first of them; the Layers list marks each with a dot.
+  // (and a blocked ⌘E/⇧⌘E) selects the first of them; the Layers list marks
+  // each with a dot.
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
+  const selectInvalidLayer = () => {
+    const id = Object.keys(errors)[0];
+    if (id) setSelection({ ids: [id], anchor: id });
+  };
+  // Read by the once-registered key listener above, like commandsRef.
+  const selectInvalidRef = useRef(selectInvalidLayer);
+  selectInvalidRef.current = selectInvalidLayer;
   const blockedWhy = errorList.join(" · ");
   const errorIds = useMemo(() => new Set(Object.keys(errors)), [errors]);
 
@@ -1054,7 +1066,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The PDF/PSD exports and the export-in-flight state (useExport.ts). Its
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
-  const { exporting, exportNote, exportStale, startSaveBatch, saveBytes, buildFull, exportPsd } = useExport({
+  const { exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes, buildFull, exportPsd } = useExport({
     drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render, setBuildError,
   });
   const exportBlocked = blocked || exporting !== null;
@@ -1143,7 +1155,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     [canvasAssets, skip],
   );
   const previewReady = !!canvasAssets;
-  const pdfExportBlocked = exportBlocked || !previewReady;
 
   // Background tabs keep their state and asset bytes but not their decoded
   // render source: the ImageBitmaps are the heavy, cheaply-rebuildable part.
@@ -1394,8 +1405,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   }, []);
 
-  const exportPdfs = () => void buildFull();
-
   /** The same save-identity pattern for the .master this document's master
    *  was last saved to or opened from — tagged with that master's id, since
    *  undo can swap the document's master without touching these refs. Read
@@ -1410,6 +1419,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  without one, Save Master binds to the library's path for the id. */
   function resetDocument(next: Doc, masterPath?: string) {
     resetDoc(next);
+    // Another document: the next export asks where, beside its own .label.
+    forgetExportPaths();
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
     const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
@@ -2069,10 +2080,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires
    *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
-  // The PDF exports wait for the preview's render source; say why they are
-  // greyed out until it lands. A failed build is not "rendering": its
-  // reason is in the header, like the preview's own spinner gives way to it.
-  const pdfNote = previewReady || buildError ? undefined : "rendering…";
   const removable = selected.some((id) => rowById.has(id));
   /** File → Save Master… and the picker's button: the review writes into the
    *  version the picker names, and both say which. */
@@ -2090,10 +2097,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "master-save", label: saveLabel, disabled: !masterDirty,
       run: () => requestMasterSave(false) },
     { id: "master-save-as", label: "Save Master As…", run: () => requestMasterSave(true) },
+    // The first export in a tab asks where (beside its .label); later ones
+    // rewrite that pair silently, and the As… rows ask again (useExport.ts).
+    // They don't wait for the preview: the builds load their own fonts and art.
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
-      disabled: pdfExportBlocked, note: pdfNote, run: exportPdfs },
+      disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }) },
+    { id: "export-both-as", label: "Export PDFs As…",
+      disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }) },
     { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
-      disabled: exportBlocked, run: () => void exportPsd() },
+      disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }) },
+    { id: "export-psd-as", label: "Export PSDs As…",
+      disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }) },
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
     { id: "variant-new", label: "New Variant", run: onNewVariant },
@@ -2382,7 +2396,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               <button type="button" data-blocked-export
                 className="rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title="Export is blocked. Click to select the invalid layer."
-                onClick={() => { const id = Object.keys(errors)[0]; setSelection({ ids: [id], anchor: id }); }}>
+                onClick={selectInvalidLayer}>
                 {blockedWhy}
               </button>
             </HeaderAlert>
