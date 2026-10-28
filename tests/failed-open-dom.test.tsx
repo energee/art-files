@@ -79,7 +79,7 @@ it.each([
   const settle = async (seq: number) => {
     for (let i = 0; i < 400 && !onOpenSettled.mock.calls.some((c) => c[0] === seq); i++)
       await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-    expect(onOpenSettled).toHaveBeenCalledWith(seq);
+    expect(onOpenSettled).toHaveBeenCalledWith(seq, false);
   };
 
   const container = document.createElement("div");

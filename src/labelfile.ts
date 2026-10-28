@@ -11,6 +11,9 @@ import { strFromU8, Unzip, UnzipInflate, type Zippable } from "fflate";
 /** The project file's suffix — owned here with the format itself, so the
  *  pickers, the hidden input, and the download names can't drift apart. */
 export const LABEL_EXT = ".label";
+/** Whether a file name or path is a .label, ignoring case: the shell's one
+ *  test for a dropped file and an OS-delivered path alike. */
+export const isLabelName = (name: string) => name.toLowerCase().endsWith(LABEL_EXT);
 
 /** One packed asset: its file name and raw bytes. */
 export type LabelAsset = { name: string; bytes: Uint8Array };

@@ -4,6 +4,16 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **Settings… is where Mac apps keep it.** On macOS it moved from Edit to the **Label Lab** menu, under Check for Updates…, and it has a shortcut everywhere: `⌘,` (`Ctrl+,` on Windows and Linux, where it stays under Edit).
+- **The quit prompt says you're quitting.** With unsaved tabs, `⌘Q`, Dock → Quit or the window's close button now ask “Save changes to “…” before quitting?”, and say Cancel keeps Label Lab open, instead of offering to close the tab.
+
+### Fixed
+- **Cancelling a different-master open leaves no empty tab.** Cancel in the “This label was made with a different master” dialog, or in its Locate picker, now closes the Untitled tab that open made, so each cancelled attempt no longer leaves one behind.
+- **Opening a file that isn't a `.label` says so.** Open With on another file, or a `.label` shortcut that points at a file of another type, now shows “isn't a .label file” in the tab strip instead of doing nothing. The file is not read.
+
 ## [0.1.109] - 2026-10-27
 
 ### Changed

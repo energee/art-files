@@ -109,13 +109,15 @@ fn label_paths_from_args<S: Into<OsString>, I: IntoIterator<Item = S>>(args: I) 
         .collect()
 }
 
-/** The one spelling of "this is ours", shared by both delivery paths. */
+/** The argv filter's test for "this is ours". macOS opens skip it: the
+ * frontend rejects their non-.label paths with a message (see the Opened
+ * handler in main()). */
 fn is_label_path(path: &std::path::Path) -> bool {
     path.extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
 }
 
-/** Hand an OS-provided .label path to the frontend. Queue FIRST, then the
+/** Hand an OS-provided path to the frontend. Queue FIRST, then the
  * emit — the webview may not be listening yet, and OpenedFile's doc explains
  * the pull-based contract. Both delivery paths (macOS Apple events, the
  * Windows/Linux single-instance forward) go through here so the ordering
@@ -241,15 +243,14 @@ fn main() {
             if let tauri::RunEvent::Opened { urls } = event {
                 // Every URL, not just the first: Finder sends one event for
                 // a multi-file "Open With", and each file gets its own tab.
-                // Same extension filter as the argv path: "Open With" points
-                // Finder at any file, and a non-.label one would only travel
-                // to the frontend to be denied by the fs scope and surface as
-                // an open error. Ignoring it there is the argv behaviour.
-                for path in urls
-                    .into_iter()
-                    .filter_map(|url| url.to_file_path().ok())
-                    .filter(|path| is_label_path(path))
-                {
+                // No extension filter here, unlike argv (where it skips the
+                // exe and flags): every path Finder sends is one the user
+                // chose, so a non-.label one (Open With, or a .label symlink
+                // LaunchServices resolved to its target) reaches the
+                // frontend, which names it in an error instead of opening
+                // nothing (#554). The frontend checks the canonical path
+                // OpenedFile::push queues, so a link is judged by its target.
+                for path in urls.into_iter().filter_map(|url| url.to_file_path().ok()) {
                     deliver_opened_file(app, path);
                 }
             }

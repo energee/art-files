@@ -18,7 +18,7 @@ import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
   type TabsState,
 } from "@/tabs";
-import { LABEL_EXT } from "@/labelfile";
+import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { shortcutLabel } from "@/keys";
 import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
@@ -44,7 +44,7 @@ type TabExtras = {
   masterSaveSlot: { current: (() => Promise<boolean>) | null };
   onMeta: (meta: DocumentMeta) => void;
   onCloseTab: () => void;
-  onOpenSettled: (seq: number) => void;
+  onOpenSettled: (seq: number, cancelled: boolean) => void;
 };
 
 export default function TabsShell() {
@@ -80,12 +80,15 @@ export default function TabsShell() {
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
   const seq = useRef(1);
+  // Tabs openRouted created for their open (not reused): a cancelled open
+  // closes them again. An id leaves when its open settles.
+  const openedNewTab = useRef(new Set<number>());
   // Per-tab extras (save slot + id-closing callbacks), created once per tab
   // so inactive editors see identity-stable props and memo-bail. Dropped in
   // doClose. The callbacks reach the CURRENT handlers through `api` below —
   // a stable closure over a ref, the same pattern as stateRef.
   const extras = useRef(new Map<number, TabExtras>());
-  const api = useRef<{ requestClose: (id: number) => void }>(null!);
+  const api = useRef<{ requestClose: (id: number) => void; doClose: (id: number) => void }>(null!);
   const extrasFor = (id: number): TabExtras => {
     let e = extras.current.get(id);
     if (!e) extras.current.set(id, (e = {
@@ -101,7 +104,7 @@ export default function TabsShell() {
       onCloseTab: () => api.current.requestClose(id),
       // The editor reports its open attempt finished (success or failure).
       // seq-guarded: a newer open queued to this tab owns the entry now.
-      onOpenSettled: (settledSeq) => {
+      onOpenSettled: (settledSeq, cancelled) => {
         if (pendingRef.current[id]?.seq !== settledSeq) return;
         const next = { ...pendingRef.current };
         delete next[id];
@@ -112,6 +115,11 @@ export default function TabsShell() {
           delete n[id];
           return n;
         });
+        // A cancelled open leaves the window as it was (#553): a tab made
+        // just for it goes again, unless something was typed into it meanwhile.
+        const made = openedNewTab.current.delete(id);
+        const tab = stateRef.current.tabs.find((t) => t.id === id);
+        if (cancelled && made && tab && !unsaved(tab)) api.current.doClose(id);
       },
     }));
     return e;
@@ -126,8 +134,9 @@ export default function TabsShell() {
   // is ever up.
   const [reviewing, setReviewing] = useState(false);
   // A window close sweeps every unsaved tab through the same dialog; any
-  // Cancel aborts the sweep and the close. A ref, not state: nothing
-  // renders it — only doClose reads it.
+  // Cancel aborts the sweep and the close. A ref, not state: it is set
+  // before the setConfirmClose that shows the dialog, so that render reads
+  // it for the quit wording (#552), and doClose reads it to move the sweep on.
   const closingWindow = useRef(false);
   const [checkRequest, setCheckRequest] = useState(0);
   // Set once an update is installed on disk: the app menu's Check for
@@ -231,7 +240,9 @@ export default function TabsShell() {
     }
     // addTab self-activates, so the new tab's id is the applied state's
     // `active` — never re-derived here.
-    queueOpen(apply(addTab).active, fo);
+    const id = apply(addTab).active;
+    openedNewTab.current.add(id);
+    queueOpen(id, fo);
   };
 
   /** OS file-opens (Finder / Explorer double-click, second-instance argv):
@@ -248,6 +259,14 @@ export default function TabsShell() {
       for (;;) {
         const path = await invoke<string | null>("take_opened_file");
         if (!path) return;
+        // The Rust side passes macOS opens through unfiltered and resolved
+        // (a .label symlink arrives as its target), so a file that isn't a
+        // .label says so here instead of vanishing (#554). Never read.
+        if (!isLabelName(path)) {
+          setPickError(`Could not open label: ${path} isn't a .label file.`);
+          continue;
+        }
+        setPickError("");
         openRouted({ path });
       }
     }
@@ -277,7 +296,7 @@ export default function TabsShell() {
       if (!guarded(e)) return;
       e.preventDefault();
       const file = e.dataTransfer!.files[0];
-      if (file?.name.toLowerCase().endsWith(LABEL_EXT)) openRouted({ file });
+      if (file && isLabelName(file.name)) openRouted({ file });
     };
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("drop", onDrop);
@@ -364,7 +383,7 @@ export default function TabsShell() {
       setConfirmClose(id);
     } else doClose(id);
   };
-  api.current = { requestClose };
+  api.current = { requestClose, doClose };
 
   const cancelClose = () => {
     setConfirmClose(null);
@@ -640,10 +659,17 @@ export default function TabsShell() {
       <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Close “{confirmTab?.title}”?</DialogTitle>
+            {/* A window close or quit (⌘Q, Dock → Quit) ends the app, so the
+                prompt says so rather than offering to keep the tab (#552). */}
+            <DialogTitle>
+              {closingWindow.current
+                ? `Save changes to “${confirmTab?.title}” before quitting?`
+                : `Close “${confirmTab?.title}”?`}
+            </DialogTitle>
             <DialogDescription>
-              This tab has unsaved changes. Save them, discard them, or keep
-              the tab open.
+              {closingWindow.current
+                ? "This tab has unsaved changes. Save or discard them to quit, or cancel to keep Label Lab open."
+                : "This tab has unsaved changes. Save them, discard them, or keep the tab open."}
               {/* Save writes only the .label (issue #159): name the master
                   edits it leaves behind, and offer the review that writes
                   them as its own button. Inside the description so it is
