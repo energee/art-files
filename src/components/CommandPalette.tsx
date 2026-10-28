@@ -7,7 +7,7 @@
 // row in its group keeps that mark's space so the titles line up.
 import { CheckIcon } from "lucide-react";
 import { menuGroups, rowTitle, type CheckedState } from "@/components/AppMenu";
-import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
+import { shortcutOf, type Command } from "@/components/CommandMenu";
 import {
   CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut,
 } from "@/components/ui/command";
@@ -64,7 +64,7 @@ export function CommandPalette(props: {
           return rows.length > 0 && <CommandGroup key={group.heading} heading={group.heading}>{rows}</CommandGroup>;
         })}
         {others.length > 0 && (
-          <CommandGroup heading="Other">{others.map((a) => item(a, "Other", titleOf(a)))}</CommandGroup>
+          <CommandGroup heading="Other">{others.map((a) => item(a, "Other", a.label))}</CommandGroup>
         )}
       </CommandList>
     </CommandDialog>

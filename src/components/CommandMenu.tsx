@@ -35,14 +35,7 @@ export interface Command {
    *  (undo/redo have their own listener). Anything with a `key` derives its
    *  glyphs from the binding instead — see shortcutOf. */
   shortcut?: string;
-  /** Why the command is waiting, appended to its title on every surface
-   *  ("Export PDFs (rendering…)") — see titleOf. */
-  note?: string;
 }
-
-/** A command's title as a surface shows it: `text` (the command's label, or
- *  the menu row's own wording — see AppMenu's rowTitle) plus its note, if any. */
-export const titleOf = (c: Command, text = c.label) => (c.note ? `${text} (${c.note})` : text);
 
 /** The glyphs to show for a command, derived from the key it actually fires
  *  on so the two cannot drift. */

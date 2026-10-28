@@ -9,12 +9,20 @@ File → Export, the palette, `⌘E` and `⇧⌘E`:
 | --- | --- |
 | Export PDFs | `{name}.pdf` and `{name}-mask.pdf` |
 | Export PSDs | `{name}.psd` and `{name}-mask.psd` |
+| Export PDFs As… / Export PSDs As… | the same pair, somewhere new |
 
-Each export writes both plates and asks where to save once, for the art file. In the desktop app the mask goes beside it as `{chosen name}-mask.pdf` (or `.psd`). If a file with that name is already there, a second dialog opens on that name, so you can confirm replacing it or pick another, rather than it being overwritten silently. In a browser each file still has its own save dialog or download.
+Each export writes both plates. In the desktop app:
 
-Export greys out while the label is invalid. The reason sits in the header next to the menus. Click it to select and inspect the first invalid layer. The Layers list marks every invalid layer with a red dot.
+- **The first export in a tab** asks where to save the art file. The dialog opens in the folder of the tab's `.label`, named after it (`Lupula.label` suggests `Lupula.pdf`). An unsaved label suggests the beer name instead.
+- **The mask** goes beside the art file as `{chosen name}-mask.pdf` (or `.psd`), with no second dialog. Confirming the art file confirms the pair, so an old mask with that name is replaced.
+- **Every later export of that kind in the tab** rewrites the same two files with no dialog. The header names both files it wrote.
+- **Export PDFs As… / Export PSDs As…** ask again, opening on the current file, and the tab remembers the new place from then on.
 
-The PDF exports also wait for the preview to finish rendering; until then their menu and palette entries read **(rendering…)**.
+The tab remembers its PDF and PSD files separately, until it closes, quits, or opens another label, or the label is saved under a new name (Save Label As…), so a repeat export can never overwrite the previous beer's files. In a browser each file still has its own save dialog or download.
+
+Export greys out while the label is invalid. The reason sits in the header next to the menus. Click it, or press `⌘E` / `⇧⌘E`, to select and inspect the first invalid layer. The Layers list marks every invalid layer with a red dot.
+
+Exports don't wait for the preview: you can export as soon as a label opens.
 
 When an export finishes, the header names the files it saved, and screen readers announce it. The note clears on your next edit, since the files no longer match the label. An export you edit during shows no note, because its files hold the label as it was when the export began.
 
