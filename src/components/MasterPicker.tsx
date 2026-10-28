@@ -11,8 +11,8 @@
 // "Save Master…/Save Variant…" button below, shown only while there is
 // something to save: a save writes into whichever version this Select names,
 // so the picker is where you can see the target while choosing to write it.
-// It runs the File menu's own `master-save` command — same review dialog,
-// same dirty gate, no second path.
+// It runs the File menu's own Save Master (App's requestMasterSave) — the
+// same direct write or review, same dirty gate, no second path.
 //
 // The menu answers one question — WHICH VERSION AM I EDITING — in three
 // registers (docs/plans/label-first-editing.md, Task 12):
@@ -131,7 +131,8 @@ export function MasterPicker(props: {
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
   /** File → Save Master…, the button under the Select while `templateMoved`:
-   *  opens the review that writes into whichever version the Select names. */
+   *  writes into whichever version the Select names, through the review
+   *  when the label has something to promote. */
   onSaveMaster: () => void;
   /** The save button's text — File → Save Master…'s own title ("Save
    *  Master…", or "Save Variant…" on a variant), so the two always match. */

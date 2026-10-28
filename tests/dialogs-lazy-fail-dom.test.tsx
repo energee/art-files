@@ -53,6 +53,8 @@ it("a Settings, Save Master review or ⌘K palette that fails to load says so an
     await act(async () => { menu.actions.find((c) => c.id === "settings")!.run(); });
     await vi.waitFor(() => expect(document.body.textContent).toContain("Settings failed to load"), { timeout: 5000 });
 
+    // An override to promote: with none, Save Master skips the review.
+    await act(async () => (document.querySelector('[data-layer-id="warning"] button[aria-label$=": enabled"]') as HTMLButtonElement).click());
     await act(async () => { menu.actions.find((c) => c.id === "master-save-as")!.run(); });
     await vi.waitFor(() => expect(document.body.textContent).toContain("Save Master review failed to load"), { timeout: 5000 });
 

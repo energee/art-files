@@ -1457,7 +1457,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
     reviewDone.current = done;
-    setPendingSave({ as: false });
+    requestMasterSave(false);
   });
   // Declared after the onMeta effect, so in a shared commit it runs second:
   // the shell decides the close on meta that already says the master saved.
@@ -1507,9 +1507,34 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   }
 
-  /** File → Save Master… / Save Master As…, always downstream of the review
-   *  dialog (MasterSaveReview), which is where `promote` comes from: the label
-   *  overrides the reviewer ticked to fold into the template.
+  /** Start a master write. Only the save the close prompt is waiting on
+   *  (reviewDone) reports back: a plain Save Master still writing when a
+   *  later close prompt's Save starts must not settle that newer one. A
+   *  throw before saveMaster's own try still ends it (unsaved), then
+   *  rejects as before. */
+  function writeMaster(as: boolean, promote: readonly MasterChange[] = []) {
+    const waiting = reviewDone.current;
+    const report = (saved: boolean) => {
+      if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
+    };
+    void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
+  }
+
+  /** File → Save Master… / Save Master As…, the picker's button and the
+   *  close prompt's Save. The review (MasterSaveReview) opens only when the
+   *  label has an override or value to promote — the one decision a save
+   *  asks for; otherwise the write starts at once and its header note says
+   *  how many changes went in. */
+  function requestMasterSave(as: boolean) {
+    const promotable = masterChanges(pristineMaster.current, master, label, version ?? undefined)
+      .some((c) => c.kind === "promote");
+    if (promotable) setPendingSave({ as });
+    else writeMaster(as);
+  }
+
+  /** The write behind File → Save Master… / Save Master As… (see
+   *  requestMasterSave). `promote` is the review's ticked rows: the label
+   *  overrides and values to fold into the template.
    *
    *  Save As also FORKS — a fresh master id, the document rebound onto it, and
    *  the file written. That is what "Duplicate as new master…" used to do
@@ -1529,6 +1554,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       setLoadError(`Could not save master: ${errMsg(err)}`);
       return false;
     }
+    /** What goes into the file, for the header note: the master's own
+     *  changes since its last open/save, plus each promotion. */
+    const written = masterChanges(pristineMaster.current, master, label, version ?? undefined)
+      .filter((c) => c.kind !== "promote").length + promote.length;
     const forked = as
       ? { ...promoted.master, id: newMasterId() }
       : promoted.master;
@@ -1585,9 +1614,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
-      if (ours) setLoadError(!missing ? ""
-        : missing === 1 ? "Note: 1 image has no file to save — it will be blank when this master reopens"
-        : `Note: ${missing} images have no file to save — they will be blank when this master reopens`);
+      if (ours) setLoadError([
+        `Note: Saved ${saved.name}${written ? ` — ${written} change${written === 1 ? "" : "s"}` : ""}`,
+        ...(!missing ? []
+          : missing === 1 ? ["1 image has no file to save — it will be blank when this master reopens"]
+          : [`${missing} images have no file to save — they will be blank when this master reopens`]),
+      ].join(" · "));
       return true;
     } catch (err) {
       setLoadError(`Could not save master: ${errMsg(err)}`);
@@ -2050,8 +2082,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
     // Names the version it writes into, like the picker's button (saveLabel).
     { id: "master-save", label: saveLabel, disabled: !masterDirty,
-      run: () => setPendingSave({ as: false }) },
-    { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
+      run: () => requestMasterSave(false) },
+    { id: "master-save-as", label: "Save Master As…", run: () => requestMasterSave(true) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
       disabled: pdfExportBlocked, note: pdfNote, run: exportPdfs },
     { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
@@ -2291,16 +2323,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             onConfirm={(promote) => {
               const { as } = pendingSave;
               setPendingSave(null);
-              // Only the review the close prompt is waiting on reports back:
-              // a plain Save Master still writing when a later Review Master…
-              // opens must not settle that newer review. A throw before
-              // saveMaster's own try still ends the review (unsaved), then
-              // rejects as before.
-              const waiting = reviewDone.current;
-              const report = (saved: boolean) => {
-                if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
-              };
-              void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
+              writeMaster(as, promote);
             }} />
         </Suspense>
       )}
@@ -2320,7 +2343,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               library={library} resolve={resolveLibraryMaster}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
-              onSaveMaster={() => setPendingSave({ as: false })} saveLabel={saveLabel} templateMoved={templateMoved}
+              onSaveMaster={() => requestMasterSave(false)} saveLabel={saveLabel} templateMoved={templateMoved}
               onForget={forgetLibraryMaster}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}

@@ -1,10 +1,10 @@
 // mastersave-review-dom.test.tsx — DOM behavior of MasterSaveReview
 // (src/components/MasterSaveReview.tsx): the dialog standing between an edit
 // and the template (docs/plans/label-first-editing.md, Task 7). It renders
-// masterChanges() grouped by layer — structural rows checked and disabled
-// (they are ALREADY in the master; unchecking one is an undo, not a save
-// option), promote rows off by default — and hands back exactly the promote
-// rows that were ticked. Same react-dom/client + act harness as
+// masterChanges() grouped by layer — structural rows as plain text (they
+// are ALREADY in the master; undoing one is ⌘Z's job, not a save option),
+// promote rows with a checkbox, off by default — and hands back exactly the
+// promote rows that were ticked. Same react-dom/client + act harness as
 // masterpicker-dom.test.tsx; no @testing-library/react in this repo.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
@@ -63,7 +63,7 @@ describe("MasterSaveReview", () => {
     expect(text).toContain("Style");
     expect(text).toContain("placeholder");
     expect(text).toContain("style.fill");
-    expect(boxes()).toHaveLength(5); // 4 rows + the "promote all" tick
+    expect(boxes()).toHaveLength(3); // 2 promote rows + the "promote all" tick
   });
 
   // A layer can hold BOTH an override and a fill value on the same path
@@ -90,12 +90,15 @@ describe("MasterSaveReview", () => {
     expect(document.body.textContent).toContain('1 → 1 ("Labradorite" → "Moonstone")');
   });
 
-  it("checks and locks the structural rows, and leaves promotions off", () => {
+  // A structural row offers no choice, so it shows none: no disabled,
+  // pre-checked box that looks like a control that doesn't work.
+  it("lists structural rows as plain text, and leaves promotions off", () => {
     render();
-    expect(box("renamed-name").getAttribute("aria-checked")).toBe("true");
-    expect(box("renamed-name").getAttribute("aria-disabled")).toBe("true");
+    expect(box("renamed-name").getAttribute("role")).toBeNull();
+    expect(box("renamed-name").querySelector("[role=checkbox]")).toBeNull();
+    expect(box("renamed-name").textContent).toContain('Renamed from "Name"');
+    expect(box("property-styleLine-placeholder").querySelector("[role=checkbox]")).toBeNull();
     expect(box("promote-name-x").getAttribute("aria-disabled")).toBeNull();
-    expect(box("property-styleLine-placeholder").getAttribute("aria-checked")).toBe("true");
     expect(box("promote-name-x").getAttribute("aria-checked")).toBe("false");
     expect(box("promote-name-style.fill").getAttribute("aria-checked")).toBe("false");
   });

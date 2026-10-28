@@ -36,6 +36,8 @@ it("hides the Save Master review when its tab goes inactive", async () => {
     .some((d) => d.textContent?.includes("Save Master"));
   try {
     await act(async () => { root.render(createElement(DocumentEditor, props(true))); });
+    // An override to promote: with none, Save Master skips the review.
+    await act(async () => (document.querySelector('[data-layer-id="warning"] button[aria-label$=": enabled"]') as HTMLButtonElement).click());
     await act(async () => { menu.actions.find((c) => c.id === "master-save-as")!.run(); });
     // The review loads on first open (#410).
     await vi.waitFor(() => expect(reviewOpen()).toBe(true), { timeout: 5000 });
