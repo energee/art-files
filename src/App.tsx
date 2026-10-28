@@ -82,7 +82,7 @@ import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
-import { MasterPicker, type LibraryEntry, type MasterOffer } from "@/components/MasterPicker";
+import { MasterPicker, type LibraryEntry } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
@@ -461,12 +461,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const [changedOnly, setChangedOnly] = useState(false);
-  /** Controlled so Open Master can reveal its preview card in a collapsed
-   *  sidebar, and View → Layers and the palette can toggle and check it;
+  /** Controlled so View → Layers and the palette can toggle and check it;
    *  ⌘B stays the provider's guarded listener. */
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  /** File → Open Master…'s pending switch, previewed by MasterPicker (see openMasterBytes). */
-  const [masterOffer, setMasterOffer] = useState<MasterOffer | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -1408,8 +1405,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  without one, Save Master binds to the library's path for the id. */
   function resetDocument(next: Doc, masterPath?: string) {
     resetDoc(next);
-    // A pending Open Master switch was offered for the document being replaced.
-    setMasterOffer(null);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
     const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
@@ -1618,8 +1613,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  label already loaded wins — only EMPTY slots fall back to the master's,
    *  and image bytes fill in only for ids the store doesn't hold (checked
    *  again as they commit, so an id filled meanwhile mints no thumbnail).
-   *  Slots are read from savedAssetsRef, not this render's state: Open
-   *  Master's commit can run long after the render that built it (#516). */
+   *  Slots are read from savedAssetsRef, not this render's state: a switch
+   *  adopts only after its awaits (the library write), so art dropped in
+   *  that window must still win (#516). */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
     const { texture, mask, customImages } = savedAssetsRef.current;
     await Promise.all([
@@ -1640,63 +1636,44 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** Re-aim THIS document at `target`: the label routed through rebindLabel
    *  (non-destructive — whatever doesn't match is benched on `dormant`) and
-   *  the master swapped, in one history step. `clean` says whether the
-   *  freshly bound master reads as saved (Open Master / the library pick)
-   *  or not (a never-written duplicate, so Save Master stays live). */
+   *  the master swapped, in one history step. No confirm: the header note
+   *  names what was set aside and that ⌘Z restores it. ⌘Z restores the
+   *  master and label only — art adoptMasterAssets put into an EMPTY
+   *  texture, mask or image slot stays, as asset slots sit outside the undo
+   *  history. `clean` says whether the freshly bound master reads as saved
+   *  (Open Master / the library pick) or not (a never-written duplicate, so
+   *  Save Master stays live). */
   function commitRebind(target: Master, clean = true) {
     const { master: from, label: current } = docRef.current;
     const { label: next, dropped } = rebindLabel(current, from, target);
     markDirty();
     setDoc({ master: target, label: next });
-    // Any switch retires a pending Open Master card: its commit is stale now.
-    setMasterOffer(null);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     const notes = benchedNotes(dropped);
-    setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+    setLoadError(notes.length
+      ? `Note: Switched to “${target.name}” · ${notes.join(" · ")} · ${shortcutLabel("⌘Z")} to restore` : "");
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
-   *  handle, hidden input). The switch previews first, like a picker pick:
-   *  one that would bench nothing happens now, one that would joins the
-   *  library and hides behind MasterPicker's Continue. On Cancel the master
-   *  stays in the library and the label is untouched. */
+   *  handle, hidden input): remembered in the library and switched to at
+   *  once, like a picker pick. */
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
-    // A second open supersedes the first one's card, whichever way it goes.
-    setMasterOffer(null);
-    const commit = async () => {
-      // Bytes again: the master may have left the library while its card
-      // was open, and LAST_KEY must not name an id with no cached copy.
-      await rememberMaster(r.master, name, bytes);
-      refreshLibrary();
-      commitRebind(r.master);
-      // Bind Save Master only once the doc is on this master (#81).
-      const id = r.master.id;
-      masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
-      masterFilePath.current = src.path ? { id, target: src.path } : null;
-      await adoptMasterAssets(r.assets);
-    };
-    const { master: from, label: current } = docRef.current;
-    const { dropped } = rebindLabel(current, from, r.master);
-    if (!dropped.values.length && !dropped.variants.length) { await commit(); return; }
-    // Into the library now, not yet applied: a cancelled switch must not
-    // become the master the next untitled tab starts on. A file with the
-    // current master's own id is already listed, and caching it now would
-    // make a reload resolve this label to the file Cancel declined.
-    if (r.master.id !== from.id) {
-      await rememberMaster(r.master, name, bytes, { applied: false });
-      refreshLibrary();
-    }
-    // The card lives in the sidebar, so open it if it was collapsed.
-    setSidebarOpen(true);
-    setMasterOffer({ target: r.master, assets: r.assets, commit });
+    await rememberMaster(r.master, name, bytes);
+    refreshLibrary();
+    commitRebind(r.master);
+    // Bind Save Master only once the doc is on this master (#81).
+    const id = r.master.id;
+    masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
+    masterFilePath.current = src.path ? { id, target: src.path } : null;
+    await adoptMasterAssets(r.assets);
   }
 
-  /** MasterPicker's library pick (the preview's Continue). The bytes are
+  /** MasterPicker's library pick. The bytes are
    *  already in the master cache (the picker resolved them from disk or the
    *  cache), so only the index / last-applied record needs touching. */
   async function pickLibraryMaster(target: Master, assets: MasterAssets) {
@@ -2339,12 +2316,12 @@ export const DocumentEditor = memo(function DocumentEditor({
             if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
-            <MasterPicker master={master} label={label}
+            <MasterPicker master={master}
               library={library} resolve={resolveLibraryMaster}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
               onSaveMaster={() => setPendingSave({ as: false })} saveLabel={saveLabel} templateMoved={templateMoved}
-              onForget={forgetLibraryMaster} offer={masterOffer} onOfferDone={() => setMasterOffer(null)}
+              onForget={forgetLibraryMaster}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={pick}
