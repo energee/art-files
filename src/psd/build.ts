@@ -32,7 +32,7 @@
 // own docs warn it can emit a broken file.
 // writePsdUint8Array, not writePsdBuffer — the latter returns a Node Buffer
 // and throws "Buffer not supported on this platform" in the browser.
-import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
+import { writePsdUint8Array, type BezierPath, type BooleanOperation, type Layer, type Psd } from "ag-psd";
 import type { Fill } from "../types";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import type { Font } from "@pdf-lib/fontkit";
@@ -260,10 +260,11 @@ export function qrBeziers(shapes: QrShapes, sizePx: number): BezierPath[] {
     // Three concentric circles per finder: the ring, its hole, the center
     // dot. Photoshop unions path components regardless of the even-odd
     // flag, so the hole is an explicit subtract (it drew solid discs).
-    ...shapes.finders.flatMap((p) =>
-      ([[3.5 * ms * 0.95, "combine"], [2.3 * ms, "subtract"], [1.4 * ms, "combine"]] as const).map(([r, operation]) =>
-        ({ ...circlePath(p.cx * sizePx, p.cy * sizePx, r), operation })),
-    ),
+    ...shapes.finders.flatMap((p) => {
+      const circle = (r: number, operation: BooleanOperation) =>
+        ({ ...circlePath(p.cx * sizePx, p.cy * sizePx, r), operation });
+      return [circle(3.5 * ms * 0.95, "combine"), circle(2.3 * ms, "subtract"), circle(1.4 * ms, "combine")];
+    }),
   ];
 }
 
