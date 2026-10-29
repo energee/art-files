@@ -247,10 +247,9 @@ export function useExport({
     return { art, plan, assets };
   }
 
-  /** One-file PDF exports share the build/save lifecycle. Only the combined
-   *  print file remembers a destination; individual legacy plates always ask. */
   /** One file through one dialog: the print PDF or PSD (art with White Ink
-   *  inside), or a single PDF plate. */
+   *  inside), or a single legacy PDF plate. Only the print files remember a
+   *  destination; individual plates always ask. */
   async function exportSingle(format: "pdf" | "psd", mode: "print" | "art" | "mask", request: ExportRequest) {
     if (exportRunning.current) return;
     exportRunning.current = true;
@@ -267,6 +266,7 @@ export function useExport({
     }
     const suffix = `${mode === "mask" ? "-mask" : ""}.${format}`;
     const type = format === "pdf" ? "application/pdf" : "image/vnd.adobe.photoshop";
+    const name = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, suffix) ?? `${exportBase}${suffix}`;
     const finish = async (bytes: Uint8Array) => {
       const target = !request.ask && remembered ? { path: remembered } : undefined;
       const result = await saveVia(bytes, name, type, target);
@@ -279,7 +279,6 @@ export function useExport({
       exportError.clear();
       if (exportFresh.current) setExportNote(t("Saved {{files}}.", { files: result.name }));
     };
-    const name = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, suffix) ?? `${exportBase}${suffix}`;
     try {
       if (format === "psd") return await finish(await printPsd());
       const [builders, { art, plan, assets }] = await Promise.all([

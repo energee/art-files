@@ -13,8 +13,6 @@ import {
 } from "pdf-lib";
 import { WHITE_INK } from "../layout";
 
-export { WHITE_INK };
-
 const colorSpaces = new WeakMap<PDFDocument, PDFRef>();
 
 function whiteInkColorSpace(doc: PDFDocument): PDFRef {

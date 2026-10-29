@@ -2,7 +2,8 @@
 import { inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { PDFArray, PDFBool, PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
-import { WHITE_INK, embedWhiteInkMask, registerWhiteInk } from "../src/pdf/whiteInk";
+import { embedWhiteInkMask, registerWhiteInk } from "../src/pdf/whiteInk";
+import { WHITE_INK } from "../src/layout";
 
 const name = (value: string) => PDFName.of(value);
 
