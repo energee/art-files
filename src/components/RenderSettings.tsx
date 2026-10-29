@@ -44,11 +44,11 @@ export function RenderSettings({ value, onChange }: { value: Settings; onChange:
         onChange={(bleedIn) => set({ bleedIn })} />
       <div className="flex items-start justify-between gap-3">
         <label htmlFor="two-file-pdf" className="flex flex-col gap-1">
-          <span>{t("Two-file PDF export (art + mask)")}</span>
-          <span className="text-xs text-muted-foreground">{t("Show the legacy separate art and mask PDF exports.")}</span>
+          <span>{t("Two-file export (art + mask)")}</span>
+          <span className="text-xs text-muted-foreground">{t("⌘E and ⇧⌘E save the art and mask as separate files, instead of one file with White Ink inside.")}</span>
         </label>
         <Switch id="two-file-pdf" nativeButton render={<button type="button" />}
-          aria-label={t("Two-file PDF export (art + mask)")} checked={value.twoFilePdfExport}
+          aria-label={t("Two-file export (art + mask)")} checked={value.twoFilePdfExport}
           onCheckedChange={(twoFilePdfExport) => set({ twoFilePdfExport: twoFilePdfExport === true })} />
       </div>
     </Group>

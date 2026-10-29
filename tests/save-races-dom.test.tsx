@@ -209,9 +209,9 @@ it("a texture that loads keeps another slot's error on screen", async () => {
   expect(document.body.textContent).toContain('Could not load mask "broken-mask.png"');
 });
 
-// Export PSDs saves one file (White Ink is a spot channel inside it), so it
+// Export PSD saves one file (White Ink is a spot channel inside it), so it
 // opens a single dialog and confirms that one file.
-it("psd: Export PSDs saves one PSD and names it", async () => {
+it("psd: Export PSD saves one PSD and names it", async () => {
   const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
     { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) }));
   vi.stubGlobal("showSaveFilePicker", pick);
@@ -227,7 +227,7 @@ it("psd: Export PSDs saves one PSD and names it", async () => {
   expect(pick).toHaveBeenCalledOnce();
 });
 
-for (const [command, extension] of [["export-both", "pdf"]]) {
+for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd"]]) {
   it(`${extension}: cancelling artwork stops the pair (#254)`, async () => {
     const { pick } = picker();
     pick.mockRejectedValueOnce(new DOMException("Cancelled", "AbortError"));

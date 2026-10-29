@@ -60,6 +60,12 @@ vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/api/menu", () => native.api);
 import { APP_MENUS, AppMenu, actionsIn } from "@/components/AppMenu";
 
+/** The export rows App.tsx offers with Settings → Two-file export on; with it
+ *  off it offers the other optional exports (one file each) instead. */
+const PAIRED = new Set(["export-both", "export-both-as", "export-art", "export-mask", "export-psds", "export-psds-as"]);
+const offered = (pairs: boolean) => (entry: { id: string; optional?: true }) =>
+  !entry.optional || PAIRED.has(entry.id) === pairs;
+
 afterEach(() => { document.body.replaceChildren(); });
 
 /** Mount AppMenu with every menu command calling `run(id)`; `render` repeats
@@ -216,14 +222,14 @@ it("installs Save Master… under its plain title and shows the command's varian
   }
 });
 
-it("rebuilds the native export menu when legacy PDF commands become available or disappear", async () => {
+it("rebuilds the native export menu when the two-file setting swaps the export commands", async () => {
   native.items.clear();
   const root = createRoot(document.createElement("div"));
   const ran: string[] = [];
   const render = async (legacy: boolean) => {
     await act(async () => {
       root.render(createElement(AppMenu, {
-        actions: actionsIn(APP_MENUS).filter((entry) => legacy || !entry.optional).map((entry) => ({
+        actions: actionsIn(APP_MENUS).filter(offered(legacy)).map((entry) => ({
           id: entry.id, label: entry.text, run: () => { ran.push(entry.id); },
         })),
         checked: {}, onNativeError: (message) => { throw new Error(message); },
@@ -234,10 +240,11 @@ it("rebuilds the native export menu when legacy PDF commands become available or
   };
   try {
     await render(false);
-    expect(native.items.has("export-pdf")).toBe(true);
-    for (const id of ["export-both", "export-art", "export-mask"]) expect(native.items.has(id)).toBe(false);
+    for (const id of ["export-pdf", "export-psd"]) expect(native.items.has(id)).toBe(true);
+    for (const id of ["export-both", "export-art", "export-mask", "export-psds"]) expect(native.items.has(id)).toBe(false);
     await render(true);
-    for (const id of ["export-pdf", "export-both", "export-art", "export-mask"]) expect(native.items.has(id)).toBe(true);
+    for (const id of ["export-both", "export-art", "export-mask", "export-psds"]) expect(native.items.has(id)).toBe(true);
+    for (const id of ["export-pdf", "export-psd"]) expect(native.items.has(id)).toBe(false);
     native.items.get("export-mask")!.action!();
     expect(ran).toEqual(["export-mask"]);
     await render(false);
@@ -257,7 +264,7 @@ it("finishes a pending native installation before installing a new export menu",
   const errors = vi.fn();
   const render = async (legacy: boolean) => act(async () => {
     root.render(createElement(AppMenu, {
-      actions: actionsIn(APP_MENUS).filter((entry) => legacy || !entry.optional).map((entry) => ({
+      actions: actionsIn(APP_MENUS).filter(offered(legacy)).map((entry) => ({
         id: entry.id, label: entry.text, run: () => undefined,
       })),
       checked: {}, onNativeError: errors, onCheckForUpdates: () => undefined,
@@ -291,7 +298,7 @@ it("waits for the replacement menu before relabeling the installed-update comman
   const errors = vi.fn();
   const render = async (legacy: boolean, updateInstalled: boolean) => act(async () => {
     root.render(createElement(AppMenu, {
-      actions: actionsIn(APP_MENUS).filter((entry) => legacy || !entry.optional).map((entry) => ({
+      actions: actionsIn(APP_MENUS).filter(offered(legacy)).map((entry) => ({
         id: entry.id, label: entry.text, run: () => undefined,
       })),
       checked: {}, onNativeError: errors, onCheckForUpdates: () => undefined, updateInstalled,
