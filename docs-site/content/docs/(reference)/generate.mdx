@@ -28,6 +28,8 @@ npm run generate -- beer.master values.json ./out --set name=X
 - `--asset layerId=path`: attach an image file. `--asset background=` / `mask=` need a master with that role layer
 - `--format pdf` or `psd`: emit only the print PDF or only the PSD pair. Default emits both formats
 - `--two-file`: emit the legacy artwork PDF and blue/white mask PDF instead of the combined print PDF. Works with master, batch, label and legacy inputs; PSD output is unchanged. A later run without `--two-file` into the same folder warns on stderr if the older `{name}-mask.pdf` is still there; it is never deleted.
+
+The CLI always writes the PSD pair, with black flattened previews. The app's one-file PSD with a **White Ink** channel draws the mask plate on a browser canvas, which the CLI doesn't have.
 - `--set id=value`: overlay one value on every job
 - `--inspect`: JSON on stdout, exit 0. Use `npm run -s` when piping output so npm does not add its banner
 - `--check`: validate every job and print its errors and warnings, then stop. Nothing is built or written, so no output directory is needed (one given is ignored). Exit 0 when every job passes

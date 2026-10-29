@@ -6,6 +6,7 @@ import { BLEED_DRAG_STEP_IN, BLEED_STEP_IN, displayBleedIn, type RenderSettings 
 import { Switch } from "@/components/ui/switch";
 import { ScrubField } from "./ScrubField";
 import { useTranslation } from "@/i18n";
+import { shortcutLabel } from "@/keys";
 import { languages, useLanguage, type LanguagePreference } from "@/i18n";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -44,11 +45,11 @@ export function RenderSettings({ value, onChange }: { value: Settings; onChange:
         onChange={(bleedIn) => set({ bleedIn })} />
       <div className="flex items-start justify-between gap-3">
         <label htmlFor="two-file-pdf" className="flex flex-col gap-1">
-          <span>{t("Two-file PDF export (art + mask)")}</span>
-          <span className="text-xs text-muted-foreground">{t("Show the legacy separate art and mask PDF exports.")}</span>
+          <span>{t("Two-file export (art + mask)")}</span>
+          <span className="text-xs text-muted-foreground">{t("{{pdf}} and {{psd}} save the art and mask as separate files, instead of one file with White Ink inside.", { pdf: shortcutLabel("⌘E"), psd: shortcutLabel("⇧⌘E") })}</span>
         </label>
         <Switch id="two-file-pdf" nativeButton render={<button type="button" />}
-          aria-label={t("Two-file PDF export (art + mask)")} checked={value.twoFilePdfExport}
+          aria-label={t("Two-file export (art + mask)")} checked={value.twoFilePdfExport}
           onCheckedChange={(twoFilePdfExport) => set({ twoFilePdfExport: twoFilePdfExport === true })} />
       </div>
     </Group>

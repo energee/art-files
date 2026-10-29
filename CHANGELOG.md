@@ -6,11 +6,16 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+- **One PSD with a White Ink spot channel.** Export PSD (`⇧⌘E`, was Export PSDs) now saves a single `{name}.psd`: the editable art layers plus a **White Ink** spot channel built from the mask, the same coverage as the print PDF's White Ink layer. The channel shows at 0% solidity, so Photoshop draws the art as-is. `npm run generate` keeps writing the PSD pair (it has no canvas to draw the mask).
+- **Two-file export decides what ⌘E and ⇧⌘E save.** Settings → **Two-file export (art + mask)** (was Two-file PDF export) now covers PSDs too. Off, the default: one PDF and one PSD, each with White Ink inside. On: `⌘E` saves the art + mask PDF pair and `⇧⌘E` the art + mask PSD pair, and the one-file exports leave the menu. Export Artwork PDF and Export Mask PDF still show when it is on.
+
 ### Fixed
 - **Window title in other languages.** A new document's window title now reads in the app language (for example "Sem título") instead of staying "Untitled".
 - **Leftover mask PDF warning.** Exporting the combined print PDF into a folder that still holds an older `-mask.pdf` from a two-file export now warns you in the header, so only one file goes to the printer; `npm run generate` warns on stderr the same way. The old file is never deleted.
 - **French and German Add layer button.** It now reads "Nouveau calque" / "Neue Ebene" and fits on one line in the Layers header.
 - **Portuguese wording.** Benched values and variants now read "reservado(s)", and every save confirmation reads "Salvamos …".
+- **PSD previews show the label.** Exported PSDs used to save an all-black flattened image, so Finder, Quick Look and Preview showed nothing but black (Photoshop rebuilt the art from the layers). Each PSD now saves its plate drawn at full resolution, so every app shows the actual art. PSDs written by `npm run generate` keep the black preview.
 
 ## [0.1.110] - 2026-10-28
 

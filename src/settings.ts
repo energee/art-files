@@ -17,8 +17,8 @@ import { decimalsOf } from "@/numeric";
  *  form canScene consumes:
  *    cornerRadius — % of the label's short side
  *    edgeSoftness — foil-edge blur, % of the label's width
- *  It also carries twoFilePdfExport, a plain on/off that keeps the legacy
- *  art + mask PDF exports in the menus. */
+ *  It also carries twoFilePdfExport, a plain on/off that makes ⌘E / ⇧⌘E
+ *  save art + mask pairs instead of one file with White Ink inside. */
 export interface RenderSettings {
   cornerRadius: number;
   edgeSoftness: number;
@@ -34,7 +34,10 @@ export interface RenderSettings {
    *  a fixed 8x5in die, so it changes the exported page size without moving a
    *  single element relative to the trim. */
   bleedIn: number;
-  /** Keep the legacy separate art and mask PDF commands visible. */
+  /** Settings → Two-file export: ⌘E / ⇧⌘E save the art + mask PDF and PSD
+   *  pairs (and the single PDF plates show) instead of one PDF / PSD with
+   *  White Ink inside. ponytail: the key predates PSDs following it; kept so
+   *  stored settings still load. */
   twoFilePdfExport: boolean;
 }
 

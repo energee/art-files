@@ -1,9 +1,9 @@
 # Label Lab
 
 You fill a master. Label Lab writes one print PDF with artwork and an
-overprinting **White Ink** spot layer. An optional two-file export retains
-the art/mask pair (**blue = white ink**, **white = knockout**).
-It also exports editable Photoshop files.
+overprinting **White Ink** spot layer, and an editable Photoshop file with a
+**White Ink** spot channel. An optional two-file export writes art/mask
+pairs instead (**blue = white ink**, **white = knockout**).
 
 **How to use the whole app:** [`docs-site/content/docs`](docs-site/content/docs),
 or run the Fumadocs site:

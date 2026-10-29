@@ -185,6 +185,10 @@ export const COLORS = {
   maskBlue: parseHexFill(MASK_BLUE_HEX),
 };
 
+/** The printer-required White Ink spot swatch: the PDF separation and OCG
+ *  name, and the PSD spot channel name. */
+export const WHITE_INK = "White Ink";
+
 /** A typed or stored colour as "#rrggbb", or undefined when it is not a 3- or
  *  6-digit hex. parseHexFill reads exactly six digits, so a "#fff" that
  *  skipped this would print blue in the PDF while the canvas shows white —

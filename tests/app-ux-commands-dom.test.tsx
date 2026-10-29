@@ -147,20 +147,27 @@ it("offers the combined PDF and its As… row while the preview is still renderi
   await mount();
   await paletteRows();
   const items = [...document.querySelectorAll<HTMLElement>("[data-slot=command-item]")];
-  for (const label of ["Export PDF", "Export PDF As…", "Export PSDs", "Export PSDs As…"]) {
+  for (const label of ["Export PDF", "Export PDF As…", "Export PSD", "Export PSD As…"]) {
     const shortcut = (el: HTMLElement) => el.querySelector("[data-slot=command-shortcut]")?.textContent ?? "";
     const row = items.find((el) => el.textContent?.replace(shortcut(el), "") === label);
     expect(row, label).toBeDefined();
     expect(row!.getAttribute("data-disabled"), label).not.toBe("true");
   }
   expect(items.some((el) => el.textContent?.startsWith("Export PDFs"))).toBe(false);
+  expect(items.some((el) => el.textContent?.startsWith("Export PSDs"))).toBe(false);
 });
 
-it("reveals the legacy pair and individual PDF exports only when enabled", async () => {
+// Settings → Two-file export: ⌘E / ⇧⌘E move to the pairs, the single PDF
+// plates show, and the one-file exports go.
+it("with two-file export on, ⌘E and ⇧⌘E export the pairs", async () => {
   await mount({ render: { ...DEFAULT_RENDER, twoFilePdfExport: true } });
-  const rows = await paletteRows();
-  for (const label of ["Export PDFs", "Export Artwork PDF", "Export Mask PDF"])
-    expect(rows.some((row) => row.startsWith(label)), label).toBe(true);
+  await paletteRows();
+  const rows = paletteGroups().Export;
+  expect(rows.map((r) => r.replace(/(⇧?⌘|Ctrl).*$/, ""))).toEqual([
+    "Export PDFs", "Export PDFs As…", "Export Artwork PDF", "Export Mask PDF", "Export PSDs", "Export PSDs As…",
+  ]);
+  expect(rows[0]).toMatch(/^Export PDFs.+E$/);
+  expect(rows[4]).toMatch(/^Export PSDs.+E$/);
 });
 
 it("shows a failed preview build's bare reason", async () => {
@@ -304,7 +311,7 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
     "Open Master…", "Save Master…", "Save Master As…",
   ]);
   expect(groups.Export.map((r) => r.replace(/(⇧?⌘|Ctrl).*$/, ""))).toEqual([
-    "Export PDF", "Export PDF As…", "Export PSDs", "Export PSDs As…",
+    "Export PDF", "Export PDF As…", "Export PSD", "Export PSD As…",
   ]);
   expect(groups.Layer.map((r) => r.replace(/⌫$/, ""))).toEqual([
     "Add Text Layer", "Add Image Layer", "Add Barcode Layer", "Add QR Layer", "Remove Layer",
