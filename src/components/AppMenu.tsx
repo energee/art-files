@@ -406,13 +406,15 @@ const DEFAULT_NATIVE_MENU_LABELS: NativeMenuLabels = {
  *  close-requested event, so ⌘Q skipped the unsaved-tabs prompt (#80).
  *  `quit` must run the window close flow instead. `settings` is the
  *  Settings… row, built like every other command row, shown under About
- *  where macOS users look for it (#551). Exported for tests. */
+ *  where macOS users look for it (#551). `tag` is this build's id suffix
+ *  (see nativeMenuBuilds). Exported for tests. */
 export async function macApplicationMenu(
   api: MenuApi,
   resources: NativeResource[],
   checkForUpdates: () => void,
   quit: () => void,
   settings: NativeEntry,
+  tag: string,
   labels: NativeMenuLabels = DEFAULT_NATIVE_MENU_LABELS,
 ) {
   const icon = await defaultWindowIcon();
@@ -434,7 +436,7 @@ export async function macApplicationMenu(
     return item;
   }));
   const updater = await api.IconMenuItem.new({
-    id: "check-for-updates",
+    id: `check-for-updates${tag}`,
     text: labels.update.check,
     action: checkForUpdates,
     icon: "Refresh",
@@ -446,7 +448,7 @@ export async function macApplicationMenu(
   // About, Check for Updates…, separator, Settings…, separator, Services…
   items.splice(3, 0, settings, separator);
   const quitItem = await api.MenuItem.new({
-    id: "quit",
+    id: `quit${tag}`,
     text: labels.quit,
     accelerator: "CmdOrCtrl+Q",
     action: quit,
@@ -468,18 +470,19 @@ async function recentRows(
   api: MenuApi,
   resources: NativeResource[],
   clearMenu: string,
+  tag: string,
 ): Promise<NativeEntry[]> {
   const paths = recentLabels();
   const titles = recentTitles(paths);
   const rows: NativeEntry[] = await Promise.all(paths.map((path, i) => api.MenuItem.new({
     // Native menus read a lone & as a mnemonic marker; && shows one.
-    id: `recent-${i}`, text: titles[i].replaceAll("&", "&&"),
+    id: `recent-${i}${tag}`, text: titles[i].replaceAll("&", "&&"),
     // A modal dialog blocks this like every other menu command (#244).
     action: () => { if (!dialogOpen()) openRecent(path); },
   })));
   if (paths.length) rows.push(await api.PredefinedMenuItem.new({ item: "Separator" }));
   rows.push(await api.MenuItem.new({
-    id: "recent-clear", text: clearMenu, enabled: paths.length > 0, action: clearRecent,
+    id: `recent-clear${tag}`, text: clearMenu, enabled: paths.length > 0, action: clearRecent,
   }));
   resources.push(...rows);
   return rows;
@@ -493,6 +496,7 @@ async function nativeEntry(
   run: (id: string) => void,
   resources: NativeResource[],
   labels: NativeMenuLabels,
+  tag: string,
 ): Promise<NativeEntry> {
   if (entry.kind === "predefined" || entry.kind === "separator") {
     const item = await api.PredefinedMenuItem.new({
@@ -504,7 +508,7 @@ async function nativeEntry(
   }
   if (entry.kind === "submenu") {
     const items = await Promise.all(entry.items.map((item) =>
-      nativeEntry(api, item, commands, checked, run, resources, labels)));
+      nativeEntry(api, item, commands, checked, run, resources, labels, tag)));
     const submenu = await api.Submenu.new({
       id: entry.id,
       text: entry.text,
@@ -514,7 +518,7 @@ async function nativeEntry(
     return submenu;
   }
   if (entry.kind === "recent") {
-    const rows = await recentRows(api, resources, labels.clearMenu);
+    const rows = await recentRows(api, resources, labels.clearMenu, tag);
     const submenu = await api.Submenu.new({ id: entry.id, text: entry.text, items: rows });
     recentRowsOf.set(submenu, rows);
     resources.push(submenu);
@@ -523,7 +527,7 @@ async function nativeEntry(
 
   const command = commands[entry.id];
   const options = {
-    id: entry.id,
+    id: `${entry.id}${tag}`,
     // The plain title: menu_symbols.rs finds the row by it. A `live` row's
     // label goes on afterwards, through the state sync's setText.
     text: entry.text,
@@ -559,6 +563,14 @@ const UPDATE_ITEM_TEXT = { check: "Check for Updates…", restart: "Restart to U
 // across settings changes and component lifetimes so a stale IPC completion
 // cannot replace or close a newer menu.
 let nativeMenuInstalls = Promise.resolve();
+// Tauri keeps one click handler per item id, and freeing an item deletes the
+// handler under its id, whoever registered it. A menu holds its rows and the
+// app holds its current menu, so a replaced menu's rows are freed only when
+// `previous.close()` runs — after the new menu's rows registered. With shared
+// ids that silenced every row of the new menu on each rebuild, i.e. every tab
+// switch. Each build therefore suffixes its clickable rows' ids with
+// `#<build>`; lookups strip it.
+let nativeMenuBuilds = 0;
 
 function useNativeMenu(
   desktop: boolean,
@@ -608,6 +620,7 @@ function useNativeMenu(
         // The menu API is desktop-only and stays out of the browser's initial
         // chunk. isTauri alone is not enough to make a static import lazy.
         const api = await import("@tauri-apps/api/menu");
+        const tag = `#${++nativeMenuBuilds}`;
         const run = (id: string) => {
           const command = commandsRef.current[id];
           if (!command || command.disabled) return;
@@ -631,7 +644,7 @@ function useNativeMenu(
         // below would otherwise never reach the menu.
         const recentBuiltFrom = JSON.stringify(recentLabels());
         const native = (entry: MenuEntry) =>
-          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources, labels);
+          nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources, labels, tag);
         // One table for the rows and their symbols below. The Mac menu bar:
         // Settings… (and its separator) leave Edit for the application menu,
         // where macOS puts it (#551; macApplicationMenu). Windows and Linux
@@ -652,10 +665,10 @@ function useNativeMenu(
             .catch((error) => errorRef.current(translate("Could not quit: {{error}}", { error: errMsg(error) })));
           const settings = actionsIn(menus).find((entry) => entry.id === "settings")!;
           roots.unshift(await macApplicationMenu(
-            api, resources, () => updateRef.current(), quit, await native(settings), labels));
+            api, resources, () => updateRef.current(), quit, await native(settings), tag, labels));
         } else {
           const updater = await api.MenuItem.new({
-            id: "check-for-updates", text: labels.update.check,
+            id: `check-for-updates${tag}`, text: labels.update.check,
             action: () => updateRef.current(),
           });
           resources.push(updater);
@@ -690,7 +703,8 @@ function useNativeMenu(
             || resource instanceof api.CheckMenuItem
             || resource instanceof api.IconMenuItem
           ) {
-            actionItems.set(resource.id, resource);
+            // Every clickable row carries this build's tag.
+            actionItems.set(resource.id.slice(0, -tag.length), resource);
           }
         }
         // Rebuild Open Recent's rows whenever the list changes, one rebuild
@@ -708,7 +722,9 @@ function useNativeMenu(
           // Closed rows leave the teardown list; recentRows adds the new ones.
           const gone = new Set<NativeResource>(old);
           resources.splice(0, resources.length, ...resources.filter((r) => !gone.has(r)));
-          const rows = await recentRows(api, resources, labels.clearMenu);
+          // Same tag as the rows just freed: they were removed and closed
+          // first, so their handlers are already gone.
+          const rows = await recentRows(api, resources, labels.clearMenu, tag);
           // Torn down while the rows were made: the cleanup has already run.
           if (!live) return closeResources(resources);
           recentRowsOf.set(recent, rows);

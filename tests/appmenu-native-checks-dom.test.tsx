@@ -17,14 +17,16 @@ const native = vi.hoisted(() => {
     constructor(opts: { id?: string; checked?: boolean; action?: () => void; text?: string }) {
       this.id = opts.id ?? "predefined"; this.checked = !!opts.checked; this.action = opts.action; this.text = opts.text;
     }
+    /** The row's id without its build tag (`#<build>`), as tests look it up. */
+    get key() { return this.id.replace(/#\d+$/, ""); }
     static async new(opts: { id?: string; checked?: boolean; action?: () => void; text?: string }) {
       const item = new this(opts);
-      native.items.set(item.id, item);
+      native.items.set(item.key, item);
       return item;
     }
     async close() {
       this.closed = true;
-      if (native.items.get(this.id) === this) native.items.delete(this.id);
+      if (native.items.get(this.key) === this) native.items.delete(this.key);
     }
     async setEnabled() {}
     async setText(text: string) {
