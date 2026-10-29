@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.113] - 2026-10-29
 
 ### Fixed
 - **Menu commands work again after you switch tabs.** Once a second tab was opened or another tab was chosen, every menu row and its shortcut (File → Open Label…, Open Recent, New Tab, Export, ⌘O, ⌘E, Check for Updates…) did nothing until the app was restarted. The menu now keeps working through tab switches.
