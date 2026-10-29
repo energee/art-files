@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.111] - 2026-10-29
 
 ### Changed
 - **One PSD with a White Ink spot channel.** Export PSD (`⇧⌘E`, was Export PSDs) now saves a single `{name}.psd`: the editable art layers plus a **White Ink** spot channel built from the mask, the same coverage as the print PDF's White Ink layer. The channel shows at 0% solidity, so Photoshop draws the art as-is. `npm run generate` keeps writing the PSD pair (it has no canvas to draw the mask).
