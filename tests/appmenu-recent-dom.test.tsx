@@ -18,7 +18,8 @@ const native = vi.hoisted(() => {
       await native.hold.new;
       const item = new this(opts);
       native.created.push(item);
-      if (opts.id) native.items.set(opts.id, item);
+      // Keyed without the build tag (`#<build>`) AppMenu adds to clickable rows.
+      if (opts.id) native.items.set(opts.id.replace(/#\d+$/, ""), item);
       return item;
     }
     get id() { return this.opts.id ?? "predefined"; }
@@ -157,9 +158,10 @@ it.each(["remove", "new"] as const)(
 );
 
 it("a click reaches the live tab when a switched-away tab's install finishes last", async () => {
-  // Tauri routes a click by item id to the channel registered LAST (closing an
-  // item never drops it), as `native.items` does here. Tab A's install stalls,
-  // the user lands on tab B, then A's rows get created after B's.
+  // Tauri routes a click by item id to the channel registered last, as
+  // `native.items` does here (freeing an item deletes its id's channel; that
+  // is modelled in appmenu-tab-switch-dom). Tab A's install stalls, the user
+  // lands on tab B, then A's rows get created after B's.
   let release = () => {};
   native.hold.new = new Promise<void>((r) => { release = r; });
   const ran: string[] = [];

@@ -174,7 +174,7 @@ describe("macOS application menu", () => {
   it("routes ⌘Q through the window close flow, not the predefined Quit", async () => {
     const { api, made } = fakeApi();
     const quit = vi.fn();
-    await macApplicationMenu(api, [], () => undefined, quit, settingsRow);
+    await macApplicationMenu(api, [], () => undefined, quit, settingsRow, "#1");
     expect(made.predefined.map((options) => options.item)).not.toContain("Quit");
     const item = made.items.find((options) => options.accelerator === "CmdOrCtrl+Q");
     expect(item?.text).toBe("Quit Label Lab");
@@ -186,7 +186,7 @@ describe("macOS application menu", () => {
   // "Hide Label Lab", so every language must name the app itself.
   it("names the app in the About and Hide rows", async () => {
     const { api, made } = fakeApi();
-    await macApplicationMenu(api, [], () => undefined, () => undefined, settingsRow);
+    await macApplicationMenu(api, [], () => undefined, () => undefined, settingsRow, "#1");
     const text = (item: string) => made.predefined.find((options) =>
       options.item === item || (typeof options.item === "object" && item in (options.item as object)))?.text;
     expect(text("About")).toBe("About Label Lab");
