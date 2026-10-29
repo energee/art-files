@@ -8,7 +8,7 @@
 // label's print size (#338).
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { readPsd } from "ag-psd";
+import { initializeCanvas, readPsd } from "ag-psd";
 import { readFileSync } from "node:fs";
 import { openFont } from "../src/fontkit";
 import { buildPsd, digitGroupPaths, qrBeziers, type PsdAssets } from "../src/psd/build";
@@ -343,5 +343,34 @@ describe("barcode digit outlines advance unkerned, like the PDF (#86)", () => {
     const last = digitGroupPaths(fk, "1", size, false, 0, 0).bbox;
     const advance4 = fk.layout("4").glyphs[0].advanceWidth * size / fk.unitsPerEm;
     expect(pair.maxX).toBeCloseTo(advance4 + last.maxX, 6);
+  });
+});
+
+describe("psd flattened preview", () => {
+  // Finder, Preview and Quick Look show only the PSD's flattened composite.
+  // Without opts.composite ag-psd writes zeros: an all-black preview.
+  it("writes opts.composite as the composite and leaves it black without one", async () => {
+    try {
+      setOutputDpi(36); // a small page keeps the composite cheap to decode
+      const { w, h } = L.PSD_DOC;
+      const data = new Uint8ClampedArray(w * h * 4);
+      for (let i = 0; i < data.length; i += 4) data.set([200, 30, 60, 255], i);
+      // Reading the composite needs an ImageData factory; Node has none.
+      initializeCanvas(() => { throw new Error("no canvas"); },
+        (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }) as ImageData);
+      const pixel = async (opts: Parameters<typeof buildPsd>[3]) => {
+        const bytes = await buildPsd(await lolevPlan(), assets, "art", { layers: lolevLayers(), ...opts });
+        const psd = readPsd(Buffer.from(bytes).buffer as ArrayBuffer,
+          { skipLayerImageData: true, skipThumbnail: true, useImageData: true });
+        return [...psd.imageData!.data.slice(0, 4)];
+      };
+      expect(await pixel({ composite: { data, width: w, height: h } })).toEqual([200, 30, 60, 255]);
+      expect(await pixel({})).toEqual([0, 0, 0, 255]);
+    } finally {
+      setOutputDpi(DESIGN_DPI);
+      // Back to ag-psd's own uninitialised state, where both factories throw.
+      const none = () => { throw new Error("Canvas not initialized"); };
+      initializeCanvas(none, none);
+    }
   });
 });

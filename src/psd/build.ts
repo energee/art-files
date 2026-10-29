@@ -47,6 +47,7 @@ import { facesOf } from "../planLayers";
 import { PAGE_ART_ID, type Layer as AppLayer, type TextLayer } from "../model/layers";
 import { qrShapes, type QrShapes } from "../qr";
 import { strokeLayerOf } from "../strokes";
+import { addWhiteInkChannel } from "./spotChannel";
 
 /** Decoded RGBA pixels at their natural size. */
 export interface Rgba { data: Uint8Array; width: number; height: number }
@@ -94,6 +95,14 @@ export interface PsdOpts {
    *  A layer missing here is named by its id and its text falls back to the
    *  items' own faces; a QR without its layer cannot be rebuilt and throws. */
   layers?: readonly AppLayer[];
+  /** The plate already flattened at PSD_DOC size (RGBA), saved as the file's
+   *  composite: the only image Finder, Preview and Quick Look show. Photoshop
+   *  rebuilds from the layers either way. Without it ag-psd writes zeros, a
+   *  black preview — what callers with no canvas (the Node CLI) still get. */
+  composite?: { data: Uint8ClampedArray; width: number; height: number };
+  /** The mask plate flattened like `composite`; its red channel becomes the
+   *  White Ink spot channel (spotChannel.ts): the one-file print PSD. */
+  whiteInk?: { data: Uint8ClampedArray; width: number; height: number };
 }
 
 /** Which deliverable to build: the art PSD, or the white-ink mask plate.
@@ -713,6 +722,8 @@ export async function buildPsd(
         + `<tiff:ResolutionUnit>2</tiff:ResolutionUnit></rdf:Description></rdf:RDF></x:xmpmeta>`,
     },
     children: buildLayers(items, assets, digitFont, mode, opts),
+    ...(opts.composite && { imageData: opts.composite as ImageData }),
   };
-  return writePsdUint8Array(psd);
+  const bytes = writePsdUint8Array(psd);
+  return opts.whiteInk ? addWhiteInkChannel(bytes, opts.whiteInk) : bytes;
 }

@@ -2112,14 +2112,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       run: () => requestMasterSave(false) },
     { id: "master-save-as", label: t("Save Master As…"), run: () => requestMasterSave(true) },
     // The first export in a tab asks where (beside its .label); later ones
-    // rewrite that print file silently, and Export PDF As… asks again.
+    // rewrite those files silently, and the As… commands ask again.
     // They don't wait for the preview: the builds load their own fonts and art.
-    { id: "export-pdf", label: t("Export PDF"), key: "e", mods: "⌘",
-      disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }) },
-    { id: "export-pdf-as", label: t("Export PDF As…"),
-      disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }) },
+    // Settings → Two-file export decides what ⌘E / ⇧⌘E save: one PDF / PSD
+    // with White Ink inside, or the art + mask pairs.
     ...(render.twoFilePdfExport ? [
-      { id: "export-both", label: t("Export PDFs"),
+      { id: "export-both", label: t("Export PDFs"), key: "e", mods: "⌘" as const,
         disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }, "pair") },
       { id: "export-both-as", label: t("Export PDFs As…"),
         disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }, "pair") },
@@ -2127,11 +2125,20 @@ export const DocumentEditor = memo(function DocumentEditor({
         disabled: exportBlocked, run: () => void exportPdfPlate("art", { labelPath: filePath }) },
       { id: "export-mask", label: t("Export Mask PDF"),
         disabled: exportBlocked, run: () => void exportPdfPlate("mask", { labelPath: filePath }) },
-    ] : []),
-    { id: "export-psd", label: t("Export PSDs"), key: "e", mods: "⇧⌘",
-      disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }) },
-    { id: "export-psd-as", label: t("Export PSDs As…"),
-      disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }) },
+      { id: "export-psds", label: t("Export PSDs"), key: "e", mods: "⇧⌘" as const,
+        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }, "pair") },
+      { id: "export-psds-as", label: t("Export PSDs As…"),
+        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }, "pair") },
+    ] : [
+      { id: "export-pdf", label: t("Export PDF"), key: "e", mods: "⌘" as const,
+        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }) },
+      { id: "export-pdf-as", label: t("Export PDF As…"),
+        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }) },
+      { id: "export-psd", label: t("Export PSD"), key: "e", mods: "⇧⌘" as const,
+        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }) },
+      { id: "export-psd-as", label: t("Export PSD As…"),
+        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }) },
+    ]),
     { id: "undo", label: t("Undo"), shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: t("Redo"), shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
     { id: "variant-new", label: t("New Variant"), run: onNewVariant },
@@ -2550,7 +2557,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             <span role="status" data-export-status className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
               {exporting && <>
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-                {exporting === "pdf" ? t("Building PDFs…") : t("Building PSDs…")}
+                {{ pdf: t("Building PDF…"), pdfs: t("Building PDFs…"), psd: t("Building PSD…"), psds: t("Building PSDs…") }[exporting]}
               </>}
             </span>
             {/* Drop a texture or mask anywhere in the window; the overlay

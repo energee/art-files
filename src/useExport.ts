@@ -1,6 +1,6 @@
 // useExport.ts — the editor's full-resolution exports, split out of App.tsx
-// (#416): the PDF and PSD pairs built on demand from the same layers the
-// preview draws, the export-in-flight and "Saved …" note state the header
+// (#416): the print PDF and PSD (White Ink inside) or, with two-file export,
+// the art + mask pairs, built on demand from the same layers the preview draws, the export-in-flight and "Saved …" note state the header
 // shows, where this tab's desktop exports were last written (so a repeat
 // export needs no dialog), and the batch of download URLs every save
 // (exports, Save Label, Save Master) hands its plain-download fallback through.
@@ -14,14 +14,16 @@ import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
 import type { RenderSettings } from "@/settings";
-import { FONT_URLS } from "@/fonts";
+import { FONT_URLS, labelFontCss, loadLabelFaces } from "@/fonts";
+import { drawPlate } from "@/canvas/draw";
+import { PSD_DOC } from "@/layout";
 import type { FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 // The builders are imported dynamically at export time (buildFull, exportPsd,
 // which runs buildPsd in a worker) so they stay out of the initial bundle;
 // only their types are needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
-import type { PsdAssets } from "@/psd/build";
+import type { PsdAssets, PsdOpts } from "@/psd/build";
 import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } from "@/assets/io";
 
 /** The texture/mask bytes for a build (App.tsx pageArt): absent when the
@@ -30,6 +32,54 @@ type PageArt = {
   texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
   maskPng?: Uint8Array;
 };
+
+/** The page's texture and mask as export images, under their page ids, so
+ *  the plan's background and mask items draw them (PDFs and PSD plates). */
+function pageImages(art: PageArt): Record<string, CollabImage> {
+  return {
+    ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
+    ...(art.maskPng ? { [PAGE_ART_ID.mask]: { kind: "png" as const, bytes: art.maskPng } } : {}),
+  };
+}
+
+type FlatPlate = NonNullable<PsdOpts["composite"]>;
+
+/** Both plates flattened by the preview's canvas renderer at `doc`, the
+ *  export's PSD_DOC size: each PSD's composite (PsdOpts.composite), the image
+ *  Finder and Preview show, and the mask the print PSD turns into White Ink.
+ *  The full-resolution export images decode once for both plates, which draw
+ *  one after the other on one canvas. SVG art plans as paths, so it needs no
+ *  bitmap. Undefined without a 2D canvas.
+ *  ponytail: draws on the main thread; an OffscreenCanvas in the PSD worker
+ *  would free the UI if high-DPI exports stall it. */
+async function flattenPlates(
+  plan: readonly PlacedLayer[], images: Record<string, CollabImage>, fontCss: string, doc: { w: number; h: number },
+): Promise<Record<"art" | "mask", FlatPlate> | undefined> {
+  const bitmaps: Record<string, ImageBitmap> = {};
+  try {
+    for (const [id, image] of Object.entries(images))
+      if (image.kind !== "svg") bitmaps[id] = await createImageBitmap(new Blob([image.bytes as BlobPart]));
+    // The plan and the worker's page are this size; drawPlate reads the live
+    // page, which a Bleed or PSD resolution change mid-export would move.
+    if (PSD_DOC.w !== doc.w || PSD_DOC.h !== doc.h)
+      throw new Error(t("Bleed or PSD resolution changed during the export. Export again."));
+    const canvas = document.createElement("canvas");
+    canvas.width = doc.w;
+    canvas.height = doc.h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined;
+    const flat = (mode: "art" | "mask"): FlatPlate => {
+      ctx.resetTransform();
+      ctx.clearRect(0, 0, doc.w, doc.h);
+      drawPlate(ctx, plan, { images: bitmaps }, mode, fontCss);
+      const { data, width, height } = ctx.getImageData(0, 0, doc.w, doc.h);
+      return { data, width, height };
+    };
+    return { art: flat("art"), mask: flat("mask") };
+  } finally {
+    for (const bitmap of Object.values(bitmaps)) bitmap.close();
+  }
+}
 
 type ExportInputs = {
   /** The layers that draw — what the preview plans from, and so the exports. */
@@ -63,7 +113,8 @@ export function useExport({
 }: ExportInputs) {
   // The export in flight, if any: it blurs the preview under a note naming
   // the files being built (#401), and blocks a second export.
-  const [exporting, setExporting] = useState<"pdf" | "psd" | null>(null);
+  /** What is building, for the overlay: one file ("pdf") or a pair ("pdfs"). */
+  const [exporting, setExporting] = useState<"pdf" | "psd" | "pdfs" | "psds" | null>(null);
   // The files the last export wrote (#400): shown until the next edit or
   // export, since an edit makes those files stale. exportFresh goes false on
   // any edit, so an export that an edit overlapped confirms nothing: its
@@ -72,15 +123,16 @@ export function useExport({
   const exportFresh = useRef(false);
   const exportStale = () => { exportFresh.current = false; setExportNote(""); };
   // Desktop export destinations, scoped to the label they were chosen from.
-  // The one-file print PDF remembers its destination separately from the
-  // two-file pair, but both default to `<label>.pdf`: a print export into a
-  // folder holding an older pair replaces its art file and leaves its
-  // `-mask.pdf` behind.
+  // The one-file print PDF and PSD remember their destinations separately
+  // from the two-file pairs, but both default to `<label>.pdf`/`.psd`: a
+  // print export into a folder holding an older pair replaces its art file
+  // and leaves its `-mask` file behind.
   const exportPaths = useRef<{
     label?: string | null;
     pdf?: string;
     printPdf?: string;
     psd?: string;
+    printPsd?: string;
   }>({});
   const forgetExportPaths = () => { exportPaths.current = {}; };
 
@@ -154,7 +206,7 @@ export function useExport({
   ) {
     if (exportRunning.current) return;
     exportRunning.current = true;
-    setExporting(extension);
+    setExporting(`${extension}s`);
     setExportNote("");
     exportFresh.current = true;
     startSaveBatch();
@@ -211,65 +263,43 @@ export function useExport({
     const [{ plan, images, fontFamilies }, fonts] = await Promise.all([exportPlan(), loadFonts(family)]);
     const assets: Assets = {
       fonts, fontFamilies, title,
-      images: {
-        ...images,
-        ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
-        ...(art.maskPng ? { [PAGE_ART_ID.mask]: { kind: "png" as const, bytes: art.maskPng } } : {}),
-      },
+      images: { ...images, ...pageImages(art) },
     };
     return { art, plan, assets };
   }
 
-  /** One-file PDF exports share the build/save lifecycle. Only the combined
-   *  print file remembers a destination; individual legacy plates always ask. */
-  async function exportSinglePdf(mode: "print" | "art" | "mask", request: ExportRequest) {
+  /** One file through one dialog: the print PDF or PSD (art with White Ink
+   *  inside), or a single legacy PDF plate; `mode` names the file and `build`
+   *  makes it. Only the print files remember a destination; individual
+   *  plates always ask. */
+  async function exportSingle(
+    format: "pdf" | "psd", mode: "print" | "art" | "mask", request: ExportRequest, build: () => Promise<Uint8Array>,
+  ) {
     if (exportRunning.current) return;
     exportRunning.current = true;
-    setExporting("pdf");
+    setExporting(format);
     setExportNote("");
     exportFresh.current = true;
     startSaveBatch();
     const labelPath = request.labelPath ?? null;
     let remembered: string | undefined;
+    const key = format === "pdf" ? "printPdf" : "printPsd";
     if (mode === "print") {
       if (exportPaths.current.label !== labelPath) exportPaths.current = { label: labelPath };
-      remembered = exportPaths.current.printPdf;
+      remembered = exportPaths.current[key];
     }
-    const suffix = mode === "mask" ? "-mask.pdf" : ".pdf";
+    const suffix = `${mode === "mask" ? "-mask" : ""}.${format}`;
+    const type = format === "pdf" ? "application/pdf" : "image/vnd.adobe.photoshop";
     const name = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, suffix) ?? `${exportBase}${suffix}`;
     try {
-      const [builders, { art, plan, assets }] = await Promise.all([
-        import("@/pdf/build"), pdfInputs(),
-      ]);
-      let bytes: Uint8Array;
-      switch (mode) {
-        case "print": {
-          if (art.maskPng) {
-            const pixels = await rasterPixelsNatural(art.maskPng);
-            assets.maskPixels = {
-              data: new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.byteLength),
-              width: pixels.width,
-              height: pixels.height,
-            };
-          }
-          bytes = await builders.buildPrintPdf(plan, assets);
-          break;
-        }
-        case "art":
-          bytes = await builders.buildArtPdf(plan, assets);
-          break;
-        case "mask":
-          bytes = await builders.buildMaskPdf(plan, assets);
-          break;
-      }
       const target = !request.ask && remembered ? { path: remembered } : undefined;
-      const result = await saveVia(bytes, name, "application/pdf", target);
+      const result = await saveVia(await build(), name, type, target);
       if (!result) {
         exportError.set(t("Note: Export cancelled before saving {{file}}.", { file: name }), true);
         return;
       }
       if (mode === "print" && result.target && "path" in result.target)
-        exportPaths.current.printPdf = result.target.path;
+        exportPaths.current[key] = result.target.path;
       exportError.clear();
       if (exportFresh.current) setExportNote(t("Saved {{files}}.", { files: result.name }));
     } catch (error) {
@@ -282,7 +312,18 @@ export function useExport({
 
   /** Build one combined print PDF by default; the retained pair is explicit. */
   async function buildFull(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
-    if (kind === "print") return exportSinglePdf("print", request);
+    if (kind === "print") return exportSingle("pdf", "print", request, async () => {
+      const [{ buildPrintPdf }, { art, plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs()]);
+      if (art.maskPng) {
+        const pixels = await rasterPixelsNatural(art.maskPng);
+        assets.maskPixels = {
+          data: new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.byteLength),
+          width: pixels.width,
+          height: pixels.height,
+        };
+      }
+      return buildPrintPdf(plan, assets);
+    });
     await exportPair("pdf", "application/pdf", request, async () => {
       const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([
         import("@/pdf/build"), pdfInputs(),
@@ -292,28 +333,58 @@ export function useExport({
   }
 
   function exportPdfPlate(mode: "art" | "mask", request: ExportRequest = {}) {
-    return exportSinglePdf(mode, request);
+    return exportSingle("pdf", mode, request, async () => {
+      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs()]);
+      return (mode === "art" ? buildArtPdf : buildMaskPdf)(plan, assets);
+    });
   }
 
-  /** Layered Photoshop files, built full-resolution on demand like the PDFs,
-   *  off the main thread (psd/offThread.ts). Image decoding (psdImages) still
-   *  runs here: it needs a canvas. Saved like the PDFs (see buildFull). */
-  async function exportPsd(request: ExportRequest = {}) {
+  /** Everything a PSD build needs, gathered on the main thread: the plan,
+   *  ag-psd's decoded pixels, and both plates flattened (flattenPlates). Each
+   *  build then runs in its own worker (#415), which gets this editor's
+   *  bleed and DPI with the job — captured here, with the page size, before
+   *  anything awaits. */
+  async function psdInputs() {
+    const geometry = { bleedIn: render.bleedIn, dpi: render.dpi };
+    const doc = { w: PSD_DOC.w, h: PSD_DOC.h };
+    const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images, fontFamilies }] = await Promise.all([
+      import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
+    ]);
+    const art = pageArt(false);
+    const assets: PsdAssets = {
+      fonts, fontFamily: family,
+      images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
+    };
+    // The flattened plates draw with the preview's registered faces.
+    await loadLabelFaces(family, Object.keys(fontFamilies ?? {}) as FontFamilyId[]);
+    const flatten = () => flattenPlates(plan, { ...images, ...pageImages(art) }, labelFontCss(family), doc);
+    const build = (mode: "art" | "mask", opts: PsdOpts) =>
+      buildPsdOffThread({ items: plan, assets, mode, geometry, opts: { layers: drawLayers, ...opts } });
+    return { flatten, build };
+  }
+
+  /** The one-file print PSD: the art layers with the White Ink plate as a
+   *  spot channel. The mask plate's red channel is the ink, as the print
+   *  PDF reads it (embedWhiteInkMask): blue R=0 is full ink, white R=255 a
+   *  knockout — already Photoshop's spot storage (0 = 100% ink). Without a
+   *  canvas there is no White Ink to add, so it fails rather than save a
+   *  print file without it. */
+  async function printPsd(): Promise<Uint8Array> {
+    const { flatten, build } = await psdInputs();
+    const plates = await flatten();
+    if (!plates) throw new Error(t("No canvas to draw the White Ink plate."));
+    return build("art", { composite: plates.art, whiteInk: plates.mask });
+  }
+
+  /** Layered Photoshop files, built full-resolution on demand like the PDFs:
+   *  one print PSD by default, or the art + mask pair. Saved like the PDFs
+   *  (see buildFull). */
+  async function exportPsd(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
+    if (kind === "print") return exportSingle("psd", "print", request, printPsd);
     await exportPair("psd", "image/vnd.adobe.photoshop", request, async () => {
-      const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images }] = await Promise.all([
-        import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
-      ]);
-      const art = pageArt(false);
-      const assets: PsdAssets = {
-        fonts, fontFamily: family,
-        images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
-      };
-      // Each plate builds in its own worker (#415); the worker's layout.ts
-      // gets this editor's bleed and DPI with the job.
-      const geometry = { bleedIn: render.bleedIn, dpi: render.dpi };
-      const plate = (mode: "art" | "mask") =>
-        buildPsdOffThread({ items: plan, assets, mode, opts: { layers: drawLayers }, geometry });
-      return await Promise.all([plate("art"), plate("mask")]);
+      const { flatten, build } = await psdInputs();
+      const plates = await flatten(); // no canvas: ag-psd's black previews
+      return await Promise.all([build("art", { composite: plates?.art }), build("mask", { composite: plates?.mask })]);
     });
   }
 

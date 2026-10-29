@@ -127,14 +127,18 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "file-projects" },
       {
         kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
-          { kind: "action", id: "export-pdf", text: "Export PDF", symbol: "doc.on.doc" },
-          { kind: "action", id: "export-pdf-as", text: "Export PDF As…", symbol: "doc.on.doc" },
+          // Settings → Two-file export picks one set: one file each (White
+          // Ink inside), or the art + mask pairs and the single plates.
+          { kind: "action", id: "export-pdf", text: "Export PDF", symbol: "doc.on.doc", optional: true },
+          { kind: "action", id: "export-pdf-as", text: "Export PDF As…", symbol: "doc.on.doc", optional: true },
           { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc", optional: true },
           { kind: "action", id: "export-both-as", text: "Export PDFs As…", symbol: "doc.on.doc", optional: true },
           { kind: "action", id: "export-art", text: "Export Artwork PDF", symbol: "doc.on.doc", optional: true },
           { kind: "action", id: "export-mask", text: "Export Mask PDF", symbol: "doc.on.doc", optional: true },
-          { kind: "action", id: "export-psd", text: "Export PSDs", symbol: "square.3.layers.3d" },
-          { kind: "action", id: "export-psd-as", text: "Export PSDs As…", symbol: "square.3.layers.3d" },
+          { kind: "action", id: "export-psd", text: "Export PSD", symbol: "square.3.layers.3d", optional: true },
+          { kind: "action", id: "export-psd-as", text: "Export PSD As…", symbol: "square.3.layers.3d", optional: true },
+          { kind: "action", id: "export-psds", text: "Export PSDs", symbol: "square.3.layers.3d", optional: true },
+          { kind: "action", id: "export-psds-as", text: "Export PSDs As…", symbol: "square.3.layers.3d", optional: true },
         ],
       },
     ],

@@ -672,7 +672,7 @@ it("the export note is announced through a pre-existing status region, preview r
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, shiftKey: true, bubbles: true }));
     });
     expect(container.querySelector('[data-export-status]')).toBe(region);
-    expect(region!.textContent).toBe("Building PSDs…");
+    expect(region!.textContent).toBe("Building PSD…");
     expect(container.textContent).not.toContain("rendering label…");
     await vi.waitFor(() => expect(exportFonts.rejects.length).toBeGreaterThan(0));
     await act(async () => { for (const reject of exportFonts.rejects) reject(new Error("stop")); });
@@ -682,10 +682,11 @@ it("the export note is announced through a pre-existing status region, preview r
 }, 60_000);
 
 // Issue #401: an export blurred the preview under a "rendering preview…" note,
-// so a long export read as a stalled preview. The note names the export.
+// so a long export read as a stalled preview. The note names the export:
+// one file by default (⌘E / ⇧⌘E without two-file export).
 it.each([
-  ["PDFs", { key: "e", metaKey: true }],
-  ["PSDs", { key: "e", metaKey: true, shiftKey: true }],
+  ["PDF", { key: "e", metaKey: true }],
+  ["PSD", { key: "e", metaKey: true, shiftKey: true }],
 ])("an export in flight shows Building %s…, not rendering preview…", async (kind, keys) => {
   await withCanvasEditor(async (_p, container) => {
     exportFonts.rejects = [];
