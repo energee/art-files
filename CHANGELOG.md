@@ -12,6 +12,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **PSD previews show the label.** Exported PSDs used to save an all-black flattened image, so Finder, Quick Look and Preview showed nothing but black (Photoshop rebuilt the art from the layers). Each PSD now saves its plate drawn at full resolution, so every app shows the actual art. PSDs written by `npm run generate` keep the black preview.
+- **Dots QR finders keep their ring in Photoshop.** The editable QR layer in exported PSDs drew each corner finder as a solid black disc, because Photoshop merges a shape's circles instead of cutting holes. The ring's hole is now cut out explicitly, so the finders match the preview and the PDF.
 
 ## [0.1.110] - 2026-10-28
 

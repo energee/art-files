@@ -257,10 +257,12 @@ export function qrBeziers(shapes: QrShapes, sizePx: number): BezierPath[] {
   }
   return [
     ...shapes.dots.map((d) => circlePath(d.cx * sizePx, d.cy * sizePx, ms * 0.5 * 0.92)),
-    // Three concentric circles per finder; even-odd turns the middle one
-    // into a hole and the innermost back into a dot, no winding tricks.
+    // Three concentric circles per finder: the ring, its hole, the center
+    // dot. Photoshop unions path components regardless of the even-odd
+    // flag, so the hole is an explicit subtract (it drew solid discs).
     ...shapes.finders.flatMap((p) =>
-      [3.5 * ms * 0.95, 2.3 * ms, 1.4 * ms].map((r) => circlePath(p.cx * sizePx, p.cy * sizePx, r)),
+      ([[3.5 * ms * 0.95, "combine"], [2.3 * ms, "subtract"], [1.4 * ms, "combine"]] as const).map(([r, operation]) =>
+        ({ ...circlePath(p.cx * sizePx, p.cy * sizePx, r), operation })),
     ),
   ];
 }
