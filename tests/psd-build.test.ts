@@ -368,6 +368,9 @@ describe("psd flattened preview", () => {
       expect(await pixel({})).toEqual([0, 0, 0, 255]);
     } finally {
       setOutputDpi(DESIGN_DPI);
+      // Back to ag-psd's own uninitialised state, where both factories throw.
+      const none = () => { throw new Error("Canvas not initialized"); };
+      initializeCanvas(none, none);
     }
   });
 });

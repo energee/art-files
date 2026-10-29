@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
-- **One PSD with a White Ink spot channel.** Export PSD (`⇧⌘E`, was Export PSDs) now saves a single `{name}.psd`: the editable art layers plus a **White Ink** spot channel built from the mask, the same coverage as the print PDF's White Ink layer. The channel shows at 0% solidity, so Photoshop draws the art as-is.
+- **One PSD with a White Ink spot channel.** Export PSD (`⇧⌘E`, was Export PSDs) now saves a single `{name}.psd`: the editable art layers plus a **White Ink** spot channel built from the mask, the same coverage as the print PDF's White Ink layer. The channel shows at 0% solidity, so Photoshop draws the art as-is. `npm run generate` keeps writing the PSD pair (it has no canvas to draw the mask).
 - **Two-file export decides what ⌘E and ⇧⌘E save.** Settings → **Two-file export (art + mask)** (was Two-file PDF export) now covers PSDs too. Off, the default: one PDF and one PSD, each with White Ink inside. On: `⌘E` saves the art + mask PDF pair and `⇧⌘E` the art + mask PSD pair, and the one-file exports leave the menu. Export Artwork PDF and Export Mask PDF still show when it is on.
 
 ### Fixed

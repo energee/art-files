@@ -100,9 +100,9 @@ export interface PsdOpts {
    *  rebuilds from the layers either way. Without it ag-psd writes zeros, a
    *  black preview — what callers with no canvas (the Node CLI) still get. */
   composite?: { data: Uint8ClampedArray; width: number; height: number };
-  /** The White Ink plate at PSD_DOC size, one byte per pixel (0 = 100% ink),
-   *  added as a spot channel (spotChannel.ts): the one-file print PSD. */
-  whiteInk?: Uint8Array;
+  /** The mask plate flattened like `composite`; its red channel becomes the
+   *  White Ink spot channel (spotChannel.ts): the one-file print PSD. */
+  whiteInk?: { data: Uint8ClampedArray; width: number; height: number };
 }
 
 /** Which deliverable to build: the art PSD, or the white-ink mask plate.

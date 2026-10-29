@@ -1,8 +1,9 @@
 // psd-spot-channel.test.ts — addWhiteInkChannel splices a "White Ink" spot
 // channel into a finished ag-psd file: an opaque transparency channel (so
 // readers that take a 4th channel as alpha, like macOS's, still show the
-// art), then the ink bytes, named in Alpha Names (1006) and marked spot at
-// 0% solidity in DisplayInfo (1077), with the composite and layers intact.
+// art), then the mask plate's red channel, named in Alpha Names (1006), given
+// ids in Alpha Identifiers (1053) and marked spot at 0% solidity in
+// DisplayInfo (1077), with the composite and layers intact.
 import { describe, expect, it } from "vitest";
 import { readPsd, writePsdUint8Array } from "ag-psd";
 import { addWhiteInkChannel } from "../src/psd/spotChannel";
@@ -53,12 +54,15 @@ describe("addWhiteInkChannel", () => {
     width, height, imageData: { data: rgba, width, height } as ImageData,
     children: [{ name: "Art", left: 0, top: 0, right: 0, bottom: 0 }],
   });
-  // Long runs (packed) and a stretch of distinct bytes (literal), per row.
+  // Long runs (packed) and a stretch of distinct bytes (literal), per row,
+  // carried in the mask plate's red channel as the export hands it over.
   const ink = new Uint8Array(width * height).map((_, i) => (i % width < 150 ? 0 : i % width < 200 ? i % 7 : 255));
+  const mask = { data: new Uint8ClampedArray(width * height * 4), width, height };
+  ink.forEach((value, i) => mask.data.set([value, 156, 215, 255], i * 4));
 
   it("adds an opaque transparency channel, then the ink, and keeps the RGB composite", () => {
     const before = parse(psd);
-    const after = parse(addWhiteInkChannel(psd, ink));
+    const after = parse(addWhiteInkChannel(psd, mask));
     expect(before.channels).toBe(3);
     expect(after.channels).toBe(5);
     expect(after.planes.slice(0, 3)).toEqual(before.planes);
@@ -72,13 +76,17 @@ describe("addWhiteInkChannel", () => {
   // Photoshop's own save of such a file lists the transparency first in the
   // channel names (1006, 1045) and DisplayInfo (1077), then White Ink.
   it("names Transparency and White Ink, and marks White Ink spot at 0% solidity", () => {
-    const { resources } = parse(addWhiteInkChannel(psd, ink));
+    const { resources } = parse(addWhiteInkChannel(psd, mask));
     const names = resources.get(1006)!;
     const pascal: string[] = [];
     for (let o = 0; o < names.length; o += 1 + names[o])
       pascal.push(new TextDecoder().decode(names.subarray(o + 1, o + 1 + names[o])));
     expect(pascal).toEqual(["Transparency", WHITE_INK]);
     const info = new DataView(resources.get(1077)!.buffer, resources.get(1077)!.byteOffset);
+    // Alpha Identifiers: 0 marks the merged transparency for readers that
+    // don't go by the layer count's sign; White Ink gets an ordinary id.
+    const ids = new DataView(resources.get(1053)!.buffer, resources.get(1053)!.byteOffset, 8);
+    expect([ids.getUint32(0), ids.getUint32(4)]).toEqual([0, 1]);
     expect(resources.get(1077)!.length).toBe(4 + 2 * 13);
     expect(info.getUint32(0)).toBe(1); // version
     expect(info.getUint8(16)).toBe(1); // transparency: an ordinary channel
@@ -87,13 +95,13 @@ describe("addWhiteInkChannel", () => {
   });
 
   it("leaves a file ag-psd still reads, layers and all", () => {
-    const read = readPsd(addWhiteInkChannel(psd, ink).slice().buffer,
+    const read = readPsd(addWhiteInkChannel(psd, mask).slice().buffer,
       { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true });
     expect(read.children?.map((l) => l.name)).toEqual(["Art"]);
     expect(read.imageResources?.alphaChannelNames).toEqual(["Transparency", WHITE_INK]);
   });
 
-  it("refuses ink that is not one byte per pixel", () => {
-    expect(() => addWhiteInkChannel(psd, new Uint8Array(5))).toThrow(/one byte per pixel/);
+  it("refuses a White Ink plate of another size", () => {
+    expect(() => addWhiteInkChannel(psd, { ...mask, height: 2 })).toThrow(/match the document size/);
   });
 });

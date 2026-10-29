@@ -1,25 +1,30 @@
 // spotChannel.ts — adds the printer's White Ink spot channel to a finished PSD.
 // ag-psd only writes RGB(A) composites, so this splices the channel into its
-// bytes: the header's channel count, three image resources (the channel names
-// 1006 and 1045, and DisplayInfo 1077, which makes White Ink a spot colour —
-// laid out as Photoshop saves them, transparency listed first), and two more
-// RLE channels after the composite's three — an opaque transparency channel,
-// then the ink. Readers that take a 4th channel as alpha (macOS's Quick Look
-// and Preview) would otherwise punch the ink out of the preview; the layer
-// count's sign is flipped so Photoshop reads that 4th channel as the merged
-// transparency, not a second named channel. Layers are untouched.
+// bytes: the header's channel count, four image resources (the channel names
+// 1006 and 1045, Alpha Identifiers 1053, and DisplayInfo 1077, which makes
+// White Ink a spot colour — laid out as Photoshop saves them, transparency
+// listed first), and two more RLE channels after the composite's three — an
+// opaque transparency channel, then the ink. Readers that take a 4th channel
+// as alpha (macOS's Quick Look and Preview) would otherwise punch the ink out
+// of the preview; the layer count's sign is flipped and 1053 gives the
+// transparency id 0, so Photoshop and psd-tools-style readers take that 4th
+// channel as the merged transparency, not White Ink. Layers are untouched.
+import type { PixelData } from "ag-psd";
+import { writeDataRLE } from "ag-psd/dist-es/helpers";
 import { WHITE_INK } from "../layout";
 
-/** `ink` holds one byte per document pixel, stored the way Photoshop stores a
- *  spot channel: 0 = 100% ink, 255 = none. The channel shows at 0% solidity,
- *  so Photoshop draws the art as-is on screen; it still separates. */
-export function addWhiteInkChannel(psd: Uint8Array, ink: Uint8Array): Uint8Array {
+/** `mask` is the White Ink plate flattened at document size (RGBA). Its red
+ *  channel is the ink, already the way Photoshop stores a spot channel:
+ *  0 (blue) = 100% ink, 255 (white) = none — the print PDF's rule
+ *  (embedWhiteInkMask). The channel shows at 0% solidity, so Photoshop draws
+ *  the art as-is on screen; it still separates. */
+export function addWhiteInkChannel(psd: Uint8Array, mask: PixelData): Uint8Array {
   const v = new DataView(psd.buffer, psd.byteOffset, psd.byteLength);
   const channels = v.getUint16(12), height = v.getUint32(14), width = v.getUint32(18);
   // ponytail: assumes ag-psd's opaque 8-bit RGB composite (3 channels, PSD v1);
   // an alpha composite would make the merged transparency channel 4th.
   if (v.getUint16(4) !== 1 || channels !== 3) throw new Error("White Ink needs an opaque RGB PSD");
-  if (ink.length !== width * height) throw new Error("White Ink must be one byte per pixel");
+  if (mask.width !== width || mask.height !== height) throw new Error("White Ink plate must match the document size");
 
   const resStart = 26 + 4 + v.getUint32(26);
   const resEnd = resStart + 4 + v.getUint32(resStart);
@@ -39,19 +44,22 @@ export function addWhiteInkChannel(psd: Uint8Array, ink: Uint8Array): Uint8Array
   const displayInfo = [...u32(1),
     0, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 100, 1,
     0, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 2];
-  const resources = [...resource(1006, pascal), ...resource(1045, unicode), ...resource(1077, displayInfo)];
+  // One id per channel; 0 marks the merged transparency (any other id names
+  // an ordinary channel; Photoshop numbered its White Ink 69).
+  const alphaIds = [...u32(0), ...u32(1)];
+  const resources = [...resource(1006, pascal), ...resource(1045, unicode),
+    ...resource(1053, alphaIds), ...resource(1077, displayInfo)];
 
-  const counts: number[] = [];
-  const rows: number[] = [];
-  const opaque = new Uint8Array(width).fill(255);
-  for (const plane of [() => opaque, (y: number) => ink.subarray(y * width, (y + 1) * width)])
-    for (let y = 0; y < height; y++) {
-      const row = packBits(plane(y));
-      counts.push(row.length >> 8, row.length & 0xff);
-      for (const byte of row) rows.push(byte);
-    }
+  // The opaque plane is the same packed row every time; the ink plane is
+  // the mask's red channel (RGBA offset 0), encoded by ag-psd: 2-byte row
+  // lengths, then the rows. Worst case PackBits adds one header per 128.
+  const row = opaqueRow(width);
+  const ink = writeDataRLE(new Uint8Array(height * (2 + width + Math.ceil(width / 128))), mask, [0], false)!;
+  const counts = new Uint8Array(4 * height);
+  for (let y = 0; y < height; y++) counts.set([row.length >> 8, row.length & 0xff], 2 * y);
+  counts.set(ink.subarray(0, 2 * height), 2 * height);
 
-  const out = new Uint8Array(psd.length + resources.length + counts.length + rows.length);
+  const out = new Uint8Array(psd.length + resources.length + counts.length + row.length * height + ink.length - 2 * height);
   let o = 0;
   const put = (bytes: ArrayLike<number>) => { out.set(bytes, o); o += bytes.length; };
   put(psd.subarray(0, resStart));
@@ -63,7 +71,8 @@ export function addWhiteInkChannel(psd: Uint8Array, ink: Uint8Array): Uint8Array
   new DataView(out.buffer).setInt16(resEnd + resources.length + 8, -Math.abs(layerCount));
   put(counts);
   put(psd.subarray(countsEnd));
-  put(rows);
+  for (let y = 0; y < height; y++) put(row);
+  put(ink.subarray(2 * height));
   return out;
 }
 
@@ -75,23 +84,14 @@ function resource(id: number, data: ArrayLike<number>): number[] {
     ...Array.from(data), ...(data.length & 1 ? [0] : [])];
 }
 
-/** PackBits, as PSD's RLE composite rows use: runs of 2-128 repeats and
- *  literal stretches of up to 128 bytes. */
-function packBits(row: Uint8Array): number[] {
+/** A row of `width` 255s in PackBits: runs of up to 128 (header 257 − n),
+ *  and a lone last byte as a one-byte literal (header 0). */
+function opaqueRow(width: number): number[] {
   const out: number[] = [];
-  let i = 0;
-  while (i < row.length) {
-    let run = 1;
-    while (i + run < row.length && run < 128 && row[i + run] === row[i]) run++;
-    if (run > 1) {
-      out.push(257 - run, row[i]);
-      i += run;
-      continue;
-    }
-    const start = i++;
-    while (i < row.length && i - start < 128 && row[i] !== row[i + 1]) i++;
-    out.push(i - start - 1);
-    for (let k = start; k < i; k++) out.push(row[k]);
+  for (let left = width; left > 0;) {
+    const run = Math.min(left, 128);
+    out.push(run === 1 ? 0 : 257 - run, 255);
+    left -= run;
   }
   return out;
 }

@@ -69,7 +69,7 @@ The PSD is the editable RGB handoff. Text becomes type layers. Logo and QR becom
 
 The PSD declares the export resolution (600 ppi unless you change PSD resolution in Settings). Photoshop may prompt to **Update** text layers on open: ag-psd writes text data without a rendered bitmap. Choose Update.
 
-White ink is a spot channel named **White Ink** under **Channels**, built from the mask plate the way the print PDF builds its White Ink layer (full ink where the mask is blue, none where it is white). It shows at 0% solidity, so the art looks as-is on screen; toggle the channel's eye to inspect the underlay. Above it sits **Transparency**, an all-opaque channel Photoshop keeps for the merged image. The saved preview is the art drawn at full resolution, so Finder, Quick Look and Preview show the label. The PDF is the print handoff.
+White ink is a spot channel named **White Ink** under **Channels**, built from the mask plate the way the print PDF builds its White Ink layer (full ink where the mask is blue, none where it is white). It shows at 0% solidity, so the art looks as-is on screen and toggling its eye changes nothing. To see the underlay, click **White Ink** alone: Photoshop shows it in grayscale, dark where the press lays ink. Above it sits **Transparency**, an all-opaque channel Photoshop keeps for the merged image. The saved preview is the art drawn at full resolution, so Finder, Quick Look and Preview show the label. The PDF is the print handoff.
 
 With two-file export on, the mask PSD carries the white ink instead. It mirrors the legacy mask PDF: a knockout base, the recoloured mask raster (or a white-ink flood), then every element by its plate.
 

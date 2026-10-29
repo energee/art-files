@@ -21,9 +21,12 @@ vi.mock("../src/pdf/fonts", async () => {
   return { loadFonts: async () => assets.fonts };
 });
 vi.mock("../src/psd/build", () => ({
-  psdImages: async () => ({}), buildPsd: async () => new Uint8Array([3]),
+  psdImages: async () => ({}), buildPsd: vi.fn(async () => new Uint8Array([3])),
 }));
+// The PSD plates flatten through drawPlate; here they only need a canvas.
+vi.mock("../src/canvas/draw", () => ({ drawPlate: () => undefined }));
 import { DocumentEditor, type FileToOpen } from "../src/App";
+import { buildPsd } from "../src/psd/build";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { packLabel, packMaster, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";
@@ -211,20 +214,51 @@ it("a texture that loads keeps another slot's error on screen", async () => {
 
 // Export PSD saves one file (White Ink is a spot channel inside it), so it
 // opens a single dialog and confirms that one file.
-it("psd: Export PSD saves one PSD and names it", async () => {
+/** A 2D context just able to flatten a plate: getImageData hands back a
+ *  plate of the size asked for, red channel `red`. */
+function flatCanvas(red: number) {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    resetTransform() {}, clearRect() {},
+    getImageData: (_x: number, _y: number, width: number, height: number) =>
+      ({ data: new Uint8ClampedArray([red, 0, 0, 255]), width, height }),
+  } as never);
+}
+
+it("psd: Export PSD saves one PSD with the mask plate as White Ink, and names it", async () => {
   const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
     { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) }));
   vi.stubGlobal("showSaveFilePicker", pick);
+  flatCanvas(0);
+  vi.mocked(buildPsd).mockClear();
   await mount();
   await act(async () => {
     menu.actions.find((c) => c.id === "export-psd")!.run();
-    await vi.waitFor(() => expect(pick).toHaveBeenCalledOnce(), { timeout: 4000 });
+    await vi.waitFor(() => expect(pick).toHaveBeenCalledOnce(), { timeout: 15000 });
   });
   const [name] = pick.mock.calls[0].map((options) => options.suggestedName);
   expect(name).toMatch(/\.psd$/);
   expect(name).not.toMatch(/-mask\.psd$/);
   await vi.waitFor(() => expect(document.body.textContent).toContain(`Saved ${name}.`));
   expect(pick).toHaveBeenCalledOnce();
+  // One build, the art plate, carrying both flattened plates.
+  expect(vi.mocked(buildPsd).mock.calls.map(([, , mode, opts]) => [mode, !!opts?.composite, opts?.whiteInk?.data[0]]))
+    .toEqual([["art", true, 0]]);
+});
+
+// No canvas means no White Ink plate: the print PSD fails instead of saving
+// a print file without it.
+it("psd: Export PSD without a canvas reports it and saves nothing", async () => {
+  const pick = vi.fn();
+  vi.stubGlobal("showSaveFilePicker", pick);
+  await mount();
+  await act(async () => { menu.actions.find((c) => c.id === "export-psd")!.run(); });
+  // DOM updates land when an act() settles, so each poll flushes one.
+  await vi.waitFor(async () => {
+    await act(async () => {});
+    expect(document.body.textContent).toContain("No canvas to draw the White Ink plate.");
+  }, { timeout: 15000 });
+  expect(document.body.textContent).toMatch(/Could not save .+\.psd: No canvas/);
+  expect(pick).not.toHaveBeenCalled();
 });
 
 for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd"]]) {

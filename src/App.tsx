@@ -2557,7 +2557,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             <span role="status" data-export-status className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
               {exporting && <>
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-                {exporting === "pdf" ? t("Building PDFs…") : t("Building PSDs…")}
+                {{ pdf: t("Building PDF…"), pdfs: t("Building PDFs…"), psd: t("Building PSD…"), psds: t("Building PSDs…") }[exporting]}
               </>}
             </span>
             {/* Drop a texture or mask anywhere in the window; the overlay
