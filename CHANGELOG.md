@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.112] - 2026-10-29
 
 ### Fixed
 - **Window title in other languages.** A new document's window title now reads in the app language (for example "Sem título") instead of staying "Untitled".
