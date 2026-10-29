@@ -28,7 +28,7 @@ vi.mock("../src/fonts", () => ({
 
 const { DocumentEditor } = await import("../src/App");
 
-afterEach(() => { setLanguage("en"); localStorage.clear(); document.body.innerHTML = ""; });
+afterEach(() => { setLanguage("system"); localStorage.clear(); document.body.innerHTML = ""; });
 
 type Ctx = {
   container: HTMLElement; save: () => Promise<void>; writes: Uint8Array[];

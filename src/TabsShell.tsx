@@ -14,7 +14,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
 import { labelFilter, labelTypes, isAbort } from "@/filePickers";
-import { nativeModifiedAt, openThrough } from "@/files";
+import { nativeExists, nativeModifiedAt, openThrough } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
   type Tab, type TabsState,
@@ -50,7 +50,7 @@ type TabExtras = {
 
 export default function TabsShell() {
   const { t } = useTranslation();
-  const [state, setState] = useState(initialTabs);
+  const [state, setState] = useState(() => initialTabs(translate("Untitled")));
   // The OS-open listener and window-close handler are registered once but
   // route against the current tabs; same pattern as App.tsx's commandsRef.
   // The ref, not `state`, is the authority: EVERY transition goes through
@@ -247,7 +247,7 @@ export default function TabsShell() {
     }
     // addTab self-activates, so the new tab's id is the applied state's
     // `active` — never re-derived here.
-    const id = apply(addTab).active;
+    const id = apply((s) => addTab(s, translate("Untitled"))).active;
     openedNewTab.current.add(id);
     queueOpen(id, fo);
   };
@@ -342,8 +342,7 @@ export default function TabsShell() {
    *  before a tab is chosen, so no tab is spent on it). */
   async function openRecentPath(path: string) {
     try {
-      const { exists } = await import("@tauri-apps/plugin-fs");
-      if (!await exists(path)) {
+      if (!await nativeExists(path)) {
         forgetRecent(path);
         setPickError(t("Could not open label: {{path}} no longer exists.", { path }));
         return;
@@ -365,7 +364,7 @@ export default function TabsShell() {
     extras.current.delete(id);
     delete pendingRef.current[id];
     setPending(({ [id]: _dropped, ...rest }) => rest);
-    apply((s) => closeTab(s, id));
+    apply((s) => closeTab(s, id, translate("Untitled")));
     setConfirmClose(null);
     // Mid-sweep: hand the dialog to the next unsaved tab, or finish the
     // sweep. Computed against the post-close list.
@@ -457,7 +456,7 @@ export default function TabsShell() {
 
   // Identity-stable shared callbacks, for the editors' memo bail. apply is
   // stable; the picker reaches live state through stateRef.
-  const newTab = useCallback(() => { apply(addTab); }, [apply]);
+  const newTab = useCallback(() => { apply((s) => addTab(s, translate("Untitled"))); }, [apply]);
   const openProjectPickerRef = useRef(openProjectPicker);
   openProjectPickerRef.current = openProjectPicker;
   const openProject = useCallback(() => void openProjectPickerRef.current(), []);
@@ -498,11 +497,24 @@ export default function TabsShell() {
   }, [anyUnsaved]);
 
   // Desktop window title tracks the active tab; • marks unsaved work.
-  // Derived first so the effect deps on exactly the string it writes.
+  // Derived first so the effect deps on exactly the string it writes. Each
+  // write waits for the last, since two in flight can land out of order, and
+  // a write whose title is already outdated is skipped, so typing a beer
+  // name doesn't queue one round-trip per keystroke.
   const windowTitle = unsaved(activeTab) ? `• ${activeTab.title}` : activeTab.title;
+  const titleWrite = useRef(Promise.resolve());
+  const latestTitle = useRef(windowTitle);
   useEffect(() => {
     if (!isTauri()) return;
-    void currentWindow().then((w) => w.setTitle(windowTitle));
+    latestTitle.current = windowTitle;
+    titleWrite.current = titleWrite.current
+      .then(async () => {
+        if (latestTitle.current !== windowTitle) return;
+        await (await currentWindow()).setTitle(windowTitle);
+      })
+      // A failed write still reaches UncaughtErrors, but off the chain, so
+      // the next title is written.
+      .catch((error: unknown) => { void Promise.reject(error); });
   }, [windowTitle]);
 
   const confirmTab = state.tabs.find((t) => t.id === confirmClose) ?? null;

@@ -57,7 +57,7 @@ it("saves one combined print PDF and notes it", async () => {
   const root = await mount();
   await act(async () => { await api.buildFull(); });
   expect(save.names).toEqual(["beer.pdf"]);
-  expect(api.exportNote).toBe("Saved beer.pdf.");
+  expect(api.exportNote.text).toBe("Saved beer.pdf.");
   expect(buildError).toBe("");
   act(() => root.unmount());
 });
@@ -68,7 +68,7 @@ it("reports the first file saved and the second that failed", async () => {
   await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("Saved beer.pdf. Could not save beer-mask.pdf: disk full");
   expect(buildNote).toBeFalsy();
-  expect(api.exportNote).toBe("");
+  expect(api.exportNote.text).toBe("");
   // The failure is the export's own message, so the next good export clears it.
   await act(async () => { await api.buildFull({}, "pair"); });
   expect(buildError).toBe("");
@@ -95,7 +95,7 @@ it("clears its own error on success but keeps an unrelated one (#473)", async ()
 
   act(() => setError("Could not load image: bad.png"));
   await act(async () => { await api.buildFull({}, "pair"); });
-  expect(api.exportNote).toBe("Saved beer.pdf, beer-mask.pdf.");
+  expect(api.exportNote.text).toBe("Saved beer.pdf, beer-mask.pdf.");
   expect(buildError).toBe("Could not load image: bad.png");
   act(() => root.unmount());
 });

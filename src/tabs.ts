@@ -16,18 +16,18 @@ export type TabsState = { tabs: Tab[]; active: number; nextId: number };
 
 // dirty starts true, edited false: a fresh default document has Save enabled
 // and counts as pristine (isPristine), but closing it must not prompt.
-const UNTITLED: TabMeta = {
-  title: "Untitled", dirty: true, edited: false, masterUnsaved: false, filePath: null,
-};
+// `untitled` is its title until the editor reports one: the shell passes the
+// UI language's word, so the window isn't titled in English first.
+const fresh = (id: number, untitled: string): Tab => ({
+  id, title: untitled, dirty: true, edited: false, masterUnsaved: false, filePath: null,
+});
 
-const fresh = (id: number): Tab => ({ id, ...UNTITLED });
-
-export function initialTabs(): TabsState {
-  return { tabs: [fresh(1)], active: 1, nextId: 2 };
+export function initialTabs(untitled = "Untitled"): TabsState {
+  return { tabs: [fresh(1, untitled)], active: 1, nextId: 2 };
 }
 
-export function addTab(s: TabsState): TabsState {
-  return { tabs: [...s.tabs, fresh(s.nextId)], active: s.nextId, nextId: s.nextId + 1 };
+export function addTab(s: TabsState, untitled = "Untitled"): TabsState {
+  return { tabs: [...s.tabs, fresh(s.nextId, untitled)], active: s.nextId, nextId: s.nextId + 1 };
 }
 
 export function activateTab(s: TabsState, id: number): TabsState {
@@ -46,12 +46,12 @@ export function updateTabMeta(s: TabsState, id: number, meta: Partial<TabMeta>):
 /** Remove a tab. If it was active, the right neighbor takes over (left when
  *  it was last) — browser convention. Closing the only tab replaces it with
  *  a fresh Untitled one: the app always shows a document. */
-export function closeTab(s: TabsState, id: number): TabsState {
+export function closeTab(s: TabsState, id: number, untitled = "Untitled"): TabsState {
   const i = s.tabs.findIndex((t) => t.id === id);
   if (i < 0) return s;
   const tabs = s.tabs.filter((t) => t.id !== id);
   if (tabs.length === 0)
-    return { tabs: [fresh(s.nextId)], active: s.nextId, nextId: s.nextId + 1 };
+    return { tabs: [fresh(s.nextId, untitled)], active: s.nextId, nextId: s.nextId + 1 };
   const active = s.active === id ? tabs[Math.min(i, tabs.length - 1)].id : s.active;
   return { ...s, tabs, active };
 }

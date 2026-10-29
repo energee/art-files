@@ -607,6 +607,7 @@ export interface GenerateIo {
   readFile: (p: string) => Uint8Array;
   readFileText: (p: string) => string;
   writeFile: (p: string, bytes: Uint8Array) => void;
+  exists: (p: string) => boolean;
   mkdir: (p: string) => void;
   stdout: (s: string) => void;
   stderr: (s: string) => void;
@@ -668,6 +669,13 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       io.writeFile(dest, f.bytes);
       io.stdout(`wrote ${dest} (${(f.bytes.length / 1e6).toFixed(1)}MB)\n`);
     }
+    // The print PDF carries the white ink, so an older --two-file run's mask
+    // beside it would reach the printer as a second plate. Never deleted.
+    const pdf = `${result.basename}.pdf`;
+    const mask = join(outDir, `${result.basename}-mask.pdf`);
+    const names = result.files.map((f) => f.name);
+    if (names.includes(pdf) && !names.includes(`${result.basename}-mask.pdf`) && io.exists(mask))
+      warn(`${mask} is from an older --two-file run; ${pdf} already includes the white ink, so don't send both.`);
   };
 
   if (args.mode === "inspect") {

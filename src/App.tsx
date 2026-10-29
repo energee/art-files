@@ -2434,12 +2434,13 @@ export const DocumentEditor = memo(function DocumentEditor({
           {loadError.text && <HeaderAlert tone={loadError.note ? "warning" : "destructive"}>{loadError.text}</HeaderAlert>}
           {headerError.text && <HeaderAlert tone={headerError.note ? "warning" : "destructive"}>{headerError.text}</HeaderAlert>}
           {/* An error in the header replaces the export confirmation. */}
-          {exportNote && !headerError.text && <HeaderAlert tone="success">{exportNote}</HeaderAlert>}
+          {exportNote.text && !headerError.text && <HeaderAlert tone={exportNote.note ? "warning" : "success"}>{exportNote.text}</HeaderAlert>}
           {/* The success note's announcement, from a region that exists
               before the note lands (see HeaderAlert's success tone). It
               keeps the note while an error hides it, so a render error
-              clearing doesn't refill it and re-announce a stale "Saved …". */}
-          <span role="status" data-export-saved className="sr-only">{exportNote}</span>
+              clearing doesn't refill it and re-announce a stale "Saved …".
+              A stale-mask warning is an alert itself, so it isn't repeated here. */}
+          <span role="status" data-export-saved className="sr-only">{exportNote.note ? "" : exportNote.text}</span>
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked for the same reason. */}
           <span role="status" data-export-blocked-status className="sr-only">

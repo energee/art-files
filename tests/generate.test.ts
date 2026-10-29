@@ -249,6 +249,7 @@ function memIo() {
       },
       readFileText: text,
       writeFile: (p, b) => { files.set(p, b); },
+      exists: (p) => files.has(p),
       mkdir: () => {},
       stdout: (s) => stdout.push(s),
       stderr: (s) => stderr.push(s),
@@ -263,6 +264,27 @@ describe("runGenerate", () => {
     expect(await io.run(["--inspect"])).toBe(0);
     expect(JSON.parse(io.stdout.join(""))).toMatchObject({ id: "lolev" });
     expect(JSON.parse(io.stdout.join("")).layers.map((l: { id: string }) => l.id)).toContain("name");
+  });
+
+  // The print PDF carries the white ink; an older --two-file run's mask left
+  // in the out dir would reach the printer as a second plate.
+  it("warns about an older --two-file mask beside the print PDF, and leaves it", async () => {
+    const io = memIo();
+    io.files.set("/v.json", new TextEncoder().encode(JSON.stringify({ name: "Labradorite", barcode: "850051366224" })));
+    const old = new Uint8Array([1]);
+    io.files.set("/out/labradorite-mask.pdf", old);
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect(io.stderr.join("")).toContain(
+      "/out/labradorite-mask.pdf is from an older --two-file run; labradorite.pdf already includes the white ink, so don't send both.");
+    expect(io.files.get("/out/labradorite-mask.pdf")).toBe(old);
+  });
+
+  it("does not warn about the mask a --two-file run writes itself", async () => {
+    const io = memIo();
+    io.files.set("/v.json", new TextEncoder().encode(JSON.stringify({ name: "Labradorite", barcode: "850051366224" })));
+    io.files.set("/out/labradorite-mask.pdf", new Uint8Array([1]));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(0);
+    expect(io.stderr.join("")).not.toContain("older --two-file run");
   });
 
   it("generate writes one print PDF by default", async () => {

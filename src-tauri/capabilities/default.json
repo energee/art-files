@@ -24,7 +24,8 @@
       "identifier": "fs:allow-exists",
       "allow": [
         { "path": "**/*.[lL][aA][bB][eE][lL]" },
-        { "path": "**/*.[mM][aA][sS][tT][eE][rR]" }
+        { "path": "**/*.[mM][aA][sS][tT][eE][rR]" },
+        { "path": "**/*-mask.[pP][dD][fF]" }
       ]
     },
     {
