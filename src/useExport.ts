@@ -5,7 +5,7 @@
 // export needs no dialog), and the batch of download URLs every save
 // (exports, Save Label, Save Master) hands its plain-download fallback through.
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { saveThrough, type FileTarget } from "@/files";
+import { nativeExists, saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
 import { useOwnedError, type HeaderMessage } from "@/useOwnedError";
 import { t } from "@/i18n";
@@ -23,6 +23,9 @@ import { loadFonts } from "@/pdf/fonts";
 import type { Assets, CollabImage } from "@/pdf/build";
 import type { PsdAssets } from "@/psd/build";
 import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } from "@/assets/io";
+
+/** Where an export pair's mask sits beside its art file: `<stem>-mask.<ext>`. */
+const maskBeside = (path: string, extension: string) => path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
 
 /** The texture/mask bytes for a build (App.tsx pageArt): absent when the
  *  slot is empty or its page-art layer is switched off. */
@@ -75,7 +78,7 @@ export function useExport({
   // The one-file print PDF remembers its destination separately from the
   // two-file pair, but both default to `<label>.pdf`: a print export into a
   // folder holding an older pair replaces its art file and leaves its
-  // `-mask.pdf` behind.
+  // `-mask.pdf` behind, so the print save warns when it finds one.
   const exportPaths = useRef<{
     label?: string | null;
     pdf?: string;
@@ -191,7 +194,7 @@ export function useExport({
         saved.push(result.name);
         if (!index && result.target && "path" in result.target) {
           exportPaths.current[extension] = result.target.path;
-          maskPath = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
+          maskPath = maskBeside(result.target.path, extension);
         }
       }
       exportError.clear();
@@ -268,8 +271,15 @@ export function useExport({
         exportError.set(t("Note: Export cancelled before saving {{file}}.", { file: name }), true);
         return;
       }
-      if (mode === "print" && result.target && "path" in result.target)
+      if (mode === "print" && result.target && "path" in result.target) {
         exportPaths.current.printPdf = result.target.path;
+        const mask = maskBeside(result.target.path, "pdf");
+        // A failed check must not fail a save that succeeded.
+        if (await nativeExists(mask).catch(() => false)) {
+          exportError.set(t("Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.", { file: result.name, mask }), true);
+          return;
+        }
+      }
       exportError.clear();
       if (exportFresh.current) setExportNote(t("Saved {{files}}.", { files: result.name }));
     } catch (error) {

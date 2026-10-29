@@ -14,7 +14,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
 import { labelFilter, labelTypes, isAbort } from "@/filePickers";
-import { nativeModifiedAt, openThrough } from "@/files";
+import { nativeExists, nativeModifiedAt, openThrough } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
   type Tab, type TabsState,
@@ -342,8 +342,7 @@ export default function TabsShell() {
    *  before a tab is chosen, so no tab is spent on it). */
   async function openRecentPath(path: string) {
     try {
-      const { exists } = await import("@tauri-apps/plugin-fs");
-      if (!await exists(path)) {
+      if (!await nativeExists(path)) {
         forgetRecent(path);
         setPickError(t("Could not open label: {{path}} no longer exists.", { path }));
         return;
@@ -498,11 +497,19 @@ export default function TabsShell() {
   }, [anyUnsaved]);
 
   // Desktop window title tracks the active tab; • marks unsaved work.
-  // Derived first so the effect deps on exactly the string it writes.
+  // Derived first so the effect deps on exactly the string it writes. Each
+  // write waits for the last: two in flight can land out of order, and at
+  // boot "Untitled" then its translation would leave the English one up.
   const windowTitle = unsaved(activeTab) ? `• ${activeTab.title}` : activeTab.title;
+  const titleWrite = useRef(Promise.resolve());
   useEffect(() => {
     if (!isTauri()) return;
-    void currentWindow().then((w) => w.setTitle(windowTitle));
+    titleWrite.current = titleWrite.current
+      .then(() => currentWindow())
+      .then((w) => w.setTitle(windowTitle))
+      // A failed write still reaches UncaughtErrors, but off the chain, so
+      // the next title is written.
+      .catch((error: unknown) => { void Promise.reject(error); });
   }, [windowTitle]);
 
   const confirmTab = state.tabs.find((t) => t.id === confirmClose) ?? null;

@@ -5,7 +5,8 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // visible in one place. Open and save both live here; the capability
 // scope allows reading, writing, renaming and removing .label and .master
 // paths (rename/remove serve the atomic save), plus writing an export pair's
-// `-mask.pdf`/`-mask.psd` beside the art file.
+// `-mask.pdf`/`-mask.psd` beside the art file and checking whether a stale
+// `-mask.pdf` sits beside a print PDF.
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
@@ -25,6 +26,13 @@ export async function nativeModifiedAt(path: string): Promise<number | null> {
   const { exists, stat } = await import("@tauri-apps/plugin-fs");
   if (!await exists(path)) return null;
   return (await stat(path)).mtime?.getTime() ?? null;
+}
+
+/** Whether a desktop file exists. Scoped by fs:allow-exists (.label, .master
+ *  and an export's `-mask.pdf`) in src-tauri/capabilities/default.json. */
+export async function nativeExists(path: string): Promise<boolean> {
+  const { exists } = await import("@tauri-apps/plugin-fs");
+  return exists(path);
 }
 
 /** Open a native file dialog and return the selected path. Null is an

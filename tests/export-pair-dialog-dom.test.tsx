@@ -11,7 +11,7 @@ import type { HeaderMessage } from "@/useOwnedError";
 
 const save = vi.fn();
 const writeFile = vi.fn(async (_path: string, _bytes: Uint8Array) => undefined);
-const exists = vi.fn(async () => true);
+const exists = vi.fn(async (_path: string) => true);
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save }));
 vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, exists }));
@@ -51,6 +51,8 @@ async function mountExport() {
       await act(async () => { await api!.buildFull(options); });
       return api!.exportNote;
     },
+    /** The last header message the export set, if it set one. */
+    message: () => setBuildMessage.mock.lastCall?.[0] as HeaderMessage | undefined,
     unmount: () => act(() => root.unmount()),
   };
 }
@@ -58,7 +60,8 @@ async function mountExport() {
 beforeEach(() => {
   save.mockReset();
   writeFile.mockClear();
-  exists.mockClear();
+  exists.mockReset();
+  exists.mockImplementation(async () => true);
 });
 
 it("writes the mask beside the chosen art file without a second dialog", async () => {
@@ -181,6 +184,7 @@ it("remembers a single print file, keeps its destination on cancelled As, and se
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce("/legacy/Beer.pdf")
     .mockResolvedValueOnce("/new/New.pdf");
+  exists.mockImplementation(async () => false);
   const tab = await mountExport();
   try {
     const labelPath = "/labels/Beer.label";
@@ -203,5 +207,21 @@ it("remembers a single print file, keeps its destination on cancelled As, and se
     await tab.exportPrint({ labelPath: "/labels/New.label" });
     expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: "/labels/New.pdf" }));
     expect(writes()).toEqual(["/print/Beer.pdf", "/new/New.pdf"]);
+  } finally { tab.unmount(); }
+}, 30_000);
+
+// The print PDF carries the white ink itself; an older pair's mask left beside
+// it could be sent to the printer as a second plate, so the save says so.
+it("warns when an older -mask.pdf sits beside the print PDF", async () => {
+  save.mockResolvedValueOnce("/print/Beer.pdf");
+  exists.mockImplementation(async (path) => path === "/print/Beer-mask.pdf");
+  const tab = await mountExport();
+  try {
+    expect(await tab.exportPrint()).toBe("");
+    expect(tab.message()).toEqual({
+      text: "Note: Saved /print/Beer.pdf. /print/Beer-mask.pdf beside it is from an older export; this PDF already includes the white ink, so don't send both.",
+      note: true,
+    });
+    expect(writes()).toEqual(["/print/Beer.pdf"]);
   } finally { tab.unmount(); }
 }, 30_000);

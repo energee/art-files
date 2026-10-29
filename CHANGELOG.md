@@ -4,6 +4,14 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+- **Window title in other languages.** A new document's window title now reads in the app language (for example "Sem título") instead of staying "Untitled".
+- **Leftover mask PDF warning.** Exporting the combined print PDF into a folder that still holds an older `-mask.pdf` from a two-file export now warns you in the header, so only one file goes to the printer. The old file is never deleted.
+- **French and German Add layer button.** It now reads "Nouveau calque" / "Neue Ebene" and fits on one line in the Layers header.
+- **Portuguese wording.** Benched values and variants now read "reservado(s)", and the export confirmation reads "Salvamento concluído".
+
 ## [0.1.110] - 2026-10-28
 
 ### Added

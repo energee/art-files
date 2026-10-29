@@ -302,7 +302,7 @@ const pt: Record<keyof typeof en, string> = {
   "Label": "Rótulo",
   "Label master": "Modelo de rótulo",
   "Could not save label: {{error}}": "Não foi possível salvar o rótulo: {{error}}",
-  "Saved {{files}}.": "Salvo: {{files}}.",
+  "Saved {{files}}.": "Salvamento concluído: {{files}}.",
   "Could not save {{file}}: {{error}}": "Não foi possível salvar {{file}}: {{error}}",
   "Expected text.": "Esperava-se um texto.",
   "Expected a number.": "Esperava-se um número.",

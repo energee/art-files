@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel, unpackLabel } from "../src/model/files";
+import { setLanguage } from "../src/i18n";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -29,7 +30,7 @@ beforeEach(() => {
   // Every raster decode fails, so b.label's embedded texture throws mid-open.
   vi.stubGlobal("createImageBitmap", () => Promise.reject(new Error("decode failed")));
 });
-afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+afterEach(() => { vi.unstubAllGlobals(); setLanguage("en"); localStorage.clear(); });
 
 const labelBytes = (name: string, assets = {}) => packLabel({
   formatVersion: 3, masterId: "lolev", enabledVariants: [],
@@ -61,7 +62,21 @@ it.each([
   { overrides: { stamp: { kind: "shape", id: "stamp", name: "Stamp" } } },
   { overrides: { stamp: { kind: "text", name: "Stamp" } } },
   { overrides: { name: { style: null } } },
-])("a failed open keeps the tab and Save target: %j", async (bad) => {
+])("a failed open keeps the tab and Save target: %j", (bad) => failedOpen(bad), 30_000);
+
+// The override check rewrites the layer check's "Invalid master file:" prefix,
+// in whatever language it was translated into, so the error blames the label.
+it("names a label override the UI can't draw as an invalid override, in the UI language", async () => {
+  setLanguage("es");
+  await failedOpen({ overrides: { name: { style: null } } }, (text) => {
+    expect(text).toContain("No se pudo abrir b.label: anulación no válida: ");
+    expect(text).not.toContain("Archivo de plantilla no válido");
+  });
+}, 30_000);
+
+/** Open a.label, then the bad b.label; the failed open must leave a.label's
+ *  content and Save target in place. `check` sees the page text after it. */
+async function failedOpen(bad: object, check?: (text: string) => void) {
   const a = fakeHandle("a.label", labelBytes("Alpha"));
   const b = fakeHandle("b.label", packLabel({
     formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {}, ...bad,
@@ -95,7 +110,8 @@ it.each([
       root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 2, handle: b.handle } }));
     });
     await settle(2);
-    expect(container.textContent).toContain("Could not open b.label");
+    if (check) check(container.textContent!);
+    else expect(container.textContent).toContain("Could not open b.label");
 
     // The tab still shows a.label, and ⌘S writes a.label's own content back.
     expect(lastTitle()).toBe("Alpha");
@@ -110,4 +126,4 @@ it.each([
     await act(async () => { root.unmount(); });
     container.remove();
   }
-}, 30_000);
+}
