@@ -5,6 +5,10 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// PSD hashes re-baselined 2026-10-29 (#583): the dots QR finders carry
+// Photoshop path operations (ring, subtract, dot) so Photoshop stops drawing
+// them as solid discs. Same length; only the operation fields differ. PDFs
+// unchanged.
 // All hashes re-baselined 2026-10-27 (#542): the shipped QR encodes at
 // error correction Q (was L), so its module pattern changes; the 600 DPI
 // diffs (goldens/collab-off-{art,mask}-qr-ec.diff.png) light only the QR.
@@ -110,7 +114,7 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
     expect(digests(await shipped([]))).toEqual({
       art: "e27905f277f406b6a4c540119b5be34d1698007575ffa82110014f5d1dd0d941", artLen: 71223,
       mask: "1cd8b8976beb293149440f8414a15d94882b17665ce2e50f145039a8a1d7eac5", maskLen: 71337,
-      psd: "94ee31c7e102b0c6f0d6a8a90e9cafc1e45da88dc30eca9c6511598644486fea", psdLen: 1169316,
+      psd: "fda7b409dbb1e6d3b6abfdaa3c4df5b87c295962010759bdc1690598117f753b", psdLen: 1169316,
     });
   });
 });
@@ -120,7 +124,7 @@ describe("collab byte-identity goldens — Collab variant ON, both slots loaded"
     expect(digests(await shipped(["collab"]))).toEqual({
       art: "59ec5a6ea1ee65123a329c9f1b253a03ae9c9855a5dee3419d1db0148433ddb0", artLen: 73126,
       mask: "ea1fec44e7188212333a40d14dd1ffaf3be7bc2b89861c9078d1ad180bde1afd", maskLen: 73151,
-      psd: "599bb5f500863375bad45276ba34abe490faea73a7ae7a4cba35051627044a81", psdLen: 1179336,
+      psd: "78cb7e412db6ed3546d913b5ed0d71e001872d9a9fa2f1ee927d3533bd012c54", psdLen: 1179336,
     });
   });
 });
