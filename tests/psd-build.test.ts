@@ -241,13 +241,25 @@ describe("PSD QR squares", () => {
     // dots: one circle per data dot + 3 per finder (outer ring, hole, center)
     expect(qrBeziers(s, 100).length).toBe(s.dots.length + s.finders.length * 3);
   });
+
+  it("dots-style finders cut their ring with Photoshop path operations", () => {
+    // Photoshop ignores the even-odd flag between path components and
+    // unions them, so three concentric circles drew one solid disc.
+    const s = qrShapes("proof", { style: "dots" });
+    const finders = qrBeziers(s, 100).slice(s.dots.length);
+    expect(finders.map((p) => p.operation)).toEqual(
+      s.finders.flatMap(() => ["combine", "subtract", "combine"]),
+    );
+  });
 });
 
 describe("added layers", () => {
   // Candidate baseline: PSD raster review remains pending (goldens/README.md).
   // sha256 of buildPsd's bytes for the shipped Lolev master, art and mask.
   // The shipped label must keep building byte-identical output — this fails
-  // the moment the builder emits anything extra or differently. Mask
+  // the moment the builder emits anything extra or differently. Both
+  // re-pinned 2026-10-29: the QR finders carry Photoshop path operations
+  // (ring, subtract, dot) instead of solid discs. Mask
   // re-pinned 2026-09-28: the barcode shape is the glyph outline on both
   // plates. Art is unchanged. Re-pinned earlier that day when the quiet-zone
   // plate left the group, and for #143 (autoKerning: false).
@@ -258,8 +270,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "94ee31c7e102b0c6f0d6a8a90e9cafc1e45da88dc30eca9c6511598644486fea", artLen: 1169316,
-      mask: "c7a75d29ccd8b5ed37a1662259a11423294f43373239b64eb62c045d69f63808", maskLen: 1169838,
+      art: "fda7b409dbb1e6d3b6abfdaa3c4df5b87c295962010759bdc1690598117f753b", artLen: 1169316,
+      mask: "6a5efeed74767e356addc7f570fe9c50693324c51f3336e7d323a2f858002d38", maskLen: 1169838,
     });
   });
 
