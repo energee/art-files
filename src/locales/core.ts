@@ -292,7 +292,7 @@ const pt: Record<keyof typeof en, string> = {
   "{{format}} file": "Arquivo {{format}}",
   "Note: Saved {{files}}. Export cancelled before saving {{file}}.": "Observação: salvamos {{files}}. A exportação foi cancelada antes de salvar {{file}}.",
   "Note: Export cancelled before saving {{file}}.": "Observação: a exportação foi cancelada antes de salvar {{file}}.",
-  "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.": "Observação: {{file}} salvo. {{mask}}, ao lado, é de uma exportação anterior; este PDF já inclui a tinta branca, então não envie os dois.",
+  "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.": "Observação: salvamos {{file}}. {{mask}}, ao lado, é de uma exportação anterior; este PDF já inclui a tinta branca, então não envie os dois.",
   "Saved {{files}}. Could not save {{file}}: {{error}}": "Salvamos {{files}}. Não foi possível salvar {{file}}: {{error}}",
   "Could not quit: {{error}}": "Não foi possível encerrar: {{error}}",
   "Could not update the native menu: {{error}}": "Não foi possível atualizar o menu do sistema: {{error}}",

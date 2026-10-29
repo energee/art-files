@@ -30,7 +30,7 @@ beforeEach(() => {
   // Every raster decode fails, so b.label's embedded texture throws mid-open.
   vi.stubGlobal("createImageBitmap", () => Promise.reject(new Error("decode failed")));
 });
-afterEach(() => { vi.unstubAllGlobals(); setLanguage("en"); localStorage.clear(); });
+afterEach(() => { vi.unstubAllGlobals(); setLanguage("system"); localStorage.clear(); });
 
 const labelBytes = (name: string, assets = {}) => packLabel({
   formatVersion: 3, masterId: "lolev", enabledVariants: [],

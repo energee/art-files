@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { nativeExists, saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
-import { useOwnedError, type HeaderMessage } from "@/useOwnedError";
+import { NO_MESSAGE, useOwnedError, type HeaderMessage } from "@/useOwnedError";
 import { t } from "@/i18n";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
@@ -24,8 +24,11 @@ import type { Assets, CollabImage } from "@/pdf/build";
 import type { PsdAssets } from "@/psd/build";
 import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } from "@/assets/io";
 
+/** `path` with its extension (if any) replaced by `suffix`: the one rule for
+ *  every export name derived from a .label or an art file. */
+const withSuffix = (path: string, suffix: string) => path.replace(/(\.[^./\\]+)?$/, suffix);
 /** Where an export pair's mask sits beside its art file: `<stem>-mask.<ext>`. */
-const maskBeside = (path: string, extension: string) => path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
+const maskBeside = (path: string, extension: string) => withSuffix(path, `-mask.${extension}`);
 
 /** The texture/mask bytes for a build (App.tsx pageArt): absent when the
  *  slot is empty or its page-art layer is switched off. */
@@ -70,10 +73,14 @@ export function useExport({
   // The files the last export wrote (#400): shown until the next edit or
   // export, since an edit makes those files stale. exportFresh goes false on
   // any edit, so an export that an edit overlapped confirms nothing: its
-  // files hold the label as it was when the export began.
-  const [exportNote, setExportNote] = useState("");
+  // files hold the label as it was when the export began. `note` marks the
+  // stale-mask warning a print save can add (warnIfStaleMask).
+  const [exportNote, setExportNote] = useState<HeaderMessage>(NO_MESSAGE);
   const exportFresh = useRef(false);
-  const exportStale = () => { exportFresh.current = false; setExportNote(""); };
+  // Bumped by every export start, so a slow check from an older export can't
+  // replace a newer export's note.
+  const exportRun = useRef(0);
+  const exportStale = () => { exportFresh.current = false; setExportNote(NO_MESSAGE); };
   // Desktop export destinations, scoped to the label they were chosen from.
   // The one-file print PDF remembers its destination separately from the
   // two-file pair, but both default to `<label>.pdf`: a print export into a
@@ -158,8 +165,9 @@ export function useExport({
     if (exportRunning.current) return;
     exportRunning.current = true;
     setExporting(extension);
-    setExportNote("");
+    setExportNote(NO_MESSAGE);
     exportFresh.current = true;
+    exportRun.current++;
     startSaveBatch();
     const saved: string[] = [];
     let pending = "";
@@ -174,8 +182,8 @@ export function useExport({
       if (exportPaths.current.label !== (labelPath ?? null)) exportPaths.current = { label: labelPath ?? null };
       const remembered = exportPaths.current[extension];
       const artTarget = ask ? undefined : remembered;
-      const artName = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, `.${extension}`)
-        ?? `${exportBase}.${extension}`;
+      const artName = remembered
+        ?? (labelPath != null ? withSuffix(labelPath, `.${extension}`) : `${exportBase}.${extension}`);
       // On desktop the mask is written beside the art file, as
       // `<stem>-mask.<extension>` (the export's own extension, so the
       // capability globs cover it), replacing any file there: confirming the
@@ -198,7 +206,7 @@ export function useExport({
         }
       }
       exportError.clear();
-      if (exportFresh.current) setExportNote(t("Saved {{files}}.", { files: saved.join(", ") }));
+      if (exportFresh.current) setExportNote({ text: t("Saved {{files}}.", { files: saved.join(", ") }) });
     } catch (error) {
       exportError.set(saved.length
         ? t("Saved {{files}}. Could not save {{file}}: {{error}}", { files: saved.join(", "), file: pending, error: errMsg(error) })
@@ -229,8 +237,9 @@ export function useExport({
     if (exportRunning.current) return;
     exportRunning.current = true;
     setExporting("pdf");
-    setExportNote("");
+    setExportNote(NO_MESSAGE);
     exportFresh.current = true;
+    exportRun.current++;
     startSaveBatch();
     const labelPath = request.labelPath ?? null;
     let remembered: string | undefined;
@@ -239,7 +248,7 @@ export function useExport({
       remembered = exportPaths.current.printPdf;
     }
     const suffix = mode === "mask" ? "-mask.pdf" : ".pdf";
-    const name = remembered ?? labelPath?.replace(/(\.[^./\\]+)?$/, suffix) ?? `${exportBase}${suffix}`;
+    const name = remembered ?? (labelPath != null ? withSuffix(labelPath, suffix) : `${exportBase}${suffix}`);
     try {
       const [builders, { art, plan, assets }] = await Promise.all([
         import("@/pdf/build"), pdfInputs(),
@@ -271,23 +280,31 @@ export function useExport({
         exportError.set(t("Note: Export cancelled before saving {{file}}.", { file: name }), true);
         return;
       }
+      exportError.clear();
+      if (exportFresh.current) setExportNote({ text: t("Saved {{files}}.", { files: result.name }) });
       if (mode === "print" && result.target && "path" in result.target) {
         exportPaths.current.printPdf = result.target.path;
-        const mask = maskBeside(result.target.path, "pdf");
-        // A failed check must not fail a save that succeeded.
-        if (await nativeExists(mask).catch(() => false)) {
-          exportError.set(t("Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.", { file: result.name, mask }), true);
-          return;
-        }
+        void warnIfStaleMask(result.target.path, result.name);
       }
-      exportError.clear();
-      if (exportFresh.current) setExportNote(t("Saved {{files}}.", { files: result.name }));
     } catch (error) {
       exportError.set(t("Could not save {{file}}: {{error}}", { file: name, error: errMsg(error) }));
     } finally {
       exportRunning.current = false;
       setExporting(null);
     }
+  }
+
+  /** The print PDF carries the white ink, so an older pair's `-mask.pdf`
+   *  beside it would reach the printer as a second plate: turn the saved note
+   *  into a warning. Never deletes it. Runs after the export has finished, so
+   *  a slow volume can't hold the export open; a failed check (a scope
+   *  refusal, say) still reaches UncaughtErrors. */
+  async function warnIfStaleMask(pdfPath: string, file: string) {
+    const run = exportRun.current;
+    const mask = maskBeside(pdfPath, "pdf");
+    const stale = await nativeExists(mask).catch((error: unknown) => { void Promise.reject(error); return false; });
+    if (!stale || run !== exportRun.current || !exportFresh.current) return;
+    setExportNote({ note: true, text: t("Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.", { file, mask }) });
   }
 
   /** Build one combined print PDF by default; the retained pair is explicit. */

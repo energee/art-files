@@ -287,7 +287,7 @@ const pt: Record<keyof typeof en, string> = {
   "Could not load mask \"{{name}}\": {{error}}": "Não foi possível carregar a máscara \"{{name}}\": {{error}}",
   "Could not load image: {{error}}": "Não foi possível carregar a imagem: {{error}}",
   "Could not save master: {{error}}": "Não foi possível salvar o modelo: {{error}}",
-  "Note: Saved {{name}}": "Observação: {{name}} salvo",
+  "Note: Saved {{name}}": "Observação: salvamos {{name}}",
   " ({{count}} change)_one": " ({{count}} alteração)",
   " ({{count}} change)_other": " ({{count}} alterações)",
   "{{count}} image has no file to save. It will be blank when you reopen this master._one": "{{count}} imagem não tem arquivo para salvar. Ela ficará em branco quando você reabrir este modelo.",

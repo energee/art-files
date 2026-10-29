@@ -45,14 +45,19 @@ async function mountExport() {
     async exportPdfs(options?: Parameters<NonNullable<typeof api>["buildFull"]>[0]) {
       setBuildMessage.mockClear();
       await act(async () => { await api!.buildFull(options, "pair"); });
-      return { note: api!.exportNote, error: (setBuildMessage.mock.lastCall?.[0] as HeaderMessage | undefined)?.text };
+      return { note: api!.exportNote.text, error: (setBuildMessage.mock.lastCall?.[0] as HeaderMessage | undefined)?.text };
     },
     async exportPrint(options?: Parameters<NonNullable<typeof api>["buildFull"]>[0]) {
       await act(async () => { await api!.buildFull(options); });
-      return api!.exportNote;
+      // The stale-mask check runs after the export; let it land.
+      await act(() => new Promise((r) => setTimeout(r, 0)));
+      return api!.exportNote.text;
     },
-    /** The last header message the export set, if it set one. */
-    message: () => setBuildMessage.mock.lastCall?.[0] as HeaderMessage | undefined,
+    /** Another source's error in the shared header slot (an image load, say). */
+    otherError: (text: string) => act(() => { setBuildMessage({ text }); }),
+    /** The header slot after every update the export made to it. */
+    slot: () => setBuildMessage.mock.calls.reduce<HeaderMessage>(
+      (current, [update]) => (typeof update === "function" ? update(current) : update), { text: "" }),
     unmount: () => act(() => root.unmount()),
   };
 }
@@ -60,8 +65,7 @@ async function mountExport() {
 beforeEach(() => {
   save.mockReset();
   writeFile.mockClear();
-  exists.mockReset();
-  exists.mockImplementation(async () => true);
+  exists.mockReset(); // back to the vi.fn default: every path exists
 });
 
 it("writes the mask beside the chosen art file without a second dialog", async () => {
@@ -211,17 +215,21 @@ it("remembers a single print file, keeps its destination on cancelled As, and se
 }, 30_000);
 
 // The print PDF carries the white ink itself; an older pair's mask left beside
-// it could be sent to the printer as a second plate, so the save says so.
+// it could be sent to the printer as a second plate, so the save note warns.
+// It is the export's own note: another source's header error survives it, and
+// an edit clears it like any saved note.
 it("warns when an older -mask.pdf sits beside the print PDF", async () => {
   save.mockResolvedValueOnce("/print/Beer.pdf");
   exists.mockImplementation(async (path) => path === "/print/Beer-mask.pdf");
   const tab = await mountExport();
   try {
-    expect(await tab.exportPrint()).toBe("");
-    expect(tab.message()).toEqual({
-      text: "Note: Saved /print/Beer.pdf. /print/Beer-mask.pdf beside it is from an older export; this PDF already includes the white ink, so don't send both.",
-      note: true,
-    });
+    tab.otherError("Could not load image: bad.png");
+    expect(await tab.exportPrint()).toBe(
+      "Note: Saved /print/Beer.pdf. /print/Beer-mask.pdf beside it is from an older export; this PDF already includes the white ink, so don't send both.");
+    expect(tab.api().exportNote.note).toBe(true);
+    expect(tab.slot()).toEqual({ text: "Could not load image: bad.png" });
     expect(writes()).toEqual(["/print/Beer.pdf"]);
+    act(() => tab.api().exportStale());
+    expect(tab.api().exportNote.text).toBe("");
   } finally { tab.unmount(); }
 }, 30_000);
