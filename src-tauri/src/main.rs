@@ -203,7 +203,11 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         // Only the reveal-in-folder call is used; the plugin's injected click
         // handler for external `<a>` links is not (the app has no links).
-        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build());
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        );
     // Tauri rejects an updater plugin with no `plugins.updater` config. Keep
     // it entirely out of keyless local builds; the release workflow supplies
     // both this compile-time flag and the signed updater configuration.
