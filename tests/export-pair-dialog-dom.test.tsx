@@ -232,7 +232,7 @@ it("an older -mask.pdf beside the print PDF warns and offers to reveal it", asyn
   expect(warning.getAttribute("data-type")).toBe("warning");
   expect(warning.querySelector("[data-title]")!.textContent).toBe("Saved Beer.pdf");
   expect(warning.querySelector("[data-description]")!.textContent).toBe(
-    "Don't send the old Beer-mask.pdf with it — this PDF already has the white ink.");
+    "Don't send the old Beer-mask.pdf with it. This PDF already has the white ink.");
   expect(toastCount()).toBe(2);
   expect(writes()).toEqual(["/print/Beer.pdf"]);
 

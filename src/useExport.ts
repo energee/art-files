@@ -376,7 +376,7 @@ export function useExport({
     if (!stale || run !== exportRun.current) return;
     notify.warning(t("Saved {{file}}", { file: baseName(file) }), {
       id: runToastId(toastBase, run),
-      description: t("Don't send the old {{mask}} with it — this PDF already has the white ink.", { mask: baseName(mask) }),
+      description: t("Don't send the old {{mask}} with it. This PDF already has the white ink.", { mask: baseName(mask) }),
       action: revealAction(mask),
     });
   }
