@@ -6,11 +6,13 @@
 // readable. Callers can override all three.
 //
 // Up to four toasts show at once. With a fifth, the oldest is hidden until a
-// newer one closes. Four is what fits the smallest window (1024 x 700, see
-// src-tauri/tauri.conf.json): the stack grows up from just above the preview
+// newer one closes (index.css also takes it out of the tab order). Four fits
+// the smallest window (1024 x 700, see src-tauri/tauri.conf.json) even with
+// long, multi-line messages: the stack grows up from just above the preview
 // toolbar (index.css), a toast is about 55 px plus 18 px per line of text, and
-// the gaps are 14 px, so four fit even with long descriptions while six would
-// cover the tab strip or run off the top.
+// the gaps are 14 px, so four toasts of four lines each take about 555 px of
+// the roughly 600 px pane. More could overflow once messages run to several
+// lines. These figures come from Sonner's styles, not from a browser measurement.
 //
 // The close button's label, which Sonner words in English, goes through t(), and
 // so does the region's: it is passed whole (customAriaLabel) because Sonner

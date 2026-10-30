@@ -233,7 +233,10 @@ h1, h2, h3 { font-family: var(--font-heading); }
    including its narrow-window breakpoint. A toast wraps long unbroken text
    (file paths, error messages) inside a width that never outgrows the window,
    and keeps a line break in a description (UncaughtErrors puts the error and
-   its advice on separate lines). */
+   its advice on separate lines). A toast past the limit of four is hidden by
+   Sonner with opacity 0 and pointer-events none alone, which leaves its
+   buttons in the tab order and the screen reader's reach: visibility:hidden
+   takes it out of both. The visible toasts keep their animations. */
 [data-sonner-toaster][data-x-position="center"] {
   left: var(--toast-center-x, 50%) !important;
   bottom: var(--toast-bottom, 16px) !important;
@@ -244,4 +247,7 @@ h1, h2, h3 { font-family: var(--font-heading); }
 }
 [data-sonner-toast] [data-description] {
   white-space: pre-line;
+}
+[data-sonner-toast][data-visible="false"] {
+  visibility: hidden;
 }

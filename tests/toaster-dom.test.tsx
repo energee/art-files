@@ -7,6 +7,8 @@
 // happy-dom with fake timers driving its auto-dismiss and exit animation
 // (tests/toast-harness.ts). Every notify call goes through show() to let the
 // toast land before the test looks.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { setLanguage } from "@/i18n";
@@ -94,8 +96,8 @@ it("follows the app theme", () => {
   expect(document.querySelector("[data-sonner-toaster]")!.getAttribute("data-sonner-theme")).toBe("dark");
 });
 
-// Sonner hides the OLDEST toast once more than `visibleToasts` are up. Four is
-// what fits the preview pane at the smallest window (see sonner.tsx), so a fifth
+// Sonner hides the OLDEST toast once more than `visibleToasts` are up. The
+// limit is four (sonner.tsx says why that fits the smallest window), so a fifth
 // hides the oldest until a newer one closes.
 it("keeps four toasts visible and expanded, hides the oldest for a fifth, and brings it back", () => {
   mount();
@@ -119,6 +121,37 @@ it("keeps four toasts visible and expanded, hides the oldest for a fifth, and br
   expect(toastCount()).toBe(4);
   expect(states("data-visible")).toEqual(Array(4).fill("true"));
   expect(text()).toContain("Warning 1");
+});
+
+// Sonner hides a toast past the limit with opacity 0 and pointer-events none
+// only, so its buttons would stay in the keyboard tab order and in the
+// accessibility tree. src/index.css adds visibility:hidden for it. The rule is
+// read from that file and applied here (happy-dom does apply stylesheet rules to
+// getComputedStyle); happy-dom does not turn visibility into focusability, which
+// a browser does (a visibility:hidden element cannot be focused or tabbed to).
+it("hides the toast past the limit from the keyboard and assistive tech", () => {
+  const css = readFileSync(join(import.meta.dirname, "..", "src", "index.css"), "utf8");
+  const rule = css.match(/\[data-sonner-toast\]\[data-visible="false"\]\s*\{[^}]*\}/)?.[0];
+  expect(rule, "index.css has no [data-sonner-toast][data-visible=\"false\"] rule").toBeDefined();
+  document.head.append(Object.assign(document.createElement("style"), { textContent: rule }));
+  try {
+    mount();
+    show(...[1, 2, 3, 4, 5].map((n) => () => notify.warning(`Warning ${n}`, { id: `w${n}`, action: { label: `Act ${n}`, onClick: () => {} } })));
+    const toasts = [...document.querySelectorAll<HTMLElement>("[data-sonner-toast]")];
+    const hidden = toasts.filter((li) => li.getAttribute("data-visible") === "false");
+    expect(hidden.map((li) => li.textContent)).toEqual([expect.stringContaining("Warning 1")]);
+    expect(getComputedStyle(hidden[0]).visibility).toBe("hidden");
+    for (const li of toasts.filter((el) => !hidden.includes(el))) expect(getComputedStyle(li).visibility).not.toBe("hidden");
+
+    // Closing a newer toast brings the hidden one back.
+    show(() => notify.dismiss("w5"));
+    settleDismissal();
+    const back = [...document.querySelectorAll<HTMLElement>("[data-sonner-toast]")].find((li) => li.textContent?.includes("Warning 1"))!;
+    expect(back.getAttribute("data-visible")).toBe("true");
+    expect(getComputedStyle(back).visibility).not.toBe("hidden");
+  } finally {
+    document.head.querySelector("style")?.remove();
+  }
 });
 
 it("labels the toast region and the close button in the app's language", () => {
