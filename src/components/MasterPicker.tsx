@@ -1,8 +1,8 @@
 // MasterPicker.tsx — the head of the sidebar, above the Layers list: a Select
 // listing known masters (the library index — masters.ts), and nothing else.
 // Picking another library master switches at once, with no confirm card: the
-// rebind (model/rebindLayers.ts) is one undoable step, and App's header note
-// names what it set aside and that ⌘Z restores it — as Delete Variant does.
+// rebind (model/rebindLayers.ts) is one undoable step, and App's toast names
+// what it set aside and offers Undo (⌘Z) — as Delete Variant does.
 //
 // The file verbs stay in the File menu — Open Master…, and forking the
 // template with File → Save Master As…, which mints a new master id, rebinds

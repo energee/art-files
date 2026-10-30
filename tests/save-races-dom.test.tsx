@@ -1,15 +1,15 @@
 // save-races-dom.test.tsx — App-level Save / Save Master write paths: pending
-// writes, cancelled browser save targets, and what a Save Master bundles. Export
-// results are toasts, so the real <Toaster /> is mounted beside the editor
-// (mount) and read from the document.
+// writes, cancelled browser save targets, and what a Save Master bundles; and
+// Open Master over hidden values. Export, save and open results are toasts, so
+// the real <Toaster /> is mounted beside the editor (mount) and read from the
+// document.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { toast } from "sonner";
 import { afterEach, expect, it, vi } from "vitest";
-import { Toaster } from "../src/components/ui/sonner";
 import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
+import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 import type { Command } from "../src/components/CommandMenu";
 
 const menu = vi.hoisted(() => ({ actions: [] as Command[], renderError: null as null | ((m: string) => void) }));
@@ -29,31 +29,42 @@ vi.mock("../src/psd/build", () => ({
 }));
 // The PSD plates flatten through drawPlate; here they only need a canvas.
 vi.mock("../src/canvas/draw", () => ({ drawPlate: () => undefined }));
+// A desktop save names the file by the path the dialog returned; browsers return a
+// bare name. With `path` set, saveThrough answers as the desktop does.
+const desktopSave = vi.hoisted(() => ({ path: null as string | null }));
+vi.mock("../src/files", async (importOriginal) => {
+  const files = await importOriginal<typeof import("../src/files")>();
+  return {
+    ...files,
+    saveThrough: async (...args: Parameters<typeof files.saveThrough>) => {
+      if (!desktopSave.path) return files.saveThrough(...args);
+      const [content] = args;
+      const bytes = typeof content === "function" ? content(desktopSave.path) : content;
+      return { name: desktopSave.path, bytes, target: { path: desktopSave.path } };
+    },
+  };
+});
 import { DocumentEditor, type FileToOpen } from "../src/App";
 import { buildPsd } from "../src/psd/build";
 import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import { packLabel, packMaster, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";
 
 let root: Root;
 let container: HTMLDivElement;
-let toasterRoot: Root;
-let toasterHost: HTMLDivElement;
 afterEach(async () => {
-  // Sonner's store outlives the Toaster and replays what is still active to the
-  // next one that mounts, so retire every toast before the next test.
-  toast.dismiss();
-  await act(async () => { root?.unmount(); toasterRoot?.unmount(); });
+  await act(async () => { root?.unmount(); });
+  await unmountToaster();
   container?.remove();
-  toasterHost?.remove();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
+  desktopSave.path = null;
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
-  toasterHost = document.createElement("div"); document.body.append(toasterHost); toasterRoot = createRoot(toasterHost);
-  await act(async () => toasterRoot.render(createElement(Toaster)));
+  await mountToaster();
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   const onMeta = vi.fn();
   const props = {
@@ -64,22 +75,13 @@ async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = fa
   await act(async () => root.render(createElement(DocumentEditor, props)));
   return { saveSlot, onMeta, props };
 }
-/** Wait until `message` is on screen. A toast lands a tick after its message is
- *  sent, and DOM updates land when an act() settles, so each poll flushes one. */
-const shown = (message: string) => vi.waitFor(async () => {
-  await act(async () => {});
-  expect(document.body.textContent).toContain(message);
-}, { timeout: 15000 });
-/** Give a toast that was NOT sent time to (wrongly) land. */
-const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
-const toastTitles = () => [...document.querySelectorAll("[data-sonner-toast] [data-title]")].map((el) => el.textContent);
 async function toggle(id: string) {
   const b = document.querySelector(`[data-layer-id="${id}"] button[aria-label$=": enabled"]`) as HTMLButtonElement;
   expect(b).not.toBeNull();
   await act(async () => b.click());
 }
-function picker(write: (bytes: Uint8Array) => Promise<void> = async () => {}) {
-  const handle = { name: "Beer.label", createWritable: vi.fn(async () => ({ write, close: async () => {} })) };
+function picker(write: (bytes: Uint8Array) => Promise<void> = async () => {}, name = "Beer.label") {
+  const handle = { name, createWritable: vi.fn(async () => ({ write, close: async () => {} })) };
   const pick = vi.fn(async () => handle);
   vi.stubGlobal("showSaveFilePicker", pick);
   return { handle, pick };
@@ -103,7 +105,8 @@ it("reports a refused write without downloading or clearing dirty (#265)", async
   await toggle("warning");
   await act(async () => { expect(await saveSlot.current!()).toBe(false); });
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true });
-  expect(document.body.textContent).toContain("Could not save label: Permission refused");
+  await shown("Could not save label: Permission refused");
+  expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("error");
   expect(download).not.toHaveBeenCalled();
 });
 it("a cancelled Save As preserves the original target (#265)", async () => {
@@ -183,6 +186,53 @@ it("Save Master As with nothing to promote goes straight to the save dialog", as
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(pick).toHaveBeenCalledOnce();
 
+});
+
+/** Opens the Save Master review, ticks the `ids` promotion rows, and saves. */
+async function saveMasterPromoting(...ids: string[]) {
+  await act(async () => menu.actions.find((c) => c.id === "master-save")!.run());
+  for (const id of ids) {
+    const row = await reviewRow(id);
+    await act(async () => (row.closest("label")!.querySelector("input") as HTMLInputElement).click());
+  }
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => save.click());
+}
+
+// Real timers: the success toast fades after its own 4 s (src/notify.ts).
+it("Save Master toasts Saved Lolev.master · 3 changes and it fades", async () => {
+  picker(async () => {}, "Lolev.master");
+  await mount();
+  await toggle("warning");
+  await toggle("storeCold");
+  await reorderName();
+  await saveMasterPromoting("promote-warning-enabled", "promote-storeCold-enabled");
+  await shown("Saved Lolev.master");
+  const saved = document.querySelector("[data-sonner-toast]")!;
+  expect(saved.getAttribute("data-type")).toBe("success");
+  expect(saved.querySelector("[data-title]")!.textContent).toBe("Saved Lolev.master");
+  expect(saved.querySelector("[data-description]")!.textContent).toBe("3 changes");
+  await vi.waitFor(async () => {
+    await act(async () => {});
+    expect(toastTitles()).toEqual([]);
+  }, { timeout: 15000 });
+});
+
+it("Save Master with no changes toasts Saved with no count", async () => {
+  picker(async () => {}, "Lolev.master");
+  await mount();
+  await act(async () => { await menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  await shown("Saved Lolev.master");
+  expect(toastTitles()).toEqual(["Saved Lolev.master"]);
+  expect(document.querySelector("[data-sonner-toast] [data-description]")).toBeNull();
+});
+
+it("Save Master names the file by its base name when the desktop returns a path", async () => {
+  desktopSave.path = "/Users/ted/masters/Lolev.master";
+  await mount();
+  await act(async () => { await menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  await shown("Saved Lolev.master");
+  expect(toastTitles()).toEqual(["Saved Lolev.master"]);
 });
 
 it("Save Master keeps a promotion when the master is edited during the write", async () => {
@@ -487,6 +537,9 @@ it("Open Master during a Save Master write keeps the opened master, its baseline
   // The finished write must not pull the doc back to the saved master…
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(document.body.textContent).not.toContain("Could not");
+  // …nor announce a save of the master the document left.
+  await settle();
+  expect(toastTitles()).toEqual([]);
   // …nor move Other's baseline: its review lists only this label's override.
   await run("master-save");
   expect(reviewRows()).toBe(1);
@@ -497,7 +550,7 @@ it("Open Master during a Save Master write keeps the opened master, its baseline
   expect(other.createWritable).toHaveBeenCalledOnce();
 });
 
-it("Open Master's benched-values note survives the master's texture loading (#11)", async () => {
+it("the benched-values toast survives the master's texture loading (#11)", async () => {
   class FakeBitmap { width = 10; height = 10; close() {} }
   vi.stubGlobal("ImageBitmap", FakeBitmap);
   vi.stubGlobal("createImageBitmap", async () => new FakeBitmap());
@@ -511,31 +564,94 @@ it("Open Master's benched-values note survives the master's texture loading (#11
     { texture: { name: "art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
   await run("master-open");
   // Opening a master that hides a filled value switches at once.
+  await shown("volume");
+  // Its texture then loads; the toast is not the texture's to clear.
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-  expect(document.querySelector('[role="alert"]')?.textContent).toContain("volume");
+  expect(toastTitles()).toEqual(["Switched to “Other”"]);
+  expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("volume");
 });
 
 /** A label filling `volume`, and a master without that layer to open over it. */
 async function openHidingMaster() {
   const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
-  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  const { onMeta } = await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
   await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
   const base = lolevMaster();
   const handle = openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
   await run("master-open");
-  return handle;
+  return { ...handle, onMeta };
 }
 
-// No confirm card: the switch is one undoable step, and the note says so.
-it("Open Master switches at once over hidden values, names them and ⌘Z, and undo restores them", async () => {
-  await openHidingMaster();
+// No confirm card: the switch is one undoable step, and the toast offers the undo.
+it("Open Master over hidden values offers Undo, which restores them", async () => {
+  const { onMeta } = await openHidingMaster();
   expect(document.querySelector("#master-picker-preview")).toBeNull();
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(localStorage.getItem("labellab.lastMaster")).toBe("master-other");
   expect(document.querySelector('[data-layer-id="volume"]')).toBeNull();
+  // The toast names the master, what was set aside, and carries the Undo.
+  await shown("Switched to “Other”");
+  const toast = document.querySelector("[data-sonner-toast]")!;
+  expect(toast.getAttribute("data-type")).toBe("info");
+  expect(toast.querySelector("[data-description]")!.textContent).toContain("volume");
+  expect(toast.textContent).not.toContain("Note:");
+  const undo = [...toast.querySelectorAll("button")].find((b) => b.textContent === "Undo")!;
+  onMeta.mockClear();
+  await act(async () => undo.click());
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+  expect(document.querySelector('[data-layer-id="volume"]')).not.toBeNull();
+  // Like ⌘Z, the undo is an edit: the tab reads as changed.
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true });
+});
+
+// The undo is the switch's own: once the label has moved on, the offer no
+// longer reaches past the user's later edit to undo the switch.
+it("the Undo offer does nothing once the label was edited", async () => {
+  await openHidingMaster();
+  await shown("Switched to “Other”");
+  await toggle("warning");
+  const undo = [...document.querySelectorAll<HTMLButtonElement>("[data-sonner-toast] button")].find((b) => b.textContent === "Undo")!;
+  await act(async () => undo.click());
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(warningPressed()).toBe("false");
+});
+
+it("⌘Z restores the master the toast's Undo would", async () => {
+  await openHidingMaster();
   await run("undo");
   expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
   expect(document.querySelector('[data-layer-id="volume"]')).not.toBeNull();
+});
+
+/** Stubs the browser open picker to hand back `bytes` as other.master. */
+function stubMasterBytes(bytes: Uint8Array) {
+  vi.stubGlobal("showOpenFilePicker", async () => [
+    { name: "other.master", getFile: async () => new File([bytes as unknown as BlobPart], "other.master") }]);
+}
+
+// A v1 master converts on the way in, with the converter's warnings: one toast
+// for the open, the warnings joined, with no "Note:" lead-in.
+it("Open Master shows a converted master's warnings in one toast, without Note:", async () => {
+  const old = lolevV1();
+  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
+  old.defaults = { mystery: 1 } as never;
+  stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
+  await mount();
+  await run("master-open");
+  await shown("mystery");
+  await settle();
+  expect(toastTitles()).toHaveLength(1);
+  expect(toastTitles()[0]).not.toContain("Note:");
+  expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
+});
+
+it("Open Master reports a file that is not a master as an error toast", async () => {
+  stubMasterBytes(new TextEncoder().encode("not a master"));
+  await mount();
+  await run("master-open");
+  await shown("Could not open master: ");
+  expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("error");
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
 });
 
 it("Open Master leaves a collapsed sidebar collapsed", async () => {
@@ -655,11 +771,21 @@ it.each([
 });
 
 // A label whose value names an image its zip lacks: the promotion still
-// writes the id, but no save can carry bytes that don't exist — say so.
-it("Save Master notes a promoted image it has no file for", async () => {
+// writes the id, but no save can carry bytes that don't exist — say so, in a
+// toast of its own that stays until closed.
+it("an image with no file to save warns in its own toast", async () => {
   let written: Uint8Array | undefined;
-  picker(async (b) => { written = b; });
+  picker(async (b) => { written = b; }, "Lolev.master");
   await mount(logoLabel("ghost"));
   await promoteLogo("master-save", () => written);
-  await vi.waitFor(() => expect(document.body.textContent).toContain("1 image has no file to save"));
+  const sentence = "1 image has no file to save. It will be blank when you reopen this master.";
+  await shown(sentence);
+  const toasts = [...document.querySelectorAll("[data-sonner-toast]")];
+  const warning = toasts.find((li) => li.getAttribute("data-type") === "warning")!;
+  expect(warning.querySelector("[data-title]")!.textContent).toBe(sentence);
+  expect(warning.querySelector("[data-description]")).toBeNull();
+  const saved = toasts.find((li) => li.getAttribute("data-type") === "success")!;
+  expect(saved.querySelector("[data-title]")!.textContent).toBe("Saved Lolev.master");
+  expect(saved.textContent).not.toContain("no file");
+  expect(toasts).toHaveLength(2);
 });

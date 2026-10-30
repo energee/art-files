@@ -27,7 +27,7 @@ Background tabs keep state and assets. They drop the rendered preview. Switch ba
 
 A fresh Untitled tab starts "dirty" so Save is live, and it closes without a fuss if you never edited it.
 
-Tabs with unsaved changes keep a recovery copy as you work. If Label Lab crashes or is forced to quit, the next launch offers them back: **Restore** reopens each one as an unsaved tab, **Discard** throws the copies away. On the desktop app, a restored tab that came from a `.label` saves back to that file, as long as the file is still there, hasn't been changed since that tab last opened or saved it, and isn't open in another tab. Otherwise Save asks where to write it, and a note names the original file. Closing the offer without choosing keeps them for next time. Changes from the last couple of seconds before a crash may be missing.
+Tabs with unsaved changes keep a recovery copy as you work. If Label Lab crashes or is forced to quit, the next launch offers them back: **Restore** reopens each one as an unsaved tab, **Discard** throws the copies away. On the desktop app, a restored tab that came from a `.label` saves back to that file, as long as the file is still there, hasn't been changed since that tab last opened or saved it, and isn't open in another tab. Otherwise Save asks where to write it, and a warning toast names the original file. Closing the offer without choosing keeps them for next time. Changes from the last couple of seconds before a crash may be missing.
 
 ## Command palette
 
@@ -35,6 +35,6 @@ Tabs with unsaved changes keep a recovery copy as you work. If Label Lab crashes
 
 ## When something's wrong
 
-Errors land in the header next to the menus. Showing or hiding a plate, or picking a font, doesn't clear one: a bad image clears when you drop a good one. Export results are toasts over the preview instead (see [Export](/docs/export)), whichever tab is in front. Export greys out while the label is invalid, and the reason sits right there: click it, or press `⌘E`, to select the first invalid layer. An export in flight blurs the preview under a **Building PDFs…** or **Building PSDs…** note.
+Errors from art that won't load or a preview that won't draw land in the header next to the menus. Showing or hiding a plate, or picking a font, doesn't clear one: a bad image clears when you drop a good one. Messages about something that just happened are toasts over the preview instead, whichever tab is in front: export results (see [Export](/docs/export)), the **Saved …** after Save Master, the warning when opening a label or master sets values aside, and a failure to open or save a label or master, which stays until you close it. Export greys out while the label is invalid, and the reason sits right there: click it, or press `⌘E`, to select the first invalid layer. An export in flight blurs the preview under a **Building PDFs…** or **Building PSDs…** note.
 
 A failure that escapes all of that (a save, export or open that breaks somewhere unexpected) shows a **Something went wrong** alert at the bottom of the window with the reason. Your tabs are untouched, but check that the last action actually finished before relying on it. **Dismiss** clears it.

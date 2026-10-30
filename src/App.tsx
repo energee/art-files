@@ -111,7 +111,8 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { cn, errMsg } from "@/lib/utils";
+import { baseName, cn, errMsg } from "@/lib/utils";
+import { notify } from "@/notify";
 import { loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import type { MeasureFace, PlanAssets } from "@/plan";
@@ -505,13 +506,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // assembly, image loads and native menu failures. A successful asset
   // assembly or image load clears it only while it still holds its own
   // message (useOwnedError; #473, #511). A note (warning) is marked where it
-  // is made (HeaderMessage.note); the plain setters are for errors. Export
-  // results are toasts (useExport.ts), not header messages.
+  // is made (HeaderMessage.note); setBuildError is the plain setter for errors.
+  // Export results (useExport.ts) and what opening or saving a label or master
+  // reports (notify, below) are toasts, not header messages; loadError holds
+  // only the texture and mask slots' load errors.
   const [buildError, setBuildMessage] = useState<HeaderMessage>(NO_MESSAGE);
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadMessage] = useState<HeaderMessage>(NO_MESSAGE);
   const setBuildError = useCallback((text: string) => setBuildMessage({ text }), []);
-  const setLoadError = useCallback((text: string) => setLoadMessage({ text }), []);
   // A .label whose master can't be found asks what to open it on; openProject
   // awaits `choose` (missingMasterChoice).
   const [missingMaster, setMissingMaster] = useState<{
@@ -1470,12 +1472,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     const unchanged = docRef.current === doc && current.texture === texture
       && current.mask === mask && current.customImages === customImages;
     setDirty(!unchanged);
-    setLoadError("");
+    setLoadMessage(NO_MESSAGE);
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
   const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, setLoadError, startSaveBatch, saveBytes,
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: notify.error, startSaveBatch, saveBytes,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
@@ -1553,7 +1555,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** File → Save Master… / Save Master As…, the picker's button and the
    *  close prompt's Save. The review (MasterSaveReview) opens only when the
    *  label has an override or value to promote — the one decision a save
-   *  asks for; otherwise the write starts at once and its header note says
+   *  asks for; otherwise the write starts at once and its Saved toast says
    *  how many changes went in. */
   function requestMasterSave(as: boolean) {
     const promotable = masterChanges(pristineMaster.current, master, label, version ?? undefined)
@@ -1574,17 +1576,17 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
-    // A promotion re-validates through parseMaster; surface a rejection in the
-    // header like the write failures below instead of an unhandled rejection
-    // from the `void saveMaster(...)` caller (#92).
+    // A promotion re-validates through parseMaster; surface a rejection as an
+    // error toast like the write failures below instead of an unhandled
+    // rejection from the `void saveMaster(...)` caller (#92).
     let promoted: ReturnType<typeof applyPromotions>;
     try {
       promoted = applyPromotions(master, label, promote, version ?? undefined);
     } catch (err) {
-      setLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
+      notify.error(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
     }
-    /** What goes into the file, for the header note: the master's own
+    /** What goes into the file, for the Saved toast: the master's own
      *  changes since its last open/save, plus each promotion. */
     const written = masterChanges(pristineMaster.current, master, label, version ?? undefined)
       .filter((c) => c.kind !== "promote").length + promote.length;
@@ -1614,7 +1616,7 @@ export const DocumentEditor = memo(function DocumentEditor({
      *  now holds; a promotion whose layer or variant was deleted during the
      *  write is skipped (the deletion wins) rather than costing the others.
      *  A document that moved to another master (Open Master during the
-     *  write) is left alone: baseline, save target and header note. */
+     *  write) is left alone: baseline, save target and Saved toast. */
     const commit = async (m: Master, where: string, ours: boolean, bytes?: Uint8Array) => {
       if (ours) edit((d) => {
         if (d.master.id !== master.id) return d;
@@ -1644,13 +1646,15 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
-      if (ours) setLoadMessage({ note: true, text: [
-        t("Note: Saved {{name}}", { name: saved.name }) + (written ? t(" ({{count}} change)", { count: written }) : ""),
-        ...(!missing ? [] : [t("{{count}} image has no file to save. It will be blank when you reopen this master.", { count: missing })]),
-      ].join(" · ") });
+      if (ours) {
+        notify.success(t("Saved {{file}}", { file: baseName(saved.name) }),
+          written ? { description: t("{{count}} changes", { count: written }) } : undefined);
+        // Its own toast: the master saved, but an image in it can't be reopened.
+        if (missing) notify.warning(t("{{count}} image has no file to save. It will be blank when you reopen this master.", { count: missing }));
+      }
       return true;
     } catch (err) {
-      setLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
+      notify.error(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
     }
   }
@@ -1661,10 +1665,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
       const r = unpackMaster(bytes);
-      if (r.warnings.length) setLoadMessage({ note: true, text: t("Note: {{message}}", { message: r.warnings.join(" · ") }) });
+      if (r.warnings.length) notify.warning(r.warnings.join(" · "));
       return r;
     } catch (err) {
-      setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      notify.error(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
   }
@@ -1696,24 +1700,26 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** Re-aim THIS document at `target`: the label routed through rebindLabel
    *  (non-destructive — whatever doesn't match is benched on `dormant`) and
-   *  the master swapped, in one history step. No confirm: the header note
-   *  names what was set aside and that ⌘Z restores it. ⌘Z restores the
-   *  master and label only — art adoptMasterAssets put into an EMPTY
-   *  texture, mask or image slot stays, as asset slots sit outside the undo
-   *  history. `clean` says whether the freshly bound master reads as saved
-   *  (Open Master / the library pick) or not (a never-written duplicate, so
-   *  Save Master stays live). */
+   *  the master swapped, in one history step. No confirm: a toast names what
+   *  was set aside and offers Undo, which is ⌘Z while the switch is still the
+   *  latest step. Undo restores the master and label only — art
+   *  adoptMasterAssets put into an EMPTY texture, mask or image slot stays, as
+   *  asset slots sit outside the undo history. `clean` says whether the
+   *  freshly bound master reads as saved (Open Master / the library pick) or
+   *  not (a never-written duplicate, so Save Master stays live). */
   function commitRebind(target: Master, clean = true) {
     const { master: from, label: current } = docRef.current;
     const { label: next, dropped } = rebindLabel(current, from, target);
+    const switched: Doc = { master: target, label: next };
     markDirty();
-    setDoc({ master: target, label: next });
+    setDoc(switched);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     const notes = benchedNotes(dropped);
-    setLoadMessage(notes.length
-      ? { note: true, text: t("Note: {{message}}", { message: t("Switched to “{{name}}” · {{notes}} · {{shortcut}} to restore", { name: target.name, notes: notes.join(" · "), shortcut: shortcutLabel("⌘Z") }) }) }
-      : NO_MESSAGE);
+    if (notes.length) notify.info(t("Switched to “{{name}}”", { name: target.name }), {
+      description: notes.join(" · "),
+      action: { label: t("Undo"), onClick: () => { if (docRef.current === switched) mutating(undo)(); } },
+    });
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
@@ -1800,7 +1806,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
       }
     } catch (err) {
-      if (!isAbort(err)) setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      if (!isAbort(err)) notify.error(t("Could not open master: {{error}}", { error: errMsg(err) }));
     }
   }
 
@@ -1846,7 +1852,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         setEdited(false);
         setDirty(true);
       } catch (err) {
-        if (!claimed()) setLoadError(t("Could not restore master: {{error}}", { error: errMsg(err) }));
+        if (!claimed()) notify.error(t("Could not restore master: {{error}}", { error: errMsg(err) }));
       }
     });
     return () => { cancelled = true; };
@@ -1854,7 +1860,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   const reportOpenError = (err: unknown) => {
-    if (!isAbort(err)) setLoadError(t("Could not open label: {{error}}", { error: errMsg(err) }));
+    if (!isAbort(err)) notify.error(t("Could not open label: {{error}}", { error: errMsg(err) }));
   };
 
   /** A .label's master couldn't be resolved: ask the operator. "Use current"
@@ -1885,13 +1891,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     let bytes: Uint8Array, path: string;
     try {
       const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
-      if (target === undefined) { setLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
+      if (target === undefined) { notify.error(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
       [bytes, path] = "path" in target
         ? [await readNativeFile(target.path), target.path]
         : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
     } catch (err) {
-      if (!isAbort(err)) setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      if (!isAbort(err)) notify.error(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
     const r = tryParseMaster(bytes);
@@ -2031,10 +2037,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (images.length) setCustomImages(() => Object.fromEntries(images.map(([id, mint]) => [id, mint()])));
       setDirty(benched);
       setEdited(benched);
-      setLoadMessage(notes.length ? { note: true, text: translate("Note: {{message}}", { message: notes.join(" · ") }) } : NO_MESSAGE);
+      if (notes.length) notify.warning(notes.join(" · "));
       return true;
     } catch (err) {
-      if (!opts?.quiet) setLoadError(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
+      if (!opts?.quiet) notify.error(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
       return false;
     }
   }
@@ -2070,9 +2076,8 @@ export const DocumentEditor = memo(function DocumentEditor({
               setEdited(true);
               if (recoveredPath?.rebind) bindPath(recoveredPath.path, recoveredPath.modifiedAt);
               else if (recoveredPath) {
-                // Joins the open's own notes (benched values) rather than replacing them.
-                const note = t("Restored from {{path}}, which moved, changed or is open in another tab, so Save asks where", { path: recoveredPath.path });
-                setLoadMessage((m) => ({ note: true, text: m.note ? `${m.text} · ${note}` : t("Note: {{message}}", { message: note }) }));
+                // A warning of its own, beside the open's (benched values).
+                notify.warning(t("Restored from {{path}}, which moved, changed or is open in another tab, so Save asks where", { path: baseName(recoveredPath.path) }));
               }
               const bytes = new Uint8Array(await file.arrayBuffer());
               // The path (and its baseline mtime) rides along only once
@@ -2450,7 +2455,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               e.target.value = "";
               if (!f) return;
               void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
-                .catch((err) => setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
+                .catch((err) => notify.error(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}

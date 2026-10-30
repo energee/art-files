@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel, unpackLabel } from "../src/model/files";
 import { setLanguage } from "../src/i18n";
+import { mountToaster, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -75,7 +76,7 @@ it("names a label override the UI can't draw as an invalid override, in the UI l
 }, 30_000);
 
 /** Open a.label, then the bad b.label; the failed open must leave a.label's
- *  content and Save target in place. `check` sees the page text after it. */
+ *  content and Save target in place. `check` sees the error toast's text. */
 async function failedOpen(bad: object, check?: (text: string) => void) {
   const a = fakeHandle("a.label", labelBytes("Alpha"));
   const b = fakeHandle("b.label", packLabel({
@@ -97,6 +98,7 @@ async function failedOpen(bad: object, check?: (text: string) => void) {
     expect(onOpenSettled).toHaveBeenCalledWith(seq, false);
   };
 
+  await mountToaster();
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -110,8 +112,13 @@ async function failedOpen(bad: object, check?: (text: string) => void) {
       root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 2, handle: b.handle } }));
     });
     await settle(2);
-    if (check) check(container.textContent!);
-    else expect(container.textContent).toContain("Could not open b.label");
+    await vi.waitFor(async () => {
+      await act(async () => {});
+      expect(toastTitles()).toHaveLength(1);
+    }, { timeout: 15000 });
+    expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("error");
+    if (check) check(toastTitles()[0]!);
+    else expect(toastTitles()[0]).toContain("Could not open b.label");
 
     // The tab still shows a.label, and ⌘S writes a.label's own content back.
     expect(lastTitle()).toBe("Alpha");
@@ -125,5 +132,6 @@ async function failedOpen(bad: object, check?: (text: string) => void) {
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
+    await unmountToaster();
   }
 }

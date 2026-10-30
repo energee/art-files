@@ -23,14 +23,15 @@ type ProjectSaveInputs = {
   /** Marks the document saved; returns whether it was unchanged during the
    *  write — the close-tab caller must not close over edits made meanwhile. */
   onSaved: () => boolean;
-  setLoadError: (error: string) => void;
+  /** Reports a failed save (App.tsx passes notify.error). */
+  onError: (error: string) => void;
   /** useExport's download batch, shared with every other save. */
   startSaveBatch: () => void;
   saveBytes: (bytes: Uint8Array, name: string, type?: string) => void;
 };
 
 export function useProjectSave({
-  pack, exportBase, onSaved, setLoadError, startSaveBatch, saveBytes,
+  pack, exportBase, onSaved, onError, startSaveBatch, saveBytes,
 }: ProjectSaveInputs) {
   /** The file Save rewrites in place: set by Save As and picker-based Open.
    *  Null until then, so plain Save falls through to the Save As dialog. */
@@ -92,7 +93,7 @@ export function useProjectSave({
       else if (saved.target && "handle" in saved.target) bindHandle(saved.target.handle);
       return onSaved();
     } catch (err) {
-      setLoadError(t("Could not save label: {{error}}", { error: errMsg(err) }));
+      onError(t("Could not save label: {{error}}", { error: errMsg(err) }));
       return false;
     }
   }

@@ -1,7 +1,9 @@
 // recovery-open-dom.test.tsx — a tab restored from a crash-recovery snapshot
 // (#394) is still unsaved work: Save stays live, closing it prompts, and the
 // snapshot moves to the new tab's key before the old one is dropped, so a
-// second crash before a save can still offer it back.
+// second crash before a save can still offer it back. A restore Save can't
+// rebind says so in a warning toast (the real <Toaster /> is mounted beside the
+// editor).
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -9,6 +11,7 @@ import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
 import { unsaved } from "../src/tabs";
+import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 const calls = vi.hoisted(() => [] as string[]);
 const kept = vi.hoisted(() => [] as { key: string; filePath?: string; fileModifiedAt?: number }[]);
@@ -44,6 +47,7 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
     onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
     onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(), recoveryKey: "now:2",
   };
+  await mountToaster();
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -51,8 +55,8 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
   for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
     await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
   expect(onOpenSettled).toHaveBeenCalledWith(1, false);
-  const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); };
-  return { meta: () => onMeta.mock.calls.at(-1)![0], container, unmount };
+  const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); await unmountToaster(); };
+  return { meta: () => onMeta.mock.calls.at(-1)![0], unmount };
 }
 
 function snapshotFile(extra: Record<string, unknown> = {}) {
@@ -128,28 +132,46 @@ it("a restore that cannot rebind re-saves its snapshot without the file", async 
   }
 }, 30_000);
 
+// The toast names the original by its base name, not the desktop path.
 it("a restore that cannot rebind keeps Save asking where and names the original", async () => {
-  const { meta, container, unmount } = await restore({
+  const { meta, unmount } = await restore({
     seq: 1, file: snapshotFile(), recovered: "old:1", recoveredPath: { path: "/w/alpha.label", rebind: false },
   });
   try {
     expect(meta().filePath).toBeNull();
-    expect(container.textContent).toContain("/w/alpha.label");
+    await shown("Restored from alpha.label, which moved");
+    expect(toastTitles()).toEqual(["Restored from alpha.label, which moved, changed or is open in another tab, so Save asks where"]);
+    expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
+    expect(document.body.textContent).not.toContain("/w/");
+    expect(document.body.textContent).not.toContain("Note:");
   } finally {
     await unmount();
   }
 }, 30_000);
 
-// The recovery note joins the open's own notes (a benched layer here) rather
-// than replacing them.
-it("the cannot-rebind note keeps the open's other notes", async () => {
-  const { container, unmount } = await restore({
+// The recovery note is its own toast beside the open's (a benched layer here).
+it("the cannot-rebind note comes beside the open's other notes", async () => {
+  const { unmount } = await restore({
     seq: 1, file: snapshotFile({ ghost: "Boo" }), recovered: "old:1",
     recoveredPath: { path: "/w/alpha.label", rebind: false },
   });
   try {
-    expect(container.textContent).toContain("/w/alpha.label");
-    expect(container.textContent).toMatch(/ghost/i);
+    await shown("Restored from alpha.label");
+    await settle();
+    expect(toastTitles()).toHaveLength(2);
+    expect(toastTitles().join("\n")).toMatch(/ghost/i);
+  } finally {
+    await unmount();
+  }
+}, 30_000);
+
+it("a restore that rebinds says nothing", async () => {
+  const { unmount } = await restore({
+    seq: 1, file: snapshotFile(), recovered: "old:1", recoveredPath: { path: "/w/alpha.label", rebind: true },
+  });
+  try {
+    await settle();
+    expect(toastTitles()).toEqual([]);
   } finally {
     await unmount();
   }

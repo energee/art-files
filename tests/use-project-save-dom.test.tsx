@@ -1,19 +1,19 @@
 // @vitest-environment happy-dom
 // use-project-save-dom.test.tsx — useProjectSave reports a pack failure (an
-// asset over the archive size caps) as a load error and resolves false, so a
+// asset over the archive size caps) through onError and resolves false, so a
 // close-tab Save keeps the tab instead of hanging (#416 review).
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { useProjectSave } from "@/useProjectSave";
 
-it("saveProject resolves false with a load error when packing throws", async () => {
-  const setLoadError = vi.fn();
+it("saveProject resolves false and reports the error when packing throws", async () => {
+  const onError = vi.fn();
   let save: (as?: boolean) => Promise<boolean> = async () => true;
   function Probe() {
     save = useProjectSave({
       pack: () => { throw new Error("Archive is too large"); },
-      exportBase: "x", onSaved: () => true, setLoadError,
+      exportBase: "x", onSaved: () => true, onError,
       startSaveBatch: () => undefined, saveBytes: () => undefined,
     }).saveProject;
     return null;
@@ -21,7 +21,7 @@ it("saveProject resolves false with a load error when packing throws", async () 
   const root = createRoot(document.createElement("div"));
   await act(async () => { root.render(createElement(Probe)); });
   await expect(save()).resolves.toBe(false);
-  expect(setLoadError).toHaveBeenCalledWith("Could not save label: Archive is too large");
+  expect(onError).toHaveBeenCalledWith("Could not save label: Archive is too large");
   act(() => root.unmount());
 });
 
@@ -43,7 +43,7 @@ it("saveProject packs for the path the label is written to", async () => {
   function Probe() {
     api = hook({
       pack: (p) => { packedFor.push(p); return new Uint8Array([1]); },
-      exportBase: "x", onSaved: () => true, setLoadError: vi.fn(),
+      exportBase: "x", onSaved: () => true, onError: vi.fn(),
       startSaveBatch: () => undefined, saveBytes: () => undefined,
     });
     return null;
@@ -84,7 +84,7 @@ it("saveProject fails an oversized label before the dialog, and repacks for Save
         if (tooBig) throw new Error("Archive is too large");
         return new Uint8Array([1]);
       },
-      exportBase: "x", onSaved: () => true, setLoadError: vi.fn(),
+      exportBase: "x", onSaved: () => true, onError: vi.fn(),
       startSaveBatch: () => undefined, saveBytes: () => undefined,
     });
     return null;
@@ -122,7 +122,7 @@ it("bindPath and a save record the bound file's mtime as the recovery baseline",
   function Probe() {
     api = hook({
       pack: () => new Uint8Array([1]),
-      exportBase: "x", onSaved: () => true, setLoadError: vi.fn(),
+      exportBase: "x", onSaved: () => true, onError: vi.fn(),
       startSaveBatch: () => undefined, saveBytes: () => undefined,
     });
     return null;
