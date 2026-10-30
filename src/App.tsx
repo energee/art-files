@@ -514,6 +514,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadMessage] = useState<HeaderMessage>(NO_MESSAGE);
   const setBuildError = useCallback((text: string) => setBuildMessage({ text }), []);
+  // Each source of an open, save or load message that stays until closed owns one
+  // toast in this editor, so a repeat replaces it instead of stacking another
+  // (notify.ts). Saved and Switched toasts fade on their own and need no id.
+  const toastBase = useId();
+  const toastId = (source: string) => `${toastBase}:${source}`;
+  const reportLoadError = (text: string) => { notify.error(text, { id: toastId("load-error") }); };
   // A .label whose master can't be found asks what to open it on; openProject
   // awaits `choose` (missingMasterChoice).
   const [missingMaster, setMissingMaster] = useState<{
@@ -1477,7 +1483,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     return unchanged;
   };
   const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, onError: notify.error, startSaveBatch, saveBytes,
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportLoadError, startSaveBatch, saveBytes,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
@@ -1583,7 +1589,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       promoted = applyPromotions(master, label, promote, version ?? undefined);
     } catch (err) {
-      notify.error(t("Could not save master: {{error}}", { error: errMsg(err) }));
+      reportLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
     }
     /** What goes into the file, for the Saved toast: the master's own
@@ -1650,11 +1656,12 @@ export const DocumentEditor = memo(function DocumentEditor({
         notify.success(t("Saved {{file}}", { file: baseName(saved.name) }),
           written ? { description: t("{{count}} changes", { count: written }) } : undefined);
         // Its own toast: the master saved, but an image in it can't be reopened.
-        if (missing) notify.warning(t("{{count}} image has no file to save. It will be blank when you reopen this master.", { count: missing }));
+        if (missing) notify.warning(t("{{count}} image has no file to save. It will be blank when you reopen this master.", { count: missing }),
+          { id: toastId("image-warning") });
       }
       return true;
     } catch (err) {
-      notify.error(t("Could not save master: {{error}}", { error: errMsg(err) }));
+      reportLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
     }
   }
@@ -1665,10 +1672,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
       const r = unpackMaster(bytes);
-      if (r.warnings.length) notify.warning(r.warnings.join(" · "));
+      if (r.warnings.length) notify.warning(r.warnings.join(" · "), { id: toastId("master-warning") });
       return r;
     } catch (err) {
-      notify.error(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
   }
@@ -1715,6 +1722,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     setDoc(switched);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
+    // loadError stays as it is: the texture and mask survive a master switch, and so do their load errors.
     const notes = benchedNotes(dropped);
     if (notes.length) notify.info(t("Switched to “{{name}}”", { name: target.name }), {
       description: notes.join(" · "),
@@ -1806,7 +1814,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
       }
     } catch (err) {
-      if (!isAbort(err)) notify.error(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
     }
   }
 
@@ -1852,7 +1860,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         setEdited(false);
         setDirty(true);
       } catch (err) {
-        if (!claimed()) notify.error(t("Could not restore master: {{error}}", { error: errMsg(err) }));
+        if (!claimed()) reportLoadError(t("Could not restore master: {{error}}", { error: errMsg(err) }));
       }
     });
     return () => { cancelled = true; };
@@ -1860,7 +1868,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   const reportOpenError = (err: unknown) => {
-    if (!isAbort(err)) notify.error(t("Could not open label: {{error}}", { error: errMsg(err) }));
+    if (!isAbort(err)) reportLoadError(t("Could not open label: {{error}}", { error: errMsg(err) }));
   };
 
   /** A .label's master couldn't be resolved: ask the operator. "Use current"
@@ -1891,13 +1899,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     let bytes: Uint8Array, path: string;
     try {
       const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
-      if (target === undefined) { notify.error(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
+      if (target === undefined) { reportLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
       [bytes, path] = "path" in target
         ? [await readNativeFile(target.path), target.path]
         : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
     } catch (err) {
-      if (!isAbort(err)) notify.error(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
     const r = tryParseMaster(bytes);
@@ -2037,10 +2045,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (images.length) setCustomImages(() => Object.fromEntries(images.map(([id, mint]) => [id, mint()])));
       setDirty(benched);
       setEdited(benched);
-      if (notes.length) notify.warning(notes.join(" · "));
+      // The label this replaced took its texture and mask with it, and their load errors.
+      setLoadMessage(NO_MESSAGE);
+      if (notes.length) notify.warning(notes.join(" · "), { id: toastId("label-warning") });
       return true;
     } catch (err) {
-      if (!opts?.quiet) notify.error(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
+      if (!opts?.quiet) reportLoadError(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
       return false;
     }
   }
@@ -2077,7 +2087,8 @@ export const DocumentEditor = memo(function DocumentEditor({
               if (recoveredPath?.rebind) bindPath(recoveredPath.path, recoveredPath.modifiedAt);
               else if (recoveredPath) {
                 // A warning of its own, beside the open's (benched values).
-                notify.warning(t("Restored from {{path}}, which moved, changed or is open in another tab, so Save asks where", { path: baseName(recoveredPath.path) }));
+                notify.warning(t("Restored from {{path}}, which moved, changed or is open in another tab, so Save asks where", { path: baseName(recoveredPath.path) }),
+                  { id: toastId("restore-warning") });
               }
               const bytes = new Uint8Array(await file.arrayBuffer());
               // The path (and its baseline mtime) rides along only once
@@ -2455,7 +2466,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               e.target.value = "";
               if (!f) return;
               void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
-                .catch((err) => notify.error(t("Could not open master: {{error}}", { error: errMsg(err) })));
+                .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}

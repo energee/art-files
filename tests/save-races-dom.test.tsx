@@ -109,6 +109,18 @@ it("reports a refused write without downloading or clearing dirty (#265)", async
   expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("error");
   expect(download).not.toHaveBeenCalled();
 });
+// A repeat of the same kind of failure replaces its toast instead of stacking another.
+it("the same save failure twice shows one toast with the latest text", async () => {
+  let attempts = 0;
+  picker(async () => { throw new Error(attempts++ ? "Disk full" : "Permission refused"); });
+  const { saveSlot } = await mount();
+  await act(async () => { expect(await saveSlot.current!()).toBe(false); });
+  await shown("Could not save label: Permission refused");
+  await act(async () => { expect(await saveSlot.current!()).toBe(false); });
+  await shown("Could not save label: Disk full");
+  await settle();
+  expect(toastTitles()).toEqual(["Could not save label: Disk full"]);
+});
 it("a cancelled Save As preserves the original target (#265)", async () => {
   const { handle, pick } = picker();
   const { saveSlot } = await mount();
@@ -216,7 +228,7 @@ it("Save Master toasts Saved Lolev.master · 3 changes and it fades", async () =
     await act(async () => {});
     expect(toastTitles()).toEqual([]);
   }, { timeout: 15000 });
-});
+}, 30_000); // the fade alone takes 4 s of real time; vitest's default is 5 s
 
 it("Save Master with no changes toasts Saved with no count", async () => {
   picker(async () => {}, "Lolev.master");
@@ -258,6 +270,22 @@ it("reports a failed texture decode without an unhandled rejection (#266)", asyn
   await mount();
   await act(async () => { fileDrag("drop", new File(["bad"], "broken.png", { type: "image/png" })); });
   expect(document.body.textContent).toContain('Could not load texture "broken.png": Invalid image');
+});
+
+// Opening a label swaps the texture and mask out with the old label, so a load
+// error for the one it replaced must not stay over the new label.
+it("a texture load error does not outlive opening another label", async () => {
+  vi.stubGlobal("createImageBitmap", async () => { throw new Error("Invalid image"); });
+  const { props } = await mount();
+  await act(async () => { fileDrag("drop", new File(["bad"], "broken.png", { type: "image/png" })); });
+  expect(document.body.textContent).toContain('Could not load texture "broken.png": Invalid image');
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} }, {});
+  await act(async () => root.render(createElement(DocumentEditor, {
+    ...props, fileToOpen: { seq: 1, file: new File([label as unknown as BlobPart], "beer.label") },
+  })));
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
+  await act(async () => {});
+  expect(document.body.textContent).not.toContain("Could not load texture");
 });
 
 it("a texture that loads keeps another slot's error on screen", async () => {
@@ -643,6 +671,31 @@ it("Open Master shows a converted master's warnings in one toast, without Note:"
   expect(toastTitles()).toHaveLength(1);
   expect(toastTitles()[0]).not.toContain("Note:");
   expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
+});
+
+it("opening a converted master twice shows its warnings once", async () => {
+  const old = lolevV1();
+  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
+  old.defaults = { mystery: 1 } as never;
+  stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
+  await mount();
+  await run("master-open");
+  await shown("mystery");
+  await run("master-open");
+  await settle();
+  expect(toastTitles()).toHaveLength(1);
+});
+
+it("opening a second label with benched values replaces the first one's warning", async () => {
+  const benched = (layer: string) => new File([packLabel(
+    { formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { [layer]: "stale" } }, {}) as unknown as BlobPart], `${layer}.label`);
+  const { props } = await mount({ seq: 1, file: benched("gone-one") });
+  await shown("gone-one");
+  await act(async () => root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 2, file: benched("gone-two") } })));
+  await shown("gone-two");
+  await settle();
+  expect(toastTitles()).toHaveLength(1);
+  expect(toastTitles()[0]).toContain("gone-two");
 });
 
 it("Open Master reports a file that is not a master as an error toast", async () => {
