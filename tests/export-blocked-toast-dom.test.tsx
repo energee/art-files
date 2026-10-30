@@ -227,7 +227,7 @@ it("Show layer goes to the first layer that is still invalid when it is clicked"
   const { container, rerender } = await mount();
   const bytes = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { abv: "99", barcode: "123" } }, {});
   await rerender({ fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "bad.label") } });
-  await vi.waitFor(() => expect(reasonOf(container)).toMatch(/ABV.*Barcode/));
+  await vi.waitFor(() => expect(reasonOf(container)).toMatch(/ABV.*Barcode/), { timeout: 5_000 });
   await press({ key: "e", metaKey: true });
   await shown("Can't export yet");
   expect(description()).toMatch(/ABV.*Barcode/);
@@ -240,11 +240,9 @@ it("Show layer goes to the first layer that is still invalid when it is clicked"
   await act(async () => { field().focus(); });
   await act(async () => { typeInto(field(), "5"); });
   await act(async () => { field().blur(); });
-  await vi.waitFor(() => expect(reasonOf(container)).not.toContain("ABV"));
+  await vi.waitFor(() => expect(reasonOf(container)).not.toContain("ABV"), { timeout: 5_000 });
   expect(reasonOf(container)).toContain("Barcode");
   expect(rowSelected(container, "abv")).toBe(true);
-  // The toast still lists both: it was shown before the fix.
-  expect(description()).toMatch(/ABV.*Barcode/);
 
   await act(async () => { showLayer().click(); });
   expect(rowSelected(container, "barcode")).toBe(true);

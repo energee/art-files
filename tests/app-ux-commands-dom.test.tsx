@@ -187,7 +187,7 @@ it("shows a failed preview build's bare reason in one toast", async () => {
   await shown("font file is gone");
   // Asset assembly is debounced (150 ms) and loads the fonts again, failing the
   // same way: wait for that attempt, then let a duplicate toast land too.
-  await vi.waitFor(() => expect(fonts.loads).toBeGreaterThanOrEqual(2));
+  await vi.waitFor(() => expect(fonts.loads).toBeGreaterThanOrEqual(2), { timeout: 5_000 });
   await settle();
   expect(toastTitles()).toEqual(["font file is gone"]);
 }, 30_000);

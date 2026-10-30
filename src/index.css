@@ -236,7 +236,9 @@ h1, h2, h3 { font-family: var(--font-heading); }
    its advice on separate lines). A toast past the limit of four is hidden by
    Sonner with opacity 0 and pointer-events none alone, which leaves its
    buttons in the tab order and the screen reader's reach: visibility:hidden
-   takes it out of both. The visible toasts keep their animations. */
+   takes it out of both, once Sonner's .4s fade-out has finished (the
+   transition list is Sonner's own plus the delayed visibility). A toast that
+   comes back is visible at once. The visible toasts keep their animations. */
 [data-sonner-toaster][data-x-position="center"] {
   left: var(--toast-center-x, 50%) !important;
   bottom: var(--toast-bottom, 16px) !important;
@@ -250,4 +252,5 @@ h1, h2, h3 { font-family: var(--font-heading); }
 }
 [data-sonner-toast][data-visible="false"] {
   visibility: hidden;
+  transition: transform .4s, opacity .4s, height .4s, box-shadow .2s, visibility 0s linear .4s;
 }

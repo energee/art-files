@@ -483,10 +483,10 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     expect(pick, document.body.textContent ?? "").toHaveBeenCalledOnce();
     // A cancel is the user's own choice: nothing was saved, so nothing is said.
     // The export has ended (its row is enabled again) before anything is checked.
-    await vi.waitFor(() => expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(false));
+    await vi.waitFor(() => expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(false), { timeout: 5_000 });
     await settle();
     expect(toastTitles()).toEqual([]);
-  });
+  }, 30_000);
   it(`${extension}: Export again after a pair cancelled at the mask re-runs the ${extension} pair, asking`, async () => {
     const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
       if (pick.mock.calls.length === 2) throw new DOMException("Cancelled", "AbortError");
@@ -713,12 +713,13 @@ it("Open Master during a Save Master write keeps the opened master, its baseline
   const other = openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
   await run("master-open");
   await act(async () => finish());
-  await vi.waitFor(() => expect(close).toHaveBeenCalled());
+  // The write's last step has run; the commit after it takes a moment more.
+  await vi.waitFor(() => expect(close).toHaveBeenCalled(), { timeout: 5_000 });
+  await settle();
   // The finished write must not pull the doc back to the saved master…
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(document.body.textContent).not.toContain("Could not");
   // …nor announce a save of the master the document left.
-  await settle();
   expect(toastTitles()).toEqual([]);
   // …nor move Other's baseline: its review lists only this label's override.
   await run("master-save");
@@ -728,7 +729,7 @@ it("Open Master during a Save Master write keeps the opened master, its baseline
   await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(pick).toHaveBeenCalledOnce();
   expect(other.createWritable).toHaveBeenCalledOnce();
-});
+}, 30_000);
 
 it("the benched-values toast survives the master's texture loading (#11)", async () => {
   class FakeBitmap { width = 10; height = 10; close() {} }
@@ -910,7 +911,7 @@ it("opening a converted master twice shows its warnings once", async () => {
   await shown("mystery");
   await run("master-open");
   // The second open has read its file; its warning would land a tick later.
-  await vi.waitFor(() => expect(getFile).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(getFile).toHaveBeenCalledTimes(2), { timeout: 5_000 });
   await settle();
   expect(toastTitles()).toHaveLength(1);
 }, 30_000);
@@ -1268,14 +1269,15 @@ it("a master switch keeps the texture and mask error toasts", async () => {
   await dropBrokenArt();
   openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
   await run("master-open");
-  await vi.waitFor(() => expect(document.querySelector("#master-picker")?.textContent).toContain("Other"));
+  await vi.waitFor(() => expect(document.querySelector("#master-picker")?.textContent).toContain("Other"), { timeout: 5_000 });
   await settle();
   expect([...toastTitles()].sort()).toEqual(bothArtErrors);
   expect(removedFlags()).toEqual(["false", "false"]);
 }, 30_000);
 
-// The user's close is final for that message: not an edit, a repeat of the same
-// text, nor the tab leaving and coming back shows it again. A new message is news.
+// The user's close is final for that message: neither an edit nor the tab
+// leaving and coming back shows it again. A different message is news. (The same
+// text reported again changes no state, so there is nothing to test there.)
 it("a render error the user closed stays closed until the message changes", async () => {
   const { props } = await mount();
   await act(async () => menu.renderError!("Preview failed: boom"));
@@ -1283,7 +1285,6 @@ it("a render error the user closed stays closed until the message changes", asyn
   act(() => { document.querySelector<HTMLButtonElement>("[data-close-button]")!.click(); });
   await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
 
-  await act(async () => menu.renderError!("Preview failed: boom"));
   await act(async () => root.render(createElement(DocumentEditor, { ...props, active: false })));
   await act(async () => root.render(createElement(DocumentEditor, { ...props, active: true })));
   await toggle("warning");

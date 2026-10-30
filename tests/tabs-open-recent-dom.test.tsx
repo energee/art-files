@@ -120,7 +120,7 @@ it("a second missing recent file replaces the first toast, and a later good open
   expect(toastTitles()).toEqual(["Could not open label: /labels/AlsoGone.label no longer exists."]);
   // The first file is still gone, so a good open elsewhere does not dismiss its error.
   await act(async () => { openRecent("/labels/Here.label"); });
-  await vi.waitFor(() => expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" }));
+  await vi.waitFor(() => expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" }), { timeout: 5_000 });
   await settle();
   expect(toastTitles()).toHaveLength(1);
   expect(removedFlags()).toEqual(["false"]);

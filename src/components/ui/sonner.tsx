@@ -10,7 +10,7 @@
 // the smallest window (1024 x 700, see src-tauri/tauri.conf.json) even with
 // long, multi-line messages: the stack grows up from just above the preview
 // toolbar (index.css), a toast is about 55 px plus 18 px per line of text, and
-// the gaps are 14 px, so four toasts of four lines each take about 555 px of
+// the gaps are 14 px, so four toasts of four lines each take about 550 px of
 // the roughly 600 px pane. More could overflow once messages run to several
 // lines. These figures come from Sonner's styles, not from a browser measurement.
 //

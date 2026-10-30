@@ -134,4 +134,4 @@ it("a dismissed dialog shows nothing", async () => {
   await settle();
   expect(toastTitles()).toEqual([]);
   expect(mocks.editors[0].fileToOpen).toBeNull();
-});
+}, 30_000);

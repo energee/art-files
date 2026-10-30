@@ -133,7 +133,10 @@ it("hides the toast past the limit from the keyboard and assistive tech", () => 
   const css = readFileSync(join(import.meta.dirname, "..", "src", "index.css"), "utf8");
   const rule = css.match(/\[data-sonner-toast\]\[data-visible="false"\]\s*\{[^}]*\}/)?.[0];
   expect(rule, "index.css has no [data-sonner-toast][data-visible=\"false\"] rule").toBeDefined();
-  document.head.append(Object.assign(document.createElement("style"), { textContent: rule }));
+  // Hidden after Sonner's .4s fade-out, not at once; its own transitions stay.
+  expect(rule).toMatch(/transition:[^;]*opacity \.4s[^;]*visibility 0s linear \.4s/);
+  const style = Object.assign(document.createElement("style"), { textContent: rule });
+  document.head.append(style);
   try {
     mount();
     show(...[1, 2, 3, 4, 5].map((n) => () => notify.warning(`Warning ${n}`, { id: `w${n}`, action: { label: `Act ${n}`, onClick: () => {} } })));
@@ -150,7 +153,7 @@ it("hides the toast past the limit from the keyboard and assistive tech", () => 
     expect(back.getAttribute("data-visible")).toBe("true");
     expect(getComputedStyle(back).visibility).not.toBe("hidden");
   } finally {
-    document.head.querySelector("style")?.remove();
+    style.remove();
   }
 });
 
