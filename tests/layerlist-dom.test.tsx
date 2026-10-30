@@ -328,6 +328,43 @@ describe("LayerList", () => {
     expect(changed.className).toContain("text-info-text");
   });
 
+  // Message-toasts row 13: with the header pill gone, the invalid layer's row
+  // is the standing sign that export is blocked — tinted, not just dotted.
+  it("marks an invalid row red and names the reason", () => {
+    render(baseProps({ invalid: new Map([["barcode", "Needs 12 digits"]]) }));
+    const row = rowFor("barcode");
+    const box = row.firstElementChild as HTMLElement;
+    expect(row.hasAttribute("data-invalid")).toBe(true);
+    expect(box.className).toContain("bg-destructive/10");
+    expect(box.className).toContain("text-destructive-text");
+    // The reason leads the name button's tooltip (the drag hint follows) and
+    // is the dot's; the dot keeps its accessible name.
+    expect(row.querySelector("button")!.getAttribute("title")).toMatch(/^Needs 12 digits/);
+    const dot = row.querySelector('[role="img"][aria-label="Invalid value"]')!;
+    expect(dot.getAttribute("title")).toBe("Needs 12 digits");
+
+    // A valid row carries none of it.
+    const valid = rowFor("name");
+    expect(valid.hasAttribute("data-invalid")).toBe(false);
+    expect((valid.firstElementChild as HTMLElement).className).not.toContain("destructive");
+    expect(valid.querySelector("button")!.getAttribute("title")).not.toContain("Needs 12 digits");
+    expect(valid.querySelector('[aria-label="Invalid value"]')).toBeNull();
+  });
+
+  it("keeps a selected invalid row distinct from an unselected one, and both inked red", () => {
+    render(baseProps({ selected: ["barcode"], invalid: new Map([["barcode", "Needs 12 digits"], ["name", "Too long"]]) }));
+    const selected = (rowFor("barcode").firstElementChild as HTMLElement).classList;
+    const other = (rowFor("name").firstElementChild as HTMLElement).classList;
+    // Selected: the hover tint plus a ring, so selection reads over the red
+    // (a deeper tint would drop destructive-text under 4.5:1 in dark).
+    expect(selected.contains("bg-destructive/15")).toBe(true);
+    expect(selected.contains("ring-sidebar-primary/60")).toBe(true);
+    expect(selected.contains("text-destructive-text")).toBe(true);
+    expect(other.contains("bg-destructive/10")).toBe(true);
+    expect(other.contains("text-destructive-text")).toBe(true);
+    expect(other.contains("ring-sidebar-primary/60")).toBe(false);
+  });
+
   it("drags across multiple rows in one reorder and removes the arrow buttons", () => {
     const props = render(baseProps({ selected: ["wordmark"] }));
     expect(byLabel("Bring Brand forward")).toBeNull();

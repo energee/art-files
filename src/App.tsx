@@ -987,7 +987,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       action: { label: t("Show layer"), onClick: () => { setSidebarOpen(true); selectInvalidRef.current(); } },
     });
   };
-  const errorIds = useMemo(() => new Set(Object.keys(errors)), [errors]);
+  const invalidLayers = useMemo(() => new Map(Object.entries(errors)), [errors]);
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every X share. `next` is a
@@ -2439,7 +2439,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
-              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={errorIds}
+              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={invalidLayers}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>

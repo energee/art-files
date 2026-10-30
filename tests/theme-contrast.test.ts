@@ -239,6 +239,19 @@ describe("theme tokens — WCAG AA contrast", () => {
   });
 });
 
+// LayerList's invalid row (src/components/LayerList.tsx) paints
+// bg-destructive/{10,15} under text-destructive-text: rest, then hover and
+// selected. Tailwind composites the alpha over the sidebar (--card).
+describe("invalid Layers row — destructive-text on its tints", () => {
+  it.each(SCHEMES)("holds 4.5:1 on destructive at 10% and 15% over card (%s)", (scheme) => {
+    for (const alpha of [0.1, 0.15]) {
+      const tint = blendSrgb(token("destructive", scheme), token("card", scheme), alpha);
+      const ratio = contrast(token("destructive-text", scheme), tint);
+      expect(ratio, `--destructive-text on destructive/${alpha * 100} in ${scheme}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
 describe("semantic utilities — @theme inline exposure", () => {
   it("exposes --color-<accent>, --color-<accent>-text and --color-<accent>-soft for all six accents", () => {
     for (const accent of ACCENTS) {

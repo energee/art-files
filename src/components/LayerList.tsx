@@ -66,9 +66,10 @@ export interface LayerListProps {
    *  change?" is the question worth filtering on. */
   changedOnly: boolean;
   onChangedOnly: (v: boolean) => void;
-  /** Layers whose filled value is invalid (it blocks export): each row gets
-   *  an error dot. */
-  invalid?: ReadonlySet<string>;
+  /** Layers whose filled value is invalid (it blocks export), layer id →
+   *  the reason. Each such row is tinted red with an error dot, and its
+   *  tooltips name the reason. */
+  invalid?: ReadonlyMap<string, string>;
 }
 
 /** "Add layer" menu entries — the same icons the rows use for each kind. */
@@ -112,8 +113,8 @@ const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, ...p }: {
   dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
-  /** Its filled value is invalid and blocks export. */
-  invalid?: boolean;
+  /** Why its filled value is invalid (it blocks export); unset when valid. */
+  invalid?: string;
   dropEdge?: "top" | "bottom";
   /** Part of the block an in-flight drag is carrying — every selected row
    *  when a selected row is dragged — shown lifted so the group reads as one. */
@@ -133,6 +134,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   // the variant that adds it is off.
   const inactive = !layer.enabled || (row.variant !== undefined && !row.variant.enabled);
   const locked = !!layer.locked;
+  const dragHint = t("Drag to reorder · Alt+↑/↓ · {{range}} for a range, {{add}} to add", {
+    range: isMacOS() ? "⇧-click" : "Shift-click", add: isMacOS() ? "⌘-click" : "Ctrl-click",
+  });
   // Page art can't be dragged (hittestLayers skips it), so it offers no lock.
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   let variantTitle = "";
@@ -191,7 +195,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   };
 
   return (
-    <SidebarMenuItem ref={itemRef} data-layer-id={id} className={cn("relative",
+    <SidebarMenuItem ref={itemRef} data-layer-id={id} data-invalid={invalid ? "" : undefined} className={cn("relative",
       lifted && "opacity-50 ring-1 ring-sidebar-primary/60 rounded-md",
       dropEdge === "top" && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:border-t-2 before:border-sidebar-primary",
       dropEdge === "bottom" && "after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:border-b-2 after:border-sidebar-primary",
@@ -218,6 +222,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             // takes light muted to 4.29:1.
             inactive && "text-muted-foreground hover:text-muted-foreground",
             inactive && isSelected && "hover:bg-sidebar-primary/15",
+            // Invalid is the standing sign that export is blocked, so it wins
+            // over the muted ink above. destructive-text on the sidebar tint
+            // (light / dark): /10 6.22 / 5.01, /15 5.74 / 4.61. /20 is 4.23 in
+            // dark, so a selected row keeps /15 (its hover tint) and gains a
+            // ring instead, so selection still reads over the red.
+            invalid && "bg-destructive/10 text-destructive-text hover:bg-destructive/15 hover:text-destructive-text",
+            invalid && isSelected && "bg-destructive/15 ring-1 ring-inset ring-sidebar-primary/60",
           )}
         >
           <SidebarMenuButton
@@ -231,9 +242,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             onDoubleClick={() => setRenaming(true)}
             onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
             aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-            title={t("Drag to reorder · Alt+↑/↓ · {{range}} for a range, {{add}} to add", {
-              range: isMacOS() ? "⇧-click" : "Shift-click", add: isMacOS() ? "⌘-click" : "Ctrl-click",
-            })}
+            title={invalid ? `${invalid} · ${dragHint}` : dragHint}
             className={cn(
               // The row paints hover and selection; its keyboard-focused name
               // keeps the sidebar ring. Focus identifies the next target;
@@ -242,6 +251,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               // The button's own hover/active/selected accent ink would repaint
               // an inactive row's name at full strength; keep it muted (#440).
               inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
+              // Likewise the red ink, which beats the muted one.
+              invalid && "text-destructive-text hover:text-destructive-text active:text-destructive-text data-active:text-destructive-text data-open:hover:text-destructive-text",
             )}
           >
             <Icon />
@@ -305,7 +316,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               />
             )}
             {invalid && (
-              <span role="img" aria-label={t("Invalid value")} title={t("Fix this value before exporting")}
+              <span role="img" aria-label={t("Invalid value")} title={invalid}
                 className="size-1.5 shrink-0 rounded-full bg-destructive" />
             )}
           </SidebarMenuButton>
@@ -522,7 +533,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               dragHandlers={dragHandlers(row)}
               dropEdge={drop?.id === row.layer.id ? drop.edge : undefined}
               lifted={liftedIds?.has(row.layer.id)}
-              invalid={props.invalid?.has(row.layer.id)}
+              invalid={props.invalid?.get(row.layer.id)}
               onSelect={props.onSelect}
               onToggle={props.onToggle}
               onRename={props.onRename}
