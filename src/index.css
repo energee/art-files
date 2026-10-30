@@ -23,6 +23,9 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+/* `titlebar:` applies only under the macOS desktop overlay title bar, outside
+   full screen (no traffic lights there); src/titlebar.ts sets the attributes. */
+@custom-variant titlebar (:root[data-titlebar="overlay"]:not([data-fullscreen]) &);
 
 @font-face {
   font-family: "Poppins";

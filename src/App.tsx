@@ -74,6 +74,7 @@ import {
 } from "@/assets/io";
 import { useExport } from "@/useExport";
 import { usePreviewToastAnchor } from "@/toastAnchor";
+import { overlayTitlebar } from "@/titlebar";
 import { useProjectSave } from "@/useProjectSave";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
@@ -2478,6 +2479,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
         <Sidebar>
+          {/* macOS overlay title bar (src/titlebar.ts): the traffic lights sit
+              in the sidebar's top corner, so its content starts below this
+              strip, which drags the window. Header height, so the first row
+              lines up with the tab strip. Hidden everywhere else. */}
+          <div data-tauri-drag-region className="hidden h-10 shrink-0 titlebar:block" />
           {/* Click on empty sidebar space deselects. React bubbles a
               PORTALED menu's click (Add layer, the master picker) through
               here too, so only a target really inside the sidebar counts. */}
@@ -2504,8 +2510,19 @@ export const DocumentEditor = memo(function DocumentEditor({
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
-        <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
-          <SidebarTrigger className="size-6" title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
+        {/* macOS overlay title bar (src/titlebar.ts): the header is the window's
+            drag region (a bare attribute: only its own surface drags, its
+            buttons click) and keeps its height while the Layers toggle leaves
+            its flow. The toggle sits at a fixed spot right of the traffic
+            lights (their 69px extent plus the 9px they sit in from the edge,
+            6px down to centre the glyph on their 16px midline), so it neither
+            moves with the sidebar nor sits under them. Anything else the
+            header gains starts at its own left edge, under the lights while
+            the sidebar is collapsed. */}
+        <header data-tauri-drag-region={overlayTitlebar() ? "" : undefined}
+          className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2 titlebar:h-10">
+          <SidebarTrigger className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
+            title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands}
