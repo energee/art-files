@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.116] - 2026-10-30
 
 ### Changed
 - **The Mac title bar blends into the window.** On macOS the title bar is now transparent: the Layers sidebar runs up to the top edge of the window with the red, yellow and green buttons inside it, and the top strip drags the window (double-click it to zoom). The window title text is hidden, since the tab shows the file name. The Layers button now sits right beside the three buttons and stays put when you open or close the sidebar. Windows and Linux keep their normal title bar.
