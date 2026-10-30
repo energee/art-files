@@ -296,6 +296,30 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     await settle();
     expect(toastTitles()).toEqual([]);
   });
+  it(`${extension}: Export again after a pair cancelled at the mask re-runs the ${extension} pair, asking`, async () => {
+    const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
+      if (pick.mock.calls.length === 2) throw new DOMException("Cancelled", "AbortError");
+      return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+    });
+    vi.stubGlobal("showSaveFilePicker", pick);
+    await mount(null, true);
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
+    });
+    await shown("wasn't saved");
+    expect(toastTitles()).toEqual([expect.stringMatching(new RegExp(`-mask\\.${extension} wasn't saved$`))]);
+
+    const again = [...document.querySelectorAll("button")].find((b) => b.textContent === "Export again")!;
+    await act(async () => {
+      again.click();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(4), { timeout: 4000 });
+    });
+    // The same pair again: the art file's dialog first, then the mask's.
+    const [art, mask, artAgain, maskAgain] = pick.mock.calls.map(([options]) => options.suggestedName);
+    expect([artAgain, maskAgain]).toEqual([art, mask]);
+    await shown(`Saved ${art}, ${mask}`);
+  });
   it(`${extension}: a refused mask write reports the saved artwork (#254)`, async () => {
     let writes = 0;
     const { pick, handle } = picker(async () => { if (++writes === 2) throw new Error("Disk full"); });

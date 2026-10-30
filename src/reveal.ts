@@ -8,7 +8,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import { isMacOS } from "@/keys";
-import { errMsg } from "@/lib/utils";
+import { baseName, errMsg } from "@/lib/utils";
 import { notify, type ToastAction } from "@/notify";
 
 /** "Show in Finder" on macOS, "Show in File Explorer" on Windows, else "Show in Folder". */
@@ -28,10 +28,7 @@ export function revealAction(path: string | undefined): ToastAction | undefined 
       void import("@tauri-apps/plugin-opener")
         .then(({ revealItemInDir }) => revealItemInDir(path))
         .catch((err: unknown) => {
-          // Split by hand: Tauri's async basename() is an IPC call, and this
-          // is the failure path.
-          const file = path.split(/[\\/]/).pop();
-          notify.error(t("Couldn't show {{file}}", { file }), { description: errMsg(err) });
+          notify.error(t("Couldn't show {{file}}", { file: baseName(path) }), { description: errMsg(err) });
         });
     },
   };

@@ -31,6 +31,8 @@ setupToastHarness();
 const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
 
 const writes = () => writeFile.mock.calls.map(([p]) => p);
+const toastTitle = () => document.querySelector("[data-title]")?.textContent;
+const button = (label: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === label);
 
 /** Mount one tab's useExport; `exportPdfs` runs Export PDFs (or, with `ask`,
  *  Export PDFs As…) in it, and `exportPrint` the one-file print PDF; each
@@ -80,7 +82,10 @@ it("writes the mask beside the chosen art file without a second dialog", async (
   // No .label path yet: the dialog suggests the bare export name, as before.
   expect(save).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: "beer.pdf" }));
   expect(writes()).toEqual(["/labels/Renamed.pdf", "/labels/Renamed-mask.pdf"]);
-  expect(text()).toContain("Saved /labels/Renamed.pdf, /labels/Renamed-mask.pdf");
+  // The toast names the files; Show in Finder keeps the full path.
+  expect(toastTitle()).toBe("Saved Renamed.pdf, Renamed-mask.pdf");
+  await act(async () => { button("Show in Finder")!.click(); });
+  expect(revealItemInDir).toHaveBeenCalledWith("/labels/Renamed.pdf");
 }, 30000);
 
 it("never asks about the mask, even when one is already there", async () => {
@@ -109,7 +114,7 @@ it("rewrites the remembered pair on a repeat export, with no dialog", async () =
   await tab.exportPdfs({ labelPath: "/labels/Lupula.label" });
   expect(save).toHaveBeenCalledTimes(1);
   expect(writes()).toEqual(["/out/Renamed.pdf", "/out/Renamed-mask.pdf"]);
-  expect(text()).toContain("Saved /out/Renamed.pdf, /out/Renamed-mask.pdf");
+  expect(toastTitle()).toBe("Saved Renamed.pdf, Renamed-mask.pdf");
 }, 30000);
 
 it("asks again for Export As…, opening on the remembered file, and remembers the new one", async () => {
@@ -176,8 +181,8 @@ it("names the derived mask path when writing it fails", async () => {
   writeFile.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("disk full"));
   const tab = await mountExport();
   await tab.exportPdfs();
-  expect(text()).toContain("Couldn't save /labels/Renamed-mask.pdf");
-  expect(text()).toContain("Saved /labels/Renamed.pdf. disk full");
+  expect(toastTitle()).toBe("Couldn't save Renamed-mask.pdf");
+  expect(text()).toContain("Saved Renamed.pdf. disk full");
 }, 30000);
 
 it("remembers a single print file, keeps its destination on cancelled As, and separates pair memory", async () => {
@@ -189,7 +194,7 @@ it("remembers a single print file, keeps its destination on cancelled As, and se
   const tab = await mountExport();
   const labelPath = "/labels/Beer.label";
   await tab.exportPrint({ labelPath });
-  expect(text()).toContain("Saved /print/Beer.pdf");
+  expect(toastTitle()).toBe("Saved Beer.pdf");
   expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("success");
   expect(writes()).toEqual(["/print/Beer.pdf"]);
   writeFile.mockClear();
@@ -225,9 +230,9 @@ it("an older -mask.pdf beside the print PDF warns and offers to reveal it", asyn
   // One toast for the export: the warning replaced the "Saved …" confirmation.
   const warning = [...document.querySelectorAll("[data-sonner-toast]")].find((li) => li.textContent?.includes("Saved"))!;
   expect(warning.getAttribute("data-type")).toBe("warning");
-  expect(warning.querySelector("[data-title]")!.textContent).toBe("Saved /print/Beer.pdf");
+  expect(warning.querySelector("[data-title]")!.textContent).toBe("Saved Beer.pdf");
   expect(warning.querySelector("[data-description]")!.textContent).toBe(
-    "Don't send the old /print/Beer-mask.pdf with it — this PDF already has the white ink.");
+    "Don't send the old Beer-mask.pdf with it — this PDF already has the white ink.");
   expect(toastCount()).toBe(2);
   expect(writes()).toEqual(["/print/Beer.pdf"]);
 

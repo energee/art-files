@@ -46,11 +46,15 @@ const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.1
 
 let api: ReturnType<typeof useExport>;
 let failBuild = false;
+/** The `tag` of the Probe render each build read its art from: which render's
+ *  state the build saw. */
+let builds: string[] = [];
 
-function Probe() {
+/** One editor; render it again with another `tag` to stand for an edit. */
+function Probe({ tag = "before" }: { tag?: string }) {
   api = useExport({
     drawLayers: [], family: "poppins", liveImages: {}, planAssets: () => ({}) as never,
-    pageArt: () => { if (failBuild) throw new Error("No art"); return {}; },
+    pageArt: () => { builds.push(tag); if (failBuild) throw new Error("No art"); return {}; },
     title: "T", exportBase: "Lupula", render: DEFAULT_RENDER,
   });
   return null;
@@ -62,6 +66,7 @@ beforeEach(() => {
   save.desktop = false;
   save.revealItemInDir.mockClear();
   failBuild = false;
+  builds = [];
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue(MAC);
 });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -102,27 +107,32 @@ it("a fresh export toasts Saved Lupula.pdf, which fades, with no action in the b
   expect(toastCount()).toBe(0);
 }, 30000);
 
-it("a fresh export toasts Saved Lupula.pdf with Show in Finder on desktop", async () => {
+// On desktop a save is named by its path: the toast names the file, and Show
+// in Finder gets the whole path.
+it.each([
+  ["/Users/x/Lupula.pdf"],
+  ["C:\\Users\\x\\Lupula.pdf"],
+])("a fresh export toasts Saved Lupula.pdf with Show in Finder on desktop (%s)", async (path) => {
   save.desktop = true;
-  save.next = [async () => ({ name: "Lupula.pdf", bytes: new Uint8Array(), target: { path: "/labels/Lupula.pdf" } })];
+  save.next = [async () => ({ name: path, bytes: new Uint8Array(), target: { path } })];
   mount(<Probe />);
   await printPdf();
-  expect(text()).toContain("Saved Lupula.pdf");
+  expect(toastTitle()).toBe("Saved Lupula.pdf");
 
   await act(async () => { button("Show in Finder")!.click(); });
-  expect(save.revealItemInDir).toHaveBeenCalledWith("/labels/Lupula.pdf");
+  expect(save.revealItemInDir).toHaveBeenCalledWith(path);
 }, 30000);
 
 it("a pair's toast names both files and reveals the first", async () => {
-  // On desktop a save is named by its path, and the mask goes beside the art file.
+  // The mask goes beside the art file, named by its path too.
   save.desktop = true;
-  save.next = [async () => ({ name: "/labels/Lupula.pdf", bytes: new Uint8Array(), target: { path: "/labels/Lupula.pdf" } })];
+  save.next = [async () => ({ name: "/Users/x/Lupula.pdf", bytes: new Uint8Array(), target: { path: "/Users/x/Lupula.pdf" } })];
   mount(<Probe />);
   await pdfPair();
-  expect(text()).toContain("Saved /labels/Lupula.pdf, /labels/Lupula-mask.pdf");
+  expect(toastTitle()).toBe("Saved Lupula.pdf, Lupula-mask.pdf");
 
   await act(async () => { button("Show in Finder")!.click(); });
-  expect(save.revealItemInDir).toHaveBeenCalledWith("/labels/Lupula.pdf");
+  expect(save.revealItemInDir).toHaveBeenCalledWith("/Users/x/Lupula.pdf");
 }, 30000);
 
 it("a cancelled one-file export shows no toast", async () => {
@@ -168,7 +178,7 @@ it("Export again asks even when the art file's path is remembered", async () => 
   ];
   mount(<Probe />);
   await pdfPair();
-  expect(toastTitle()).toBe("/out/Lupula-mask.pdf wasn't saved");
+  expect(toastTitle()).toBe("Lupula-mask.pdf wasn't saved");
   expect(save.requests[0].target).toBeUndefined();
 
   await rerun();
@@ -178,24 +188,48 @@ it("Export again asks even when the art file's path is remembered", async () => 
   expect(save.requests[4].target).toEqual({ path: "/out/Lupula.pdf" });
 }, 30000);
 
+// The warning outlives the render that made it, so Export again must not use
+// that render's state: it goes through the editor's current export.
+it("Export again exports the label as it is when clicked, not as the cancelled export saw it", async () => {
+  save.next = [
+    async () => ({ name: "/out/Lupula.pdf", bytes: new Uint8Array(), target: { path: "/out/Lupula.pdf" } }),
+    async () => null,
+  ];
+  mount(<Probe tag="before" />);
+  await pdfPair();
+  expect(builds).toEqual(["before"]);
+
+  mount(<Probe tag="after" />); // the label was edited
+  await rerun();
+  expect(builds).toEqual(["before", "after"]);
+  expect(save.requests[2]).toEqual({ name: "/out/Lupula.pdf", target: undefined }); // and it asked
+}, 30000);
+
 it("a failed write keeps an error toast naming the file", async () => {
   save.next = [async () => { throw new Error("disk full"); }];
   mount(<Probe />);
   await printPdf();
-  expect(text()).toContain("Couldn't save Lupula.pdf");
+  expect(toastTitle()).toBe("Couldn't save Lupula.pdf");
   expect(text()).toContain("disk full");
   expect(toastType()).toBe("error");
 
   advance(60_000);
-  expect(text()).toContain("Couldn't save Lupula.pdf");
+  expect(toastTitle()).toBe("Couldn't save Lupula.pdf");
   expect(document.querySelectorAll("[data-close-button]")).toHaveLength(1);
+}, 30000);
+
+it("a failed write names the file, not its folder, when the label has a path", async () => {
+  save.next = [async () => { throw new Error("disk full"); }];
+  mount(<Probe />);
+  await finish(() => api.buildFull({ labelPath: "/Users/x/Lupula.label" }));
+  expect(toastTitle()).toBe("Couldn't save Lupula.pdf");
 }, 30000);
 
 it("reports the first file saved and the second that failed", async () => {
   save.next = [async () => ({ name: "Lupula.pdf", bytes: new Uint8Array() }), async () => { throw new Error("disk full"); }];
   mount(<Probe />);
   await pdfPair();
-  expect(text()).toContain("Couldn't save Lupula-mask.pdf");
+  expect(toastTitle()).toBe("Couldn't save Lupula-mask.pdf");
   expect(text()).toContain("Saved Lupula.pdf. disk full");
   expect(text()).not.toContain("wasn't saved");
 }, 30000);

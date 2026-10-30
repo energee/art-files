@@ -8,7 +8,7 @@
 // (exports, Save Label, Save Master) hands its plain-download fallback through.
 import { useEffect, useId, useRef, useState } from "react";
 import { nativeExists, saveThrough, type FileTarget } from "@/files";
-import { errMsg } from "@/lib/utils";
+import { baseName, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
 import { revealAction } from "@/reveal";
 import { t } from "@/i18n";
@@ -211,6 +211,11 @@ export function useExport({
   }
 
   const exportRunning = useRef(false);
+  // The pair exports as this render defines them (assigned below, once buildFull
+  // and exportPsd exist). A warning's Export again goes through this ref, so it
+  // exports the label as it is when clicked, not as it was when the failed
+  // export began.
+  const exportPairAgain = useRef<((extension: "pdf" | "psd", request: ExportRequest) => Promise<void>) | null>(null);
   async function exportPair(
     extension: "pdf" | "psd", type: string, { labelPath, ask }: ExportRequest,
     build: () => Promise<[art: Uint8Array, mask: Uint8Array]>,
@@ -242,7 +247,7 @@ export function useExport({
       // On desktop the mask is written beside the art file, as
       // `<stem>-mask.<extension>` (the export's own extension, so the
       // capability globs cover it), replacing any file there: confirming the
-      // art file confirms the pair. Toasts name the derived path.
+      // art file confirms the pair. Toasts name the derived file.
       let artPath: string | undefined;
       let maskPath: string | undefined;
       for (const [index, bytes] of pair.entries()) {
@@ -252,14 +257,17 @@ export function useExport({
         if (!result) {
           // A cancel is the user's own choice, so it says nothing, unless it
           // leaves a pair half saved: that warns and offers to redo the pair.
-          if (saved.length) notify.warning(t("{{file}} wasn't saved", { file: pending }), {
+          if (saved.length) notify.warning(t("{{file}} wasn't saved", { file: baseName(pending) }), {
             id: toastId,
             description: t("Export again to save both files."),
-            action: { label: t("Export again"), onClick: () => { void exportPair(extension, type, { labelPath, ask: true }, build); } },
+            action: {
+              label: t("Export again"),
+              onClick: () => { void exportPairAgain.current?.(extension, { labelPath, ask: true }); },
+            },
           });
           return;
         }
-        saved.push(result.name);
+        saved.push(baseName(result.name));
         const path = pathOf(result.target);
         if (!index && path) {
           artPath = path;
@@ -271,7 +279,7 @@ export function useExport({
         id: toastId, action: revealAction(artPath),
       });
     } catch (error) {
-      notify.error(t("Couldn't save {{file}}", { file: pending }), {
+      notify.error(t("Couldn't save {{file}}", { file: baseName(pending) }), {
         id: toastId,
         description: saved.length ? `${t("Saved {{files}}.", { files: saved.join(", ") })} ${errMsg(error)}` : errMsg(error),
       });
@@ -320,7 +328,7 @@ export function useExport({
       const result = await saveVia(await build(), name, type, target);
       if (!result) return; // a cancel is the user's own choice: nothing to report
       const path = pathOf(result.target);
-      if (exportFresh.current) notify.success(t("Saved {{files}}", { files: result.name }), {
+      if (exportFresh.current) notify.success(t("Saved {{files}}", { files: baseName(result.name) }), {
         id: toastId, action: revealAction(path),
       });
       if (mode === "print" && path) {
@@ -328,7 +336,7 @@ export function useExport({
         if (format === "pdf") void warnIfStaleMask(path, result.name);
       }
     } catch (error) {
-      notify.error(t("Couldn't save {{file}}", { file: name }), { id: toastId, description: errMsg(error) });
+      notify.error(t("Couldn't save {{file}}", { file: baseName(name) }), { id: toastId, description: errMsg(error) });
     } finally {
       exportRunning.current = false;
       setExporting(null);
@@ -345,9 +353,9 @@ export function useExport({
     const mask = maskBeside(pdfPath, "pdf");
     const stale = await nativeExists(mask).catch((error: unknown) => { void Promise.reject(error); return false; });
     if (!stale || run !== exportRun.current || !exportFresh.current) return;
-    notify.warning(t("Saved {{file}}", { file }), {
+    notify.warning(t("Saved {{file}}", { file: baseName(file) }), {
       id: toastId,
-      description: t("Don't send the old {{mask}} with it — this PDF already has the white ink.", { mask }),
+      description: t("Don't send the old {{mask}} with it — this PDF already has the white ink.", { mask: baseName(mask) }),
       action: revealAction(mask),
     });
   }
@@ -429,6 +437,9 @@ export function useExport({
       return await Promise.all([build("art", { composite: plates?.art }), build("mask", { composite: plates?.mask })]);
     });
   }
+
+  exportPairAgain.current = (extension, request) =>
+    extension === "pdf" ? buildFull(request, "pair") : exportPsd(request, "pair");
 
   return {
     exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
