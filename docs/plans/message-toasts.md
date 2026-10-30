@@ -22,6 +22,7 @@
 - New dependencies: exactly `sonner@2.0.8`, `@tauri-apps/plugin-opener@^2.7.2`, `tauri-plugin-opener = "2"`. Install with `npm install <pkg>@<ver>` (it is a dependency change); never `npm ci` through a symlinked `node_modules`.
 - Ownership (#473, #511): a writer dismisses only the toast it showed. Ongoing (owned) toasts belong to their tab; event toasts show whatever tab is in front.
 - Each message is announced once; errors assertively (`role="alert"` or `aria-live="assertive"`), others politely.
+  - Note (2026-10-30): errors are announced once, politely, not assertively. Sonner's live region is fixed to polite and has no per-toast override, so a second assertive region would read an error twice.
 - Release train: binary-impacting; one `### Changed` bullet under `## [Unreleased]` in `CHANGELOG.md` (Task 11), no version bump.
 - Gates on every task: `npx tsc --noEmit` clean, `npm run lint` zero warnings, the task's tests green. Under machine load run vitest with `--testTimeout=180000`.
 
@@ -76,6 +77,7 @@
   - `"follows the app theme"`: `document.documentElement.dataset.theme = "dark"` → toaster has `data-sonner-theme="dark"`.
   - `"keeps four toasts visible"`: four `notify.warning` calls → four titles visible.
   - `"announces errors assertively and successes politely"`: the error's text is inside an `[aria-live="assertive"]` or `[role="alert"]` element; the success's is not.
+    - Note (2026-10-30): errors are announced once, politely, not assertively. Sonner's live region is fixed to polite and has no per-toast override, so a second assertive region would read an error twice. The shipped test counts that each toast's text sits in exactly one live region.
 - [ ] **Step 2:** `npx vitest run tests/toaster-dom.test.tsx` → FAIL (module not found).
 - [ ] **Step 3:** `npm install sonner@2.0.8`; implement `notify.ts`, `ui/sonner.tsx` and the CSS; mount in `main.tsx`. Warnings and errors get `duration: Infinity, closeButton: true`.
 - [ ] **Step 4:** rerun → PASS; `npx tsc --noEmit`; `npm run lint`.

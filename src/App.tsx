@@ -74,6 +74,7 @@ import {
 } from "@/assets/io";
 import { useExport } from "@/useExport";
 import { usePreviewToastAnchor } from "@/toastAnchor";
+import { overlayTitlebar } from "@/titlebar";
 import { useProjectSave } from "@/useProjectSave";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
@@ -219,17 +220,22 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
   ...(dropped.variants.length ? [translate("{{count}} variant benched: {{names}}", { count: dropped.variants.length, names: dropped.variants.join(", ") })] : []),
 ];
 
-/** The toast sources (toastId) that warn about an editor's own content. */
-const CONTENT_WARNINGS = ["label-warning", "master-warning", "restore-warning", "image-warning"] as const;
+/** The toast sources (toastId) that report on an editor's own content and go
+ *  with its tab: its warnings, and the Switched notice whose Undo acts on it. */
+const TAB_TOASTS = ["label-warning", "master-warning", "restore-warning", "image-warning", "switched"] as const;
 
 /** Focuses a layer's value field in the inspector (`<id>-content`, see
  *  contentFor). The inspector mounts a frame or two after a selection, so this
  *  waits for the field. A focused toast control is blurred first: leaving the
  *  toast region any other way lets Sonner hand focus back to whatever held it
- *  before the toast, which would undo this. */
-function focusContentField(layerId: string) {
+ *  before the toast, which would undo this. `stillActive` is read each frame:
+ *  the field is found by layer id, which every tab of a master shares, so once
+ *  the operator has left the tab the wait must end rather than focus the field
+ *  of the tab now in front. */
+function focusContentField(layerId: string, stillActive: () => boolean) {
   let framesLeft = 30;
   const focusWhenMounted = () => {
+    if (!stillActive()) return;
     const field = document.getElementById(`${layerId}-content`);
     if (!field) {
       if (framesLeft-- > 0) requestAnimationFrame(focusWhenMounted);
@@ -509,11 +515,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   const toastBase = useId();
   const toastId = (source: string) => `${toastBase}:${source}`;
   // A warning about this editor's own content (the label or master it opened,
-  // the master it saved) goes with the tab. Load and save failures stay up: no
+  // the master it saved) goes with the tab, and so does the Switched notice, as
+  // its Undo would act on a closed editor. Load and save failures stay up: no
   // other part of the editor reports them.
   useEffect(() => () => {
-    for (const source of CONTENT_WARNINGS) notify.dismiss(`${toastBase}:${source}`);
+    for (const source of TAB_TOASTS) notify.dismiss(`${toastBase}:${source}`);
   }, [toastBase]);
+  // The document the Switched toast's Undo applies to (commitRebind). Once the
+  // document is any other, that Undo could only do nothing, so the toast goes.
+  const switchedDoc = useRef<Doc | null>(null);
+  useEffect(() => {
+    if (!switchedDoc.current || doc === switchedDoc.current) return;
+    switchedDoc.current = null;
+    notify.dismiss(`${toastBase}:switched`);
+  }, [doc, toastBase]);
   const reportLoadError = (text: string) => { notify.error(text, { id: toastId("load-error") }); };
   // A failed label Save has a toast of its own, so the next Save that works can
   // dismiss it without touching an open or load failure.
@@ -949,9 +964,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // a field, popup, the inspector or a widget owns the key, and so does a
   // focused Layers row, which removes with its own focus hand-off. So does
   // any other focused button (a toolbar control) and anything inside the
-  // toast region (its buttons, and the list Alt+T focuses). Sonner removes a
-  // toast after its action runs, which drops focus onto the page, so an
-  // action that selects a layer must move focus itself (focusContentField).
+  // toast region (its buttons, and the toasts and list focus lands on). Sonner
+  // removes a toast after its action runs, which drops focus onto the page, so
+  // an action that selects a layer must move focus itself (focusContentField).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current || (e.key !== "Delete" && e.key !== "Backspace")) return;
@@ -977,7 +992,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const id = Object.keys(errors)[0];
     if (!id) return;
     setSelection({ ids: [id], anchor: id });
-    focusContentField(id);
+    focusContentField(id, () => activeRef.current);
   };
   // Read by the toast's action, which outlives the render that showed it: the
   // first invalid layer may have changed by the time it is clicked.
@@ -1766,12 +1781,18 @@ export const DocumentEditor = memo(function DocumentEditor({
     clearSelection();
     // The texture and mask survive a master switch, and so do their load errors.
     const notes = benchedNotes(dropped);
-    // One id per editor, so a second switch replaces the first one's toast.
-    if (notes.length) notify.info(t("Switched to “{{name}}”", { name: target.name }), {
-      id: toastId("switched"),
-      description: notes.join(" · "),
-      action: { label: t("Undo"), onClick: () => { if (docRef.current === switched) mutating(undo)(); } },
-    });
+    // One id per editor, so a second switch replaces the first one's toast. A
+    // switch with nothing to report leaves switchedDoc on the earlier one, so
+    // the effect above retires that toast as the document moves on.
+    if (notes.length) {
+      switchedDoc.current = switched;
+      notify.info(t("Switched to “{{name}}”", { name: target.name }), {
+        id: toastId("switched"),
+        description: notes.join(" · "),
+        // Still checked here: a click can land before the effect has dismissed it.
+        action: { label: t("Undo"), onClick: () => { if (docRef.current === switched) mutating(undo)(); } },
+      });
+    }
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
@@ -2458,6 +2479,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
         <Sidebar>
+          {/* macOS overlay title bar (src/titlebar.ts): the traffic lights sit
+              in the sidebar's top corner, so its content starts below this
+              strip, which drags the window. Header height, so the first row
+              lines up with the tab strip. Hidden everywhere else. */}
+          <div data-tauri-drag-region className="hidden h-10 shrink-0 titlebar:block" />
           {/* Click on empty sidebar space deselects. React bubbles a
               PORTALED menu's click (Add layer, the master picker) through
               here too, so only a target really inside the sidebar counts. */}
@@ -2484,11 +2510,23 @@ export const DocumentEditor = memo(function DocumentEditor({
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
-        <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
-          <SidebarTrigger className="size-6" title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
+        {/* macOS overlay title bar (src/titlebar.ts): the header is the window's
+            drag region (a bare attribute: only its own surface drags, its
+            buttons click) and keeps its height while the Layers toggle leaves
+            its flow. The toggle sits at a fixed spot right of the traffic
+            lights (their 69px extent plus the 9px they sit in from the edge,
+            6px down to centre the glyph on their 16px midline), so it neither
+            moves with the sidebar nor sits under them. Anything else the
+            header gains starts at its own left edge, under the lights while
+            the sidebar is collapsed. */}
+        <header data-tauri-drag-region={overlayTitlebar() ? "" : undefined}
+          className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2 titlebar:h-10">
+          <SidebarTrigger className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
+            title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={commands} onNativeError={(text) => notify.error(text, { id: toastId("native-menu") })}
+          {active && <AppMenu actions={commands}
+            onNativeError={(text, source) => notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") })}
             onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible

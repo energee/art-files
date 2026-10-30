@@ -1,28 +1,42 @@
 // save-races-dom.test.tsx — App-level Save / Save Master write paths: pending
 // writes, cancelled browser save targets, and what a Save Master bundles; and
-// Open Master over hidden values. Export, save and open results are toasts, so
-// the real <Toaster /> is mounted beside the editor (mount) and read from the
-// document.
+// Open Master over hidden values, and the Switched toast that follows it. Export,
+// save and open results are toasts, so the real <Toaster /> is mounted beside
+// the editor (mount) and read from the document. The native menu's errors are
+// toasts too: AppMenu is mocked, and the test calls the callback App gives it.
+// The last section covers which toasts go with the tab, which survive a Save or
+// a master switch, and the error paths of opening and saving (a promotion and a
+// boot restore that fail are simulated by mocks: no user action reaches them).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
-import { headerMessages, mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { headerMessages, mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 import type { Command } from "../src/components/CommandMenu";
 
 const menu = vi.hoisted(() => ({
   actions: [] as Command[], renderError: null as null | ((m: string) => void),
+  /** AppMenu's onNativeError: `source` is "quit" for a failed Quit. */
+  nativeError: (_message: string, _source?: "quit") => {},
   /** When set, loading the label's font faces fails with this message. */
   fontError: "",
+  /** When set, Save Master's promotion step (applyPromotions) throws this. */
+  promoteError: "",
+  /** When set, a new tab's boot restore (resolveDefaultMaster) fails with this. */
+  restoreError: "",
 }));
 vi.mock("../src/components/PreviewCompare", () => ({
   PreviewCompare: (p: { onRenderError: (m: string) => void }) => { menu.renderError = p.onRenderError; return null; },
 }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
-vi.mock("../src/components/AppMenu", () => ({ AppMenu: (p: { actions: Command[] }) => { menu.actions = p.actions; return null; } }));
+vi.mock("../src/components/AppMenu", () => ({
+  AppMenu: (p: { actions: Command[]; onNativeError: typeof menu.nativeError }) => {
+    menu.actions = p.actions; menu.nativeError = p.onNativeError; return null;
+  },
+}));
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => {
     if (menu.fontError) throw new Error(menu.fontError);
@@ -33,6 +47,28 @@ vi.mock("../src/fonts", () => ({
 vi.mock("../src/pdf/fonts", async () => {
   const { assets } = await import("./fixtures");
   return { loadFonts: async () => assets.fonts };
+});
+// No promotion a user can tick fails parseMaster's validation, so the throw
+// stands in for it (and for a boot restore that cannot read the library).
+vi.mock("../src/model/editSave", async (importOriginal) => {
+  const editSave = await importOriginal<typeof import("../src/model/editSave")>();
+  return {
+    ...editSave,
+    applyPromotions: (...args: Parameters<typeof editSave.applyPromotions>) => {
+      if (menu.promoteError) throw new Error(menu.promoteError);
+      return editSave.applyPromotions(...args);
+    },
+  };
+});
+vi.mock("../src/masters", async (importOriginal) => {
+  const masters = await importOriginal<typeof import("../src/masters")>();
+  return {
+    ...masters,
+    resolveDefaultMaster: async () => {
+      if (menu.restoreError) throw new Error(menu.restoreError);
+      return masters.resolveDefaultMaster();
+    },
+  };
 });
 vi.mock("../src/psd/build", () => ({
   psdImages: async () => ({}), buildPsd: vi.fn(async () => new Uint8Array([3])),
@@ -72,6 +108,8 @@ afterEach(async () => {
   localStorage.clear();
   desktopSave.path = null;
   menu.fontError = "";
+  menu.promoteError = "";
+  menu.restoreError = "";
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -92,10 +130,12 @@ async function toggle(id: string) {
   await act(async () => b.click());
 }
 function picker(write: (bytes: Uint8Array) => Promise<void> = async () => {}, name = "Beer.label") {
-  const handle = { name, createWritable: vi.fn(async () => ({ write, close: async () => {} })) };
+  /** The last step of a write: once it has run, the save is about to report. */
+  const close = vi.fn(async () => {});
+  const handle = { name, createWritable: vi.fn(async () => ({ write, close })) };
   const pick = vi.fn(async () => handle);
   vi.stubGlobal("showSaveFilePicker", pick);
-  return { handle, pick };
+  return { handle, pick, close };
 }
 it("keeps edits made during a write dirty and refuses close-after-save (#263)", async () => {
   let finish!: () => void;
@@ -309,6 +349,12 @@ async function dropArt(file: File, clientX = 10) {
   await act(async () => { document.body.dispatchEvent(e); await new Promise((r) => setTimeout(r, 10)); });
 }
 const textureFile = (name: string) => new File([name], name, { type: "image/png" });
+/** Opens the Background well and waits until it shows `name`: the texture
+ *  decoded and was adopted, which is when its slot's error would be cleared. */
+async function textureShown(name: string) {
+  await act(async () => (document.querySelector('[data-layer-id="background"] [data-slot="sidebar-menu-button"]') as HTMLElement).click());
+  await vi.waitFor(() => expect(document.body.textContent).toContain(name), { timeout: 5_000 });
+}
 /** Decodes succeed, except for the files `broken` names; the canvas is stubbed
  *  for the preview pass. */
 function stubDecoding(broken: string[]) {
@@ -342,6 +388,7 @@ it("a texture that fails to decode keeps an error toast until a good texture rep
   expect(toastTypes()).toEqual(["error"]);
   await settle();
   expect(toastTitles()).toEqual([TEXTURE_FAILED]);
+  expect(removedFlags()).toEqual(["false"]);
   await dropArt(textureFile("art.png"));
   await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
 }, 30_000);
@@ -369,8 +416,10 @@ it("a texture that loads keeps another slot's error on screen", async () => {
   await dropArt(textureFile("broken-mask.png"), window.innerWidth - 10);
   await shown(maskFailed);
   await dropArt(textureFile("art.png"));
+  await textureShown("art.png");
   await settle();
   expect(toastTitles()).toEqual([maskFailed]);
+  expect(removedFlags()).toEqual(["false"]);
 }, 30_000);
 
 // Export PSD saves one file (White Ink is a spot channel inside it), so it
@@ -433,9 +482,11 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     });
     expect(pick, document.body.textContent ?? "").toHaveBeenCalledOnce();
     // A cancel is the user's own choice: nothing was saved, so nothing is said.
+    // The export has ended (its row is enabled again) before anything is checked.
+    await vi.waitFor(() => expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(false), { timeout: 5_000 });
     await settle();
     expect(toastTitles()).toEqual([]);
-  });
+  }, 30_000);
   it(`${extension}: Export again after a pair cancelled at the mask re-runs the ${extension} pair, asking`, async () => {
     const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
       if (pick.mock.calls.length === 2) throw new DOMException("Cancelled", "AbortError");
@@ -655,18 +706,20 @@ const reviewRows = () => document.querySelectorAll("[data-row]").length;
 
 it("Open Master during a Save Master write keeps the opened master, its baseline and its save target", async () => {
   let finish!: () => void;
-  const { pick } = picker(() => new Promise<void>((resolve) => { finish = resolve; }));
+  const { pick, close } = picker(() => new Promise<void>((resolve) => { finish = resolve; }));
   await mount();
   await toggle("warning");
   await promoteWarning();
   const other = openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
   await run("master-open");
-  await act(async () => { finish(); await new Promise((r) => setTimeout(r, 10)); });
+  await act(async () => finish());
+  // The write's last step has run; the commit after it takes a moment more.
+  await vi.waitFor(() => expect(close).toHaveBeenCalled(), { timeout: 5_000 });
+  await settle();
   // The finished write must not pull the doc back to the saved master…
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(document.body.textContent).not.toContain("Could not");
   // …nor announce a save of the master the document left.
-  await settle();
   expect(toastTitles()).toEqual([]);
   // …nor move Other's baseline: its review lists only this label's override.
   await run("master-save");
@@ -676,12 +729,16 @@ it("Open Master during a Save Master write keeps the opened master, its baseline
   await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(pick).toHaveBeenCalledOnce();
   expect(other.createWritable).toHaveBeenCalledOnce();
-});
+}, 30_000);
 
 it("the benched-values toast survives the master's texture loading (#11)", async () => {
   class FakeBitmap { width = 10; height = 10; close() {} }
+  // The decode is held until the toast is on screen: Sonner takes a dismissal
+  // sent in the same tick as the toast it names for the toast's own creation.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
   vi.stubGlobal("ImageBitmap", FakeBitmap);
-  vi.stubGlobal("createImageBitmap", async () => new FakeBitmap());
+  vi.stubGlobal("createImageBitmap", async () => { await held; return new FakeBitmap(); });
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
   vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
   const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
@@ -693,9 +750,13 @@ it("the benched-values toast survives the master's texture loading (#11)", async
   await run("master-open");
   // Opening a master that hides a filled value switches at once.
   await shown("volume");
-  // Its texture then loads; the toast is not the texture's to clear.
-  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  // Its texture then loads, which the Background well shows once it has; the
+  // toast is not the texture's to clear.
+  await act(async () => release());
+  await textureShown("art.png");
+  await settle();
   expect(toastTitles()).toEqual(["Switched to “Other”"]);
+  expect(removedFlags()).toEqual(["false"]);
   expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("volume");
 }, 30_000);
 
@@ -750,17 +811,61 @@ it("Open Master over hidden values offers Undo, which restores them", async () =
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true });
 }, 30_000);
 
-// The undo is the switch's own: once the label has moved on, the offer no
-// longer reaches past the user's later edit to undo the switch.
-it("the Undo offer does nothing once the label was edited", async () => {
+// The undo is the switch's own: once the document has moved on, its Undo could
+// only do nothing, so the toast goes with the edit rather than offer it.
+it("the Switched toast is dismissed once the label is edited", async () => {
   await openHidingMaster();
   await shown("Switched to “Other”");
   await toggle("warning");
-  const undo = [...document.querySelectorAll<HTMLButtonElement>("[data-sonner-toast] button")].find((b) => b.textContent === "Undo")!;
-  await act(async () => undo.click());
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+  // The edit stands; nothing undid the switch.
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(warningPressed()).toBe("false");
 }, 30_000);
+
+// The toast leaves with an exit animation, and its Undo button stays clickable
+// until it is gone. A click in that window must not undo the switch the edit has
+// since moved past (the guard in commitRebind's action). The button is held from
+// before the edit, as a click that lands mid-exit would hold it.
+it("the Undo of a Switched toast that is leaving does nothing", async () => {
+  await openHidingMaster();
+  await shown("Switched to “Other”");
+  const undo = [...document.querySelectorAll<HTMLButtonElement>("[data-sonner-toast] button")]
+    .find((b) => b.textContent === "Undo")!;
+  await toggle("warning");
+  // Not gone yet: otherwise a click here would reach no handler and prove nothing.
+  expect(undo.isConnected).toBe(true);
+  await act(async () => undo.click());
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(document.querySelector('[data-layer-id="volume"]')).toBeNull();
+  expect(warningPressed()).toBe("false");
+}, 30_000);
+
+// Its Undo acts on this editor's document, so it must not outlive the tab.
+it("closing the tab dismisses its Switched toast", async () => {
+  await openHidingMaster();
+  await shown("Switched to “Other”");
+  await act(async () => root.unmount());
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);
+
+// "Could not quit" is its own failure: it must not replace the install or
+// update error the menu reported, nor be replaced by one.
+it("a failed Quit and a failed menu install are two toasts", async () => {
+  await mount();
+  await act(async () => { menu.nativeError("Could not install the native menu: no icon"); });
+  await shown("Could not install the native menu: no icon");
+  await act(async () => { menu.nativeError("Could not quit: window is gone", "quit"); });
+  await shown("Could not quit: window is gone");
+  expect([...toastTitles()].sort()).toEqual([
+    "Could not install the native menu: no icon", "Could not quit: window is gone"]);
+  // A repeat of either still replaces its own.
+  await act(async () => { menu.nativeError("Could not update the native menu: busy"); });
+  await shown("Could not update the native menu: busy");
+  await settle();
+  expect([...toastTitles()].sort()).toEqual([
+    "Could not quit: window is gone", "Could not update the native menu: busy"]);
+});
 
 it("⌘Z restores the master the toast's Undo would", async () => {
   await openHidingMaster();
@@ -771,17 +876,23 @@ it("⌘Z restores the master the toast's Undo would", async () => {
 
 /** Stubs the browser open picker to hand back `bytes` as other.master. */
 function stubMasterBytes(bytes: Uint8Array) {
-  vi.stubGlobal("showOpenFilePicker", async () => [
-    { name: "other.master", getFile: async () => new File([bytes as unknown as BlobPart], "other.master") }]);
+  const getFile = vi.fn(async () => new File([bytes as unknown as BlobPart], "other.master"));
+  vi.stubGlobal("showOpenFilePicker", async () => [{ name: "other.master", getFile }]);
+  return getFile;
+}
+/** Stubs the open picker with a v1 master, which converts on the way in and
+ *  warns about its unknown "mystery" layer. */
+function stubConvertedMaster() {
+  const old = lolevV1();
+  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
+  old.defaults = { mystery: 1 } as never;
+  return stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
 }
 
 // A v1 master converts on the way in, with the converter's warnings: one toast
 // for the open, the warnings joined, with no "Note:" lead-in.
 it("Open Master shows a converted master's warnings in one toast, without Note:", async () => {
-  const old = lolevV1();
-  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
-  old.defaults = { mystery: 1 } as never;
-  stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
+  stubConvertedMaster();
   await mount();
   await run("master-open");
   await shown("mystery");
@@ -794,14 +905,13 @@ it("Open Master shows a converted master's warnings in one toast, without Note:"
 }, 30_000);
 
 it("opening a converted master twice shows its warnings once", async () => {
-  const old = lolevV1();
-  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
-  old.defaults = { mystery: 1 } as never;
-  stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
+  const getFile = stubConvertedMaster();
   await mount();
   await run("master-open");
   await shown("mystery");
   await run("master-open");
+  // The second open has read its file; its warning would land a tick later.
+  await vi.waitFor(() => expect(getFile).toHaveBeenCalledTimes(2), { timeout: 5_000 });
   await settle();
   expect(toastTitles()).toHaveLength(1);
 }, 30_000);
@@ -1027,4 +1137,161 @@ it("the header shows no message after an asset error", async () => {
   expect(toastTypes()).toEqual(["error"]);
   expect(headerMessages()).toHaveLength(0);
   expect(document.querySelector("header")!.textContent).not.toContain("font file is gone");
+}, 30_000);
+
+// ---- Toast paths: which toasts go with the tab, which stay, and the error paths ----
+
+const MASK_FAILED = 'Could not load mask "broken-mask.png": Invalid image';
+/** Drops a texture and a mask that both fail to decode, and waits for their toasts. */
+async function dropBrokenArt() {
+  stubDecoding(["broken.png", "broken-mask.png"]);
+  const editor = await mount();
+  await dropArt(textureFile("broken.png"));
+  await dropArt(textureFile("broken-mask.png"), window.innerWidth - 10);
+  await shown(TEXTURE_FAILED);
+  await shown(MASK_FAILED);
+  return editor;
+}
+const bothArtErrors = [MASK_FAILED, TEXTURE_FAILED];
+
+// The open warnings of a label and of a restore are covered where they arise
+// (stale-label-ids-dom, recovery-open-dom); these are the master's and the image's.
+it("closing the tab dismisses its converted-master warning", async () => {
+  stubConvertedMaster();
+  await mount();
+  await run("master-open");
+  await shown("mystery");
+  await act(async () => root.unmount());
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);
+
+it("closing the tab dismisses its missing-image warning", async () => {
+  const warning = "1 image in Lolev.master has no file to save";
+  let written: Uint8Array | undefined;
+  picker(async (b) => { written = b; }, "Lolev.master");
+  await mount(logoLabel("ghost"));
+  await promoteLogo("master-save", () => written);
+  await shown(warning);
+  await act(async () => root.unmount());
+  // The Saved toast fades on its own, so only the warning is looked for.
+  await vi.waitFor(() => expect(toastTitles()).not.toContain(warning), { timeout: 5_000 });
+}, 30_000);
+
+it("a promotion that fails to apply shows the load-error toast and writes nothing", async () => {
+  const { pick } = picker();
+  menu.promoteError = "layer id is taken";
+  await mount();
+  await run("master-save-as");
+  await shown("Could not save master: layer id is taken");
+  expect(toastTitles()).toEqual(["Could not save master: layer id is taken"]);
+  expect(toastTypes()).toEqual(["error"]);
+  expect(pick).not.toHaveBeenCalled();
+}, 30_000);
+
+it("a Save Master write that fails shows the load-error toast", async () => {
+  picker(async () => { throw new Error("Disk full"); }, "Lolev.master");
+  await mount();
+  await run("master-save-as");
+  await shown("Could not save master: Disk full");
+  expect(toastTitles()).toEqual(["Could not save master: Disk full"]);
+  expect(toastTypes()).toEqual(["error"]);
+}, 30_000);
+
+it("a boot restore that fails shows the load-error toast", async () => {
+  menu.restoreError = "library unreadable";
+  await mount();
+  await shown("Could not restore master: library unreadable");
+  expect(toastTitles()).toEqual(["Could not restore master: library unreadable"]);
+  expect(toastTypes()).toEqual(["error"]);
+}, 30_000);
+
+// A read that fails is retried quietly twice (the OS may still be materialising
+// the file); only the last failure is reported.
+it("a label file that cannot be read reports the failure after the quiet retries", async () => {
+  const getFile = vi.fn(async () => { throw new Error("disk went away"); });
+  await mount({ seq: 1, handle: { name: "gone.label", getFile } as unknown as FileSystemFileHandle });
+  await shown("Could not open label: disk went away");
+  expect(getFile).toHaveBeenCalledTimes(3);
+  expect(toastTitles()).toEqual(["Could not open label: disk went away"]);
+  expect(toastTypes()).toEqual(["error"]);
+}, 30_000);
+
+it("a label file read that was aborted reports nothing", async () => {
+  const getFile = vi.fn(async () => { throw new DOMException("Aborted", "AbortError"); });
+  const { props } = await mount({ seq: 1, handle: { name: "gone.label", getFile } as unknown as FileSystemFileHandle });
+  // The open ends after its third read; any report would land a tick later.
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
+  expect(getFile).toHaveBeenCalledTimes(3);
+  await settle();
+  expect(toastTitles()).toEqual([]);
+}, 30_000);
+
+// The retry loop reports its own failures; this is the open's outer catch,
+// reached when reading the recovery snapshot again (for the new tab's key) fails.
+it("a recovered snapshot that cannot be read again reports it", async () => {
+  const bytes = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} }, {});
+  const file = new File([bytes as unknown as BlobPart], "alpha.label");
+  let reads = 0;
+  file.arrayBuffer = async () => {
+    if (reads++) throw new Error("snapshot unreadable");
+    return bytes.slice().buffer as ArrayBuffer;
+  };
+  await mount({ seq: 1, file, recovered: "old:1" });
+  await shown("Could not open label: snapshot unreadable");
+  expect(toastTitles()).toEqual(["Could not open label: snapshot unreadable"]);
+}, 30_000);
+
+// With no file picker (the browser fallback) Open Master clicks a hidden input.
+it("Open Master through the hidden file input reports a file it cannot read", async () => {
+  await mount();
+  const input = document.querySelector<HTMLInputElement>('header input[type="file"]')!;
+  const unreadable = new File(["x"], "broken.master");
+  unreadable.arrayBuffer = async () => { throw new Error("file vanished"); };
+  Object.defineProperty(input, "files", { value: [unreadable], configurable: true });
+  await act(async () => { input.dispatchEvent(new Event("change", { bubbles: true })); });
+  await shown("Could not open master: file vanished");
+  expect(toastTitles()).toEqual(["Could not open master: file vanished"]);
+  expect(toastTypes()).toEqual(["error"]);
+}, 30_000);
+
+// The art that failed to load is still not loaded after a Save, so its error stays.
+it("a successful Save leaves the texture and mask error toasts up", async () => {
+  picker();
+  const { saveSlot } = await dropBrokenArt();
+  await act(async () => { expect(await saveSlot.current!()).toBe(true); });
+  await settle();
+  expect([...toastTitles()].sort()).toEqual(bothArtErrors);
+  expect(removedFlags()).toEqual(["false", "false"]);
+}, 30_000);
+
+// A master switch leaves the texture and mask where they are, and so their errors.
+it("a master switch keeps the texture and mask error toasts", async () => {
+  await dropBrokenArt();
+  openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
+  await run("master-open");
+  await vi.waitFor(() => expect(document.querySelector("#master-picker")?.textContent).toContain("Other"), { timeout: 5_000 });
+  await settle();
+  expect([...toastTitles()].sort()).toEqual(bothArtErrors);
+  expect(removedFlags()).toEqual(["false", "false"]);
+}, 30_000);
+
+// The user's close is final for that message: neither an edit nor the tab
+// leaving and coming back shows it again. A different message is news. (The same
+// text reported again changes no state, so there is nothing to test there.)
+it("a render error the user closed stays closed until the message changes", async () => {
+  const { props } = await mount();
+  await act(async () => menu.renderError!("Preview failed: boom"));
+  await shown("Preview failed: boom");
+  act(() => { document.querySelector<HTMLButtonElement>("[data-close-button]")!.click(); });
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+
+  await act(async () => root.render(createElement(DocumentEditor, { ...props, active: false })));
+  await act(async () => root.render(createElement(DocumentEditor, { ...props, active: true })));
+  await toggle("warning");
+  await settle();
+  expect(toastTitles()).toEqual([]);
+
+  await act(async () => menu.renderError!("Preview failed: other"));
+  await shown("Preview failed: other");
+  expect(toastTitles()).toEqual(["Preview failed: other"]);
 }, 30_000);

@@ -72,3 +72,13 @@ it.each([["/x/Lupula.pdf"], ["C:\\x\\Lupula.pdf"]])("reports a failed reveal of 
     process.off("unhandledRejection", unhandled);
   }
 });
+
+// A path that ends in a separator has no last segment, which would title the
+// toast "Couldn't show " with nothing after it: it names the whole path.
+it.each([["/x/exports/"], ["C:\\x\\exports\\"]])("names the whole path when %s ends in a separator", async (path) => {
+  const error = vi.spyOn(notify, "error").mockReturnValue("toast");
+  mocks.revealItemInDir.mockRejectedValue(new Error("No such file or directory (os error 2)"));
+  revealAction(path)!.onClick();
+  await vi.waitFor(() => expect(error).toHaveBeenCalledWith(
+    `Couldn't show ${path}`, { description: "No such file or directory (os error 2)" }));
+});

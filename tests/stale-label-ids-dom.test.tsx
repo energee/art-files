@@ -13,7 +13,7 @@ import { DEFAULT_RENDER } from "../src/settings";
 import { strToU8, zipSync } from "fflate";
 import { packLabel, unpackLabel } from "../src/model/files";
 import { setLanguage } from "../src/i18n";
-import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -152,6 +152,7 @@ it("a load failure's toast survives its tab closing", async () => {
     await settle();
     expect(toastTitles()).toHaveLength(1);
     expect(toastTitles()[0]).toContain("Could not open a.label");
+    expect(removedFlags()).toEqual(["false"]);
   });
 }, 30_000);
 

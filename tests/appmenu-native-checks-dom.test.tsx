@@ -58,7 +58,12 @@ const native = vi.hoisted(() => {
     },
   };
 });
-vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+// The macOS-only paths: the application menu's icon, its SF Symbols call, and
+// the window Quit closes.
+const win = vi.hoisted(() => ({ close: vi.fn(async () => undefined) }));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: async () => undefined }));
+vi.mock("@tauri-apps/api/app", () => ({ defaultWindowIcon: async () => ({ rid: 1, close: async () => undefined }) }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: win.close }) }));
 vi.mock("@tauri-apps/api/menu", () => native.api);
 import { APP_MENUS, AppMenu, actionsIn } from "@/components/AppMenu";
 
@@ -192,6 +197,32 @@ for (const [platform, userAgent] of [
     }
   });
 }
+
+// Quit is not the menu's own work, so its failure is reported with its source:
+// App shows it as a toast apart from an install or update error.
+it("reports a failed Quit as the quit source", async () => {
+  const platformSpy = vi.spyOn(navigator, "userAgent", "get")
+    .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)");
+  win.close.mockRejectedValueOnce(new Error("window is gone"));
+  native.items.clear();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const errors = vi.fn();
+  try {
+    await act(async () => { root.render(createElement(AppMenu, {
+      actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => {} })),
+      checked: {}, onNativeError: errors, onCheckForUpdates: () => undefined,
+    })); });
+    await vi.waitFor(() => expect(native.items.has("quit")).toBe(true));
+    native.items.get("quit")!.action!();
+    await vi.waitFor(() => expect(errors).toHaveBeenCalledWith("Could not quit: window is gone", "quit"));
+    expect(errors).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove(); platformSpy.mockRestore();
+  }
+});
 
 // File → Save Master… is a `live` row: installed under its plain title (the
 // SF Symbol lookup's key), it then reads the command's label, which says

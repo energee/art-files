@@ -1,12 +1,12 @@
 // notify.ts — the one door every user-facing message goes through. A thin
-// wrapper over Sonner's `toast` that decides, per kind, how long a toast stays
-// and how a screen reader hears it, so no caller picks a duration or an
-// announcement style of its own. Success fades quickly and info lingers long
-// enough to read an Undo; warnings and errors report something the user must
-// see, so they stay until dismissed and always carry a close button. Pass an
-// `id` to make a toast replaceable and dismissible: showing a second toast
-// with the same id updates the first rather than stacking another.
-import { createElement } from "react";
+// wrapper over Sonner's `toast` that decides, per kind, how long a toast stays,
+// so no caller picks a duration of its own. Success fades quickly and info
+// lingers long enough to read an Undo; warnings and errors report something the
+// user must see, so they stay until dismissed and always carry a close button.
+// Pass an `id` to make a toast replaceable and dismissible: showing a second
+// toast with the same id updates the first rather than stacking another.
+// Screen readers hear every toast once, politely, from Sonner's own
+// aria-live="polite" region; nothing here adds a second live region.
 import { toast } from "sonner";
 
 export type ToastAction = { label: string; onClick: () => void };
@@ -26,9 +26,9 @@ export const notify = {
   success: (title: string, opts?: NotifyOptions) => toast.success(title, { ...opts, duration: TOAST_MS.success }),
   info: (title: string, opts?: NotifyOptions) => toast.info(title, { ...opts, duration: TOAST_MS.info }),
   warning: (title: string, opts?: NotifyOptions) => toast.warning(title, { ...opts, ...STAYS }),
-  // Sonner's live region is polite and has no per-toast override, so an error
-  // wraps its title in role="alert", which assistive tech announces assertively.
-  error: (title: string, opts?: NotifyOptions) =>
-    toast.error(createElement("span", { role: "alert" }, title), { ...opts, ...STAYS }),
+  // Polite like the rest: Sonner's live section has no per-toast override, so a
+  // role="alert" on the title (or a mirror outside it) reads the error twice.
+  // Assertive would mean turning that section off and rebuilding its announcements.
+  error: (title: string, opts?: NotifyOptions) => toast.error(title, { ...opts, ...STAYS }),
   dismiss: (id: string) => { toast.dismiss(id); },
 };

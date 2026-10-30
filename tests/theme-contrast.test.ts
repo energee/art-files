@@ -252,6 +252,43 @@ describe("invalid Layers row — destructive-text on its tints", () => {
   });
 });
 
+// A selected invalid row (LayerList.tsx) draws a 1px inset ring over its red
+// tint. The ring is the only cue that tells it from a hovered invalid row, so
+// it needs the 3:1 non-text minimum against that tint. Tint and ring are read
+// from the class string LayerList puts on that row, so changing either class
+// changes what is checked.
+const layerListSource = readFileSync(new URL("../src/components/LayerList.tsx", import.meta.url), "utf8");
+
+function selectedInvalidRowClasses(): string[] {
+  const match = layerListSource.match(/invalid && isSelected && "([^"]+)"/);
+  if (!match) throw new Error("could not find the selected invalid row's classes in LayerList.tsx");
+  return match[1].split(/\s+/);
+}
+
+/** The `bg-<token>[/<alpha>]` or `ring-<token>[/<alpha>]` colour class among
+ * `classes`, as the token's colour and its alpha (1 when there is no /alpha). */
+function colourClass(classes: string[], utility: "bg" | "ring", scheme: Scheme): { hex: string; alpha: number } {
+  // ring-1 (width) and ring-inset are not colours.
+  const pattern = new RegExp(`^${utility}-(?!inset$|\\d)([\\w-]+)(?:/(\\d+))?$`);
+  for (const cls of classes) {
+    const m = cls.match(pattern);
+    if (m) return { hex: token(m[1], scheme), alpha: m[2] === undefined ? 1 : Number(m[2]) / 100 };
+  }
+  throw new Error(`no ${utility}-<colour> class in: ${classes.join(" ")}`);
+}
+
+describe("selected invalid Layers row: ring on its tint", () => {
+  it.each(SCHEMES)("holds 3:1 against the tint, as LayerList paints them over the sidebar (%s)", (scheme) => {
+    const classes = selectedInvalidRowClasses();
+    const bg = colourClass(classes, "bg", scheme);
+    const ringClass = colourClass(classes, "ring", scheme);
+    const tint = blendSrgb(bg.hex, token("sidebar", scheme), bg.alpha);
+    const ring = blendSrgb(ringClass.hex, tint, ringClass.alpha);
+    const ratio = contrast(ring, tint);
+    expect(ratio, `${classes.join(" ")} in ${scheme}: ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe("semantic utilities — @theme inline exposure", () => {
   it("exposes --color-<accent>, --color-<accent>-text and --color-<accent>-soft for all six accents", () => {
     for (const accent of ACCENTS) {

@@ -22,7 +22,7 @@ import {
   Barcode, Eye, EyeOff, Image, Wallpaper, ListFilter, Lock, LockOpen, Plus,
   QrCode, Scan, Trash2, Type, type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
@@ -127,6 +127,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   atBack: boolean;
 } & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove">) {
   const { t } = useTranslation();
+  const hintId = useId();
   const { layer } = row;
   const { id, name } = layer;
   const Icon = iconFor(layer);
@@ -137,6 +138,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const dragHint = t("Drag to reorder · Alt+↑/↓ · {{range}} for a range, {{add}} to add", {
     range: isMacOS() ? "⇧-click" : "Shift-click", add: isMacOS() ? "⌘-click" : "Ctrl-click",
   });
+  // What the name button's tooltip says, and what assistive tech reads as its
+  // description for an invalid row: the reason, then the hint.
+  const hint = invalid ? `${invalid} · ${dragHint}` : dragHint;
   // Page art can't be dragged (hittestLayers skips it), so it offers no lock.
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   let variantTitle = "";
@@ -226,9 +230,12 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             // over the muted ink above. destructive-text on the sidebar tint
             // (light / dark): /10 6.22 / 5.01, /15 5.74 / 4.61. /20 is 4.23 in
             // dark, so a selected row keeps /15 (its hover tint) and gains a
-            // ring instead, so selection still reads over the red.
+            // ring instead, so selection still reads over the red. The ring is
+            // the only cue apart from a hovered row, so it stays full strength:
+            // 4.08 / 5.03 against the tint, where /60 was 2.30 / 2.74, under
+            // the 3:1 non-text minimum (tests/theme-contrast.test.ts).
             invalid && "bg-destructive/10 text-destructive-text hover:bg-destructive/15 hover:text-destructive-text",
-            invalid && isSelected && "bg-destructive/15 ring-1 ring-inset ring-sidebar-primary/60",
+            invalid && isSelected && "bg-destructive/15 ring-1 ring-inset ring-sidebar-primary",
           )}
         >
           <SidebarMenuButton
@@ -242,7 +249,11 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             onDoubleClick={() => setRenaming(true)}
             onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
             aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-            title={invalid ? `${invalid} · ${dragHint}` : dragHint}
+            // The title is a mouse tooltip; for an invalid row aria-describedby
+            // takes over as the description, so the hidden element below holds
+            // the same text and the drag hint is not lost to the reason.
+            aria-describedby={invalid ? hintId : undefined}
+            title={hint}
             className={cn(
               // The row paints hover and selection; its keyboard-focused name
               // keeps the sidebar ring. Focus identifies the next target;
@@ -320,6 +331,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
                 className="size-1.5 shrink-0 rounded-full bg-destructive" />
             )}
           </SidebarMenuButton>
+          {/* Beside the name button, not in it, so the reason and hint describe
+              the button without also becoming part of its name. */}
+          {invalid && <span id={hintId} className="sr-only">{hint}</span>}
 
           <div className="grid shrink-0 grid-cols-[24px_24px_32px] items-center" onClick={stop}>
             <button
