@@ -132,6 +132,30 @@ it("the same save failure twice shows one toast with the latest text", async () 
   await settle();
   expect(toastTitles()).toEqual(["Could not save label: Disk full"]);
 });
+// A failed Save is a problem with that Save: the next one that works ends it.
+it("a save failure's toast goes when the next save succeeds", async () => {
+  let attempts = 0;
+  picker(async () => { if (!attempts++) throw new Error("Disk full"); });
+  const { saveSlot } = await mount();
+  await act(async () => { expect(await saveSlot.current!()).toBe(false); });
+  await shown("Could not save label: Disk full");
+  await act(async () => { expect(await saveSlot.current!()).toBe(true); });
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 3000 });
+}, 30_000);
+// Only a Save's own failure: an open failure is still true after a Save works.
+it("a successful save leaves an open failure's toast up", async () => {
+  picker();
+  const { saveSlot } = await mount({ seq: 1, file: new File(["not a label"], "bad.label") });
+  await shown("Could not open bad.label");
+  const failure = toastTitles();
+  expect(failure).toHaveLength(1);
+  await act(async () => { expect(await saveSlot.current!()).toBe(true); });
+  // Long enough for a dismissal to reach the toast: Sonner marks it removed
+  // (data-removed) before its exit finishes.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+  expect(toastTitles()).toEqual(failure);
+  expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-removed")).toBe("false");
+}, 30_000);
 it("a cancelled Save As preserves the original target (#265)", async () => {
   const { handle, pick } = picker();
   const { saveSlot } = await mount();

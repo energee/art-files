@@ -486,6 +486,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const toastBase = useId();
   const toastId = (source: string) => `${toastBase}:${source}`;
   const reportLoadError = (text: string) => { notify.error(text, { id: toastId("load-error") }); };
+  // A failed label Save has a toast of its own, so the next Save that works can
+  // dismiss it without touching an open or load failure.
+  const reportSaveError = (text: string) => { notify.error(text, { id: toastId("save-error") }); };
   // A .label whose master can't be found asks what to open it on; openProject
   // awaits `choose` (missingMasterChoice).
   const [missingMaster, setMissingMaster] = useState<{
@@ -1477,13 +1480,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     const unchanged = docRef.current === doc && current.texture === texture
       && current.mask === mask && current.customImages === customImages;
     setDirty(!unchanged);
+    notify.dismiss(toastId("save-error")); // a Save that works ends an earlier Save's failure
     // A Save leaves the texture and mask load errors on screen: the art that
     // failed to load is still not loaded, and saving does not change that.
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
   const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportLoadError, startSaveBatch, saveBytes,
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
