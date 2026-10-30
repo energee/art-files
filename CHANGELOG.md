@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **Translations tidied.** Removed an unused duplicate of the barcode module-width warning from the translation tables. The warning itself was already translated, so nothing you see changes.
+
 ## [0.1.114] - 2026-10-30
 
 ### Changed
