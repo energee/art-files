@@ -9,7 +9,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
-import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { headerMessages, mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 import type { Command } from "../src/components/CommandMenu";
 
 const menu = vi.hoisted(() => ({
@@ -962,11 +962,6 @@ it("an image with no file to save warns in its own toast", async () => {
   expect(toasts).toHaveLength(2);
 }, 30_000);
 
-// The header carries no messages: every error, warning and result is a toast
-// (src/notify.ts), so the red/amber pills and the blocked pill are gone.
-const headerMessages = () =>
-  document.querySelectorAll('header [role="alert"], header [data-blocked-export], header .text-warning-text');
-
 // A render error belongs to the tab whose preview failed: it shows while that
 // tab is in front, goes when it is not, and comes back with it. A frame that
 // draws fine takes it away.
@@ -1009,9 +1004,9 @@ it("a label overriding an unknown layer warns once", async () => {
   expect(toastTitles()).toEqual([]);
 }, 30_000);
 
+// The header carries no messages: every error, warning and result is a toast.
 it("the header shows no message after an export succeeds", async () => {
-  vi.stubGlobal("showSaveFilePicker", vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
-    { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) })));
+  picker();
   flatCanvas(0);
   await mount();
   await act(async () => { menu.actions.find((c) => c.id === "export-psd")!.run(); });

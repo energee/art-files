@@ -39,3 +39,8 @@ export const settle = () => act(async () => { await new Promise((resolve) => set
 
 export const toastTitles = () =>
   [...document.querySelectorAll("[data-sonner-toast] [data-title]")].map((el) => el.textContent);
+
+/** What the editor's header still shows as a message: the alerts, blocked pill
+ *  and warning text it used to carry. Every message is a toast now, so none. */
+export const headerMessages = () =>
+  document.querySelectorAll('header [role="alert"], header [data-blocked-export], header .text-warning-text');

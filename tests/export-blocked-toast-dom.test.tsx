@@ -13,7 +13,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
-import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { headerMessages, mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 // An export that starts asks for the fonts first; one that never settles shows
 // that a build began without waiting for a PDF to be made.
@@ -269,8 +269,8 @@ it("screen readers still hear Export blocked: {reason}", async () => {
 }, 30_000);
 
 it("the header shows no message while export is blocked", async () => {
-  const { container } = await mountBlocked();
+  await mountBlocked();
   await press({ key: "e", metaKey: true });
   await shown("Can't export yet");
-  expect(container.querySelectorAll('header [role="alert"], header [data-blocked-export], header .text-warning-text')).toHaveLength(0);
+  expect(headerMessages()).toHaveLength(0);
 }, 30_000);
