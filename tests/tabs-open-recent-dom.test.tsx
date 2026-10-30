@@ -9,7 +9,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { DocumentMeta, FileToOpen } from "../src/App";
-import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 type EditorProps = {
   fileToOpen: FileToOpen | null;
@@ -120,9 +120,10 @@ it("a second missing recent file replaces the first toast, and a later good open
   expect(toastTitles()).toEqual(["Could not open label: /labels/AlsoGone.label no longer exists."]);
   // The first file is still gone, so a good open elsewhere does not dismiss its error.
   await act(async () => { openRecent("/labels/Here.label"); });
+  await vi.waitFor(() => expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" }));
   await settle();
-  expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" });
   expect(toastTitles()).toHaveLength(1);
+  expect(removedFlags()).toEqual(["false"]);
 }, 30_000);
 
 // Not knowing whether the file is there is not the same as it being gone: the

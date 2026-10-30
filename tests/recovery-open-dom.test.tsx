@@ -51,13 +51,18 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => { root.render(createElement(DocumentEditor, props)); });
-  for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-  expect(onOpenSettled).toHaveBeenCalledWith(1, false);
   /** Closes the tab: the editor unmounts, the toaster stays. */
   const closeTab = () => act(async () => { root.unmount(); });
   const unmount = async () => { await closeTab(); container.remove(); await unmountToaster(); };
+  try {
+    await act(async () => { root.render(createElement(DocumentEditor, props)); });
+    for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
+      await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    expect(onOpenSettled).toHaveBeenCalledWith(1, false);
+  } catch (err) {
+    await unmount(); // the caller never gets the handle to do it
+    throw err;
+  }
   return { meta: () => onMeta.mock.calls.at(-1)![0], unmount, closeTab };
 }
 

@@ -13,7 +13,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
-import { headerMessages, mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { headerMessages, mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 import type { Command } from "../src/components/CommandMenu";
 
 const menu = vi.hoisted(() => ({
@@ -130,10 +130,12 @@ async function toggle(id: string) {
   await act(async () => b.click());
 }
 function picker(write: (bytes: Uint8Array) => Promise<void> = async () => {}, name = "Beer.label") {
-  const handle = { name, createWritable: vi.fn(async () => ({ write, close: async () => {} })) };
+  /** The last step of a write: once it has run, the save is about to report. */
+  const close = vi.fn(async () => {});
+  const handle = { name, createWritable: vi.fn(async () => ({ write, close })) };
   const pick = vi.fn(async () => handle);
   vi.stubGlobal("showSaveFilePicker", pick);
-  return { handle, pick };
+  return { handle, pick, close };
 }
 it("keeps edits made during a write dirty and refuses close-after-save (#263)", async () => {
   let finish!: () => void;
@@ -347,6 +349,12 @@ async function dropArt(file: File, clientX = 10) {
   await act(async () => { document.body.dispatchEvent(e); await new Promise((r) => setTimeout(r, 10)); });
 }
 const textureFile = (name: string) => new File([name], name, { type: "image/png" });
+/** Opens the Background well and waits until it shows `name`: the texture
+ *  decoded and was adopted, which is when its slot's error would be cleared. */
+async function textureShown(name: string) {
+  await act(async () => (document.querySelector('[data-layer-id="background"] [data-slot="sidebar-menu-button"]') as HTMLElement).click());
+  await vi.waitFor(() => expect(document.body.textContent).toContain(name), { timeout: 5_000 });
+}
 /** Decodes succeed, except for the files `broken` names; the canvas is stubbed
  *  for the preview pass. */
 function stubDecoding(broken: string[]) {
@@ -361,9 +369,6 @@ function stubDecoding(broken: string[]) {
 }
 const TEXTURE_FAILED = 'Could not load texture "broken.png": Invalid image';
 const toastTypes = () => [...document.querySelectorAll("[data-sonner-toast]")].map((el) => el.getAttribute("data-type"));
-/** Sonner flags a dismissed toast (data-removed) a frame or two before it
- *  leaves the DOM, so a toast that is still up reads "false". */
-const removedFlags = () => [...document.querySelectorAll("[data-sonner-toast]")].map((el) => el.getAttribute("data-removed"));
 
 it("reports a failed texture decode without an unhandled rejection (#266)", async () => {
   vi.stubGlobal("createImageBitmap", async () => { throw new Error("Invalid image"); });
@@ -383,6 +388,7 @@ it("a texture that fails to decode keeps an error toast until a good texture rep
   expect(toastTypes()).toEqual(["error"]);
   await settle();
   expect(toastTitles()).toEqual([TEXTURE_FAILED]);
+  expect(removedFlags()).toEqual(["false"]);
   await dropArt(textureFile("art.png"));
   await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
 }, 30_000);
@@ -410,8 +416,10 @@ it("a texture that loads keeps another slot's error on screen", async () => {
   await dropArt(textureFile("broken-mask.png"), window.innerWidth - 10);
   await shown(maskFailed);
   await dropArt(textureFile("art.png"));
+  await textureShown("art.png");
   await settle();
   expect(toastTitles()).toEqual([maskFailed]);
+  expect(removedFlags()).toEqual(["false"]);
 }, 30_000);
 
 // Export PSD saves one file (White Ink is a spot channel inside it), so it
@@ -474,6 +482,8 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     });
     expect(pick, document.body.textContent ?? "").toHaveBeenCalledOnce();
     // A cancel is the user's own choice: nothing was saved, so nothing is said.
+    // The export has ended (its row is enabled again) before anything is checked.
+    await vi.waitFor(() => expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(false));
     await settle();
     expect(toastTitles()).toEqual([]);
   });
@@ -696,13 +706,14 @@ const reviewRows = () => document.querySelectorAll("[data-row]").length;
 
 it("Open Master during a Save Master write keeps the opened master, its baseline and its save target", async () => {
   let finish!: () => void;
-  const { pick } = picker(() => new Promise<void>((resolve) => { finish = resolve; }));
+  const { pick, close } = picker(() => new Promise<void>((resolve) => { finish = resolve; }));
   await mount();
   await toggle("warning");
   await promoteWarning();
   const other = openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
   await run("master-open");
-  await act(async () => { finish(); await new Promise((r) => setTimeout(r, 10)); });
+  await act(async () => finish());
+  await vi.waitFor(() => expect(close).toHaveBeenCalled());
   // The finished write must not pull the doc back to the saved master…
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(document.body.textContent).not.toContain("Could not");
@@ -741,8 +752,7 @@ it("the benched-values toast survives the master's texture loading (#11)", async
   // Its texture then loads, which the Background well shows once it has; the
   // toast is not the texture's to clear.
   await act(async () => release());
-  await act(async () => (document.querySelector('[data-layer-id="background"] [data-slot="sidebar-menu-button"]') as HTMLElement).click());
-  await vi.waitFor(() => expect(document.body.textContent).toContain("art.png"), { timeout: 5_000 });
+  await textureShown("art.png");
   await settle();
   expect(toastTitles()).toEqual(["Switched to “Other”"]);
   expect(removedFlags()).toEqual(["false"]);
@@ -865,8 +875,9 @@ it("⌘Z restores the master the toast's Undo would", async () => {
 
 /** Stubs the browser open picker to hand back `bytes` as other.master. */
 function stubMasterBytes(bytes: Uint8Array) {
-  vi.stubGlobal("showOpenFilePicker", async () => [
-    { name: "other.master", getFile: async () => new File([bytes as unknown as BlobPart], "other.master") }]);
+  const getFile = vi.fn(async () => new File([bytes as unknown as BlobPart], "other.master"));
+  vi.stubGlobal("showOpenFilePicker", async () => [{ name: "other.master", getFile }]);
+  return getFile;
 }
 /** Stubs the open picker with a v1 master, which converts on the way in and
  *  warns about its unknown "mystery" layer. */
@@ -874,7 +885,7 @@ function stubConvertedMaster() {
   const old = lolevV1();
   old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
   old.defaults = { mystery: 1 } as never;
-  stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
+  return stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
 }
 
 // A v1 master converts on the way in, with the converter's warnings: one toast
@@ -893,11 +904,13 @@ it("Open Master shows a converted master's warnings in one toast, without Note:"
 }, 30_000);
 
 it("opening a converted master twice shows its warnings once", async () => {
-  stubConvertedMaster();
+  const getFile = stubConvertedMaster();
   await mount();
   await run("master-open");
   await shown("mystery");
   await run("master-open");
+  // The second open has read its file; its warning would land a tick later.
+  await vi.waitFor(() => expect(getFile).toHaveBeenCalledTimes(2));
   await settle();
   expect(toastTitles()).toHaveLength(1);
 }, 30_000);

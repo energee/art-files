@@ -57,19 +57,22 @@ async function openOrphan(pick: string) {
   await mountToaster();
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
-  await act(async () => { root.render(createElement(DocumentEditor, props)); });
-  for (let i = 0; i < 400 && !button(pick); i++) await tick();
-  expect(document.body.textContent).toContain("This label was made with a different master");
-  await act(async () => { button(pick)!.click(); });
-  for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++) await tick();
-  await settle(); // a toast lands a tick after its message is sent
-  const title = onMeta.mock.calls.at(-1)?.[0]?.title;
-  const reasked = !!button(pick);
-  const toasts = toastTitles();
-  const cancelled = onOpenSettled.mock.calls.at(-1)?.[1];
-  await act(async () => { root.unmount(); });
-  await unmountToaster();
-  return { title, reasked, toasts, cancelled };
+  try {
+    await act(async () => { root.render(createElement(DocumentEditor, props)); });
+    for (let i = 0; i < 400 && !button(pick); i++) await tick();
+    expect(document.body.textContent).toContain("This label was made with a different master");
+    await act(async () => { button(pick)!.click(); });
+    for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++) await tick();
+    await settle(); // the open has settled; a toast lands a tick after its message is sent
+    const title = onMeta.mock.calls.at(-1)?.[0]?.title;
+    const reasked = !!button(pick);
+    const toasts = toastTitles();
+    const cancelled = onOpenSettled.mock.calls.at(-1)?.[1];
+    return { title, reasked, toasts, cancelled };
+  } finally {
+    await act(async () => { root.unmount(); });
+    await unmountToaster();
+  }
 }
 
 it("Use current opens the label on this tab's master", async () => {
