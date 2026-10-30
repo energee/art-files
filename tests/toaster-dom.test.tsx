@@ -1,67 +1,23 @@
+// @vitest-environment happy-dom
 // toaster-dom.test.tsx — the app's one Sonner toaster (src/components/ui/
 // sonner.tsx) and the notify helper (src/notify.ts) that every message goes
 // through: how long each kind stays, where the stack sits, which theme it
 // wears, how many toasts show at once, and how screen readers are told.
 // Sonner renders into the document, so the real <Toaster /> is mounted under
-// happy-dom with fake timers driving its auto-dismiss and exit animation.
-// Sonner defers showing a toast with setTimeout and hiding one with
-// requestAnimationFrame, so both are faked and every notify call goes through
-// show() to let the toast land before the test looks.
-// @vitest-environment happy-dom
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { toast } from "sonner";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Toaster } from "@/components/ui/sonner";
+// happy-dom with fake timers driving its auto-dismiss and exit animation
+// (tests/toast-harness.ts). Every notify call goes through show() to let the
+// toast land before the test looks.
+import { act } from "react";
+import { afterEach, expect, it, vi } from "vitest";
 import { notify } from "@/notify";
+import { EXIT_MS, advance, mount, settleDismissal, setupToastHarness, show, text, toastCount } from "./toast-harness";
 
-let container: HTMLDivElement;
-let root: Root;
+setupToastHarness();
 
-/** Mount the toaster; call before the first notify so Sonner is subscribed. */
-function mountToaster() {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-  act(() => { root.render(createElement(Toaster)); });
-}
-
-/** Let time pass inside act so Sonner's timers and state updates flush. */
-function advance(ms: number) {
-  act(() => { vi.advanceTimersByTime(ms); });
-}
-
-/** Run notify calls, then let Sonner's deferred render of them happen. */
-function show(...calls: Array<() => unknown>) {
-  act(() => {
-    for (const call of calls) call();
-    vi.advanceTimersByTime(0);
-  });
-}
-
-/** Sonner keeps a dismissed toast mounted for its exit animation (~200 ms). */
-const EXIT_MS = 500;
-
-const toastCount = () => document.querySelectorAll("[data-sonner-toast]").length;
-const text = () => document.body.textContent ?? "";
-
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "Date"] });
-});
-
-afterEach(() => {
-  // Sonner's store outlives the Toaster and replays what is still active to the
-  // next one that mounts, so retire every toast before the next test.
-  toast.dismiss();
-  act(() => { root.unmount(); });
-  container.remove();
-  document.body.replaceChildren();
-  delete document.documentElement.dataset.theme;
-  vi.useRealTimers();
-});
+afterEach(() => { delete document.documentElement.dataset.theme; });
 
 it("a success toast shows its title and fades after 4 s", () => {
-  mountToaster();
+  mount();
   show(() => notify.success("Saved Lupula.pdf"));
   expect(text()).toContain("Saved Lupula.pdf");
 
@@ -73,7 +29,7 @@ it("a success toast shows its title and fades after 4 s", () => {
 });
 
 it("warnings and errors stay until dismissed and have a close button", () => {
-  mountToaster();
+  mount();
   show(
     () => notify.warning("Lupula-mask.pdf wasn't saved"),
     () => notify.error("Couldn't save Lupula.pdf"),
@@ -96,7 +52,7 @@ it("warnings and errors stay until dismissed and have a close button", () => {
 });
 
 it("an info toast stays 8 s, longer than a success", () => {
-  mountToaster();
+  mount();
   show(() => notify.info("Switched to “Lolev”"));
 
   advance(7900);
@@ -107,7 +63,7 @@ it("an info toast stays 8 s, longer than a success", () => {
 });
 
 it("sits at the bottom centre", () => {
-  mountToaster();
+  mount();
   show(() => notify.success("Saved"));
   const toaster = document.querySelector("[data-sonner-toaster]")!;
   expect(toaster.getAttribute("data-y-position")).toBe("bottom");
@@ -116,13 +72,13 @@ it("sits at the bottom centre", () => {
 
 it("follows the app theme", () => {
   document.documentElement.dataset.theme = "dark";
-  mountToaster();
+  mount();
   show(() => notify.success("Saved"));
   expect(document.querySelector("[data-sonner-toaster]")!.getAttribute("data-sonner-theme")).toBe("dark");
 });
 
 it("keeps four toasts visible", () => {
-  mountToaster();
+  mount();
   show(...[1, 2, 3, 4].map((n) => () => notify.warning(`Warning ${n}`)));
   expect(toastCount()).toBe(4);
   const visible = [...document.querySelectorAll("[data-sonner-toast]")]
@@ -131,7 +87,7 @@ it("keeps four toasts visible", () => {
 });
 
 it("announces errors assertively and successes politely", () => {
-  mountToaster();
+  mount();
   show(
     () => notify.error("Couldn't save Lupula.pdf"),
     () => notify.success("Saved Lupula.pdf"),
@@ -147,7 +103,7 @@ it("announces errors assertively and successes politely", () => {
 });
 
 it("replaces a toast that reuses its id instead of stacking a second", () => {
-  mountToaster();
+  mount();
   show(() => notify.warning("First", { id: "tab-1:resolve" }));
   show(() => notify.warning("Second", { id: "tab-1:resolve" }));
   expect(toastCount()).toBe(1);
@@ -156,7 +112,7 @@ it("replaces a toast that reuses its id instead of stacking a second", () => {
 });
 
 it("dismisses a toast by id, and runs its action on click", () => {
-  mountToaster();
+  mount();
   const onClick = vi.fn();
   show(() => notify.error("Can't export yet", { id: "blocked", description: "Barcode is invalid", action: { label: "Show layer", onClick } }));
   expect(text()).toContain("Barcode is invalid");
@@ -172,7 +128,7 @@ it("dismisses a toast by id, and runs its action on click", () => {
 });
 
 it("runs onDismiss when a toast is closed or dismissed by id, not when it fades or its action is clicked", () => {
-  mountToaster();
+  mount();
   const closed = vi.fn();
   const byId = vi.fn();
   const acted = vi.fn();
@@ -190,10 +146,7 @@ it("runs onDismiss when a toast is closed or dismissed by id, not when it fades 
   act(() => { closeButton.click(); });
   act(() => { notify.dismiss("by-id"); });
   act(() => { [...document.querySelectorAll("button")].find((b) => b.textContent === "Fix")!.click(); });
-  // A dismissal by id finishes in two steps, so time passes twice (see the
-  // matching helper in tests/use-owned-toast-dom.test.tsx).
-  advance(EXIT_MS);
-  advance(EXIT_MS);
+  settleDismissal();
   advance(5000);
 
   expect(closed).toHaveBeenCalledTimes(1);

@@ -1,24 +1,20 @@
+// @vitest-environment happy-dom
 // use-owned-toast-dom.test.tsx — useOwnedToast (src/useOwnedToast.ts), the hook
 // for a message that belongs to one source and one tab: a writer replaces or
 // clears only its own toast (#473 exports, #511 asset assembly), the toast
 // hides while its tab is inactive and comes back with the tab (unless the user
 // closed it), a message that arrives right after a dismissal still shows, and
 // the toast goes when the owner unmounts. The real <Toaster /> is mounted under
-// happy-dom with Sonner's timers faked (see tests/toaster-dom.test.tsx for
-// why), and each owner is a tiny component that hands the hook's controls to
-// the test.
-// @vitest-environment happy-dom
-import { act, useEffect, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { toast } from "sonner";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Toaster } from "@/components/ui/sonner";
+// happy-dom with Sonner's timers faked (tests/toast-harness.ts), and each owner
+// is a tiny component that hands the hook's controls to the test.
+import { act, useEffect } from "react";
+import { expect, it, vi } from "vitest";
 import { useOwnedToast } from "@/useOwnedToast";
+import { advance, mount, setupToastHarness, settleDismissal, show, text, toastCount } from "./toast-harness";
+
+setupToastHarness();
 
 type Owned = ReturnType<typeof useOwnedToast>;
-
-let container: HTMLDivElement;
-let root: Root;
 
 /** Renders nothing; passes the hook's controls to `into` for the test to call. */
 function Owner({ active = true, into }: { active?: boolean; into: (owned: Owned) => void }) {
@@ -26,57 +22,6 @@ function Owner({ active = true, into }: { active?: boolean; into: (owned: Owned)
   useEffect(() => { into(owned); }, [into, owned]);
   return null;
 }
-
-/** Let time pass inside act so Sonner's timers and state updates flush. */
-function advance(ms: number) {
-  act(() => { vi.advanceTimersByTime(ms); });
-}
-
-/** Render the toaster plus these owners; call again to rerender or unmount
- *  them. A toast an owner's effect shows on the way gets its deferred render. */
-function mount(owners: ReactNode = null) {
-  act(() => { root.render(<><Toaster />{owners}</>); });
-  advance(0);
-}
-
-/** Run owner calls, then let Sonner's deferred render of them happen. */
-function show(...calls: Array<() => void>) {
-  act(() => {
-    for (const call of calls) call();
-    vi.advanceTimersByTime(0);
-  });
-}
-
-/** Sonner keeps a dismissed toast mounted for its exit animation (~200 ms). */
-const EXIT_MS = 500;
-
-/** Let a dismissal finish. Sonner marks a dismissed toast deleted a couple of
- *  animation frames later and starts its ~200 ms exit timer only once React
- *  has rendered that, so time has to pass twice. */
-function settleDismissal() {
-  advance(EXIT_MS);
-  advance(EXIT_MS);
-}
-
-const toastCount = () => document.querySelectorAll("[data-sonner-toast]").length;
-const text = () => document.body.textContent ?? "";
-
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "Date"] });
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-});
-
-afterEach(() => {
-  // Sonner's store outlives the Toaster and replays what is still active to the
-  // next one that mounts, so retire every toast before the next test.
-  toast.dismiss();
-  act(() => { root.unmount(); });
-  container.remove();
-  document.body.replaceChildren();
-  vi.useRealTimers();
-});
 
 it("shows its message and replaces it instead of stacking", () => {
   let owned!: Owned;
