@@ -60,7 +60,10 @@ const en = {
   "Top": "Top",
   "Left": "Left",
   "Right": "Right",
-  "Bottom": "Bottom"
+  "Bottom": "Bottom",
+  "Show in Finder": "Show in Finder",
+  "Show in File Explorer": "Show in File Explorer",
+  "Show in Folder": "Show in Folder"
 };
 
 const es: Record<keyof typeof en, string> = {
@@ -125,7 +128,10 @@ const es: Record<keyof typeof en, string> = {
   "Top": "Arriba",
   "Left": "Izquierda",
   "Right": "Derecha",
-  "Bottom": "Abajo"
+  "Bottom": "Abajo",
+  "Show in Finder": "Mostrar en el Finder",
+  "Show in File Explorer": "Mostrar en el Explorador de archivos",
+  "Show in Folder": "Mostrar en la carpeta"
 };
 
 const fr: Record<keyof typeof en, string> = {
@@ -190,7 +196,10 @@ const fr: Record<keyof typeof en, string> = {
   "Top": "Haut",
   "Left": "Gauche",
   "Right": "Droite",
-  "Bottom": "Bas"
+  "Bottom": "Bas",
+  "Show in Finder": "Afficher dans le Finder",
+  "Show in File Explorer": "Afficher dans l’Explorateur de fichiers",
+  "Show in Folder": "Afficher dans le dossier"
 };
 
 const de: Record<keyof typeof en, string> = {
@@ -255,7 +264,10 @@ const de: Record<keyof typeof en, string> = {
   "Top": "Oben",
   "Left": "Links",
   "Right": "Rechts",
-  "Bottom": "Unten"
+  "Bottom": "Unten",
+  "Show in Finder": "Im Finder anzeigen",
+  "Show in File Explorer": "Im Datei-Explorer anzeigen",
+  "Show in Folder": "Im Ordner anzeigen"
 };
 
 const pt: Record<keyof typeof en, string> = {
@@ -320,7 +332,10 @@ const pt: Record<keyof typeof en, string> = {
   "Top": "Superior",
   "Left": "Esquerda",
   "Right": "Direita",
-  "Bottom": "Inferior"
+  "Bottom": "Inferior",
+  "Show in Finder": "Mostrar no Finder",
+  "Show in File Explorer": "Mostrar no Explorador de Arquivos",
+  "Show in Folder": "Mostrar na pasta"
 };
 
 export default { en, es, fr, de, pt };

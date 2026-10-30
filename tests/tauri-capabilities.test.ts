@@ -76,6 +76,16 @@ describe("desktop master-file access", () => {
   it("can open a native file dialog", () => {
     expect(caps.permissions).toContain("dialog:allow-open");
   });
+
+  // The "Show in Finder" toast action reveals an export in its folder. The
+  // opener plugin can also open arbitrary paths and URLs, so grant nothing but
+  // the reveal; `opener:default` would add open-url.
+  it("grants only reveal-item-in-dir from the opener plugin", () => {
+    const opener = caps.permissions
+      .map((p) => (typeof p === "string" ? p : p.identifier))
+      .filter((id) => id.startsWith("opener:"));
+    expect(opener).toEqual(["opener:allow-reveal-item-in-dir"]);
+  });
 });
 
 // A null CSP let any injected markup load and run remote code. Everything the

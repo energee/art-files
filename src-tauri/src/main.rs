@@ -200,7 +200,8 @@ fn main() {
     }));
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init());
     // Tauri rejects an updater plugin with no `plugins.updater` config. Keep
     // it entirely out of keyless local builds; the release workflow supplies
     // both this compile-time flag and the signed updater configuration.
