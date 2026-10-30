@@ -10,7 +10,11 @@ import { createElement } from "react";
 import { toast } from "sonner";
 
 export type ToastAction = { label: string; onClick: () => void };
-export type NotifyOptions = { id?: string; description?: string; action?: ToastAction };
+/** `onDismiss` runs when the toast is closed with its close button, swiped
+ *  away, or dismissed with `notify.dismiss` — so a caller that dismisses its own
+ *  toast must tell that apart from the user closing it (by id). It does not run
+ *  when a success/info toast fades or when its action is clicked. */
+export type NotifyOptions = { id?: string; description?: string; action?: ToastAction; onDismiss?: () => void };
 
 /** How long (ms) the kinds that fade stay on screen. */
 export const TOAST_MS = { success: 4000, info: 8000 } as const;

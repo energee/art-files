@@ -170,3 +170,34 @@ it("dismisses a toast by id, and runs its action on click", () => {
   advance(EXIT_MS);
   expect(text()).not.toContain("Can't export yet");
 });
+
+it("runs onDismiss when a toast is closed or dismissed by id, not when it fades or its action is clicked", () => {
+  mountToaster();
+  const closed = vi.fn();
+  const byId = vi.fn();
+  const acted = vi.fn();
+  const faded = vi.fn();
+  show(
+    () => notify.warning("Closed by the user", { id: "closed", onDismiss: closed }),
+    () => notify.warning("Dismissed by id", { id: "by-id", onDismiss: byId }),
+    () => notify.warning("Action clicked", { id: "acted", onDismiss: acted, action: { label: "Fix", onClick: () => {} } }),
+    () => notify.success("Fades on its own", { onDismiss: faded }),
+  );
+
+  const closeButton = [...document.querySelectorAll("[data-sonner-toast]")]
+    .find((li) => li.textContent?.includes("Closed by the user"))!
+    .querySelector<HTMLButtonElement>("[data-close-button]")!;
+  act(() => { closeButton.click(); });
+  act(() => { notify.dismiss("by-id"); });
+  act(() => { [...document.querySelectorAll("button")].find((b) => b.textContent === "Fix")!.click(); });
+  // A dismissal by id finishes in two steps, so time passes twice (see the
+  // matching helper in tests/use-owned-toast-dom.test.tsx).
+  advance(EXIT_MS);
+  advance(EXIT_MS);
+  advance(5000);
+
+  expect(closed).toHaveBeenCalledTimes(1);
+  expect(byId).toHaveBeenCalledTimes(1);
+  expect(acted).not.toHaveBeenCalled();
+  expect(faded).not.toHaveBeenCalled();
+});
