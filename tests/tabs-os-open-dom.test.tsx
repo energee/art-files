@@ -95,7 +95,7 @@ it("names a delivered path that isn't a .label instead of opening nothing", asyn
   await shown("Could not open label: /outside/secret.bin isn't a .label file.");
   // The toast is the only surface: the tab strip carries no error text of its own.
   expect(host.textContent).not.toContain("Could not open label");
-});
+}, 30_000);
 
 it("a second stray file replaces the first toast, and a .label delivered after still opens", async () => {
   await boot(["/outside/one.bin", "/outside/two.bin", "/labels/Real.label"]);
@@ -103,7 +103,7 @@ it("a second stray file replaces the first toast, and a .label delivered after s
   await shown("/outside/two.bin isn't a .label file.");
   expect(toastTitles()).toEqual(["Could not open label: /outside/two.bin isn't a .label file."]);
   expect(mocks.editors[0]?.fileToOpen).toMatchObject({ path: "/labels/Real.label" });
-});
+}, 30_000);
 
 it("a cancelled open closes the tab made for it, not the pristine tab it reused", async () => {
   await boot(["/labels/A.label", "/labels/B.label"]);

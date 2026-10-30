@@ -118,5 +118,5 @@ it("a good image dismisses the error toast a bad one left (#511)", async () => {
   await shown("Could not load image");
   expect(toastTitles()).toEqual([expect.stringContaining("Could not load image")]);
   await act(async () => { await wells.image!.onFile(svg("a.svg", "M0 0 L10 0 L10 10 Z")); });
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
-});
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);

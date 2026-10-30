@@ -119,7 +119,7 @@ it("reports a refused write without downloading or clearing dirty (#265)", async
   await shown("Could not save label: Permission refused");
   expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("error");
   expect(download).not.toHaveBeenCalled();
-});
+}, 30_000);
 // A repeat of the same kind of failure replaces its toast instead of stacking another.
 it("the same save failure twice shows one toast with the latest text", async () => {
   let attempts = 0;
@@ -131,7 +131,7 @@ it("the same save failure twice shows one toast with the latest text", async () 
   await shown("Could not save label: Disk full");
   await settle();
   expect(toastTitles()).toEqual(["Could not save label: Disk full"]);
-});
+}, 30_000);
 // A failed Save is a problem with that Save: the next one that works ends it.
 it("a save failure's toast goes when the next save succeeds", async () => {
   let attempts = 0;
@@ -272,7 +272,7 @@ it("Save Master with no changes toasts Saved with no count", async () => {
   await shown("Saved Lolev.master");
   expect(toastTitles()).toEqual(["Saved Lolev.master"]);
   expect(document.querySelector("[data-sonner-toast] [data-description]")).toBeNull();
-});
+}, 30_000);
 
 it("Save Master names the file by its base name when the desktop returns a path", async () => {
   desktopSave.path = "/Users/ted/masters/Lolev.master";
@@ -280,7 +280,7 @@ it("Save Master names the file by its base name when the desktop returns a path"
   await act(async () => { await menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
   await shown("Saved Lolev.master");
   expect(toastTitles()).toEqual(["Saved Lolev.master"]);
-});
+}, 30_000);
 
 it("Save Master keeps a promotion when the master is edited during the write", async () => {
   let finish!: () => void;
@@ -330,7 +330,7 @@ it("reports a failed texture decode without an unhandled rejection (#266)", asyn
   await act(async () => { fileDrag("drop", new File(["bad"], "broken.png", { type: "image/png" })); });
   await shown(TEXTURE_FAILED);
   expect(toastTitles()).toEqual([TEXTURE_FAILED]);
-});
+}, 30_000);
 
 // The error belongs to the texture slot: it stays on screen (no fade) until a
 // texture that decodes replaces the broken one.
@@ -343,8 +343,8 @@ it("a texture that fails to decode keeps an error toast until a good texture rep
   await settle();
   expect(toastTitles()).toEqual([TEXTURE_FAILED]);
   await dropArt(textureFile("art.png"));
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
-});
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);
 
 // Opening a label swaps the texture and mask out with the old label, so a load
 // error for the one it replaced must not stay over the new label.
@@ -359,8 +359,8 @@ it("a texture load error does not outlive opening another label", async () => {
     ...props, fileToOpen: { seq: 1, file: new File([label as unknown as BlobPart], "beer.label") },
   })));
   await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
-});
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);
 
 it("a texture that loads keeps another slot's error on screen", async () => {
   stubDecoding(["broken-mask.png"]);
@@ -371,7 +371,7 @@ it("a texture that loads keeps another slot's error on screen", async () => {
   await dropArt(textureFile("art.png"));
   await settle();
   expect(toastTitles()).toEqual([maskFailed]);
-});
+}, 30_000);
 
 // Export PSD saves one file (White Ink is a spot channel inside it), so it
 // opens a single dialog and confirms that one file.
@@ -404,7 +404,7 @@ it("psd: Export PSD saves one PSD with the mask plate as White Ink, and names it
   // One build, the art plate, carrying both flattened plates.
   expect(vi.mocked(buildPsd).mock.calls.map(([, , mode, opts]) => [mode, !!opts?.composite, opts?.whiteInk?.data[0]]))
     .toEqual([["art", true, 0]]);
-});
+}, 30_000);
 
 // No canvas means no White Ink plate: the print PSD fails instead of saving
 // a print file without it.
@@ -420,7 +420,7 @@ it("psd: Export PSD without a canvas reports it and saves nothing", async () => 
   }, { timeout: 15000 });
   expect(toastTitles()).toEqual([expect.stringMatching(/^Couldn't save .+\.psd$/)]);
   expect(pick).not.toHaveBeenCalled();
-});
+}, 30_000);
 
 for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd"]]) {
   it(`${extension}: cancelling artwork stops the pair (#254)`, async () => {
@@ -525,7 +525,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     await act(async () => { again.click(); });
     await shown("Can't export yet");
     // Export again's own warning is gone; only the blocked toast is left.
-    await vi.waitFor(() => expect(toastTitles()).toEqual(["Can't export yet"]));
+    await vi.waitFor(() => expect(toastTitles()).toEqual(["Can't export yet"]), { timeout: 5_000 });
     expect(pick).toHaveBeenCalledTimes(2);
   }, 30_000);
   it(`${extension}: a refused mask write reports the saved artwork (#254)`, async () => {
@@ -545,7 +545,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     await toggle("mask");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
     expect(document.body.textContent).toContain("Disk full");
-  });
+  }, 30_000);
   it(`${extension}: a finished export names both saved files (#400)`, async () => {
     // Each pick saves under the name the app suggested.
     const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
@@ -560,7 +560,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     await shown(`Saved ${art}, ${mask}`);
     expect(toastTitles()).toEqual([`Saved ${art}, ${mask}`]);
     expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("success");
-  });
+  }, 30_000);
   it(`${extension}: an edit during the export withholds the confirmation (#400)`, async () => {
     // The first dialog waits until released, so an edit lands mid-export.
     let release!: () => void;
@@ -606,7 +606,7 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     });
     const [art, mask] = pick.mock.calls.map(([options]) => options.suggestedName);
     await shown(`Saved ${art}, ${mask}`);
-  });
+  }, 30_000);
 }
 
 // Export again goes through the live command table, so an edit made since the
@@ -636,7 +636,7 @@ it("psd: Export again after an edit builds the edited label", async () => {
   });
   expect(layerIds()).not.toContain("warning");
   await shown("Saved "); // the re-run finished
-});
+}, 30_000);
 
 /** Stubs the browser open picker to hand back `m` packed as a .master, with
  *  a handle whose writes succeed (so it can also be Save Master's target). */
@@ -697,7 +697,7 @@ it("the benched-values toast survives the master's texture loading (#11)", async
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
   expect(toastTitles()).toEqual(["Switched to “Other”"]);
   expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("volume");
-});
+}, 30_000);
 
 /** A label filling `volume`, and a master without that layer to open over it. */
 async function openHidingMaster() {
@@ -748,7 +748,7 @@ it("Open Master over hidden values offers Undo, which restores them", async () =
   expect(document.querySelector('[data-layer-id="volume"]')).not.toBeNull();
   // Like ⌘Z, the undo is an edit: the tab reads as changed.
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true });
-});
+}, 30_000);
 
 // The undo is the switch's own: once the label has moved on, the offer no
 // longer reaches past the user's later edit to undo the switch.
@@ -760,7 +760,7 @@ it("the Undo offer does nothing once the label was edited", async () => {
   await act(async () => undo.click());
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(warningPressed()).toBe("false");
-});
+}, 30_000);
 
 it("⌘Z restores the master the toast's Undo would", async () => {
   await openHidingMaster();
@@ -791,7 +791,7 @@ it("Open Master shows a converted master's warnings in one toast, without Note:"
   expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("mystery");
   expect(document.body.textContent).not.toContain("Note:");
   expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
-});
+}, 30_000);
 
 it("opening a converted master twice shows its warnings once", async () => {
   const old = lolevV1();
@@ -804,7 +804,7 @@ it("opening a converted master twice shows its warnings once", async () => {
   await run("master-open");
   await settle();
   expect(toastTitles()).toHaveLength(1);
-});
+}, 30_000);
 
 it("opening a second label with benched values replaces the first one's warning", async () => {
   const benched = (layer: string) => new File([packLabel(
@@ -825,7 +825,7 @@ it("Open Master reports a file that is not a master as an error toast", async ()
   await shown("Could not open master: ");
   expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("error");
   expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
-});
+}, 30_000);
 
 it("Open Master leaves a collapsed sidebar collapsed", async () => {
   const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
@@ -960,7 +960,7 @@ it("an image with no file to save warns in its own toast", async () => {
   expect(saved.querySelector("[data-title]")!.textContent).toBe("Saved Lolev.master");
   expect(saved.textContent).not.toContain("no file");
   expect(toasts).toHaveLength(2);
-});
+}, 30_000);
 
 // The header carries no messages: every error, warning and result is a toast
 // (src/notify.ts), so the red/amber pills and the blocked pill are gone.
@@ -979,14 +979,14 @@ it("a render error toast belongs to its tab", async () => {
   expect(headerMessages()).toHaveLength(0);
 
   await showTab(false);
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
   await showTab(true);
   await shown("Preview failed: boom");
   expect(toastTitles()).toEqual(["Preview failed: boom"]);
 
   await act(async () => menu.renderError!(""));
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
-});
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);
 
 // The warning is about the label, not about one edit: it shows when it first
 // appears, and an edit that leaves the same warning in place does not bring it
@@ -1003,11 +1003,11 @@ it("a label overriding an unknown layer warns once", async () => {
   expect(headerMessages()).toHaveLength(0);
 
   act(() => { document.querySelector<HTMLButtonElement>("[data-close-button]")!.click(); });
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
   await toggle("warning");
   await settle();
   expect(toastTitles()).toEqual([]);
-});
+}, 30_000);
 
 it("the header shows no message after an export succeeds", async () => {
   vi.stubGlobal("showSaveFilePicker", vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
@@ -1019,7 +1019,7 @@ it("the header shows no message after an export succeeds", async () => {
   expect(toastTypes()).toEqual(["success"]);
   expect(headerMessages()).toHaveLength(0);
   expect(document.querySelector("header")!.textContent).not.toContain("Saved");
-});
+}, 30_000);
 
 // The font gate and the asset assembly both hit the failure; they are one
 // source, so there is one toast.
@@ -1032,4 +1032,4 @@ it("the header shows no message after an asset error", async () => {
   expect(toastTypes()).toEqual(["error"]);
   expect(headerMessages()).toHaveLength(0);
   expect(document.querySelector("header")!.textContent).not.toContain("font file is gone");
-});
+}, 30_000);

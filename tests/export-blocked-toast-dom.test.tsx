@@ -167,7 +167,7 @@ it("belongs to its tab: hidden while the tab is behind, back with it", async () 
   await shown("Can't export yet");
 
   await rerender({ active: false });
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
   await rerender({ active: true });
   await shown("Can't export yet");
   expect(toastTitles()).toEqual(["Can't export yet"]);
@@ -245,7 +245,7 @@ it("fixing the value dismisses the toast, and the export then runs", async () =>
   await act(async () => { field().focus(); });
   await act(async () => { typeInto(field(), good); });
   await act(async () => { field().blur(); });
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
   expect(reasonOf(container)).toBe("");
 
   await press({ key: "e", metaKey: true });

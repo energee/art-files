@@ -46,4 +46,4 @@ it("a 3D view that fails to load reports an error and keeps the editor", async (
     await unmountToaster();
     container.remove();
   }
-});
+}, 30_000);

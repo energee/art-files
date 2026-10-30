@@ -12,7 +12,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
-import { mountToaster, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 const counts = vi.hoisted(() => ({ masterIndex: 0 }));
 // The preview's font load never settles here (unless a test makes it fail),
@@ -182,6 +182,8 @@ it("shows a failed preview build's bare reason in one toast", async () => {
   await mountToaster();
   await mount();
   await shown("font file is gone");
+  // Asset assembly is debounced (150 ms): let a duplicate toast land too.
+  await settle();
   expect(toastTitles()).toEqual(["font file is gone"]);
 }, 30_000);
 

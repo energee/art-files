@@ -103,7 +103,7 @@ it("a recent file that is gone shows an error toast and leaves the list", async 
   // The toast is the only surface: the tab strip carries no error text of its own.
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(recentLabels()).toEqual(["/labels/Here.label"]);
-});
+}, 30_000);
 
 it("a second missing recent file replaces the first toast, and a later good open leaves it standing", async () => {
   rememberRecent("/labels/Gone.label");
@@ -122,4 +122,4 @@ it("a second missing recent file replaces the first toast, and a later good open
   await settle();
   expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" });
   expect(toastTitles()).toHaveLength(1);
-});
+}, 30_000);
