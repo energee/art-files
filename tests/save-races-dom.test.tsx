@@ -399,8 +399,8 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     await shown(`Saved ${art}, ${mask}`);
   });
   // Export again runs the menu's own export command, so it obeys the same gate:
-  // a label made invalid since the warning exports nothing.
-  it(`${extension}: Export again does nothing once the label is blocked`, async () => {
+  // a label made invalid since the warning exports nothing and says why.
+  it(`${extension}: Export again on a blocked label shows Can't export yet and exports nothing`, async () => {
     const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
       if (pick.mock.calls.length === 2) throw new DOMException("Cancelled", "AbortError");
       return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
@@ -418,16 +418,21 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     await act(async () => root.render(createElement(DocumentEditor, {
       ...props, fileToOpen: { seq: 1, file: new File([invalid as unknown as BlobPart], "bad.label") },
     })));
+    // The export row stays enabled on a blocked label; the status region says
+    // the label is blocked.
     await vi.waitFor(async () => {
       await act(async () => {});
-      expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(true);
+      expect(document.querySelector("[data-export-blocked-status]")!.textContent).toContain("Barcode");
     }, { timeout: 15000 });
+    expect(menu.actions.find((c) => c.id === command)!.disabled).toBeFalsy();
 
     const again = [...document.querySelectorAll("button")].find((b) => b.textContent === "Export again")!;
     await act(async () => { again.click(); });
-    await settle();
+    await shown("Can't export yet");
+    // Export again's own warning is gone; only the blocked toast is left.
+    await vi.waitFor(() => expect(toastTitles()).toEqual(["Can't export yet"]));
     expect(pick).toHaveBeenCalledTimes(2);
-  });
+  }, 30_000);
   it(`${extension}: a refused mask write reports the saved artwork (#254)`, async () => {
     let writes = 0;
     const { pick, handle } = picker(async () => { if (++writes === 2) throw new Error("Disk full"); });

@@ -76,6 +76,7 @@ import { useExport } from "@/useExport";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { useProjectSave } from "@/useProjectSave";
 import { NO_MESSAGE, useOwnedError, type HeaderMessage } from "@/useOwnedError";
+import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
@@ -197,7 +198,6 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
 const HEADER_ALERT_TONE = {
   destructive: ["border-destructive/50", ""],
   warning: ["border-warning/50 bg-warning-soft", "text-warning-text"],
-  blocked: ["border-destructive/50", ""],
 } as const;
 
 /** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
@@ -206,16 +206,11 @@ const HEADER_ALERT_TONE = {
  *  menus rather than as a full-width block. Warning uses `variant` "default"
  *  plus its own colour classes rather than the destructive variant, which
  *  paints its descendant text through a selector on Alert itself that a
- *  className override can't reach.
- *  The blocked-export note (tone "blocked") looks like an error but is no
- *  alert: it changes with every keystroke that keeps a value invalid, and an
- *  alert would interrupt the reader each time. Its own always-mounted polite
- *  status region announces it; the note itself stays a plain button. */
+ *  className override can't reach. */
 function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
   const [box, text] = HEADER_ALERT_TONE[tone];
   return (
-    <Alert variant={tone === "destructive" || tone === "blocked" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
-      {...(tone === "blocked" && { role: undefined })}>
+    <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}>
       <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
@@ -907,9 +902,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
       if (dialogOpen()) return;
       if (!cmd.disabled) cmd.run();
-      // A blocked export key does what the header's blocked note does,
-      // rather than nothing: it selects the invalid layer.
-      else if (cmd.id.startsWith("export-")) selectInvalidRef.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -948,9 +940,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // command) when focus is on the canvas or the page. Gated like the nudge:
   // a field, popup, the inspector or a widget owns the key, and so does a
   // focused Layers row, which removes with its own focus hand-off. So does
-  // any other focused button (the header's blocked-export note, a toolbar
-  // control): Backspace on the note that just selected a layer must not
-  // delete it.
+  // any other focused button (a toast's action, a toolbar control):
+  // Backspace on a button that just selected a layer must not delete it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current || (e.key !== "Delete" && e.key !== "Backspace")) return;
@@ -966,19 +957,36 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Invalid filled values (such as a bad UPC) block exports. The header note
-  // (and a blocked ⌘E/⇧⌘E) selects the first of them; the Layers list marks
-  // each with a dot.
+  // Invalid filled values (such as a bad UPC) block exports. An export command
+  // on a blocked label builds nothing and shows the "Can't export yet" toast
+  // (guardExport), whose Show layer selects the first of them; the Layers list
+  // marks each with a dot.
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
   const selectInvalidLayer = () => {
     const id = Object.keys(errors)[0];
     if (id) setSelection({ ids: [id], anchor: id });
   };
-  // Read by the once-registered key listener above, like commandsRef.
+  // Read by the toast's action, which outlives the render that showed it: the
+  // first invalid layer may have changed by the time it is clicked.
   const selectInvalidRef = useRef(selectInvalidLayer);
   selectInvalidRef.current = selectInvalidLayer;
   const blockedWhy = errorList.join(" · ");
+  // The blocked label's toast: owned by this tab, shown only while it is in
+  // front, and gone once the label stops being blocked. A repeat attempt
+  // replaces it rather than stacking another. The screen-reader status region
+  // in the header announces the label becoming blocked.
+  const blockedToast = useOwnedToast(active);
+  useEffect(() => { if (!blocked) blockedToast.clear(); }, [blocked, blockedToast]);
+  /** Wraps an export command's `run`: a blocked label shows the toast and
+   *  builds nothing. */
+  const guardExport = (run: () => void) => () => {
+    if (!blocked) return run();
+    blockedToast.set(t("Can't export yet"), "error", {
+      description: blockedWhy,
+      action: { label: t("Show layer"), onClick: () => { setSidebarOpen(true); selectInvalidRef.current(); } },
+    });
+  };
   const errorIds = useMemo(() => new Set(Object.keys(errors)), [errors]);
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
@@ -1084,14 +1092,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   } = useExport({
     drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
     // A cancelled pair's warning offers Export again. It runs the menu's own
-    // Export … As… command, so the one export gate (exportBlocked) and the
-    // label as it is now apply. Until the blocked toast, a blocked one is a no-op.
+    // Export … As… command, so the label as it is now applies, and so does the
+    // gate: no second export while one runs, and a blocked label shows the
+    // "Can't export yet" toast (guardExport) instead of building.
     exportAgain: (format) => {
       const command = commandsRef.current.find((c) => c.id === (format === "pdf" ? "export-both-as" : "export-psds-as"));
       if (command && !command.disabled) command.run();
     },
   });
-  const exportBlocked = blocked || exporting !== null;
 
   // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
   // assembled off the asset inputs alone (debounced). Layer edits, a raster's
@@ -2135,30 +2143,32 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The first export in a tab asks where (beside its .label); later ones
     // rewrite those files silently, and the As… commands ask again.
     // They don't wait for the preview: the builds load their own fonts and art.
+    // They grey out only while an export runs; on a blocked label they stay
+    // enabled and guardExport explains why nothing was built.
     // Settings → Two-file export decides what ⌘E / ⇧⌘E save: one PDF / PSD
     // with White Ink inside, or the art + mask pairs.
     ...(render.twoFilePdfExport ? [
       { id: "export-both", label: t("Export PDFs"), key: "e", mods: "⌘" as const,
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }, "pair") },
+        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath }, "pair")) },
       { id: "export-both-as", label: t("Export PDFs As…"),
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }, "pair") },
+        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true }, "pair")) },
       { id: "export-art", label: t("Export Artwork PDF"),
-        disabled: exportBlocked, run: () => void exportPdfPlate("art", { labelPath: filePath }) },
+        disabled: exporting !== null, run: guardExport(() => void exportPdfPlate("art", { labelPath: filePath })) },
       { id: "export-mask", label: t("Export Mask PDF"),
-        disabled: exportBlocked, run: () => void exportPdfPlate("mask", { labelPath: filePath }) },
+        disabled: exporting !== null, run: guardExport(() => void exportPdfPlate("mask", { labelPath: filePath })) },
       { id: "export-psds", label: t("Export PSDs"), key: "e", mods: "⇧⌘" as const,
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }, "pair") },
+        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath }, "pair")) },
       { id: "export-psds-as", label: t("Export PSDs As…"),
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }, "pair") },
+        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true }, "pair")) },
     ] : [
       { id: "export-pdf", label: t("Export PDF"), key: "e", mods: "⌘" as const,
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }) },
+        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath })) },
       { id: "export-pdf-as", label: t("Export PDF As…"),
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }) },
+        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true })) },
       { id: "export-psd", label: t("Export PSD"), key: "e", mods: "⇧⌘" as const,
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }) },
+        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath })) },
       { id: "export-psd-as", label: t("Export PSD As…"),
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }) },
+        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true })) },
     ]),
     { id: "undo", label: t("Undo"), shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: t("Redo"), shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
@@ -2441,20 +2451,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
             onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
-          {blocked && (
-            <HeaderAlert tone="blocked">
-              <button type="button" data-blocked-export
-                className="rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                title={t("Export is blocked. Click to select the invalid layer.")}
-                onClick={selectInvalidLayer}>
-                {blockedWhy}
-              </button>
-            </HeaderAlert>
-          )}
           {loadError.text && <HeaderAlert tone={loadError.note ? "warning" : "destructive"}>{loadError.text}</HeaderAlert>}
           {headerError && <HeaderAlert>{headerError}</HeaderAlert>}
           {/* The blocked-export reason's announcement, mounted before the
-              label is blocked for the same reason. */}
+              label is blocked so a screen reader hears it appear. The visible
+              explanation is the toast an export attempt shows. */}
           <span role="status" data-export-blocked-status className="sr-only">
             {blocked ? t("Export blocked: {{reason}}", { reason: blockedWhy }) : ""}
           </span>

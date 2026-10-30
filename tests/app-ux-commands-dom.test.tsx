@@ -1,12 +1,11 @@
 // app-ux-commands-dom.test.tsx — the editor's command table and header, end
 // to end: ⌘= (or ⌘+) / ⌘- / ⌘0 zoom the preview; the palette offers Add …
 // Layer and Remove Layer, and Delete/Backspace removes the selection outside
-// a text field or a focused button; a blocked export's reason is announced
-// through a polite status region and its header note selects the first
-// invalid layer, which the Layers list marks with an error dot, as ⌘E and
-// ⇧⌘E on a blocked label do; the PDF exports don't wait for the preview; and
-// the master library is re-read from localStorage only when it changes, not
-// per render.
+// a text field or a focused button; the Layers list marks an invalid layer
+// with an error dot (what an export on a blocked label says is in
+// export-blocked-toast-dom.test.tsx); the PDF exports don't wait for the
+// preview; and the master library is re-read from localStorage only when it
+// changes, not per render.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -125,6 +124,13 @@ it("removes the selected layer with Delete or Backspace, but not while typing", 
   expect(await press({ key: "Backspace" }, input)).toBe(false);
   expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
   input.remove();
+  // A focused button (a toolbar control, a toast's action) owns the key too.
+  const button = document.createElement("button");
+  container.appendChild(button);
+  button.focus();
+  expect(await press({ key: "Backspace" }, button)).toBe(false);
+  expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
+  button.remove();
   expect(await press({ key: "Delete" })).toBe(true);
   expect(container.querySelector('[data-layer-id="barcode"]')).toBeNull();
   await select("qr");
@@ -192,47 +198,15 @@ const badLabel = () => {
   return { seq: 1, file: new File([bytes as unknown as BlobPart], "bad.label") };
 };
 
-it("makes the blocked-export note a polite status that selects the invalid layer", async () => {
+it("marks the invalid layer's row in the Layers list", async () => {
   const { container, rerender } = await mount();
-  // The status region exists, empty, before the label is blocked: a live
-  // region mounted already holding its text is not read at all.
-  const region = container.querySelector("[data-export-blocked-status]")!;
-  expect(region.getAttribute("role")).toBe("status");
-  expect(region.textContent).toBe("");
   await rerender({ fileToOpen: badLabel() });
-  await vi.waitFor(() => expect(container.querySelector("[data-blocked-export]")).not.toBeNull());
-  expect(container.querySelector("[data-export-blocked-status]")).toBe(region);
-  expect(region.textContent).toContain("Barcode");
-  const note = container.querySelector("[data-blocked-export]")!;
-  // Not re-announced as an alert on every keystroke that keeps it invalid,
-  // and not a second live region reading the same words.
-  expect(note.closest('[role="alert"]')).toBeNull();
-  expect(note.closest('[role="status"]')).toBeNull();
-  expect(note.textContent).toContain("Barcode");
-  // The Layers list marks the invalid row.
-  expect(container.querySelector('[data-layer-id="barcode"] [aria-label="Invalid value"]')).not.toBeNull();
+  await vi.waitFor(() => expect(container.querySelector('[data-layer-id="barcode"] [aria-label="Invalid value"]')).not.toBeNull());
   expect(container.querySelector('[data-layer-id="name"] [aria-label="Invalid value"]')).toBeNull();
+  // The marking is passive: nothing selects the layer until the user (or the
+  // blocked export's Show layer action) does.
   expect(rowSelected(container, "barcode")).toBe(false);
-  await act(async () => { (note as HTMLElement).focus(); (note as HTMLElement).click(); });
-  expect(rowSelected(container, "barcode")).toBe(true);
-  // Focus is still on the note it just clicked: Backspace there must not
-  // delete the layer the note selected. The header is not the canvas.
-  expect(await press({ key: "Backspace" }, note)).toBe(false);
-  expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
 });
-
-// ⌘E (and ⇧⌘E) on a blocked label does what the header note does, rather
-// than nothing: it selects the invalid layer.
-for (const [name, init] of [["⌘E", { key: "e", metaKey: true }], ["⇧⌘E", { key: "E", metaKey: true, shiftKey: true }]] as const) {
-  it(`selects the invalid layer on ${name} while export is blocked`, async () => {
-    const { container, rerender } = await mount();
-    await rerender({ fileToOpen: badLabel() });
-    await vi.waitFor(() => expect(container.querySelector("[data-blocked-export]")).not.toBeNull());
-    expect(rowSelected(container, "barcode")).toBe(false);
-    expect(await press(init)).toBe(true);
-    expect(rowSelected(container, "barcode")).toBe(true);
-  });
-}
 
 // A per-beer override is this label's, saved by ⌘S: the picker's pink
 // Save Master… button stays hidden, while File → Save Master… stays enabled
