@@ -63,7 +63,8 @@ const en = {
   "Bottom": "Bottom",
   "Show in Finder": "Show in Finder",
   "Show in File Explorer": "Show in File Explorer",
-  "Show in Folder": "Show in Folder"
+  "Show in Folder": "Show in Folder",
+  "Could not show {{file}}": "Could not show {{file}}"
 };
 
 const es: Record<keyof typeof en, string> = {
@@ -131,7 +132,8 @@ const es: Record<keyof typeof en, string> = {
   "Bottom": "Abajo",
   "Show in Finder": "Mostrar en el Finder",
   "Show in File Explorer": "Mostrar en el Explorador de archivos",
-  "Show in Folder": "Mostrar en la carpeta"
+  "Show in Folder": "Mostrar en la carpeta",
+  "Could not show {{file}}": "No se pudo mostrar {{file}}"
 };
 
 const fr: Record<keyof typeof en, string> = {
@@ -199,7 +201,8 @@ const fr: Record<keyof typeof en, string> = {
   "Bottom": "Bas",
   "Show in Finder": "Afficher dans le Finder",
   "Show in File Explorer": "Afficher dans l’Explorateur de fichiers",
-  "Show in Folder": "Afficher dans le dossier"
+  "Show in Folder": "Afficher dans le dossier",
+  "Could not show {{file}}": "Impossible d’afficher {{file}}"
 };
 
 const de: Record<keyof typeof en, string> = {
@@ -267,7 +270,8 @@ const de: Record<keyof typeof en, string> = {
   "Bottom": "Unten",
   "Show in Finder": "Im Finder anzeigen",
   "Show in File Explorer": "Im Datei-Explorer anzeigen",
-  "Show in Folder": "Im Ordner anzeigen"
+  "Show in Folder": "Im Ordner anzeigen",
+  "Could not show {{file}}": "{{file}} konnte nicht angezeigt werden"
 };
 
 const pt: Record<keyof typeof en, string> = {
@@ -335,7 +339,8 @@ const pt: Record<keyof typeof en, string> = {
   "Bottom": "Inferior",
   "Show in Finder": "Mostrar no Finder",
   "Show in File Explorer": "Mostrar no Explorador de Arquivos",
-  "Show in Folder": "Mostrar na pasta"
+  "Show in Folder": "Mostrar na pasta",
+  "Could not show {{file}}": "Não foi possível mostrar {{file}}"
 };
 
 export default { en, es, fr, de, pt };
