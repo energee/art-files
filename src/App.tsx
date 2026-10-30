@@ -73,6 +73,7 @@ import {
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
+import { usePreviewToastAnchor } from "@/toastAnchor";
 import { useProjectSave } from "@/useProjectSave";
 import { NO_MESSAGE, useOwnedError, type HeaderMessage } from "@/useOwnedError";
 // setBleed is aliased so the call site reads as what it writes: the
@@ -539,6 +540,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Preview pane zoom: scale `z` about the pane's top-left, then offset by
   // (x, y) screen px. z === 1 is the fitted view.
   const previewPane = useRef<HTMLDivElement>(null);
+  usePreviewToastAnchor(previewPane, active);
   const [zoom, setZoom] = useState({ z: 1, x: 0, y: 0 });
   const canView = useRef<CanViewHandle>(null);
   // Whole percent, so the camera's per-frame emissions bail out of React.
