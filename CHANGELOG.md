@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.114] - 2026-10-30
 
 ### Changed
 - **Messages are toasts.** Export results, Save Master confirmations, warnings and errors now appear as toasts at the bottom of the preview, not in the header (a successful label Save stays silent). Up to four show at once, each in full. Successes fade after a few seconds; warnings and errors stay until you close them.
