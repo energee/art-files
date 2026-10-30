@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **Messages are toasts.** Saves, export results, warnings and errors now appear as toasts at the bottom of the preview, not in the header. After an export the toast names the files and offers **Show in Finder** (Show in File Explorer on Windows, Show in Folder on Linux); cancelling a save dialog shows nothing. Choosing Export while the label is invalid says **Can't export yet** with the reason and a **Show layer** button, and that layer's row in the Layers list turns red with the reason. Switching masters shows an **Undo** toast. Successes fade after a few seconds; warnings and errors stay until you close them, and ones about a tab's own problem (art that won't load, a preview that won't draw) come back when you return to that tab.
+
 ## [0.1.113] - 2026-10-29
 
 ### Fixed
