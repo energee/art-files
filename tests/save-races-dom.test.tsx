@@ -459,7 +459,40 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     const [art, mask, artAgain, maskAgain] = pick.mock.calls.map(([options]) => options.suggestedName);
     expect([artAgain, maskAgain]).toEqual([art, mask]);
     await shown(`Saved ${art}, ${mask}`);
-  });
+  }, 30_000);
+  // The pair's As… command is gone once two-file export is switched off; the
+  // warning's Export again then runs the format's single-file As… command.
+  it(`${extension}: Export again after two-file export was switched off asks for the single ${extension}`, async () => {
+    const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
+      if (pick.mock.calls.length === 2) throw new DOMException("Cancelled", "AbortError");
+      return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+    });
+    vi.stubGlobal("showSaveFilePicker", pick);
+    const { props } = await mount(null, true);
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
+    });
+    await shown("wasn't saved");
+
+    await act(async () => root.render(createElement(DocumentEditor, { ...props, render: { ...DEFAULT_RENDER, twoFilePdfExport: false } })));
+    expect(menu.actions.some((c) => c.id === command)).toBe(false);
+    const again = [...document.querySelectorAll("button")].find((b) => b.textContent === "Export again")!;
+    if (extension === "psd") {
+      // The print PSD needs a canvas for its White Ink plate, which happy-dom
+      // lacks: it fails before any dialog, which shows the single-file export ran.
+      await act(async () => { again.click(); });
+      await shown("No canvas to draw the White Ink plate.");
+      expect(pick).toHaveBeenCalledTimes(2);
+      return;
+    }
+    await act(async () => {
+      again.click();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(3), { timeout: 4000 });
+    });
+    expect(pick.mock.calls[2][0].suggestedName).toMatch(/^(?!.*-mask).*\.pdf$/);
+    await shown("Saved ");
+  }, 30_000);
   // Export again runs the menu's own export command, so it obeys the same gate:
   // a label made invalid since the warning exports nothing and says why.
   it(`${extension}: Export again on a blocked label shows Can't export yet and exports nothing`, async () => {
@@ -677,6 +710,24 @@ async function openHidingMaster() {
   return { ...handle, onMeta };
 }
 
+// A second switch replaces the first one's toast rather than stacking beside it.
+it("two quick master switches leave one Switched toast", async () => {
+  const label = packLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ", abv: "5%" },
+  }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  await shown("Switched to “Other”");
+  openMasterFile({ ...base, id: "master-third", name: "Third", layers: base.layers.filter((l) => l.id !== "abv") });
+  await run("master-open");
+  await shown("Switched to “Third”");
+  await settle();
+  expect(toastTitles()).toEqual(["Switched to “Third”"]);
+}, 30_000);
+
 // No confirm card: the switch is one undoable step, and the toast offers the undo.
 it("Open Master over hidden values offers Undo, which restores them", async () => {
   const { onMeta } = await openHidingMaster();
@@ -735,8 +786,10 @@ it("Open Master shows a converted master's warnings in one toast, without Note:"
   await run("master-open");
   await shown("mystery");
   await settle();
-  expect(toastTitles()).toHaveLength(1);
-  expect(toastTitles()[0]).not.toContain("Note:");
+  // The title names the file; the converter's warnings are the description.
+  expect(toastTitles()).toEqual(["Opened other.master with changes"]);
+  expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("mystery");
+  expect(document.body.textContent).not.toContain("Note:");
   expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
 });
 
@@ -761,9 +814,9 @@ it("opening a second label with benched values replaces the first one's warning"
   await act(async () => root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 2, file: benched("gone-two") } })));
   await shown("gone-two");
   await settle();
-  expect(toastTitles()).toHaveLength(1);
-  expect(toastTitles()[0]).toContain("gone-two");
-});
+  expect(toastTitles()).toEqual(["Opened gone-two.label with changes"]);
+  expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("gone-two");
+}, 30_000);
 
 it("Open Master reports a file that is not a master as an error toast", async () => {
   stubMasterBytes(new TextEncoder().encode("not a master"));
@@ -898,12 +951,11 @@ it("an image with no file to save warns in its own toast", async () => {
   picker(async (b) => { written = b; }, "Lolev.master");
   await mount(logoLabel("ghost"));
   await promoteLogo("master-save", () => written);
-  const sentence = "1 image has no file to save. It will be blank when you reopen this master.";
-  await shown(sentence);
+  await shown("1 image in Lolev.master has no file to save");
   const toasts = [...document.querySelectorAll("[data-sonner-toast]")];
   const warning = toasts.find((li) => li.getAttribute("data-type") === "warning")!;
-  expect(warning.querySelector("[data-title]")!.textContent).toBe(sentence);
-  expect(warning.querySelector("[data-description]")).toBeNull();
+  expect(warning.querySelector("[data-title]")!.textContent).toBe("1 image in Lolev.master has no file to save");
+  expect(warning.querySelector("[data-description]")!.textContent).toBe("It will be blank when you reopen this master.");
   const saved = toasts.find((li) => li.getAttribute("data-type") === "success")!;
   expect(saved.querySelector("[data-title]")!.textContent).toBe("Saved Lolev.master");
   expect(saved.textContent).not.toContain("no file");

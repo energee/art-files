@@ -55,8 +55,10 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
   for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
     await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
   expect(onOpenSettled).toHaveBeenCalledWith(1, false);
-  const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); await unmountToaster(); };
-  return { meta: () => onMeta.mock.calls.at(-1)![0], unmount };
+  /** Closes the tab: the editor unmounts, the toaster stays. */
+  const closeTab = () => act(async () => { root.unmount(); });
+  const unmount = async () => { await closeTab(); container.remove(); await unmountToaster(); };
+  return { meta: () => onMeta.mock.calls.at(-1)![0], unmount, closeTab };
 }
 
 function snapshotFile(extra: Record<string, unknown> = {}) {
@@ -139,8 +141,10 @@ it("a restore that cannot rebind keeps Save asking where and names the original"
   });
   try {
     expect(meta().filePath).toBeNull();
-    await shown("Restored from alpha.label, which moved");
-    expect(toastTitles()).toEqual(["Restored from alpha.label, which moved, changed or is open in another tab, so Save asks where"]);
+    await shown("Restored from alpha.label");
+    expect(toastTitles()).toEqual(["Restored from alpha.label"]);
+    expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent)
+      .toBe("It moved, changed or is open in another tab, so Save asks where");
     expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
     expect(document.body.textContent).not.toContain("/w/");
     expect(document.body.textContent).not.toContain("Note:");
@@ -159,7 +163,22 @@ it("the cannot-rebind note comes beside the open's other notes", async () => {
     await shown("Restored from alpha.label");
     await settle();
     expect(toastTitles()).toHaveLength(2);
-    expect(toastTitles().join("\n")).toMatch(/ghost/i);
+    expect(toastTitles()).toEqual(expect.arrayContaining(["Restored from alpha.label", "Opened alpha.label with changes"]));
+    expect(document.body.textContent).toMatch(/ghost/i);
+  } finally {
+    await unmount();
+  }
+}, 30_000);
+
+// A restore note is about this tab's label; it does not outlive the tab.
+it("closing the tab dismisses its cannot-rebind note", async () => {
+  const { closeTab, unmount } = await restore({
+    seq: 1, file: snapshotFile(), recovered: "old:1", recoveredPath: { path: "/w/alpha.label", rebind: false },
+  });
+  try {
+    await shown("Restored from alpha.label");
+    await closeTab();
+    await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
   } finally {
     await unmount();
   }

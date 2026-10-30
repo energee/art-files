@@ -9,12 +9,17 @@
 // toast land before the test looks.
 import { act } from "react";
 import { afterEach, expect, it, vi } from "vitest";
+import { setLanguage } from "@/i18n";
 import { notify } from "@/notify";
 import { EXIT_MS, advance, mount, settleDismissal, setupToastHarness, show, text, toastCount } from "./toast-harness";
 
 setupToastHarness();
 
-afterEach(() => { delete document.documentElement.dataset.theme; });
+afterEach(() => {
+  delete document.documentElement.dataset.theme;
+  setLanguage("en");
+  localStorage.clear();
+});
 
 it("a success toast shows its title and fades after 4 s", () => {
   mount();
@@ -26,6 +31,18 @@ it("a success toast shows its title and fades after 4 s", () => {
 
   advance(100 + EXIT_MS);
   expect(text()).not.toContain("Saved Lupula.pdf");
+});
+
+// The stack is expanded by default, which must not pause the fade timers (only
+// hovering the stack does).
+it("a success toast still fades in the expanded stack, beside a warning that stays", () => {
+  mount();
+  show(() => notify.warning("Stays"), () => notify.success("Fades"));
+  expect(toastCount()).toBe(2);
+  advance(4100 + EXIT_MS);
+  expect(text()).not.toContain("Fades");
+  expect(text()).toContain("Stays");
+  expect(toastCount()).toBe(1);
 });
 
 it("warnings and errors stay until dismissed and have a close button", () => {
@@ -84,6 +101,19 @@ it("keeps four toasts visible", () => {
   const visible = [...document.querySelectorAll("[data-sonner-toast]")]
     .map((li) => li.getAttribute("data-visible"));
   expect(visible).toEqual(["true", "true", "true", "true"]);
+  // Sonner's default stack folds older toasts into slivers behind the newest;
+  // each one is readable (and a persistent error is seen) only when expanded.
+  const expanded = [...document.querySelectorAll("[data-sonner-toast]")]
+    .map((li) => li.getAttribute("data-expanded"));
+  expect(expanded).toEqual(["true", "true", "true", "true"]);
+});
+
+it("labels the toast region and the close button in the app's language", () => {
+  setLanguage("de");
+  mount();
+  show(() => notify.warning("Warnung"));
+  expect(document.querySelector("section[aria-label]")!.getAttribute("aria-label")).toMatch(/^Benachrichtigungen/);
+  expect(document.querySelector("[data-close-button]")!.getAttribute("aria-label")).toBe("Schließen");
 });
 
 it("announces errors assertively and successes politely", () => {

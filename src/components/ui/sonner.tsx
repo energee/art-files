@@ -1,17 +1,22 @@
 // ui/sonner.tsx — the shadcn Sonner Toaster (`npx shadcn add sonner`, base-nova),
-// with three changes. The theme comes from useTheme() (src/theme.ts) instead of
+// with a few changes. The theme comes from useTheme() (src/theme.ts) instead of
 // next-themes, which this app doesn't have. The stack sits at the bottom centre
-// and shows four toasts; callers can override both. The icons take the
+// and shows four toasts, all expanded: Sonner's default folds older toasts
+// into slivers behind the newest, and a persistent warning or error must stay
+// readable. Callers can override all three. The region's and close button's
+// labels, which Sonner words in English, go through t(). The icons take the
 // semantic text colours of the rest of the UI. Mount it once (main.tsx) and
 // send messages through src/notify.ts, never Sonner's toast() directly. Where
 // the stack sits is set in index.css (--toast-center-x / --toast-bottom).
 import type { CSSProperties } from "react";
 import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon } from "lucide-react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { useTranslation } from "@/i18n";
 import { useTheme } from "@/theme";
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const [theme] = useTheme();
+  const { t } = useTranslation();
 
   return (
     <Sonner
@@ -19,6 +24,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className="toaster group"
       position="bottom-center"
       visibleToasts={4}
+      expand
+      containerAriaLabel={t("Notifications")}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,
@@ -37,6 +44,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         } as CSSProperties
       }
       toastOptions={{
+        closeButtonAriaLabel: t("Close"),
         classNames: {
           success: "[&_[data-icon]]:text-success-text",
           info: "[&_[data-icon]]:text-info-text",

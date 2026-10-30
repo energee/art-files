@@ -186,6 +186,47 @@ it("Show layer opens a collapsed Layers sidebar and selects the invalid layer", 
   expect(rowSelected(container, "barcode")).toBe(true);
 }, 30_000);
 
+// Sonner removes the toast after its action runs, which would drop focus onto
+// the page, where Backspace is Remove Layer: Show layer focuses the layer's
+// value field instead, so the key edits the field and the layer stays.
+it("Show layer focuses the invalid layer's field, so Backspace cannot remove the layer", async () => {
+  const { container } = await mountBlocked();
+  await press({ key: "e", metaKey: true });
+  await shown("Can't export yet");
+  // A click focuses the button in most browsers; Sonner then remembers what held
+  // focus before and hands it back when focus leaves the toasts. (happy-dom lets
+  // a focus() win over that hand-back, as browsers do not, so this walks the
+  // path rather than proving the blur in focusContentField.)
+  const before = container.querySelector<HTMLElement>("[data-add-layer]")!;
+  await act(async () => { before.focus(); showLayer().focus(); });
+  expect(document.activeElement).toBe(showLayer());
+  await act(async () => { showLayer().click(); });
+  await vi.waitFor(() => expect(document.activeElement).toBe(document.querySelector("#barcode-content")), { timeout: 5_000 });
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+  expect(document.activeElement).toBe(document.querySelector("#barcode-content"));
+
+  await act(async () => {
+    document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+  });
+  expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
+}, 30_000);
+
+// The toast region's own keys never reach Remove Layer: Alt+T focuses the
+// toast list itself, which is no button.
+it("Backspace from inside the toast region does not remove the selected layer", async () => {
+  const { container } = await mountBlocked();
+  await act(async () => {
+    (container.querySelector('[data-layer-id="barcode"] [data-slot="sidebar-menu-button"]') as HTMLElement).click();
+  });
+  await press({ key: "e", metaKey: true });
+  await shown("Can't export yet");
+  await act(async () => {
+    document.querySelector("[data-sonner-toaster]")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+  });
+  expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
+}, 30_000);
+
 it("fixing the value dismisses the toast, and the export then runs", async () => {
   const { container } = await mount();
   await act(async () => {

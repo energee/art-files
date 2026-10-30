@@ -34,6 +34,8 @@ afterEach(() => { setLanguage("system"); localStorage.clear(); document.body.inn
 
 type Ctx = {
   save: () => Promise<void>; writes: Uint8Array[];
+  /** Closes the tab: the editor unmounts, the toaster stays. */
+  closeTab: () => Promise<void>;
   /** The tab's dirty flag after the open — false means Save is disabled. */
   dirty: boolean;
 };
@@ -70,7 +72,8 @@ async function openLabel(
       await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
     expect(onOpenSettled).toHaveBeenCalledWith(1, false);
     const save = () => act(async () => { expect(await saveSlot.current!()).toBe(true); });
-    await check({ save, writes, dirty: onMeta.mock.calls.at(-1)![0].dirty });
+    const closeTab = () => act(async () => { root.unmount(); });
+    await check({ save, writes, closeTab, dirty: onMeta.mock.calls.at(-1)![0].dirty });
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
@@ -108,13 +111,47 @@ it("open warnings show once, without Note:", async () => {
     await shown("gone-layer");
     await act(async () => { setLanguage("de"); });
     await settle();
+    // The title names the file; what was benched is the description.
     expect(toastTitles()).toHaveLength(1);
-    expect(toastTitles()[0]).toContain("gone-variant");
-    expect(document.body.textContent).not.toContain("Note:");
+    expect(toastTitles()[0]).toContain("a.label");
     const toast = document.querySelector("[data-sonner-toast]")!;
+    expect(toast.querySelector("[data-description]")!.textContent).toContain("gone-variant");
+    expect(document.body.textContent).not.toContain("Note:");
     expect(toast.getAttribute("data-type")).toBe("warning");
     // A warning stays until closed; it has a close button.
     expect(toast.querySelector("[data-close-button]")).not.toBeNull();
+  });
+}, 30_000);
+
+it("names the file in the warning's title and the benched values in its description", async () => {
+  await openLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { "gone-layer": "stale" },
+  }, async () => {
+    await shown("gone-layer");
+    expect(toastTitles()).toEqual(["Opened a.label with changes"]);
+    expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toBe("1 value benched: gone-layer");
+  });
+}, 30_000);
+
+// The warning is about this tab's label, so it goes with the tab. A failure to
+// open or load reports a problem nothing else in the editor shows, and stays.
+it("closing the tab dismisses its open warning", async () => {
+  await openLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { "gone-layer": "stale" },
+  }, async ({ closeTab }) => {
+    await shown("gone-layer");
+    await closeTab();
+    await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+  });
+}, 30_000);
+
+it("a load failure's toast survives its tab closing", async () => {
+  await openLabel(new TextEncoder().encode("not a label"), async ({ closeTab }) => {
+    await shown("Could not open a.label");
+    await closeTab();
+    await settle();
+    expect(toastTitles()).toHaveLength(1);
+    expect(toastTitles()[0]).toContain("Could not open a.label");
   });
 }, 30_000);
 

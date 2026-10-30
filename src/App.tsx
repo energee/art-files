@@ -219,6 +219,29 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
   ...(dropped.variants.length ? [translate("{{count}} variant benched: {{names}}", { count: dropped.variants.length, names: dropped.variants.join(", ") })] : []),
 ];
 
+/** The toast sources (toastId) that warn about an editor's own content. */
+const CONTENT_WARNINGS = ["label-warning", "master-warning", "restore-warning", "image-warning"] as const;
+
+/** Focuses a layer's value field in the inspector (`<id>-content`, see
+ *  contentFor). The inspector mounts a frame or two after a selection, so this
+ *  waits for the field. A focused toast control is blurred first: leaving the
+ *  toast region any other way lets Sonner hand focus back to whatever held it
+ *  before the toast, which would undo this. */
+function focusContentField(layerId: string) {
+  let framesLeft = 30;
+  const focusWhenMounted = () => {
+    const field = document.getElementById(`${layerId}-content`);
+    if (!field) {
+      if (framesLeft-- > 0) requestAnimationFrame(focusWhenMounted);
+      return;
+    }
+    const held = document.activeElement;
+    if (held instanceof HTMLElement && held.closest("[data-sonner-toaster]")) held.blur();
+    field.focus();
+  };
+  requestAnimationFrame(focusWhenMounted);
+}
+
 /** What every open path hands to openProject. Each entry point converts
  *  to this shape itself (fileSource for picked Files), so the shared
  *  pipeline never branches on where the bytes came from. The one exception
@@ -481,10 +504,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [assetsFailed, setAssetsFailed] = useState(false);
   // Each one-off error, and each open, save or load message that stays until
   // closed, owns one toast id in this editor, so a repeat replaces it instead of
-  // stacking another (notify.ts). Saved and Switched toasts fade on their own
-  // and need no id.
+  // stacking another (notify.ts). A Saved toast fades on its own and needs no
+  // id; a Switched toast has one so a second switch replaces the first.
   const toastBase = useId();
   const toastId = (source: string) => `${toastBase}:${source}`;
+  // A warning about this editor's own content (the label or master it opened,
+  // the master it saved) goes with the tab. Load and save failures stay up: no
+  // other part of the editor reports them.
+  useEffect(() => () => {
+    for (const source of CONTENT_WARNINGS) notify.dismiss(`${toastBase}:${source}`);
+  }, [toastBase]);
   const reportLoadError = (text: string) => { notify.error(text, { id: toastId("load-error") }); };
   // A failed label Save has a toast of its own, so the next Save that works can
   // dismiss it without touching an open or load failure.
@@ -919,14 +948,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   // command) when focus is on the canvas or the page. Gated like the nudge:
   // a field, popup, the inspector or a widget owns the key, and so does a
   // focused Layers row, which removes with its own focus hand-off. So does
-  // any other focused button (a toast's action, a toolbar control):
-  // Backspace on a button that just selected a layer must not delete it.
+  // any other focused button (a toolbar control) and anything inside the
+  // toast region (its buttons, and the list Alt+T focuses). Sonner removes a
+  // toast after its action runs, which drops focus onto the page, so an
+  // action that selects a layer must move focus itself (focusContentField).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current || (e.key !== "Delete" && e.key !== "Backspace")) return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       if (keyOwner(e.target) || dialogOpen()) return;
-      if ((e.target as Element | null)?.closest?.("[data-layer-id], button")) return;
+      if ((e.target as Element | null)?.closest?.("[data-layer-id], button, [data-sonner-toaster]")) return;
       const cmd = commandsRef.current.find((c) => c.id === "layer-remove");
       if (!cmd || cmd.disabled) return;
       e.preventDefault();
@@ -938,13 +969,15 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   // Invalid filled values (such as a bad UPC) block exports. An export command
   // on a blocked label builds nothing and shows the "Can't export yet" toast
-  // (guardExport), whose Show layer selects the first of them; the Layers list
-  // marks each with a dot.
+  // (guardExport), whose Show layer selects the first of them and focuses its
+  // value field; the Layers list marks each with a dot.
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
   const selectInvalidLayer = () => {
     const id = Object.keys(errors)[0];
-    if (id) setSelection({ ids: [id], anchor: id });
+    if (!id) return;
+    setSelection({ ids: [id], anchor: id });
+    focusContentField(id);
   };
   // Read by the toast's action, which outlives the render that showed it: the
   // first invalid layer may have changed by the time it is clicked.
@@ -1086,9 +1119,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     // A cancelled pair's warning offers Export again. It runs the menu's own
     // Export … As… command, so the label as it is now applies, and so does the
     // gate: no second export while one runs, and a blocked label shows the
-    // "Can't export yet" toast (guardExport) instead of building.
+    // "Can't export yet" toast (guardExport) instead of building. If two-file
+    // export has been switched off since the warning, the pair command is gone
+    // and the format's single-file As… command stands in.
     exportAgain: (format) => {
-      const command = commandsRef.current.find((c) => c.id === (format === "pdf" ? "export-both-as" : "export-psds-as"));
+      const ids = format === "pdf" ? ["export-both-as", "export-pdf-as"] : ["export-psds-as", "export-psd-as"];
+      const command = ids.map((id) => commandsRef.current.find((c) => c.id === id)).find(Boolean);
       if (command && !command.disabled) command.run();
     },
   });
@@ -1661,8 +1697,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         notify.success(t("Saved {{file}}", { file: baseName(saved.name) }),
           written ? { description: t("{{count}} changes", { count: written }) } : undefined);
         // Its own toast: the master saved, but an image in it can't be reopened.
-        if (missing) notify.warning(t("{{count}} image has no file to save. It will be blank when you reopen this master.", { count: missing }),
-          { id: toastId("image-warning") });
+        if (missing) notify.warning(t("{{count}} image in {{file}} has no file to save", { count: missing, file: baseName(saved.name) }),
+          { id: toastId("image-warning"), description: t("It will be blank when you reopen this master.", { count: missing }) });
       }
       return true;
     } catch (err) {
@@ -1674,10 +1710,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Parse a candidate .master file (ZIP, legacy JSON, or a v1 file, which
    *  converts), reporting a clear error and leaving the document untouched
    *  on a bad file. */
-  function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
+  function tryParseMaster(bytes: Uint8Array, name: string): { master: Master; assets: MasterAssets } | null {
     try {
       const r = unpackMaster(bytes);
-      if (r.warnings.length) notify.warning(r.warnings.join(" · "), { id: toastId("master-warning") });
+      if (r.warnings.length) notify.warning(t("Opened {{file}} with changes", { file: baseName(name) }),
+        { id: toastId("master-warning"), description: r.warnings.join(" · ") });
       return r;
     } catch (err) {
       reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
@@ -1729,7 +1766,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     clearSelection();
     // The texture and mask survive a master switch, and so do their load errors.
     const notes = benchedNotes(dropped);
+    // One id per editor, so a second switch replaces the first one's toast.
     if (notes.length) notify.info(t("Switched to “{{name}}”", { name: target.name }), {
+      id: toastId("switched"),
       description: notes.join(" · "),
       action: { label: t("Undo"), onClick: () => { if (docRef.current === switched) mutating(undo)(); } },
     });
@@ -1741,7 +1780,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
-    const r = tryParseMaster(bytes);
+    const r = tryParseMaster(bytes, name);
     if (!r) return;
     await rememberMaster(r.master, name, bytes);
     refreshLibrary();
@@ -1901,19 +1940,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
     // one on a quiet attempt and ask again with no explanation.
-    let bytes: Uint8Array, path: string;
+    let bytes: Uint8Array, path: string, name: string;
     try {
       const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
       if (target === undefined) { reportLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
-      [bytes, path] = "path" in target
-        ? [await readNativeFile(target.path), target.path]
-        : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
+      if ("path" in target) {
+        [bytes, path, name] = [await readNativeFile(target.path), target.path, target.path];
+      } else {
+        const file = await target.handle.getFile();
+        [bytes, path, name] = [new Uint8Array(await file.arrayBuffer()), "", file.name];
+      }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
-    const r = tryParseMaster(bytes);
+    const r = tryParseMaster(bytes, name);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
     return r && { ...r, path: path || undefined };
   }
@@ -2053,7 +2095,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The label this replaced took its texture and mask with it, and their load errors.
       textureError.clear();
       maskError.clear();
-      if (notes.length) notify.warning(notes.join(" · "), { id: toastId("label-warning") });
+      if (notes.length) notify.warning(translate("Opened {{file}} with changes", { file: baseName(f.name) }),
+        { id: toastId("label-warning"), description: notes.join(" · ") });
       return true;
     } catch (err) {
       if (!opts?.quiet) reportLoadError(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
@@ -2093,8 +2136,8 @@ export const DocumentEditor = memo(function DocumentEditor({
               if (recoveredPath?.rebind) bindPath(recoveredPath.path, recoveredPath.modifiedAt);
               else if (recoveredPath) {
                 // A warning of its own, beside the open's (benched values).
-                notify.warning(t("Restored from {{file}}, which moved, changed or is open in another tab, so Save asks where", { file: baseName(recoveredPath.path) }),
-                  { id: toastId("restore-warning") });
+                notify.warning(t("Restored from {{file}}", { file: baseName(recoveredPath.path) }),
+                  { id: toastId("restore-warning"), description: t("It moved, changed or is open in another tab, so Save asks where") });
               }
               const bytes = new Uint8Array(await file.arrayBuffer());
               // The path (and its baseline mtime) rides along only once
