@@ -35,7 +35,7 @@ Tabs with unsaved changes keep a recovery copy as you work. If Label Lab crashes
 
 ## When something's wrong
 
-The header carries no messages. They appear as toasts at the bottom of the preview, or at their cause: an invalid layer's row in the Layers list turns red and gives the reason. Up to four toasts show at once, each in full.
+The header carries no messages. They appear as toasts at the bottom of the preview. An invalid value also shows where it is: its layer's row in the Layers list turns red and gives the reason. Up to four toasts show at once, each in full; with a fifth, the oldest is hidden until a newer one closes, and Tab and screen readers skip it meanwhile.
 
 Messages about something that is still wrong belong to their tab. They show while that tab is in front, hide when you switch away, and come back when you return. They are art that won't load (a texture, a mask or an image), fonts or art the preview can't assemble, a preview that won't draw, and the warning when a label refers to something its master doesn't have (a layer it overrides, a variant, or a layer a barcode or QR value names). Each stays until what caused it is fixed or you close it. A bad texture or mask clears when you drop a good one, a bad image when you drop a good one into any image field, a preview error when a frame draws fine, and a font or art the preview can't assemble the next time it assembles: picking a font that loads, or hiding the plate that holds the broken art, can fix it. Saving clears none of them. A message you closed stays closed until its cause raises it again: another failed drop, a different preview error or label warning, or the preview failing to assemble once more, which shows its message again even when the text is the same.
 

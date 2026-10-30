@@ -18,10 +18,12 @@ const RESIZE_OBSERVER_NOTICE = /^ResizeObserver loop/;
 
 const UNCAUGHT_TOAST = "uncaught-error";
 
-/** The reason, then (on its own line; see index.css) what to do about it. */
+/** The reason, then (on its own line; see index.css) what to do about it. An
+ *  empty reason is left out: its line would show as a blank one. */
 function report(reason: unknown) {
   const advice = t("The last action may not have finished. Your open tabs are intact; check the result before relying on it.");
-  notify.error(t("Something went wrong"), { id: UNCAUGHT_TOAST, description: `${errMsg(reason)}\n${advice}` });
+  const message = errMsg(reason).trim();
+  notify.error(t("Something went wrong"), { id: UNCAUGHT_TOAST, description: message ? `${message}\n${advice}` : advice });
 }
 
 export function UncaughtErrors() {
