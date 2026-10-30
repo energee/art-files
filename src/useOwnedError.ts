@@ -1,7 +1,7 @@
 // useOwnedError.ts — the editor header's message slots (buildError, loadError)
 // and one writer to a slot that clears only the message it set itself, so its
-// next success never wipes an error some other source put there (#473 exports,
-// #511 asset assembly).
+// next success never wipes an error some other source put there (#511 asset
+// assembly; exports, #473, now keep a toast of their own: useExport.ts).
 import { useMemo, useRef, type Dispatch, type SetStateAction } from "react";
 
 /** A header message. `note` marks a warning (amber) rather than an error;

@@ -196,20 +196,16 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
 const HEADER_ALERT_TONE = {
   destructive: ["border-destructive/50", ""],
   warning: ["border-warning/50 bg-warning-soft", "text-warning-text"],
-  success: ["border-success/50 bg-success-soft", "text-success-text"],
   blocked: ["border-destructive/50", ""],
 } as const;
 
 /** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
- *  warning; with `tone="success"`, an export confirmation), sized for the
- *  menu bar: the shadcn Alert (the app's one notification surface — see
- *  ui/alert.tsx) compacted to fit inline beside the menus rather than as a
- *  full-width block. Warning and success use `variant` "default" plus their
- *  own colour classes rather than the destructive variant, which paints its
- *  descendant text through a selector on Alert itself that a className
- *  override can't reach. A success note is hidden from screen readers here:
- *  it is announced politely through the always-mounted status region beside
- *  it, since a live region mounted already holding its text is not read.
+ *  warning), sized for the menu bar: the shadcn Alert (the app's one
+ *  notification surface — see ui/alert.tsx) compacted to fit inline beside the
+ *  menus rather than as a full-width block. Warning uses `variant` "default"
+ *  plus its own colour classes rather than the destructive variant, which
+ *  paints its descendant text through a selector on Alert itself that a
+ *  className override can't reach.
  *  The blocked-export note (tone "blocked") looks like an error but is no
  *  alert: it changes with every keystroke that keeps a value invalid, and an
  *  alert would interrupt the reader each time. Its own always-mounted polite
@@ -218,7 +214,6 @@ function HeaderAlert({ children, tone = "destructive" }: { children: React.React
   const [box, text] = HEADER_ALERT_TONE[tone];
   return (
     <Alert variant={tone === "destructive" || tone === "blocked" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
-      {...(tone === "success" && { role: undefined, "aria-hidden": true })}
       {...(tone === "blocked" && { role: undefined })}>
       <AlertDescription className={cn("text-xs", text)}>
         {children}
@@ -507,10 +502,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [editSession, setEditSession] = useState<string | null>(null);
   // Two error channels, split by who can clear them: renderError belongs to
   // the renderers (every good frame clears it); buildError to asset
-  // assembly, exports, image loads and native menu failures. A successful
-  // export, asset assembly or image load clears it only while it still holds
-  // its own message (useOwnedError; #473, #511). A note (warning) is marked
-  // where it is made (HeaderMessage.note); the plain setters are for errors.
+  // assembly, image loads and native menu failures. A successful asset
+  // assembly or image load clears it only while it still holds its own
+  // message (useOwnedError; #473, #511). A note (warning) is marked where it
+  // is made (HeaderMessage.note); the plain setters are for errors. Export
+  // results are toasts (useExport.ts), not header messages.
   const [buildError, setBuildMessage] = useState<HeaderMessage>(NO_MESSAGE);
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadMessage] = useState<HeaderMessage>(NO_MESSAGE);
@@ -1075,10 +1071,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
   const {
-    exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
-    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render, setBuildMessage,
+    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
   });
   const exportBlocked = blocked || exporting !== null;
 
@@ -1100,7 +1096,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
   } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
-  // Asset assembly's next success clears only the error it set, so an export
+  // Asset assembly's next success clears only the error it set, so an image
   // or master error survives a plate toggle (#511).
   const assetError = useOwnedError(setBuildMessage);
   useEffect(() => {
@@ -2340,8 +2336,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     );
   }
 
-  // A build note (a cancelled export) is only a warning: a render error outranks it.
-  const headerError: HeaderMessage = buildError.text && !(renderError && buildError.note) ? buildError : { text: renderError };
+  const headerError = buildError.text || renderError;
 
   return (
     <TooltipProvider>
@@ -2434,15 +2429,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             </HeaderAlert>
           )}
           {loadError.text && <HeaderAlert tone={loadError.note ? "warning" : "destructive"}>{loadError.text}</HeaderAlert>}
-          {headerError.text && <HeaderAlert tone={headerError.note ? "warning" : "destructive"}>{headerError.text}</HeaderAlert>}
-          {/* An error in the header replaces the export confirmation. */}
-          {exportNote.text && !headerError.text && <HeaderAlert tone={exportNote.note ? "warning" : "success"}>{exportNote.text}</HeaderAlert>}
-          {/* The success note's announcement, from a region that exists
-              before the note lands (see HeaderAlert's success tone). It
-              keeps the note while an error hides it, so a render error
-              clearing doesn't refill it and re-announce a stale "Saved …".
-              A stale-mask warning is an alert itself, so it isn't repeated here. */}
-          <span role="status" data-export-saved className="sr-only">{exportNote.note ? "" : exportNote.text}</span>
+          {headerError && <HeaderAlert>{headerError}</HeaderAlert>}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked for the same reason. */}
           <span role="status" data-export-blocked-status className="sr-only">

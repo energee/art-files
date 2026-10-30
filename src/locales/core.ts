@@ -50,10 +50,13 @@ const en = {
   "Text": "Text",
   "QR": "QR",
   "{{format}} file": "{{format}} file",
-  "Note: Saved {{files}}. Export cancelled before saving {{file}}.": "Note: Saved {{files}}. Export cancelled before saving {{file}}.",
-  "Note: Export cancelled before saving {{file}}.": "Note: Export cancelled before saving {{file}}.",
-  "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.": "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.",
-  "Saved {{files}}. Could not save {{file}}: {{error}}": "Saved {{files}}. Could not save {{file}}: {{error}}",
+  "Saved {{files}}": "Saved {{files}}",
+  "Saved {{file}}": "Saved {{file}}",
+  "{{file}} wasn't saved": "{{file}} wasn't saved",
+  "Export again to save both files.": "Export again to save both files.",
+  "Export again": "Export again",
+  "Couldn't save {{file}}": "Couldn't save {{file}}",
+  "Don't send the old {{mask}} with it — this PDF already has the white ink.": "Don't send the old {{mask}} with it — this PDF already has the white ink.",
   "Could not quit: {{error}}": "Could not quit: {{error}}",
   "Could not update the native menu: {{error}}": "Could not update the native menu: {{error}}",
   "Could not install the native menu: {{error}}": "Could not install the native menu: {{error}}",
@@ -64,7 +67,7 @@ const en = {
   "Show in Finder": "Show in Finder",
   "Show in File Explorer": "Show in File Explorer",
   "Show in Folder": "Show in Folder",
-  "Could not show {{file}}": "Could not show {{file}}"
+  "Couldn't show {{file}}": "Couldn't show {{file}}"
 };
 
 const es: Record<keyof typeof en, string> = {
@@ -119,10 +122,13 @@ const es: Record<keyof typeof en, string> = {
   "Text": "Texto",
   "QR": "QR",
   "{{format}} file": "Archivo {{format}}",
-  "Note: Saved {{files}}. Export cancelled before saving {{file}}.": "Nota: Se guardó {{files}}. La exportación se canceló antes de guardar {{file}}.",
-  "Note: Export cancelled before saving {{file}}.": "Nota: La exportación se canceló antes de guardar {{file}}.",
-  "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.": "Nota: Se guardó {{file}}. {{mask}}, al lado, es de una exportación anterior; este PDF ya incluye la tinta blanca, así que no envíes los dos.",
-  "Saved {{files}}. Could not save {{file}}: {{error}}": "Se guardó {{files}}. No se pudo guardar {{file}}: {{error}}",
+  "Saved {{files}}": "Se guardó {{files}}",
+  "Saved {{file}}": "Se guardó {{file}}",
+  "{{file}} wasn't saved": "No se guardó {{file}}",
+  "Export again to save both files.": "Vuelve a exportar para guardar los dos archivos.",
+  "Export again": "Exportar de nuevo",
+  "Couldn't save {{file}}": "No se pudo guardar {{file}}",
+  "Don't send the old {{mask}} with it — this PDF already has the white ink.": "No envíes el {{mask}} anterior con este PDF, que ya incluye la tinta blanca.",
   "Could not quit: {{error}}": "No se pudo salir: {{error}}",
   "Could not update the native menu: {{error}}": "No se pudo actualizar el menú del sistema: {{error}}",
   "Could not install the native menu: {{error}}": "No se pudo crear el menú del sistema: {{error}}",
@@ -133,7 +139,7 @@ const es: Record<keyof typeof en, string> = {
   "Show in Finder": "Mostrar en el Finder",
   "Show in File Explorer": "Mostrar en el Explorador de archivos",
   "Show in Folder": "Mostrar en la carpeta",
-  "Could not show {{file}}": "No se pudo mostrar {{file}}"
+  "Couldn't show {{file}}": "No se pudo mostrar {{file}}"
 };
 
 const fr: Record<keyof typeof en, string> = {
@@ -188,10 +194,13 @@ const fr: Record<keyof typeof en, string> = {
   "Text": "Texte",
   "QR": "QR",
   "{{format}} file": "Fichier {{format}}",
-  "Note: Saved {{files}}. Export cancelled before saving {{file}}.": "Note : {{files}} enregistré. Export annulé avant l’enregistrement de {{file}}.",
-  "Note: Export cancelled before saving {{file}}.": "Note : Export annulé avant l’enregistrement de {{file}}.",
-  "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.": "Note : {{file}} enregistré. {{mask}}, à côté, vient d’un export précédent ; ce PDF contient déjà l’encre blanche, n’envoyez donc pas les deux.",
-  "Saved {{files}}. Could not save {{file}}: {{error}}": "{{files}} enregistré. Impossible d’enregistrer {{file}} : {{error}}",
+  "Saved {{files}}": "{{files}} enregistré(s)",
+  "Saved {{file}}": "{{file}} enregistré",
+  "{{file}} wasn't saved": "{{file}} n’a pas été enregistré",
+  "Export again to save both files.": "Exportez à nouveau pour enregistrer les deux fichiers.",
+  "Export again": "Exporter à nouveau",
+  "Couldn't save {{file}}": "Impossible d’enregistrer {{file}}",
+  "Don't send the old {{mask}} with it — this PDF already has the white ink.": "N’envoyez pas l’ancien {{mask}} avec ce PDF, qui contient déjà l’encre blanche.",
   "Could not quit: {{error}}": "Impossible de quitter : {{error}}",
   "Could not update the native menu: {{error}}": "Impossible de mettre à jour le menu natif : {{error}}",
   "Could not install the native menu: {{error}}": "Impossible de créer le menu natif : {{error}}",
@@ -202,7 +211,7 @@ const fr: Record<keyof typeof en, string> = {
   "Show in Finder": "Afficher dans le Finder",
   "Show in File Explorer": "Afficher dans l’Explorateur de fichiers",
   "Show in Folder": "Afficher dans le dossier",
-  "Could not show {{file}}": "Impossible d’afficher {{file}}"
+  "Couldn't show {{file}}": "Impossible d’afficher {{file}}"
 };
 
 const de: Record<keyof typeof en, string> = {
@@ -257,10 +266,13 @@ const de: Record<keyof typeof en, string> = {
   "Text": "Text",
   "QR": "QR",
   "{{format}} file": "{{format}}-Datei",
-  "Note: Saved {{files}}. Export cancelled before saving {{file}}.": "Hinweis: {{files}} gespeichert. Export vor dem Speichern von {{file}} abgebrochen.",
-  "Note: Export cancelled before saving {{file}}.": "Hinweis: Export vor dem Speichern von {{file}} abgebrochen.",
-  "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.": "Hinweis: {{file}} gespeichert. {{mask}} daneben stammt aus einem älteren Export; dieses PDF enthält die weiße Tinte bereits, also nicht beide senden.",
-  "Saved {{files}}. Could not save {{file}}: {{error}}": "{{files}} gespeichert. {{file}} konnte nicht gespeichert werden: {{error}}",
+  "Saved {{files}}": "{{files}} gespeichert",
+  "Saved {{file}}": "{{file}} gespeichert",
+  "{{file}} wasn't saved": "{{file}} wurde nicht gespeichert",
+  "Export again to save both files.": "Bitte erneut exportieren, um beide Dateien zu speichern.",
+  "Export again": "Erneut exportieren",
+  "Couldn't save {{file}}": "{{file}} konnte nicht gespeichert werden",
+  "Don't send the old {{mask}} with it — this PDF already has the white ink.": "Die alte Datei {{mask}} nicht mitsenden – dieses PDF enthält die weiße Tinte bereits.",
   "Could not quit: {{error}}": "Beenden fehlgeschlagen: {{error}}",
   "Could not update the native menu: {{error}}": "Systemmenü konnte nicht aktualisiert werden: {{error}}",
   "Could not install the native menu: {{error}}": "Systemmenü konnte nicht eingerichtet werden: {{error}}",
@@ -271,7 +283,7 @@ const de: Record<keyof typeof en, string> = {
   "Show in Finder": "Im Finder anzeigen",
   "Show in File Explorer": "Im Datei-Explorer anzeigen",
   "Show in Folder": "Im Ordner anzeigen",
-  "Could not show {{file}}": "{{file}} konnte nicht angezeigt werden"
+  "Couldn't show {{file}}": "{{file}} konnte nicht angezeigt werden"
 };
 
 const pt: Record<keyof typeof en, string> = {
@@ -326,10 +338,13 @@ const pt: Record<keyof typeof en, string> = {
   "Text": "Texto",
   "QR": "QR",
   "{{format}} file": "Arquivo {{format}}",
-  "Note: Saved {{files}}. Export cancelled before saving {{file}}.": "Observação: salvamos {{files}}. A exportação foi cancelada antes de salvar {{file}}.",
-  "Note: Export cancelled before saving {{file}}.": "Observação: a exportação foi cancelada antes de salvar {{file}}.",
-  "Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.": "Observação: salvamos {{file}}. {{mask}}, ao lado, é de uma exportação anterior; este PDF já inclui a tinta branca, então não envie os dois.",
-  "Saved {{files}}. Could not save {{file}}: {{error}}": "Salvamos {{files}}. Não foi possível salvar {{file}}: {{error}}",
+  "Saved {{files}}": "Salvamos {{files}}",
+  "Saved {{file}}": "Salvamos {{file}}",
+  "{{file}} wasn't saved": "{{file}} não foi salvo",
+  "Export again to save both files.": "Exporte novamente para salvar os dois arquivos.",
+  "Export again": "Exportar novamente",
+  "Couldn't save {{file}}": "Não foi possível salvar {{file}}",
+  "Don't send the old {{mask}} with it — this PDF already has the white ink.": "Não envie o {{mask}} antigo junto: este PDF já inclui a tinta branca.",
   "Could not quit: {{error}}": "Não foi possível encerrar: {{error}}",
   "Could not update the native menu: {{error}}": "Não foi possível atualizar o menu do sistema: {{error}}",
   "Could not install the native menu: {{error}}": "Não foi possível instalar o menu do sistema: {{error}}",
@@ -340,7 +355,7 @@ const pt: Record<keyof typeof en, string> = {
   "Show in Finder": "Mostrar no Finder",
   "Show in File Explorer": "Mostrar no Explorador de Arquivos",
   "Show in Folder": "Mostrar na pasta",
-  "Could not show {{file}}": "Não foi possível mostrar {{file}}"
+  "Couldn't show {{file}}": "Não foi possível mostrar {{file}}"
 };
 
 export default { en, es, fr, de, pt };

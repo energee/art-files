@@ -64,7 +64,7 @@ it.each([["/x/Lupula.pdf"], ["C:\\x\\Lupula.pdf"]])("reports a failed reveal of 
     mocks.revealItemInDir.mockRejectedValue(new Error("No such file or directory (os error 2)"));
     revealAction(path)!.onClick();
     await vi.waitFor(() => expect(error).toHaveBeenCalledWith(
-      "Could not show Lupula.pdf", { description: "No such file or directory (os error 2)" }));
+      "Couldn't show Lupula.pdf", { description: "No such file or directory (os error 2)" }));
     await new Promise((resolve) => setTimeout(resolve, 0)); // let a leaked rejection surface
     expect(unhandled).not.toHaveBeenCalled();
   } finally {

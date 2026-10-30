@@ -3,9 +3,14 @@
 // toasts it renders. Sonner defers showing a toast with setTimeout and hides
 // one with requestAnimationFrame, so setupToastHarness() fakes both (and Date,
 // which its auto-dismiss reads) and every helper here moves that clock inside
-// act(). Call it once at the top of the test file; it registers the beforeEach
-// and afterEach that fake the clock and, after each test, retire every toast,
-// unmount what mount() rendered and restore real timers.
+// act(). A module that keeps the setTimeout it finds when it loads stays tied
+// to the clock faked at that moment: fontkit, which the PDF builders embed
+// fonts with, does, and after that test its timers never fire again. A test
+// that builds PDFs therefore imports "@/pdf/build" at the top of its file,
+// before any test fakes the clock. Call setupToastHarness() once at the top of
+// the test file; it registers the beforeEach and afterEach that fake the clock
+// and, after each test, retire every toast, unmount what mount() rendered and
+// restore real timers.
 import { act, createElement, Fragment, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { toast } from "sonner";
@@ -16,7 +21,9 @@ let host: { container: HTMLDivElement; root: Root } | undefined;
 
 export function setupToastHarness() {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "Date"],
+    });
   });
 
   afterEach(() => {

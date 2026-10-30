@@ -1,9 +1,13 @@
 // save-races-dom.test.tsx — App-level Save / Save Master write paths: pending
-// writes, cancelled browser save targets, and what a Save Master bundles.
+// writes, cancelled browser save targets, and what a Save Master bundles. Export
+// results are toasts, so the real <Toaster /> is mounted beside the editor
+// (mount) and read from the document.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, expect, it, vi } from "vitest";
+import { Toaster } from "../src/components/ui/sonner";
 import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
 import type { Command } from "../src/components/CommandMenu";
@@ -33,15 +37,23 @@ import type { Master } from "../src/model/layers";
 
 let root: Root;
 let container: HTMLDivElement;
+let toasterRoot: Root;
+let toasterHost: HTMLDivElement;
 afterEach(async () => {
-  await act(async () => root?.unmount());
+  // Sonner's store outlives the Toaster and replays what is still active to the
+  // next one that mounts, so retire every toast before the next test.
+  toast.dismiss();
+  await act(async () => { root?.unmount(); toasterRoot?.unmount(); });
   container?.remove();
+  toasterHost?.remove();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  toasterHost = document.createElement("div"); document.body.append(toasterHost); toasterRoot = createRoot(toasterHost);
+  await act(async () => toasterRoot.render(createElement(Toaster)));
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   const onMeta = vi.fn();
   const props = {
@@ -52,6 +64,15 @@ async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = fa
   await act(async () => root.render(createElement(DocumentEditor, props)));
   return { saveSlot, onMeta, props };
 }
+/** Wait until `message` is on screen. A toast lands a tick after its message is
+ *  sent, and DOM updates land when an act() settles, so each poll flushes one. */
+const shown = (message: string) => vi.waitFor(async () => {
+  await act(async () => {});
+  expect(document.body.textContent).toContain(message);
+}, { timeout: 15000 });
+/** Give a toast that was NOT sent time to (wrongly) land. */
+const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
+const toastTitles = () => [...document.querySelectorAll("[data-sonner-toast] [data-title]")].map((el) => el.textContent);
 async function toggle(id: string) {
   const b = document.querySelector(`[data-layer-id="${id}"] button[aria-label$=": enabled"]`) as HTMLButtonElement;
   expect(b).not.toBeNull();
@@ -238,7 +259,7 @@ it("psd: Export PSD saves one PSD with the mask plate as White Ink, and names it
   const [name] = pick.mock.calls[0].map((options) => options.suggestedName);
   expect(name).toMatch(/\.psd$/);
   expect(name).not.toMatch(/-mask\.psd$/);
-  await vi.waitFor(() => expect(document.body.textContent).toContain(`Saved ${name}.`));
+  await shown(`Saved ${name}`);
   expect(pick).toHaveBeenCalledOnce();
   // One build, the art plate, carrying both flattened plates.
   expect(vi.mocked(buildPsd).mock.calls.map(([, , mode, opts]) => [mode, !!opts?.composite, opts?.whiteInk?.data[0]]))
@@ -257,7 +278,7 @@ it("psd: Export PSD without a canvas reports it and saves nothing", async () => 
     await act(async () => {});
     expect(document.body.textContent).toContain("No canvas to draw the White Ink plate.");
   }, { timeout: 15000 });
-  expect(document.body.textContent).toMatch(/Could not save .+\.psd: No canvas/);
+  expect(toastTitles()).toEqual([expect.stringMatching(/^Couldn't save .+\.psd$/)]);
   expect(pick).not.toHaveBeenCalled();
 });
 
@@ -271,10 +292,9 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
       await vi.waitFor(() => expect(pick).toHaveBeenCalled(), { timeout: 4000 });
     });
     expect(pick, document.body.textContent ?? "").toHaveBeenCalledOnce();
-    expect(document.body.textContent).toContain("Export cancelled before saving");
-    // The note is a warning, not an error: a later render failure must show.
-    await act(async () => menu.renderError!("Preview failed: boom"));
-    expect(document.body.textContent).toContain("Preview failed: boom");
+    // A cancel is the user's own choice: nothing was saved, so nothing is said.
+    await settle();
+    expect(toastTitles()).toEqual([]);
   });
   it(`${extension}: a refused mask write reports the saved artwork (#254)`, async () => {
     let writes = 0;
@@ -285,7 +305,9 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
       menu.actions.find((c) => c.id === command)!.run();
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
     });
-    expect(document.body.textContent).toMatch(new RegExp(`Saved renamed-art\\.${extension}\\. Could not save .+-mask\\.${extension}: Disk full`));
+    await shown("Disk full");
+    expect(toastTitles()).toEqual([expect.stringMatching(new RegExp(`^Couldn't save .+-mask\\.${extension}$`))]);
+    expect(document.body.textContent).toContain(`Saved renamed-art.${extension}. Disk full`);
     // Toggling a plate reruns asset assembly; its success must not wipe the
     // export's error, which it did not set (#511).
     await toggle("mask");
@@ -298,32 +320,14 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
       { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) }));
     vi.stubGlobal("showSaveFilePicker", pick);
     await mount(null, true);
-    // A confirmation, not an error: announced politely, through a status
-    // region that exists before the note lands (one mounted already holding
-    // its text isn't announced).
-    const region = document.querySelector("[data-export-saved]");
-    expect(region?.getAttribute("role")).toBe("status");
-    expect(region?.textContent).toBe("");
     await act(async () => {
       menu.actions.find((c) => c.id === command)!.run();
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
     });
     const [art, mask] = pick.mock.calls.map(([options]) => options.suggestedName);
-    await vi.waitFor(() => expect(document.body.textContent).toContain(`Saved ${art}, ${mask}.`));
-    expect(document.querySelector("[data-export-saved]")).toBe(region);
-    expect(region!.textContent).toBe(`Saved ${art}, ${mask}.`);
-    // A render error coming and going hides and restores the visible note,
-    // but the region's text never changes, so it isn't announced again.
-    const visibleNote = () => document.querySelector('[data-slot="alert"][aria-hidden="true"]');
-    await act(async () => menu.renderError!("Preview failed: boom"));
-    expect(visibleNote()).toBeNull();
-    expect(region!.textContent).toBe(`Saved ${art}, ${mask}.`);
-    await act(async () => menu.renderError!(""));
-    expect(visibleNote()?.textContent).toBe(`Saved ${art}, ${mask}.`);
-    expect(region!.textContent).toBe(`Saved ${art}, ${mask}.`);
-    // A later edit makes the confirmation stale, so it goes.
-    await toggle("warning");
-    expect(document.body.textContent).not.toContain(`Saved ${art}`);
+    await shown(`Saved ${art}, ${mask}`);
+    expect(toastTitles()).toEqual([`Saved ${art}, ${mask}`]);
+    expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("success");
   });
   it(`${extension}: an edit during the export withholds the confirmation (#400)`, async () => {
     // The first dialog waits until released, so an edit lands mid-export.
@@ -346,7 +350,30 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     });
     // Let the export finish, then check it confirmed nothing.
     await vi.waitFor(() => expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(false));
-    expect(document.body.textContent).not.toContain("Saved ");
+    await settle();
+    expect(toastTitles()).toEqual([]);
+  });
+  it(`${extension}: the result toasts even when the tab went to the background`, async () => {
+    // The dialog stays open while the user switches to another tab.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
+      if (pick.mock.calls.length === 1) await held;
+      return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+    });
+    vi.stubGlobal("showSaveFilePicker", pick);
+    const { props } = await mount(null, true);
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    });
+    await act(async () => root.render(createElement(DocumentEditor, { ...props, active: false })));
+    await act(async () => {
+      release();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
+    });
+    const [art, mask] = pick.mock.calls.map(([options]) => options.suggestedName);
+    await shown(`Saved ${art}, ${mask}`);
   });
 }
 

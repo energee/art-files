@@ -31,7 +31,7 @@ export function revealAction(path: string | undefined): ToastAction | undefined 
           // Split by hand: Tauri's async basename() is an IPC call, and this
           // is the failure path.
           const file = path.split(/[\\/]/).pop();
-          notify.error(t("Could not show {{file}}", { file }), { description: errMsg(err) });
+          notify.error(t("Couldn't show {{file}}", { file }), { description: errMsg(err) });
         });
     },
   };
