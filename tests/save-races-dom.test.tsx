@@ -320,6 +320,36 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     expect([artAgain, maskAgain]).toEqual([art, mask]);
     await shown(`Saved ${art}, ${mask}`);
   });
+  // Export again runs the menu's own export command, so it obeys the same gate:
+  // a label made invalid since the warning exports nothing.
+  it(`${extension}: Export again does nothing once the label is blocked`, async () => {
+    const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
+      if (pick.mock.calls.length === 2) throw new DOMException("Cancelled", "AbortError");
+      return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+    });
+    vi.stubGlobal("showSaveFilePicker", pick);
+    const { props } = await mount(null, true);
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
+    });
+    await shown("wasn't saved");
+
+    // The label is replaced by one with an invalid barcode, which blocks export.
+    const invalid = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { barcode: "123" } }, {});
+    await act(async () => root.render(createElement(DocumentEditor, {
+      ...props, fileToOpen: { seq: 1, file: new File([invalid as unknown as BlobPart], "bad.label") },
+    })));
+    await vi.waitFor(async () => {
+      await act(async () => {});
+      expect(menu.actions.find((c) => c.id === command)!.disabled).toBe(true);
+    }, { timeout: 15000 });
+
+    const again = [...document.querySelectorAll("button")].find((b) => b.textContent === "Export again")!;
+    await act(async () => { again.click(); });
+    await settle();
+    expect(pick).toHaveBeenCalledTimes(2);
+  });
   it(`${extension}: a refused mask write reports the saved artwork (#254)`, async () => {
     let writes = 0;
     const { pick, handle } = picker(async () => { if (++writes === 2) throw new Error("Disk full"); });
@@ -400,6 +430,35 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psds", "psd
     await shown(`Saved ${art}, ${mask}`);
   });
 }
+
+// Export again goes through the live command table, so an edit made since the
+// cancelled export is what the re-run builds.
+it("psd: Export again after an edit builds the edited label", async () => {
+  const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
+    if (pick.mock.calls.length === 2) throw new DOMException("Cancelled", "AbortError");
+    return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+  });
+  vi.stubGlobal("showSaveFilePicker", pick);
+  flatCanvas(0);
+  vi.mocked(buildPsd).mockClear();
+  await mount(null, true);
+  await act(async () => {
+    menu.actions.find((c) => c.id === "export-psds")!.run();
+    await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 15000 });
+  });
+  await shown("wasn't saved");
+  const layerIds = () => vi.mocked(buildPsd).mock.calls.at(-1)![3]!.layers!.map((layer) => layer.id);
+  expect(layerIds()).toContain("warning");
+
+  await toggle("warning"); // the edit
+  const again = [...document.querySelectorAll("button")].find((b) => b.textContent === "Export again")!;
+  await act(async () => {
+    again.click();
+    await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(4), { timeout: 15000 });
+  });
+  expect(layerIds()).not.toContain("warning");
+  await shown("Saved "); // the re-run finished
+});
 
 /** Stubs the browser open picker to hand back `m` packed as a .master, with
  *  a handle whose writes succeed (so it can also be Save Master's target). */

@@ -44,9 +44,9 @@ Export greys out while the label is invalid. Click the header's reason, or press
 
 Exports do not wait for the preview. They rebuild from full-size assets, preserving PDF vectors and uploaded-image resolution. **Settings → PSD resolution** controls only PSD raster resolution (default 600 DPI).
 
-The **Saved …** toast fades after a few seconds. An export edited during its build shows no **Saved …** toast, because its files hold the label as it was when export began.
+The **Saved …** toast fades after a few seconds. An export edited during its build shows no **Saved …** toast, because its files hold the label as it was when export began. The warning about an older `-mask.pdf` still appears in that case: the old file is out of date whatever you edited. Closing the tab clears its export toasts.
 
-Cancelling a save dialog says nothing. The one exception is a two-file export cancelled at the second file (in a browser, where the mask has a dialog of its own): the art file is already saved, so a warning, `{name}-mask.pdf wasn't saved`, stays until you close it, with an **Export again** button that exports the pair again, from the label as it is then, and asks where to save. A write that fails shows **Couldn't save {name}** with the reason, and stays until you close it or the next export starts; when the art file had already been saved, the reason starts **Saved {name}.**
+Cancelling a save dialog says nothing. The one exception is a two-file export cancelled at the second file (in a browser, where the mask has a dialog of its own): the art file is already saved, so a warning, `{name}-mask.pdf wasn't saved`, stays until you close it, with an **Export again** button. It runs the same **Export PDFs As…** (or **Export PSDs As…**) command, so it exports the label as it is then, asks where to save, and does nothing while the label is invalid, just as that menu row is greyed out. A write that fails shows **Couldn't save {name}** with the reason, and stays until you close it or the next export starts; when the art file had already been saved, the reason starts **Saved {name}.**
 
 The combined PDF title is `{Name} label`. All PDF exports declare the **TrimBox** (the 8 × 5in die centred in the bleed), **BleedBox** (the whole page), and a **Producer** naming the Label Lab version.
 

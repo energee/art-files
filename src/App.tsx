@@ -1075,6 +1075,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
     drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
+    // A cancelled pair's warning offers Export again. It runs the menu's own
+    // Export … As… command, so the one export gate (exportBlocked) and the
+    // label as it is now apply. Until the blocked toast, a blocked one is a no-op.
+    exportAgain: (format) => {
+      const command = commandsRef.current.find((c) => c.id === (format === "pdf" ? "export-both-as" : "export-psds-as"));
+      if (command && !command.disabled) command.run();
+    },
   });
   const exportBlocked = blocked || exporting !== null;
 

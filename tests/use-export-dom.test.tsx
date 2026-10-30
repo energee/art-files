@@ -50,12 +50,18 @@ let failBuild = false;
  *  state the build saw. */
 let builds: string[] = [];
 
+/** Stands for App's "Export … As…" pair command, which Export again runs: the
+ *  editor's latest render exporting the pair, asking. */
+const again = vi.fn((format: "pdf" | "psd") => {
+  void (format === "pdf" ? api.buildFull({ ask: true }, "pair") : api.exportPsd({ ask: true }, "pair"));
+});
+
 /** One editor; render it again with another `tag` to stand for an edit. */
 function Probe({ tag = "before" }: { tag?: string }) {
   api = useExport({
     drawLayers: [], family: "poppins", liveImages: {}, planAssets: () => ({}) as never,
     pageArt: () => { builds.push(tag); if (failBuild) throw new Error("No art"); return {}; },
-    title: "T", exportBase: "Lupula", render: DEFAULT_RENDER,
+    title: "T", exportBase: "Lupula", render: DEFAULT_RENDER, exportAgain: again,
   });
   return null;
 }
@@ -67,6 +73,7 @@ beforeEach(() => {
   save.revealItemInDir.mockClear();
   failBuild = false;
   builds = [];
+  again.mockClear();
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue(MAC);
 });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -84,6 +91,12 @@ async function finish(run: () => Promise<void>) {
 
 const printPdf = () => finish(() => api.buildFull());
 const pdfPair = () => finish(() => api.buildFull({}, "pair"));
+
+/** Resolve once the save dialog has been asked for `count` files in all. A real
+ *  macrotask wait: unlike vi.waitFor it never moves the faked clock. */
+async function untilRequests(count: number) {
+  while (save.requests.length < count) await new Promise((resolve) => setImmediate(resolve));
+}
 
 /** Click the warning's Export again and let the pair it re-runs finish. */
 async function rerun() {
@@ -166,6 +179,7 @@ it("a pair cancelled at the mask warns, and Export again re-runs it asking", asy
   expect(toastTitle()).toBe("Lupula-mask.pdf wasn't saved");
 
   await rerun();
+  expect(again).toHaveBeenCalledExactlyOnceWith("pdf");
   expect(names()).toEqual(["Lupula.pdf", "Lupula-mask.pdf", "Lupula.pdf", "Lupula-mask.pdf"]);
 }, 30000);
 
@@ -188,8 +202,9 @@ it("Export again asks even when the art file's path is remembered", async () => 
   expect(save.requests[4].target).toEqual({ path: "/out/Lupula.pdf" });
 }, 30000);
 
-// The warning outlives the render that made it, so Export again must not use
-// that render's state: it goes through the editor's current export.
+// The warning outlives the render that made it. Export again hands the format to
+// the editor (App runs its own Export … As… command); this stands in for that
+// with the latest render's export, which App's live command table also is.
 it("Export again exports the label as it is when clicked, not as the cancelled export saw it", async () => {
   save.next = [
     async () => ({ name: "/out/Lupula.pdf", bytes: new Uint8Array(), target: { path: "/out/Lupula.pdf" } }),
@@ -292,4 +307,56 @@ it.each([
 
   // Looked at right away: a success toast would fade by itself after TOAST_MS.success.
   expect(toastCount()).toBe(0);
+}, 30000);
+
+// Sonner keeps a dismissed id ~250 ms and folds a toast shown under it into the
+// dying one (src/useOwnedToast.ts), so runs that shared one id would lose this
+// error, which is shown just after the previous run's toast starts to exit.
+it("a repeat export that fails soon after dismissing the last toast still shows its error, and keeps it", async () => {
+  let fail!: () => void;
+  save.next = [
+    async () => ({ name: "Lupula.pdf", bytes: new Uint8Array() }),
+    () => new Promise<Saved>((_, reject) => { fail = () => reject(new Error("disk full")); }),
+  ];
+  mount(<Probe />);
+  await printPdf();
+  expect(toastTitle()).toBe("Saved Lupula.pdf");
+
+  let running!: Promise<void>;
+  await act(async () => { running = api.buildFull(); await untilRequests(2); });
+  advance(50); // the first toast's dismissal reaches Sonner, which starts its exit
+  await finish(async () => { fail(); await running; });
+  settleDismissal();
+
+  expect(toastTitle()).toBe("Couldn't save Lupula.pdf");
+  expect(toastCount()).toBe(1);
+  advance(60_000);
+  expect(toastTitle()).toBe("Couldn't save Lupula.pdf");
+}, 30000);
+
+it("closing the tab dismisses its export toast", async () => {
+  save.next = [async () => ({ name: "Lupula.pdf", bytes: new Uint8Array() }), async () => null];
+  mount(<Probe />);
+  await pdfPair();
+  expect(button("Export again")).toBeDefined();
+
+  mount(); // the editor unmounts: its tab was closed
+  settleDismissal();
+  expect(toastCount()).toBe(0);
+}, 30000);
+
+it("a warning that lands after its tab closed offers no Export again", async () => {
+  let cancel!: () => void;
+  save.next = [
+    async () => ({ name: "Lupula.pdf", bytes: new Uint8Array() }),
+    () => new Promise<Saved>((resolve) => { cancel = () => resolve(null); }),
+  ];
+  mount(<Probe />);
+  let running!: Promise<void>;
+  await act(async () => { running = api.buildFull({}, "pair"); await untilRequests(2); });
+  mount(); // closed while the second dialog is open
+  await finish(async () => { cancel(); await running; });
+
+  expect(toastTitle()).toBe("Lupula-mask.pdf wasn't saved");
+  expect(button("Export again")).toBeUndefined();
 }, 30000);

@@ -43,7 +43,7 @@ async function mountExport() {
     api = useExport({
       drawLayers: [], family: "poppins", liveImages: {}, planAssets: () => ({}) as never,
       pageArt: () => ({}), title: "Beer", exportBase: "beer",
-      render: { bleedIn: 0.125, dpi: 600 } as never,
+      render: { bleedIn: 0.125, dpi: 600 } as never, exportAgain: () => undefined,
     });
     return null;
   }
@@ -255,4 +255,30 @@ it("no warning when no older -mask.pdf sits beside the print PDF", async () => {
   expect(text()).not.toContain("Don't send the old");
   await act(async () => { [...document.querySelectorAll("button")].find((b) => b.textContent === "Show in Finder")!.click(); });
   expect(revealItemInDir).toHaveBeenCalledWith("/print/Beer.pdf");
+}, 30_000);
+
+// The old -mask.pdf is stale whatever was edited, so its warning is not held back
+// by an edit the way the Saved confirmation is (#400).
+it("an edit during the export withholds Saved but still warns about an older -mask.pdf", async () => {
+  let choose!: (path: string) => void;
+  save.mockReturnValueOnce(new Promise<string>((resolve) => { choose = resolve; }));
+  exists.mockImplementation(async (path) => path === "/print/Beer-mask.pdf");
+  const tab = await mountExport();
+  let running!: Promise<void>;
+  await act(async () => {
+    running = tab.api().buildFull();
+    while (save.mock.calls.length < 1) await new Promise((resolve) => setImmediate(resolve));
+  });
+  act(() => tab.api().exportStale()); // the label was edited mid-export
+  await act(async () => {
+    choose("/print/Beer.pdf");
+    await running;
+    await new Promise((resolve) => setImmediate(resolve)); // the stale-mask check
+  });
+  advance(0);
+
+  expect(toastCount()).toBe(1);
+  expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
+  expect(toastTitle()).toBe("Saved Beer.pdf");
+  expect(text()).toContain("Don't send the old Beer-mask.pdf");
 }, 30_000);
