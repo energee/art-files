@@ -3,7 +3,8 @@
 // forever (#409): values for missing layers and variants the master no longer
 // has are benched on `dormant` (non-destructive) and reported, the same as a
 // rebind onto a different master, and the tab is left unsaved so Save writes
-// the cleaned label. A v2 label's orphans are reported too.
+// the cleaned label. A v2 label's orphans are reported too. The report is one
+// warning toast per open (the real <Toaster /> is mounted beside the editor).
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -12,6 +13,7 @@ import { DEFAULT_RENDER } from "../src/settings";
 import { strToU8, zipSync } from "fflate";
 import { packLabel, unpackLabel } from "../src/model/files";
 import { setLanguage } from "../src/i18n";
+import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -31,7 +33,9 @@ const { DocumentEditor } = await import("../src/App");
 afterEach(() => { setLanguage("system"); localStorage.clear(); document.body.innerHTML = ""; });
 
 type Ctx = {
-  container: HTMLElement; save: () => Promise<void>; writes: Uint8Array[];
+  save: () => Promise<void>; writes: Uint8Array[];
+  /** Closes the tab: the editor unmounts, the toaster stays. */
+  closeTab: () => Promise<void>;
   /** The tab's dirty flag after the open — false means Save is disabled. */
   dirty: boolean;
 };
@@ -59,6 +63,7 @@ async function openLabel(
     onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
     onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
   };
+  await mountToaster();
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
   try {
@@ -67,10 +72,12 @@ async function openLabel(
       await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
     expect(onOpenSettled).toHaveBeenCalledWith(1, false);
     const save = () => act(async () => { expect(await saveSlot.current!()).toBe(true); });
-    await check({ container, save, writes, dirty: onMeta.mock.calls.at(-1)![0].dirty });
+    const closeTab = () => act(async () => { root.unmount(); });
+    await check({ save, writes, closeTab, dirty: onMeta.mock.calls.at(-1)![0].dirty });
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
+    await unmountToaster();
   }
 }
 
@@ -81,9 +88,9 @@ it("benches and reports orphan value and variant ids when a label opens on its o
       name: [{ text: "Alpha", fill: "#F3CD80", layer: "metallic" }],
       "gone-layer": "stale",
     },
-  }, async ({ container, save, writes, dirty }) => {
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("gone-layer");
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("gone-variant");
+  }, async ({ save, writes, dirty }) => {
+    await shown("gone-layer");
+    expect(document.body.textContent).toContain("gone-variant");
     expect(dirty).toBe(true); // Save stays live so the cleaned label reaches disk
 
     await save();
@@ -95,14 +102,56 @@ it("benches and reports orphan value and variant ids when a label opens on its o
   });
 }, 30_000);
 
-// The note is marked a warning where it is made, so it stays amber after the
-// UI language changes (its text keeps the language it was made in).
-it("keeps the open's note a warning after a language switch", async () => {
-  await openLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { "gone-layer": "stale" } }, async ({ container }) => {
-    const alert = () => container.querySelector('[role="alert"]');
-    expect(alert()?.querySelector(".text-warning-text")?.textContent).toContain("gone-layer");
+// What the open benched shows once, as a warning toast with no "Note:" lead-in:
+// a second render of the editor (a language switch) must not show it again.
+it("open warnings show once, without Note:", async () => {
+  await openLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: ["gone-variant"], values: { "gone-layer": "stale" },
+  }, async () => {
+    await shown("gone-layer");
     await act(async () => { setLanguage("de"); });
-    expect(alert()?.querySelector(".text-warning-text")?.textContent).toContain("gone-layer");
+    await settle();
+    // The title names the file; what was benched is the description.
+    expect(toastTitles()).toHaveLength(1);
+    expect(toastTitles()[0]).toContain("a.label");
+    const toast = document.querySelector("[data-sonner-toast]")!;
+    expect(toast.querySelector("[data-description]")!.textContent).toContain("gone-variant");
+    expect(document.body.textContent).not.toContain("Note:");
+    expect(toast.getAttribute("data-type")).toBe("warning");
+    // A warning stays until closed; it has a close button.
+    expect(toast.querySelector("[data-close-button]")).not.toBeNull();
+  });
+}, 30_000);
+
+it("names the file in the warning's title and the benched values in its description", async () => {
+  await openLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { "gone-layer": "stale" },
+  }, async () => {
+    await shown("gone-layer");
+    expect(toastTitles()).toEqual(["Opened a.label with changes"]);
+    expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toBe("1 value benched: gone-layer");
+  });
+}, 30_000);
+
+// The warning is about this tab's label, so it goes with the tab. A failure to
+// open or load reports a problem nothing else in the editor shows, and stays.
+it("closing the tab dismisses its open warning", async () => {
+  await openLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { "gone-layer": "stale" },
+  }, async ({ closeTab }) => {
+    await shown("gone-layer");
+    await closeTab();
+    await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+  });
+}, 30_000);
+
+it("a load failure's toast survives its tab closing", async () => {
+  await openLabel(new TextEncoder().encode("not a label"), async ({ closeTab }) => {
+    await shown("Could not open a.label");
+    await closeTab();
+    await settle();
+    expect(toastTitles()).toHaveLength(1);
+    expect(toastTitles()[0]).toContain("Could not open a.label");
   });
 }, 30_000);
 
@@ -115,8 +164,9 @@ it("does not re-announce values and variants the label already had benched", asy
     // "constructor" is an Object.prototype key: an `in` test would mistake it
     // for a live value and announce it.
     dormant: { values: { "other-layer": "x", constructor: "y" }, variants: ["other-variant"] },
-  }, async ({ container, save, writes, dirty }) => {
-    expect(container.textContent).not.toContain("benched");
+  }, async ({ save, writes, dirty }) => {
+    await settle();
+    expect(toastTitles()).toEqual([]);
     expect(dirty).toBe(false);
     await save();
     const saved = unpackLabel(writes.at(-1)!).label!;
@@ -131,8 +181,8 @@ it("reports a v2 label's value for a layer its master no longer has", async () =
     formatVersion: 2, masterId: "lolev", enabledVariants: [],
     values: { name: "Alpha", "gone-layer": "stale" },
   })) });
-  await openLabel(bytes, async ({ container, dirty }) => {
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("gone-layer");
+  await openLabel(bytes, async ({ dirty }) => {
+    await shown("gone-layer");
     expect(dirty).toBe(true);
   });
 }, 30_000);

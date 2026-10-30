@@ -1,79 +1,85 @@
 // @vitest-environment happy-dom
 // uncaught-errors-dom.test.tsx — an async failure nobody caught (a rejected
 // save/export/open promise, or a throw in an event handler) is logged and
-// shown in a dismissible alert instead of vanishing silently (#398).
+// shown as an error toast that stays until dismissed, instead of vanishing
+// silently (#398). The latest failure replaces the one before it.
 import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { UncaughtErrors } from "@/components/UncaughtErrors";
+import { mount, setupToastHarness, settleDismissal, show, text, toastCount } from "./toast-harness";
+
+setupToastHarness();
 
 afterEach(() => vi.restoreAllMocks());
-
-function mount() {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => root.render(createElement(UncaughtErrors)));
-  return { host, done: () => { act(() => root.unmount()); host.remove(); } };
-}
 
 /** happy-dom has no PromiseRejectionEvent; the listener reads only `reason`. */
 function rejection(reason: unknown) {
   return Object.assign(new Event("unhandledrejection", { cancelable: true }), { reason });
 }
 
-it("shows and logs an unhandled promise rejection", () => {
+it("an unhandled rejection shows an error toast that stays until dismissed", () => {
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
-  const { host, done } = mount();
-  expect(host.querySelector("[role=alert]")).toBeNull();
-  act(() => { window.dispatchEvent(rejection(new Error("export failed: disk full"))); });
-  expect(host.querySelector("[role=alert]")?.textContent).toContain("export failed: disk full");
+  mount(createElement(UncaughtErrors));
+  expect(toastCount()).toBe(0);
+
+  show(() => window.dispatchEvent(rejection(new Error("export failed: disk full"))));
+  expect(toastCount()).toBe(1);
+  expect(text()).toContain("Something went wrong");
+  expect(text()).toContain("export failed: disk full");
+  expect(text()).toContain("The last action may not have finished.");
   expect(log).toHaveBeenCalled();
-  done();
+
+  // Nothing fades it.
+  act(() => { vi.advanceTimersByTime(60_000); });
+  expect(toastCount()).toBe(1);
+
+  act(() => { document.querySelector<HTMLButtonElement>("[data-close-button]")!.click(); });
+  settleDismissal();
+  expect(toastCount()).toBe(0);
 });
 
-it("shows an uncaught error event, and Dismiss clears it", () => {
+it("an uncaught error event shows an error toast", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  const { host, done } = mount();
-  act(() => {
-    window.dispatchEvent(new ErrorEvent("error", { message: "boom", error: new Error("boom in handler") }));
-  });
-  expect(host.querySelector("[role=alert]")?.textContent).toContain("boom in handler");
-  const dismiss = [...host.querySelectorAll("button")].find((b) => b.textContent === "Dismiss")!;
-  act(() => dismiss.click());
-  expect(host.querySelector("[role=alert]")).toBeNull();
-  done();
+  mount(createElement(UncaughtErrors));
+  show(() => window.dispatchEvent(
+    new ErrorEvent("error", { message: "boom", error: new Error("boom in handler") }),
+  ));
+  expect(toastCount()).toBe(1);
+  expect(text()).toContain("boom in handler");
 });
 
-it("falls back to the event message, and shows a non-Error rejection as text", () => {
+it("falls back to the event message, shows a non-Error rejection as text, and the latest replaces the last", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  const { host, done } = mount();
-  act(() => { window.dispatchEvent(new ErrorEvent("error", { message: "message only" })); });
-  expect(host.querySelector("[role=alert]")?.textContent).toContain("message only");
+  mount(createElement(UncaughtErrors));
+  show(() => window.dispatchEvent(new ErrorEvent("error", { message: "message only" })));
+  expect(text()).toContain("message only");
   // Tauri's invoke rejects with a plain string.
-  act(() => { window.dispatchEvent(rejection("write_file: permission denied")); });
-  expect(host.querySelector("[role=alert]")?.textContent).toContain("write_file: permission denied");
-  done();
+  show(() => window.dispatchEvent(rejection("write_file: permission denied")));
+  expect(text()).toContain("write_file: permission denied");
+  expect(text()).not.toContain("message only");
+  expect(toastCount()).toBe(1);
 });
 
-it("ignores a cancelled picker (AbortError) and the benign ResizeObserver loop notice", () => {
-  vi.spyOn(console, "error").mockImplementation(() => {});
-  const { host, done } = mount();
-  act(() => {
-    window.dispatchEvent(rejection(new DOMException("The user aborted a request.", "AbortError")));
-    window.dispatchEvent(new ErrorEvent("error", {
+it("an aborted picker shows nothing", () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  mount(createElement(UncaughtErrors));
+  show(
+    () => window.dispatchEvent(rejection(new DOMException("The user aborted a request.", "AbortError"))),
+    // The benign ResizeObserver loop notice is no failure either.
+    () => window.dispatchEvent(new ErrorEvent("error", {
       message: "ResizeObserver loop completed with undelivered notifications.",
-    }));
-  });
-  expect(host.querySelector("[role=alert]")).toBeNull();
-  done();
+    })),
+  );
+  expect(toastCount()).toBe(0);
+  expect(log).not.toHaveBeenCalled();
 });
 
 it("stops listening once unmounted", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  const { done } = mount();
-  done();
+  mount(createElement(UncaughtErrors));
+  mount(); // the same toaster, without UncaughtErrors
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
-  window.dispatchEvent(rejection(new Error("late")));
+  show(() => window.dispatchEvent(rejection(new Error("late"))));
   expect(log).not.toHaveBeenCalled();
+  expect(toastCount()).toBe(0);
 });

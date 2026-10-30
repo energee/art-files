@@ -2,7 +2,7 @@
 // (src/components/MasterPicker.tsx): the Design sidebar's "Master: Lolev ▾"
 // selector. Choosing another library master switches at once through
 // onMaster — no confirm card: the rebind is one undoable step and App's
-// header note names what it set aside.
+// toast names what it set aside.
 // Scoped to a DOM environment per-file, matching tests/fieldlist-dom.test.ts's
 // setup — no @testing-library/react in this repo, so this drives real DOM
 // nodes through react-dom/client + act, the same as that suite.
@@ -62,7 +62,7 @@ describe("MasterPicker", () => {
   });
 
   // A switch commits at once, even one that sets filled values aside: it is
-  // one undoable step, and App's header note names what moved and ⌘Z.
+  // one undoable step, and App's toast names what moved and offers Undo.
   it("switches at once to a master that sets values aside, with no card", async () => {
     const onMaster = vi.fn();
     const resolve = vi.fn().mockResolvedValue({ master: otherMaster, assets: {} });

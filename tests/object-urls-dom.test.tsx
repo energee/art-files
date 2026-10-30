@@ -13,6 +13,7 @@ import type { LabelAssets } from "../src/labelfile";
 import type { Command } from "../src/components/CommandMenu";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { MasterAssets } from "../src/model/files";
+import { mountToaster, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -69,6 +70,7 @@ async function openThen(handle: FileSystemFileHandle, body: (unmount: () => Prom
     onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
     onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
   };
+  await mountToaster();
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -87,6 +89,7 @@ async function openThen(handle: FileSystemFileHandle, body: (unmount: () => Prom
     await body(unmount);
   } finally {
     await unmount();
+    await unmountToaster();
   }
 }
 
@@ -116,7 +119,7 @@ it("a master whose images fail to decode leaves no URL from the ones that decode
     openMaster({
       customImages: { good: { name: "logo.svg", bytes: SVG }, bad: { name: "bad.png", bytes: new Uint8Array([1, 2, 3]) } },
     });
-    await until(() => document.body.textContent!.includes("Could not open master"));
+    await until(() => toastTitles().some((title) => title?.startsWith("Could not open master")));
     // bad.png failed the adopt, so logo.svg's decode never reached state.
     expect(leaked()).toEqual([]);
   });

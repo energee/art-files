@@ -1,12 +1,14 @@
 // canview-lazy-fail-dom.test.tsx — the 3D view loads on first use, so its
 // chunk can fail to load (a stale dev chunk, a broken install). That must
-// surface as the header's render error with the editor still standing, not
-// unmount the whole app. The happy path is canview-lazy-dom.test.tsx.
+// surface as the render error — an error toast — with the editor still
+// standing, not unmount the whole app. The happy path is
+// canview-lazy-dom.test.tsx.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
+import { mountToaster, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: () => null }));
 vi.mock("../src/components/CanView", () => { throw new Error("chunk load failed"); });
@@ -18,6 +20,7 @@ vi.mock("../src/fonts", () => ({
 import { DocumentEditor } from "../src/App";
 
 it("a 3D view that fails to load reports an error and keeps the editor", async () => {
+  await mountToaster();
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -33,12 +36,14 @@ it("a 3D view that fails to load reports an error and keeps the editor", async (
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "4", bubbles: true }));
     });
-    await vi.waitFor(() => expect(container.textContent).toContain("3D view failed to load"));
+    await shown("3D view failed to load");
+    expect(toastTitles()).toEqual([expect.stringContaining("3D view failed to load")]);
     // The reason reads as a message, not an "Error: …" dump (errMsg).
-    expect(container.textContent).not.toContain("failed to load: Error:");
+    expect(document.body.textContent).not.toContain("failed to load: Error:");
     expect(container.querySelector("#master-picker")).not.toBeNull();
   } finally {
     await act(async () => { root.unmount(); });
+    await unmountToaster();
     container.remove();
   }
-});
+}, 30_000);

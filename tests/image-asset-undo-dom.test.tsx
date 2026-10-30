@@ -1,12 +1,14 @@
 // image-asset-undo-dom.test.tsx — an image layer's dropped art must survive
 // undo (#75), and Save must pack only the art the doc still references (#84).
 // FileDrop is replaced by a prop-capturing stub so the test can drop files
-// and read the well's thumbnail; the document model and App wiring are real.
+// and read the well's thumbnail; the document model and App wiring are real, and
+// so is the <Toaster /> an image load error shows in.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
+import { mountToaster, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 type DropProps = { label: string; fileName?: string; previewUrl?: string; onFile: (f: File) => unknown; onClear?: () => void };
 const wells = vi.hoisted(() => ({ image: null as null | DropProps }));
@@ -50,6 +52,7 @@ const undo = () => act(async () => {
 beforeEach(async () => {
   wells.image = null;
   packed.ids = [];
+  await mountToaster();
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -74,6 +77,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await act(async () => { root.unmount(); });
+  await unmountToaster();
   container.remove();
 });
 
@@ -109,10 +113,10 @@ it("Save packs only the image art the document still references (#84)", async ()
   for (const ids of packed.ids) expect(ids).toHaveLength(1);
 });
 
-it("a good image clears the error a bad one left in the header (#511)", async () => {
+it("a good image dismisses the error toast a bad one left (#511)", async () => {
   await act(async () => { await wells.image!.onFile(new File(["not an image"], "bad.svg", { type: "image/svg+xml" })); });
-  expect(document.body.textContent).toContain("Could not load image");
+  await shown("Could not load image");
+  expect(toastTitles()).toEqual([expect.stringContaining("Could not load image")]);
   await act(async () => { await wells.image!.onFile(svg("a.svg", "M0 0 L10 0 L10 10 Z")); });
-  await settle();
-  expect(document.body.textContent).not.toContain("Could not load image");
-});
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);

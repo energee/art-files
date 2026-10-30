@@ -1,7 +1,7 @@
 // MasterSaveReview.tsx — the dialog between an edit and the template
 // (docs/plans/label-first-editing.md, Task 7). It opens only when the label
 // has overrides that could be promoted — the one decision a save asks for;
-// with none, App's Save Master writes straight away and its header note says
+// with none, App's Save Master writes straight away and its Saved toast says
 // how many changes went into the file.
 //
 // Two kinds of row, and the difference is the whole point:

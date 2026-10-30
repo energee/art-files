@@ -1,13 +1,16 @@
 // useExport.ts — the editor's full-resolution exports, split out of App.tsx
 // (#416): the print PDF and PSD (White Ink inside) or, with two-file export,
-// the art + mask pairs, built on demand from the same layers the preview draws, the export-in-flight and "Saved …" note state the header
-// shows, where this tab's desktop exports were last written (so a repeat
-// export needs no dialog), and the batch of download URLs every save
+// the art + mask pairs, built on demand from the same layers the preview draws,
+// the export-in-flight state, the toast that reports each export's result
+// (saved, left half-saved, failed, or saved beside a stale mask — a cancel
+// reports nothing), where this tab's desktop exports were last written (so a
+// repeat export needs no dialog), and the batch of download URLs every save
 // (exports, Save Label, Save Master) hands its plain-download fallback through.
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { nativeExists, saveThrough, type FileTarget } from "@/files";
-import { errMsg } from "@/lib/utils";
-import { NO_MESSAGE, useOwnedError, type HeaderMessage } from "@/useOwnedError";
+import { baseName, errMsg } from "@/lib/utils";
+import { notify } from "@/notify";
+import { revealAction } from "@/reveal";
 import { t } from "@/i18n";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
@@ -31,6 +34,10 @@ import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } fr
 const withSuffix = (path: string, suffix: string) => path.replace(/(\.[^./\\]+)?$/, suffix);
 /** Where an export pair's mask sits beside its art file: `<stem>-mask.<ext>`. */
 const maskBeside = (path: string, extension: string) => withSuffix(path, `-mask.${extension}`);
+/** The toast id of export run number `run` in the editor whose id prefix is `base`. */
+const runToastId = (base: string, run: number) => `${base}:${run}`;
+/** The desktop path a save wrote to; browser saves have a handle or none. */
+const pathOf = (target: FileTarget | undefined) => target && "path" in target ? target.path : undefined;
 
 /** The texture/mask bytes for a build (App.tsx pageArt): absent when the
  *  slot is empty or its page-art layer is switched off. */
@@ -102,11 +109,10 @@ type ExportInputs = {
   exportBase: string;
   /** Bleed and DPI, handed to the PSD workers with each job. */
   render: RenderSettings;
-  /** The header's build-error channel: export failures and cancel notes.
-   *  Shared with asset, master and menu errors, so it takes App's raw setter:
-   *  a successful export clears the slot only while it still holds the
-   *  export's own message (#473). */
-  setBuildMessage: Dispatch<SetStateAction<HeaderMessage>>;
+  /** What a warning's Export again does: App runs its own "Export … As…" pair
+   *  command for `format`, so the export gate and the label's current state
+   *  are the menu's, not this hook's. */
+  exportAgain: (format: "pdf" | "psd") => void;
 };
 
 /** Where an export writes. `labelPath` is the tab's bound .label (desktop
@@ -115,23 +121,49 @@ type ExportInputs = {
 type ExportRequest = { labelPath?: string | null; ask?: boolean };
 
 export function useExport({
-  drawLayers, family, liveImages, planAssets, pageArt, title, exportBase, render, setBuildMessage,
+  drawLayers, family, liveImages, planAssets, pageArt, title, exportBase, render, exportAgain,
 }: ExportInputs) {
   // The export in flight, if any: it blurs the preview under a note naming
   // the files being built (#401), and blocks a second export.
   /** What is building, for the overlay: one file ("pdf") or a pair ("pdfs"). */
   const [exporting, setExporting] = useState<"pdf" | "psd" | "pdfs" | "psds" | null>(null);
-  // The files the last export wrote (#400): shown until the next edit or
-  // export, since an edit makes those files stale. exportFresh goes false on
-  // any edit, so an export that an edit overlapped confirms nothing: its
-  // files hold the label as it was when the export began. `note` marks the
-  // stale-mask warning a print save can add (warnIfStaleMask).
-  const [exportNote, setExportNote] = useState<HeaderMessage>(NO_MESSAGE);
+  // Each export run reports under its own toast id (runToastId), and a new run
+  // dismisses only the previous run's. Sonner keeps a dismissed id for ~250 ms
+  // and folds a toast shown under it into the dying one (useOwnedToast.ts makes
+  // the same split), so a repeat export that failed quickly would lose its
+  // error if runs shared an id. All of a run's toasts (saved, then the stale
+  // mask warning that replaces it) share its id, so they replace each other
+  // instead of stacking. Nothing else dismisses a run's toast (an edit leaves
+  // it up) but closing the tab. Results are events, shown whichever tab is in
+  // front.
+  const toastBase = `${useId()}:export`;
+  // exportFresh goes false on any edit (#400), so an export that an edit
+  // overlapped confirms nothing: its files hold the label as it was when the
+  // export began.
   const exportFresh = useRef(false);
   // Bumped by every export start, so a slow check from an older export can't
-  // replace a newer export's note.
+  // replace a newer export's toast.
   const exportRun = useRef(0);
-  const exportStale = () => { exportFresh.current = false; setExportNote(NO_MESSAGE); };
+  const exportStale = () => { exportFresh.current = false; };
+  /** Begin an export run: retire the previous run's toast, mark the run fresh,
+   *  and return the id this run's toasts use. */
+  function startRun() {
+    notify.dismiss(runToastId(toastBase, exportRun.current));
+    exportFresh.current = true;
+    exportRun.current++;
+    return runToastId(toastBase, exportRun.current);
+  }
+  // A closed tab's export toasts go with it, and none offers Export again for a
+  // label that no longer exists (see closed.current in exportPair).
+  const closed = useRef(false);
+  useEffect(() => {
+    closed.current = false;
+    return () => {
+      closed.current = true;
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- the run in flight when the tab closes is the one to dismiss, so the ref is read at cleanup time on purpose
+      notify.dismiss(runToastId(toastBase, exportRun.current));
+    };
+  }, [toastBase]);
   // Desktop export destinations, scoped to the label they were chosen from.
   // The one-file print PDF and PSD remember their destinations separately
   // from the two-file pairs, but both default to `<label>.pdf`/`.psd`: a
@@ -209,8 +241,6 @@ export function useExport({
   }
 
   const exportRunning = useRef(false);
-  // A later successful export clears only the error an export set (#473).
-  const exportError = useOwnedError(setBuildMessage);
   async function exportPair(
     extension: "pdf" | "psd", type: string, { labelPath, ask }: ExportRequest,
     build: () => Promise<[art: Uint8Array, mask: Uint8Array]>,
@@ -218,12 +248,13 @@ export function useExport({
     if (exportRunning.current) return;
     exportRunning.current = true;
     setExporting(`${extension}s`);
-    setExportNote(NO_MESSAGE);
-    exportFresh.current = true;
-    exportRun.current++;
+    const toastId = startRun();
     startSaveBatch();
+    // What the dialog suggests when no destination is remembered. It is also
+    // the file an error is blamed on until the first save starts (a failed build).
+    const defaultName = labelPath != null ? withSuffix(labelPath, `.${extension}`) : `${exportBase}.${extension}`;
     const saved: string[] = [];
-    let pending = "";
+    let pending = defaultName;
     try {
       const pair = await build();
       // The art file: the remembered one, written with no dialog unless
@@ -235,35 +266,44 @@ export function useExport({
       if (exportPaths.current.label !== (labelPath ?? null)) exportPaths.current = { label: labelPath ?? null };
       const remembered = exportPaths.current[extension];
       const artTarget = ask ? undefined : remembered;
-      const artName = remembered
-        ?? (labelPath != null ? withSuffix(labelPath, `.${extension}`) : `${exportBase}.${extension}`);
+      const artName = remembered ?? defaultName;
       // On desktop the mask is written beside the art file, as
       // `<stem>-mask.<extension>` (the export's own extension, so the
       // capability globs cover it), replacing any file there: confirming the
-      // art file confirms the pair. Notes and errors name the derived path.
+      // art file confirms the pair. Toasts name the derived file.
+      let artPath: string | undefined;
       let maskPath: string | undefined;
       for (const [index, bytes] of pair.entries()) {
         pending = index ? maskPath ?? `${exportBase}-mask.${extension}` : artName;
         const target = index ? maskPath : artTarget;
         const result = await saveVia(bytes, pending, type, target ? { path: target } : undefined);
         if (!result) {
-          exportError.set(saved.length
-            ? t("Note: Saved {{files}}. Export cancelled before saving {{file}}.", { files: saved.join(", "), file: pending })
-            : t("Note: Export cancelled before saving {{file}}.", { file: pending }), true);
+          // A cancel is the user's own choice, so it says nothing, unless it
+          // leaves a pair half saved: that warns and offers to redo the pair.
+          if (saved.length) notify.warning(t("{{file}} wasn't saved", { file: baseName(pending) }), {
+            id: toastId,
+            description: t("Export again to save both files."),
+            // Not for a tab that closed while this export was in flight.
+            action: closed.current ? undefined : { label: t("Export again"), onClick: () => exportAgain(extension) },
+          });
           return;
         }
-        saved.push(result.name);
-        if (!index && result.target && "path" in result.target) {
-          exportPaths.current[extension] = result.target.path;
-          maskPath = maskBeside(result.target.path, extension);
+        saved.push(baseName(result.name));
+        const path = pathOf(result.target);
+        if (!index && path) {
+          artPath = path;
+          exportPaths.current[extension] = path;
+          maskPath = maskBeside(path, extension);
         }
       }
-      exportError.clear();
-      if (exportFresh.current) setExportNote({ text: t("Saved {{files}}.", { files: saved.join(", ") }) });
+      if (exportFresh.current) notify.success(t("Saved {{files}}", { files: saved.join(", ") }), {
+        id: toastId, action: revealAction(artPath),
+      });
     } catch (error) {
-      exportError.set(saved.length
-        ? t("Saved {{files}}. Could not save {{file}}: {{error}}", { files: saved.join(", "), file: pending, error: errMsg(error) })
-        : t("Could not save {{file}}: {{error}}", { file: pending, error: errMsg(error) }));
+      notify.error(t("Couldn't save {{file}}", { file: baseName(pending) }), {
+        id: toastId,
+        description: saved.length ? `${t("Saved {{files}}.", { files: saved.join(", ") })} ${errMsg(error)}` : errMsg(error),
+      });
     } finally {
       exportRunning.current = false;
       setExporting(null);
@@ -290,9 +330,7 @@ export function useExport({
     if (exportRunning.current) return;
     exportRunning.current = true;
     setExporting(format);
-    setExportNote(NO_MESSAGE);
-    exportFresh.current = true;
-    exportRun.current++;
+    const toastId = startRun();
     startSaveBatch();
     const labelPath = request.labelPath ?? null;
     let remembered: string | undefined;
@@ -307,18 +345,17 @@ export function useExport({
     try {
       const target = !request.ask && remembered ? { path: remembered } : undefined;
       const result = await saveVia(await build(), name, type, target);
-      if (!result) {
-        exportError.set(t("Note: Export cancelled before saving {{file}}.", { file: name }), true);
-        return;
-      }
-      exportError.clear();
-      if (exportFresh.current) setExportNote({ text: t("Saved {{files}}.", { files: result.name }) });
-      if (mode === "print" && result.target && "path" in result.target) {
-        exportPaths.current[key] = result.target.path;
-        if (format === "pdf") void warnIfStaleMask(result.target.path, result.name);
+      if (!result) return; // a cancel is the user's own choice: nothing to report
+      const path = pathOf(result.target);
+      if (exportFresh.current) notify.success(t("Saved {{files}}", { files: baseName(result.name) }), {
+        id: toastId, action: revealAction(path),
+      });
+      if (mode === "print" && path) {
+        exportPaths.current[key] = path;
+        if (format === "pdf") void warnIfStaleMask(path, result.name);
       }
     } catch (error) {
-      exportError.set(t("Could not save {{file}}: {{error}}", { file: name, error: errMsg(error) }));
+      notify.error(t("Couldn't save {{file}}", { file: baseName(name) }), { id: toastId, description: errMsg(error) });
     } finally {
       exportRunning.current = false;
       setExporting(null);
@@ -326,16 +363,22 @@ export function useExport({
   }
 
   /** The print PDF carries the white ink, so an older pair's `-mask.pdf`
-   *  beside it would reach the printer as a second plate: turn the saved note
-   *  into a warning. Never deletes it. Runs after the export has finished, so
-   *  a slow volume can't hold the export open; a failed check (a scope
-   *  refusal, say) still reaches UncaughtErrors. */
+   *  beside it would reach the printer as a second plate: turn the saved toast
+   *  into a warning that offers to reveal the old mask. Never deletes it. Runs
+   *  after the export has finished, so a slow volume can't hold the export
+   *  open; a failed check (a scope refusal, say) still reaches UncaughtErrors.
+   *  Not held back by an edit (#400): the old mask is stale whatever was edited,
+   *  so the warning comes even when the Saved confirmation was withheld. */
   async function warnIfStaleMask(pdfPath: string, file: string) {
     const run = exportRun.current;
     const mask = maskBeside(pdfPath, "pdf");
     const stale = await nativeExists(mask).catch((error: unknown) => { void Promise.reject(error); return false; });
-    if (!stale || run !== exportRun.current || !exportFresh.current) return;
-    setExportNote({ note: true, text: t("Note: Saved {{file}}. {{mask}} beside it is from an older export; this PDF already includes the white ink, so don't send both.", { file, mask }) });
+    if (!stale || run !== exportRun.current) return;
+    notify.warning(t("Saved {{file}}", { file: baseName(file) }), {
+      id: runToastId(toastBase, run),
+      description: t("Don't send the old {{mask}} with it. This PDF already has the white ink.", { mask: baseName(mask) }),
+      action: revealAction(mask),
+    });
   }
 
   /** Build one combined print PDF by default; the retained pair is explicit. */
@@ -417,7 +460,7 @@ export function useExport({
   }
 
   return {
-    exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
     buildFull, exportPdfPlate, exportPsd,
   };
 }

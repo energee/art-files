@@ -4,13 +4,14 @@
 // re-ask on the quiet retries, and a failed Locate says why instead of
 // re-asking. Only a Cancel is reported to the shell as cancelled (#553),
 // which closes a tab made just for the open; a failed Locate keeps its
-// error on screen.
+// error on screen (an error toast).
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
+import { mountToaster, settle, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -51,6 +52,7 @@ async function openOrphan(pick: string) {
     onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
     onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
   };
+  await mountToaster();
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
   await act(async () => { root.render(createElement(DocumentEditor, props)); });
@@ -58,12 +60,14 @@ async function openOrphan(pick: string) {
   expect(document.body.textContent).toContain("This label was made with a different master");
   await act(async () => { button(pick)!.click(); });
   for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++) await tick();
+  await settle(); // a toast lands a tick after its message is sent
   const title = onMeta.mock.calls.at(-1)?.[0]?.title;
   const reasked = !!button(pick);
-  const text = document.body.textContent ?? "";
+  const toasts = toastTitles();
   const cancelled = onOpenSettled.mock.calls.at(-1)?.[1];
   await act(async () => { root.unmount(); });
-  return { title, reasked, text, cancelled };
+  await unmountToaster();
+  return { title, reasked, toasts, cancelled };
 }
 
 it("Use current opens the label on this tab's master", async () => {
@@ -71,6 +75,7 @@ it("Use current opens the label on this tab's master", async () => {
   expect(r.title).toBe("Orphan");
   expect(r.reasked).toBe(false);
   expect(r.cancelled).toBe(false);
+  expect(r.toasts).toEqual([]);
 }, 30_000);
 
 it("Cancel leaves the tab alone and does not ask again", async () => {
@@ -78,6 +83,7 @@ it("Cancel leaves the tab alone and does not ask again", async () => {
   expect(r.title).not.toBe("Orphan");
   expect(r.reasked).toBe(false);
   expect(r.cancelled).toBe(true);
+  expect(r.toasts).toEqual([]);
 }, 30_000);
 
 it("Locate shows why it failed instead of quietly asking again", async () => {
@@ -87,7 +93,7 @@ it("Locate shows why it failed instead of quietly asking again", async () => {
     const r = await openOrphan("Locate");
     expect(r.title).not.toBe("Orphan");
     expect(r.reasked).toBe(false);
-    expect(r.text).toContain("Could not open master: disk went away");
+    expect(r.toasts).toEqual(["Could not open master: disk went away"]);
     expect(r.cancelled).toBe(false);
   } finally {
     delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;

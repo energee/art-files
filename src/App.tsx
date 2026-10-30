@@ -31,7 +31,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "@/i18n";
 import { t as translate } from "@/i18n";
 import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
@@ -73,8 +73,9 @@ import {
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
+import { usePreviewToastAnchor } from "@/toastAnchor";
 import { useProjectSave } from "@/useProjectSave";
-import { NO_MESSAGE, useOwnedError, type HeaderMessage } from "@/useOwnedError";
+import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
@@ -102,7 +103,6 @@ import {
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -110,7 +110,8 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { cn, errMsg } from "@/lib/utils";
+import { baseName, cn, errMsg } from "@/lib/utils";
+import { notify } from "@/notify";
 import { loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import type { MeasureFace, PlanAssets } from "@/plan";
@@ -191,41 +192,6 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
   });
 }
 
-/** Colour classes per HeaderAlert tone: [Alert border/background, text]. */
-const HEADER_ALERT_TONE = {
-  destructive: ["border-destructive/50", ""],
-  warning: ["border-warning/50 bg-warning-soft", "text-warning-text"],
-  success: ["border-success/50 bg-success-soft", "text-success-text"],
-  blocked: ["border-destructive/50", ""],
-} as const;
-
-/** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
- *  warning; with `tone="success"`, an export confirmation), sized for the
- *  menu bar: the shadcn Alert (the app's one notification surface — see
- *  ui/alert.tsx) compacted to fit inline beside the menus rather than as a
- *  full-width block. Warning and success use `variant` "default" plus their
- *  own colour classes rather than the destructive variant, which paints its
- *  descendant text through a selector on Alert itself that a className
- *  override can't reach. A success note is hidden from screen readers here:
- *  it is announced politely through the always-mounted status region beside
- *  it, since a live region mounted already holding its text is not read.
- *  The blocked-export note (tone "blocked") looks like an error but is no
- *  alert: it changes with every keystroke that keeps a value invalid, and an
- *  alert would interrupt the reader each time. Its own always-mounted polite
- *  status region announces it; the note itself stays a plain button. */
-function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
-  const [box, text] = HEADER_ALERT_TONE[tone];
-  return (
-    <Alert variant={tone === "destructive" || tone === "blocked" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
-      {...(tone === "success" && { role: undefined, "aria-hidden": true })}
-      {...(tone === "blocked" && { role: undefined })}>
-      <AlertDescription className={cn("text-xs", text)}>
-        {children}
-      </AlertDescription>
-    </Alert>
-  );
-}
-
 /** Where the view preferences (the rulers/guides toggles and the length
  *  unit) persist — localStorage, like every other per-operator setting
  *  (settings.ts, masters.ts). Only the known keys are read, so an entry
@@ -252,6 +218,29 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
   ...(dropped.values.length ? [translate("{{count}} value benched: {{names}}", { count: dropped.values.length, names: dropped.values.join(", ") })] : []),
   ...(dropped.variants.length ? [translate("{{count}} variant benched: {{names}}", { count: dropped.variants.length, names: dropped.variants.join(", ") })] : []),
 ];
+
+/** The toast sources (toastId) that warn about an editor's own content. */
+const CONTENT_WARNINGS = ["label-warning", "master-warning", "restore-warning", "image-warning"] as const;
+
+/** Focuses a layer's value field in the inspector (`<id>-content`, see
+ *  contentFor). The inspector mounts a frame or two after a selection, so this
+ *  waits for the field. A focused toast control is blurred first: leaving the
+ *  toast region any other way lets Sonner hand focus back to whatever held it
+ *  before the toast, which would undo this. */
+function focusContentField(layerId: string) {
+  let framesLeft = 30;
+  const focusWhenMounted = () => {
+    const field = document.getElementById(`${layerId}-content`);
+    if (!field) {
+      if (framesLeft-- > 0) requestAnimationFrame(focusWhenMounted);
+      return;
+    }
+    const held = document.activeElement;
+    if (held instanceof HTMLElement && held.closest("[data-sonner-toaster]")) held.blur();
+    field.focus();
+  };
+  requestAnimationFrame(focusWhenMounted);
+}
 
 /** What every open path hands to openProject. Each entry point converts
  *  to this shape itself (fileSource for picked Files), so the shared
@@ -504,17 +493,31 @@ export const DocumentEditor = memo(function DocumentEditor({
   // PreviewCompare). While set, planLayers skips it via the render source's
   // skip set so the editor's live DOM text IS the layer — no doubled glyphs.
   const [editSession, setEditSession] = useState<string | null>(null);
-  // Two error channels, split by who can clear them: renderError belongs to
-  // the renderers (every good frame clears it); buildError to asset
-  // assembly, exports, image loads and native menu failures. A successful
-  // export, asset assembly or image load clears it only while it still holds
-  // its own message (useOwnedError; #473, #511). A note (warning) is marked
-  // where it is made (HeaderMessage.note); the plain setters are for errors.
-  const [buildError, setBuildMessage] = useState<HeaderMessage>(NO_MESSAGE);
+  // The header carries no messages; everything reported here is a toast
+  // (notify.ts). One that stays true until fixed belongs to the source that
+  // raised it (useOwnedToast): its clear() dismisses only its own, so one
+  // source's success never wipes another's error (#473, #511), and it shows
+  // only while this tab is in front. renderError is the renderers' message
+  // (every good frame clears it); assetsFailed only hides the "rendering
+  // label…" spinner while asset assembly is failing.
   const [renderError, setRenderError] = useState("");
-  const [loadError, setLoadMessage] = useState<HeaderMessage>(NO_MESSAGE);
-  const setBuildError = useCallback((text: string) => setBuildMessage({ text }), []);
-  const setLoadError = useCallback((text: string) => setLoadMessage({ text }), []);
+  const [assetsFailed, setAssetsFailed] = useState(false);
+  // Each one-off error, and each open, save or load message that stays until
+  // closed, owns one toast id in this editor, so a repeat replaces it instead of
+  // stacking another (notify.ts). A Saved toast fades on its own and needs no
+  // id; a Switched toast has one so a second switch replaces the first.
+  const toastBase = useId();
+  const toastId = (source: string) => `${toastBase}:${source}`;
+  // A warning about this editor's own content (the label or master it opened,
+  // the master it saved) goes with the tab. Load and save failures stay up: no
+  // other part of the editor reports them.
+  useEffect(() => () => {
+    for (const source of CONTENT_WARNINGS) notify.dismiss(`${toastBase}:${source}`);
+  }, [toastBase]);
+  const reportLoadError = (text: string) => { notify.error(text, { id: toastId("load-error") }); };
+  // A failed label Save has a toast of its own, so the next Save that works can
+  // dismiss it without touching an open or load failure.
+  const reportSaveError = (text: string) => { notify.error(text, { id: toastId("save-error") }); };
   // A .label whose master can't be found asks what to open it on; openProject
   // awaits `choose` (missingMasterChoice).
   const [missingMaster, setMissingMaster] = useState<{
@@ -539,6 +542,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Preview pane zoom: scale `z` about the pane's top-left, then offset by
   // (x, y) screen px. z === 1 is the fitted view.
   const previewPane = useRef<HTMLDivElement>(null);
+  usePreviewToastAnchor(previewPane, active);
   const [zoom, setZoom] = useState({ z: 1, x: 0, y: 0 });
   const canView = useRef<CanViewHandle>(null);
   // Whole percent, so the camera's per-frame emissions bail out of React.
@@ -718,7 +722,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       next = checked(doc);
     } catch (err) {
-      setBuildError(errMsg(err)); // parseMaster / checkLabelBindings refusals
+      // parseMaster / checkLabelBindings refusals
+      notify.error(errMsg(err), { id: toastId("edit-refused") });
       return false;
     }
     if (next === doc || (next.master === doc.master && next.label === doc.label)) return false;
@@ -831,6 +836,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
 
+  // The font gate right here and the preview's asset assembly (below) fail on
+  // the same missing font, so they report through one owned toast, not two. Its
+  // clear() leaves an image or texture error alone (#511).
+  const assetError = useOwnedToast(active);
   // Warm the face-aware measure for the families this label uses (the single
   // font gate) and surface a font-load failure early. Only the master's
   // family and the layers' overrides load (#411); picking another family
@@ -843,9 +852,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => {
     let cancelled = false;
     loadLabelFaces(family, fontOverrides)
-      .catch((error) => { if (!cancelled) setBuildError(errMsg(error)); });
+      .catch((error) => { if (!cancelled) assetError.set(errMsg(error)); });
     return () => { cancelled = true; };
-  }, [family, fontOverrides, setBuildError]);
+  }, [family, fontOverrides, assetError]);
 
   // Which instance the window/document-level key listeners below belong to.
   const activeRef = useRef(active);
@@ -901,9 +910,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
       if (dialogOpen()) return;
       if (!cmd.disabled) cmd.run();
-      // A blocked export key does what the header's blocked note does,
-      // rather than nothing: it selects the invalid layer.
-      else if (cmd.id.startsWith("export-")) selectInvalidRef.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -942,15 +948,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   // command) when focus is on the canvas or the page. Gated like the nudge:
   // a field, popup, the inspector or a widget owns the key, and so does a
   // focused Layers row, which removes with its own focus hand-off. So does
-  // any other focused button (the header's blocked-export note, a toolbar
-  // control): Backspace on the note that just selected a layer must not
-  // delete it.
+  // any other focused button (a toolbar control) and anything inside the
+  // toast region (its buttons, and the list Alt+T focuses). Sonner removes a
+  // toast after its action runs, which drops focus onto the page, so an
+  // action that selects a layer must move focus itself (focusContentField).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current || (e.key !== "Delete" && e.key !== "Backspace")) return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       if (keyOwner(e.target) || dialogOpen()) return;
-      if ((e.target as Element | null)?.closest?.("[data-layer-id], button")) return;
+      if ((e.target as Element | null)?.closest?.("[data-layer-id], button, [data-sonner-toaster]")) return;
       const cmd = commandsRef.current.find((c) => c.id === "layer-remove");
       if (!cmd || cmd.disabled) return;
       e.preventDefault();
@@ -960,20 +967,52 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Invalid filled values (such as a bad UPC) block exports. The header note
-  // (and a blocked ⌘E/⇧⌘E) selects the first of them; the Layers list marks
-  // each with a dot.
+  // Invalid filled values (such as a bad UPC) block exports. An export command
+  // on a blocked label builds nothing and shows the "Can't export yet" toast
+  // (guardExport), whose Show layer selects the first of them and focuses its
+  // value field; the Layers list marks each with a dot.
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
   const selectInvalidLayer = () => {
     const id = Object.keys(errors)[0];
-    if (id) setSelection({ ids: [id], anchor: id });
+    if (!id) return;
+    setSelection({ ids: [id], anchor: id });
+    focusContentField(id);
   };
-  // Read by the once-registered key listener above, like commandsRef.
+  // Read by the toast's action, which outlives the render that showed it: the
+  // first invalid layer may have changed by the time it is clicked.
   const selectInvalidRef = useRef(selectInvalidLayer);
   selectInvalidRef.current = selectInvalidLayer;
   const blockedWhy = errorList.join(" · ");
-  const errorIds = useMemo(() => new Set(Object.keys(errors)), [errors]);
+  // The blocked label's toast: owned by this tab, shown only while it is in
+  // front, and gone once the label stops being blocked. A repeat attempt
+  // replaces it rather than stacking another. The screen-reader status region
+  // in the header announces the label becoming blocked.
+  const blockedToast = useOwnedToast(active);
+  useEffect(() => { if (!blocked) blockedToast.clear(); }, [blocked, blockedToast]);
+  // The renderers' message and the resolver's warnings (a label overriding a
+  // layer the master lacks, an unknown variant, a reference to a missing layer)
+  // each own a toast of this tab. It is set when the text appears or changes and
+  // cleared when the text goes; a toast the user closed stays closed until then.
+  const renderErrorToast = useOwnedToast(active);
+  useEffect(() => {
+    if (renderError) renderErrorToast.set(renderError); else renderErrorToast.clear();
+  }, [renderError, renderErrorToast]);
+  const warningToast = useOwnedToast(active);
+  const warningText = resolveWarnings.join(" · ");
+  useEffect(() => {
+    if (warningText) warningToast.set(warningText, "warning"); else warningToast.clear();
+  }, [warningText, warningToast]);
+  /** Wraps an export command's `run`: a blocked label shows the toast and
+   *  builds nothing. */
+  const guardExport = (run: () => void) => () => {
+    if (!blocked) return run();
+    blockedToast.set(t("Can't export yet"), "error", {
+      description: blockedWhy,
+      action: { label: t("Show layer"), onClick: () => { setSidebarOpen(true); selectInvalidRef.current(); } },
+    });
+  };
+  const invalidLayers = useMemo(() => new Map(Object.entries(errors)), [errors]);
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every X share. `next` is a
@@ -1002,11 +1041,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   };
 
-  /** A successful decode clears only its own slot's earlier failure — not a
-   *  benched-values note or the other slot's error, which it may land beside
-   *  (adoptMasterAssets decodes both at once, right after commitRebind's note). */
-  const textureError = useOwnedError(setLoadMessage);
-  const maskError = useOwnedError(setLoadMessage);
+  /** A successful decode clears only its own slot's earlier failure — not the
+   *  other slot's error, which it may land beside (adoptMasterAssets decodes
+   *  both at once). */
+  const textureError = useOwnedToast(active);
+  const maskError = useOwnedToast(active);
   async function onTexture(f: File) {
     try { swapLoaded(setTexture, previewOnce(await readRaster(f), f)); textureError.clear(); }
     catch (err) { textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
@@ -1021,7 +1060,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
    *  point the layer back at it (#75); see liveImages. */
   // A good image clears only the load error a bad one set (#511).
-  const imageError = useOwnedError(setBuildMessage);
+  const imageError = useOwnedToast(active);
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
     const mint = previewOnce(await readCustomImage(f), f);
@@ -1073,12 +1112,23 @@ export const DocumentEditor = memo(function DocumentEditor({
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
   const {
-    exporting, exportNote, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
-    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render, setBuildMessage,
+    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
+    // A cancelled pair's warning offers Export again. It runs the menu's own
+    // Export … As… command, so the label as it is now applies, and so does the
+    // gate: no second export while one runs, and a blocked label shows the
+    // "Can't export yet" toast (guardExport) instead of building. If two-file
+    // export has been switched off since the warning, the pair command is gone
+    // and the format's single-file As… command stands in.
+    exportAgain: (format) => {
+      const ids = format === "pdf" ? ["export-both-as", "export-pdf-as"] : ["export-psds-as", "export-psd-as"];
+      const command = ids.map((id) => commandsRef.current.find((c) => c.id === id)).find(Boolean);
+      if (command && !command.disabled) command.run();
+    },
   });
-  const exportBlocked = blocked || exporting !== null;
+  const exportBusy = exporting !== null;
 
   // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
   // assembled off the asset inputs alone (debounced). Layer edits, a raster's
@@ -1098,9 +1148,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
   } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
-  // Asset assembly's next success clears only the error it set, so an export
+  // Asset assembly's next success clears only the error it set, so an image
   // or master error survives a plate toggle (#511).
-  const assetError = useOwnedError(setBuildMessage);
   useEffect(() => {
     // Not gated on `blocked`: this only decodes fonts and art, and a rejected
     // value already falls back to the master's, so the preview keeps drawing (#127).
@@ -1138,8 +1187,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
         });
         assetError.clear();
+        setAssetsFailed(false);
       })().catch((err) => {
-        if (!cancelled) assetError.set(errMsg(err));
+        if (cancelled) return;
+        assetError.set(errMsg(err));
+        setAssetsFailed(true);
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -1465,12 +1517,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     const unchanged = docRef.current === doc && current.texture === texture
       && current.mask === mask && current.customImages === customImages;
     setDirty(!unchanged);
-    setLoadError("");
+    notify.dismiss(toastId("save-error")); // a Save that works ends an earlier Save's failure
+    // A Save leaves the texture and mask load errors on screen: the art that
+    // failed to load is still not loaded, and saving does not change that.
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
   const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, setLoadError, startSaveBatch, saveBytes,
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
@@ -1548,7 +1602,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** File → Save Master… / Save Master As…, the picker's button and the
    *  close prompt's Save. The review (MasterSaveReview) opens only when the
    *  label has an override or value to promote — the one decision a save
-   *  asks for; otherwise the write starts at once and its header note says
+   *  asks for; otherwise the write starts at once and its Saved toast says
    *  how many changes went in. */
   function requestMasterSave(as: boolean) {
     const promotable = masterChanges(pristineMaster.current, master, label, version ?? undefined)
@@ -1569,17 +1623,17 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
-    // A promotion re-validates through parseMaster; surface a rejection in the
-    // header like the write failures below instead of an unhandled rejection
-    // from the `void saveMaster(...)` caller (#92).
+    // A promotion re-validates through parseMaster; surface a rejection as an
+    // error toast like the write failures below instead of an unhandled
+    // rejection from the `void saveMaster(...)` caller (#92).
     let promoted: ReturnType<typeof applyPromotions>;
     try {
       promoted = applyPromotions(master, label, promote, version ?? undefined);
     } catch (err) {
-      setLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
+      reportLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
     }
-    /** What goes into the file, for the header note: the master's own
+    /** What goes into the file, for the Saved toast: the master's own
      *  changes since its last open/save, plus each promotion. */
     const written = masterChanges(pristineMaster.current, master, label, version ?? undefined)
       .filter((c) => c.kind !== "promote").length + promote.length;
@@ -1609,7 +1663,7 @@ export const DocumentEditor = memo(function DocumentEditor({
      *  now holds; a promotion whose layer or variant was deleted during the
      *  write is skipped (the deletion wins) rather than costing the others.
      *  A document that moved to another master (Open Master during the
-     *  write) is left alone: baseline, save target and header note. */
+     *  write) is left alone: baseline, save target and Saved toast. */
     const commit = async (m: Master, where: string, ours: boolean, bytes?: Uint8Array) => {
       if (ours) edit((d) => {
         if (d.master.id !== master.id) return d;
@@ -1639,13 +1693,16 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
-      if (ours) setLoadMessage({ note: true, text: [
-        t("Note: Saved {{name}}", { name: saved.name }) + (written ? t(" ({{count}} change)", { count: written }) : ""),
-        ...(!missing ? [] : [t("{{count}} image has no file to save. It will be blank when you reopen this master.", { count: missing })]),
-      ].join(" · ") });
+      if (ours) {
+        notify.success(t("Saved {{file}}", { file: baseName(saved.name) }),
+          written ? { description: t("{{count}} changes", { count: written }) } : undefined);
+        // Its own toast: the master saved, but an image in it can't be reopened.
+        if (missing) notify.warning(t("{{count}} image in {{file}} has no file to save", { count: missing, file: baseName(saved.name) }),
+          { id: toastId("image-warning"), description: t("It will be blank when you reopen this master.", { count: missing }) });
+      }
       return true;
     } catch (err) {
-      setLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
+      reportLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
     }
   }
@@ -1653,13 +1710,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Parse a candidate .master file (ZIP, legacy JSON, or a v1 file, which
    *  converts), reporting a clear error and leaving the document untouched
    *  on a bad file. */
-  function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
+  function tryParseMaster(bytes: Uint8Array, name: string): { master: Master; assets: MasterAssets } | null {
     try {
       const r = unpackMaster(bytes);
-      if (r.warnings.length) setLoadMessage({ note: true, text: t("Note: {{message}}", { message: r.warnings.join(" · ") }) });
+      if (r.warnings.length) notify.warning(t("Opened {{file}} with changes", { file: baseName(name) }),
+        { id: toastId("master-warning"), description: r.warnings.join(" · ") });
       return r;
     } catch (err) {
-      setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
   }
@@ -1691,24 +1749,29 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** Re-aim THIS document at `target`: the label routed through rebindLabel
    *  (non-destructive — whatever doesn't match is benched on `dormant`) and
-   *  the master swapped, in one history step. No confirm: the header note
-   *  names what was set aside and that ⌘Z restores it. ⌘Z restores the
-   *  master and label only — art adoptMasterAssets put into an EMPTY
-   *  texture, mask or image slot stays, as asset slots sit outside the undo
-   *  history. `clean` says whether the freshly bound master reads as saved
-   *  (Open Master / the library pick) or not (a never-written duplicate, so
-   *  Save Master stays live). */
+   *  the master swapped, in one history step. No confirm: a toast names what
+   *  was set aside and offers Undo, which is ⌘Z while the switch is still the
+   *  latest step. Undo restores the master and label only — art
+   *  adoptMasterAssets put into an EMPTY texture, mask or image slot stays, as
+   *  asset slots sit outside the undo history. `clean` says whether the
+   *  freshly bound master reads as saved (Open Master / the library pick) or
+   *  not (a never-written duplicate, so Save Master stays live). */
   function commitRebind(target: Master, clean = true) {
     const { master: from, label: current } = docRef.current;
     const { label: next, dropped } = rebindLabel(current, from, target);
+    const switched: Doc = { master: target, label: next };
     markDirty();
-    setDoc({ master: target, label: next });
+    setDoc(switched);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
+    // The texture and mask survive a master switch, and so do their load errors.
     const notes = benchedNotes(dropped);
-    setLoadMessage(notes.length
-      ? { note: true, text: t("Note: {{message}}", { message: t("Switched to “{{name}}” · {{notes}} · {{shortcut}} to restore", { name: target.name, notes: notes.join(" · "), shortcut: shortcutLabel("⌘Z") }) }) }
-      : NO_MESSAGE);
+    // One id per editor, so a second switch replaces the first one's toast.
+    if (notes.length) notify.info(t("Switched to “{{name}}”", { name: target.name }), {
+      id: toastId("switched"),
+      description: notes.join(" · "),
+      action: { label: t("Undo"), onClick: () => { if (docRef.current === switched) mutating(undo)(); } },
+    });
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
@@ -1717,7 +1780,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
-    const r = tryParseMaster(bytes);
+    const r = tryParseMaster(bytes, name);
     if (!r) return;
     await rememberMaster(r.master, name, bytes);
     refreshLibrary();
@@ -1795,7 +1858,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
       }
     } catch (err) {
-      if (!isAbort(err)) setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
     }
   }
 
@@ -1841,7 +1904,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         setEdited(false);
         setDirty(true);
       } catch (err) {
-        if (!claimed()) setLoadError(t("Could not restore master: {{error}}", { error: errMsg(err) }));
+        if (!claimed()) reportLoadError(t("Could not restore master: {{error}}", { error: errMsg(err) }));
       }
     });
     return () => { cancelled = true; };
@@ -1849,7 +1912,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   const reportOpenError = (err: unknown) => {
-    if (!isAbort(err)) setLoadError(t("Could not open label: {{error}}", { error: errMsg(err) }));
+    if (!isAbort(err)) reportLoadError(t("Could not open label: {{error}}", { error: errMsg(err) }));
   };
 
   /** A .label's master couldn't be resolved: ask the operator. "Use current"
@@ -1877,19 +1940,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
     // one on a quiet attempt and ask again with no explanation.
-    let bytes: Uint8Array, path: string;
+    let bytes: Uint8Array, path: string, name: string;
     try {
       const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
-      if (target === undefined) { setLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
+      if (target === undefined) { reportLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
-      [bytes, path] = "path" in target
-        ? [await readNativeFile(target.path), target.path]
-        : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
+      if ("path" in target) {
+        [bytes, path, name] = [await readNativeFile(target.path), target.path, target.path];
+      } else {
+        const file = await target.handle.getFile();
+        [bytes, path, name] = [new Uint8Array(await file.arrayBuffer()), "", file.name];
+      }
     } catch (err) {
-      if (!isAbort(err)) setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
+      if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
-    const r = tryParseMaster(bytes);
+    const r = tryParseMaster(bytes, name);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
     return r && { ...r, path: path || undefined };
   }
@@ -2026,10 +2092,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (images.length) setCustomImages(() => Object.fromEntries(images.map(([id, mint]) => [id, mint()])));
       setDirty(benched);
       setEdited(benched);
-      setLoadMessage(notes.length ? { note: true, text: translate("Note: {{message}}", { message: notes.join(" · ") }) } : NO_MESSAGE);
+      // The label this replaced took its texture and mask with it, and their load errors.
+      textureError.clear();
+      maskError.clear();
+      if (notes.length) notify.warning(translate("Opened {{file}} with changes", { file: baseName(f.name) }),
+        { id: toastId("label-warning"), description: notes.join(" · ") });
       return true;
     } catch (err) {
-      if (!opts?.quiet) setLoadError(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
+      if (!opts?.quiet) reportLoadError(t("Could not open {{name}}: {{error}}", { name: f.name, error: errMsg(err) }));
       return false;
     }
   }
@@ -2065,9 +2135,9 @@ export const DocumentEditor = memo(function DocumentEditor({
               setEdited(true);
               if (recoveredPath?.rebind) bindPath(recoveredPath.path, recoveredPath.modifiedAt);
               else if (recoveredPath) {
-                // Joins the open's own notes (benched values) rather than replacing them.
-                const note = t("Restored from {{path}}, which moved, changed or is open in another tab, so Save asks where", { path: recoveredPath.path });
-                setLoadMessage((m) => ({ note: true, text: m.note ? `${m.text} · ${note}` : t("Note: {{message}}", { message: note }) }));
+                // A warning of its own, beside the open's (benched values).
+                notify.warning(t("Restored from {{file}}", { file: baseName(recoveredPath.path) }),
+                  { id: toastId("restore-warning"), description: t("It moved, changed or is open in another tab, so Save asks where") });
               }
               const bytes = new Uint8Array(await file.arrayBuffer());
               // The path (and its baseline mtime) rides along only once
@@ -2114,30 +2184,32 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The first export in a tab asks where (beside its .label); later ones
     // rewrite those files silently, and the As… commands ask again.
     // They don't wait for the preview: the builds load their own fonts and art.
+    // They grey out only while an export runs; on a blocked label they stay
+    // enabled and guardExport explains why nothing was built.
     // Settings → Two-file export decides what ⌘E / ⇧⌘E save: one PDF / PSD
     // with White Ink inside, or the art + mask pairs.
     ...(render.twoFilePdfExport ? [
       { id: "export-both", label: t("Export PDFs"), key: "e", mods: "⌘" as const,
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }, "pair") },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath }, "pair")) },
       { id: "export-both-as", label: t("Export PDFs As…"),
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }, "pair") },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true }, "pair")) },
       { id: "export-art", label: t("Export Artwork PDF"),
-        disabled: exportBlocked, run: () => void exportPdfPlate("art", { labelPath: filePath }) },
+        disabled: exportBusy, run: guardExport(() => void exportPdfPlate("art", { labelPath: filePath })) },
       { id: "export-mask", label: t("Export Mask PDF"),
-        disabled: exportBlocked, run: () => void exportPdfPlate("mask", { labelPath: filePath }) },
+        disabled: exportBusy, run: guardExport(() => void exportPdfPlate("mask", { labelPath: filePath })) },
       { id: "export-psds", label: t("Export PSDs"), key: "e", mods: "⇧⌘" as const,
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }, "pair") },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath }, "pair")) },
       { id: "export-psds-as", label: t("Export PSDs As…"),
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }, "pair") },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true }, "pair")) },
     ] : [
       { id: "export-pdf", label: t("Export PDF"), key: "e", mods: "⌘" as const,
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath }) },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath })) },
       { id: "export-pdf-as", label: t("Export PDF As…"),
-        disabled: exportBlocked, run: () => void buildFull({ labelPath: filePath, ask: true }) },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true })) },
       { id: "export-psd", label: t("Export PSD"), key: "e", mods: "⇧⌘" as const,
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath }) },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath })) },
       { id: "export-psd-as", label: t("Export PSD As…"),
-        disabled: exportBlocked, run: () => void exportPsd({ labelPath: filePath, ask: true }) },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true })) },
     ]),
     { id: "undo", label: t("Undo"), shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: t("Redo"), shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
@@ -2205,7 +2277,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The layer a fill field shows: a value the resolver rejected (errors[id])
    *  is shown as STORED, not as the master fallback the resolved layer
-   *  carries — the field and the header error must name the same value. Both
+   *  carries — the field and its error must name the same value. Both
    *  fill fields use it: the inspector's (#128/#129) and the on-canvas
    *  editor's (#171). */
   function shownLayer(resolved: Layer): Layer {
@@ -2338,9 +2410,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     );
   }
 
-  // A build note (a cancelled export) is only a warning: a render error outranks it.
-  const headerError: HeaderMessage = buildError.text && !(renderError && buildError.note) ? buildError : { text: renderError };
-
   return (
     <TooltipProvider>
       {/* Suspense around the Dialog, not inside it: the first open then
@@ -2409,7 +2478,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
-              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={errorIds}
+              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={invalidLayers}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
@@ -2419,34 +2488,14 @@ export const DocumentEditor = memo(function DocumentEditor({
           <SidebarTrigger className="size-6" title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={commands} onNativeError={setBuildError}
+          {active && <AppMenu actions={commands} onNativeError={(text) => notify.error(text, { id: toastId("native-menu") })}
             onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
-          {blocked && (
-            <HeaderAlert tone="blocked">
-              <button type="button" data-blocked-export
-                className="rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                title={t("Export is blocked. Click to select the invalid layer.")}
-                onClick={selectInvalidLayer}>
-                {blockedWhy}
-              </button>
-            </HeaderAlert>
-          )}
-          {loadError.text && <HeaderAlert tone={loadError.note ? "warning" : "destructive"}>{loadError.text}</HeaderAlert>}
-          {headerError.text && <HeaderAlert tone={headerError.note ? "warning" : "destructive"}>{headerError.text}</HeaderAlert>}
-          {/* An error in the header replaces the export confirmation. */}
-          {exportNote.text && !headerError.text && <HeaderAlert tone={exportNote.note ? "warning" : "success"}>{exportNote.text}</HeaderAlert>}
-          {/* The success note's announcement, from a region that exists
-              before the note lands (see HeaderAlert's success tone). It
-              keeps the note while an error hides it, so a render error
-              clearing doesn't refill it and re-announce a stale "Saved …".
-              A stale-mask warning is an alert itself, so it isn't repeated here. */}
-          <span role="status" data-export-saved className="sr-only">{exportNote.note ? "" : exportNote.text}</span>
           {/* The blocked-export reason's announcement, mounted before the
-              label is blocked for the same reason. */}
+              label is blocked so a screen reader hears it appear. The visible
+              explanation is the toast an export attempt shows. */}
           <span role="status" data-export-blocked-status className="sr-only">
             {blocked ? t("Export blocked: {{reason}}", { reason: blockedWhy }) : ""}
           </span>
-          {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
             onChange={(e) => {
@@ -2454,7 +2503,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               e.target.value = "";
               if (!f) return;
               void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
-                .catch((err) => setLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
+                .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}
@@ -2568,7 +2617,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {active && <AssetDropOverlay
               onTexture={(f) => void onTexture(f)}
               onMask={(f) => void onMask(f)} />}
-            {!previewReady && !exporting && !buildError.text && !renderError && (
+            {!previewReady && !exporting && !assetsFailed && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />

@@ -225,3 +225,23 @@ input[type="number"]::-webkit-inner-spin-button {
 html { font-size: 13px; }
 body { @apply bg-background text-foreground antialiased; }
 h1, h2, h3 { font-family: var(--font-heading); }
+
+/* Toasts (src/components/ui/sonner.tsx). The stack is centred on
+   --toast-center-x and lifted to --toast-bottom; set them on :root to sit it
+   over the preview, clear of the sidebars and the view switcher. Unset, it is
+   the window's bottom centre. !important beats Sonner's own left/bottom rules,
+   including its narrow-window breakpoint. A toast wraps long unbroken text
+   (file paths, error messages) inside a width that never outgrows the window,
+   and keeps a line break in a description (UncaughtErrors puts the error and
+   its advice on separate lines). */
+[data-sonner-toaster][data-x-position="center"] {
+  left: var(--toast-center-x, 50%) !important;
+  bottom: var(--toast-bottom, 16px) !important;
+}
+[data-sonner-toast] {
+  max-width: min(420px, 90vw);
+  overflow-wrap: anywhere;
+}
+[data-sonner-toast] [data-description] {
+  white-space: pre-line;
+}

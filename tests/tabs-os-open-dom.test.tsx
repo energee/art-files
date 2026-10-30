@@ -2,13 +2,14 @@
 // (issue #109): a path the Rust side queues while the shell's
 // "project-file-opened" listener is still registering loses its emit, so
 // the shell must drain once the listener is live. Also: a delivered path
-// that isn't a .label names itself in the strip instead of vanishing (#554),
+// that isn't a .label names itself in an error toast instead of vanishing (#554),
 // and a cancelled open closes the tab made for it, never a reused one (#553).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { FileToOpen } from "../src/App";
+import { mountToaster, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 const mocks = vi.hoisted(() => ({
   /** The Rust-side OpenedFile queue take_opened_file pops from. */
@@ -61,9 +62,11 @@ vi.mock("../src/App", async () => {
 const { default: TabsShell } = await import("../src/TabsShell");
 
 let root: ReturnType<typeof createRoot>;
+beforeEach(mountToaster);
 afterEach(async () => {
   await act(async () => { root.unmount(); });
   mocks.editors.length = 0;
+  await unmountToaster();
 });
 
 /** Mount the shell with `paths` delivered at listen time, and let the
@@ -89,8 +92,18 @@ it("names a delivered path that isn't a .label instead of opening nothing", asyn
   const host = await boot(["/outside/secret.bin"]);
 
   expect(mocks.editors[0]?.fileToOpen).toBeNull();
-  expect(host.textContent).toContain("Could not open label: /outside/secret.bin isn't a .label file.");
-});
+  await shown("Could not open label: /outside/secret.bin isn't a .label file.");
+  // The toast is the only surface: the tab strip carries no error text of its own.
+  expect(host.textContent).not.toContain("Could not open label");
+}, 30_000);
+
+it("a second stray file replaces the first toast, and a .label delivered after still opens", async () => {
+  await boot(["/outside/one.bin", "/outside/two.bin", "/labels/Real.label"]);
+
+  await shown("/outside/two.bin isn't a .label file.");
+  expect(toastTitles()).toEqual(["Could not open label: /outside/two.bin isn't a .label file."]);
+  expect(mocks.editors[0]?.fileToOpen).toMatchObject({ path: "/labels/Real.label" });
+}, 30_000);
 
 it("a cancelled open closes the tab made for it, not the pristine tab it reused", async () => {
   await boot(["/labels/A.label", "/labels/B.label"]);

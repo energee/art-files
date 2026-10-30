@@ -1,13 +1,14 @@
 // tabs-open-recent-dom.test.tsx — the shell side of File → Open Recent: a tab
 // that binds to a .label path (an open or a Save As, reported through onMeta)
 // joins the recent list, and choosing a recent path routes it exactly like a
-// Finder open — or, when the file is gone, shows the open error in the tab
-// strip and drops it from the list.
+// Finder open — or, when the file is gone, shows the open error as a toast
+// and drops it from the list.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { DocumentMeta, FileToOpen } from "../src/App";
+import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 type EditorProps = {
   fileToOpen: FileToOpen | null;
@@ -53,12 +54,14 @@ beforeEach(async () => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  await mountToaster();
   await act(async () => { root.render(createElement(TabsShell)); });
 });
 
 afterEach(async () => {
   await act(async () => { root.unmount(); });
   container.remove();
+  await unmountToaster();
 });
 
 const meta = (filePath: string | null): DocumentMeta =>
@@ -89,15 +92,34 @@ it("opens a recent path like a Finder open", async () => {
   expect(recentLabels()).toEqual(["/labels/One.label"]);
 });
 
-it("a missing recent file shows the open error and leaves the list", async () => {
+it("a recent file that is gone shows an error toast and leaves the list", async () => {
   rememberRecent("/labels/Gone.label");
   rememberRecent("/labels/Here.label");
   mocks.exists.mockResolvedValue(false);
   await act(async () => { openRecent("/labels/Gone.label"); });
   await act(async () => { await Promise.resolve(); });
   expect(mocks.editors[0].fileToOpen).toBeNull();
-  // role="alert": the menu click leaves focus elsewhere, so it is announced.
-  expect(container.querySelector('[role="alert"]')?.textContent)
-    .toBe("Could not open label: /labels/Gone.label no longer exists.");
+  await shown("Could not open label: /labels/Gone.label no longer exists.");
+  // The toast is the only surface: the tab strip carries no error text of its own.
+  expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(recentLabels()).toEqual(["/labels/Here.label"]);
-});
+}, 30_000);
+
+it("a second missing recent file replaces the first toast, and a later good open leaves it standing", async () => {
+  rememberRecent("/labels/Gone.label");
+  rememberRecent("/labels/AlsoGone.label");
+  rememberRecent("/labels/Here.label");
+  mocks.exists.mockImplementation(async (path: string) => path === "/labels/Here.label");
+  await act(async () => { openRecent("/labels/Gone.label"); });
+  await shown("/labels/Gone.label no longer exists.");
+  await act(async () => { openRecent("/labels/AlsoGone.label"); });
+  await shown("/labels/AlsoGone.label no longer exists.");
+  await settle();
+  // One source, one toast: the repeat updates it instead of stacking another.
+  expect(toastTitles()).toEqual(["Could not open label: /labels/AlsoGone.label no longer exists."]);
+  // The first file is still gone, so a good open elsewhere does not dismiss its error.
+  await act(async () => { openRecent("/labels/Here.label"); });
+  await settle();
+  expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" });
+  expect(toastTitles()).toHaveLength(1);
+}, 30_000);

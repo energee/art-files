@@ -17,6 +17,8 @@ serde_json = "1.0"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-fs = "2.5.1"
+# Reveals an exported file in Finder / File Explorer (src/reveal.ts).
+tauri-plugin-opener = "2"
 tauri-plugin-updater = "2.10.1"
 
 # Windows/Linux receive file-association opens as argv on a NEW process;
