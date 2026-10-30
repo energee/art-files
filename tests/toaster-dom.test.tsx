@@ -94,26 +94,31 @@ it("follows the app theme", () => {
   expect(document.querySelector("[data-sonner-toaster]")!.getAttribute("data-sonner-theme")).toBe("dark");
 });
 
-// Sonner hides the OLDEST toast once more than `visibleToasts` are up, and a
-// persistent error or warning is usually older than the Saved/Switched toast
-// that lands after it. Six is what one editor can have up at once in normal use
-// (see sonner.tsx); every one of them must stay readable.
-it("keeps six persistent toasts visible and expanded, and hides the oldest beyond that", () => {
+// Sonner hides the OLDEST toast once more than `visibleToasts` are up. Four is
+// what fits the preview pane at the smallest window (see sonner.tsx), so a fifth
+// hides the oldest until a newer one closes.
+it("keeps four toasts visible and expanded, hides the oldest for a fifth, and brings it back", () => {
   mount();
-  const states = (attribute: string) => [...document.querySelectorAll("[data-sonner-toast]")]
-    .map((li) => li.getAttribute(attribute));
-  show(...[1, 2, 3, 4, 5, 6].map((n) => () => notify.warning(`Warning ${n}`)));
-  expect(toastCount()).toBe(6);
-  expect(states("data-visible")).toEqual(Array(6).fill("true"));
+  const toasts = () => [...document.querySelectorAll("[data-sonner-toast]")];
+  const states = (attribute: string) => toasts().map((li) => li.getAttribute(attribute));
+  show(...[1, 2, 3, 4].map((n) => () => notify.warning(`Warning ${n}`, { id: `w${n}` })));
+  expect(toastCount()).toBe(4);
+  expect(states("data-visible")).toEqual(Array(4).fill("true"));
   // Sonner's default stack folds older toasts into slivers behind the newest;
   // each one is readable (and a persistent error is seen) only when expanded.
-  expect(states("data-expanded")).toEqual(Array(6).fill("true"));
+  expect(states("data-expanded")).toEqual(Array(4).fill("true"));
 
-  show(() => notify.warning("Warning 7"));
-  expect(toastCount()).toBe(7);
-  const hidden = [...document.querySelectorAll("[data-sonner-toast]")]
-    .filter((li) => li.getAttribute("data-visible") === "false");
-  expect(hidden.map((li) => li.textContent)).toEqual([expect.stringContaining("Warning 1")]);
+  show(() => notify.warning("Warning 5", { id: "w5" }));
+  expect(toastCount()).toBe(5);
+  const hidden = () => toasts().filter((li) => li.getAttribute("data-visible") === "false");
+  expect(hidden().map((li) => li.textContent)).toEqual([expect.stringContaining("Warning 1")]);
+
+  // The oldest returns as soon as a newer toast closes.
+  show(() => notify.dismiss("w5"));
+  settleDismissal();
+  expect(toastCount()).toBe(4);
+  expect(states("data-visible")).toEqual(Array(4).fill("true"));
+  expect(text()).toContain("Warning 1");
 });
 
 it("labels the toast region and the close button in the app's language", () => {

@@ -769,6 +769,24 @@ it("the Switched toast is dismissed once the label is edited", async () => {
   expect(warningPressed()).toBe("false");
 }, 30_000);
 
+// The toast leaves with an exit animation, and its Undo button stays clickable
+// until it is gone. A click in that window must not undo the switch the edit has
+// since moved past (the guard in commitRebind's action). The button is held from
+// before the edit, as a click that lands mid-exit would hold it.
+it("the Undo of a Switched toast that is leaving does nothing", async () => {
+  await openHidingMaster();
+  await shown("Switched to “Other”");
+  const undo = [...document.querySelectorAll<HTMLButtonElement>("[data-sonner-toast] button")]
+    .find((b) => b.textContent === "Undo")!;
+  await toggle("warning");
+  // Not gone yet: otherwise a click here would reach no handler and prove nothing.
+  expect(undo.isConnected).toBe(true);
+  await act(async () => undo.click());
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(document.querySelector('[data-layer-id="volume"]')).toBeNull();
+  expect(warningPressed()).toBe("false");
+}, 30_000);
+
 // Its Undo acts on this editor's document, so it must not outlive the tab.
 it("closing the tab dismisses its Switched toast", async () => {
   await openHidingMaster();
