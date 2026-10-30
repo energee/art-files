@@ -226,3 +226,10 @@ it("screen readers still hear Export blocked: {reason}", async () => {
   expect(container.querySelector("[data-blocked-export]")).toBeNull();
   expect(toastTitles()).toEqual([]);
 }, 30_000);
+
+it("the header shows no message while export is blocked", async () => {
+  const { container } = await mountBlocked();
+  await press({ key: "e", metaKey: true });
+  await shown("Can't export yet");
+  expect(container.querySelectorAll('header [role="alert"], header [data-blocked-export], header .text-warning-text')).toHaveLength(0);
+}, 30_000);

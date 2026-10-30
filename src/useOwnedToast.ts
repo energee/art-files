@@ -1,13 +1,13 @@
 // useOwnedToast.ts — a message toast owned by one source and one tab. Each
 // caller of the hook gets its own toast, so a writer replaces or clears only
 // the message it set itself and never wipes one another source put up (#473
-// exports, #511 asset assembly — the rule useOwnedError.ts keeps for the header
-// message slots). A message stays until its owner clears it or the user closes
-// it (close button, swipe, or clicking its action); a message the user closed is
-// forgotten and does not come back. The toast shows only while its tab is
-// active: leaving the tab hides it but keeps the message, coming back shows it
-// again, and a message set while the tab is hidden waits for the tab. When the
-// owner unmounts the toast goes, and a later set() shows nothing.
+// exports, #511 asset assembly). A message stays until its owner clears it or
+// the user closes it (close button, swipe, or clicking its action); a message
+// the user closed is forgotten and does not come back. The toast shows only
+// while its tab is active: leaving the tab hides it but keeps the message,
+// coming back shows it again, and a message set while the tab is hidden waits
+// for the tab. When the owner unmounts the toast goes, and a later set() shows
+// nothing.
 import { useEffect, useId, useMemo, useRef } from "react";
 import { notify, type NotifyOptions } from "@/notify";
 

@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
+import { mountToaster, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 const counts = vi.hoisted(() => ({ masterIndex: 0 }));
 // The preview's font load never settles here (unless a test makes it fail),
@@ -44,7 +45,7 @@ const editorProps = (): ComponentProps<typeof DocumentEditor> => ({
 
 let cleanup: (() => Promise<void>) | null = null;
 beforeEach(() => { localStorage.clear(); counts.masterIndex = 0; fonts.fail = false; });
-afterEach(async () => { await cleanup?.(); cleanup = null; document.body.replaceChildren(); localStorage.clear(); });
+afterEach(async () => { await cleanup?.(); cleanup = null; await unmountToaster(); document.body.replaceChildren(); localStorage.clear(); });
 
 async function mount(over: Partial<ComponentProps<typeof DocumentEditor>> = {}) {
   const container = document.createElement("div");
@@ -176,12 +177,13 @@ it("with two-file export on, ⌘E and ⇧⌘E export the pairs", async () => {
   expect(rows[4]).toMatch(/^Export PSDs.+E$/);
 });
 
-it("shows a failed preview build's bare reason", async () => {
+it("shows a failed preview build's bare reason in one toast", async () => {
   fonts.fail = true;
-  const { container } = await mount();
-  await vi.waitFor(() => expect(container.textContent).toContain("font file is gone"), { timeout: 5000 });
-  expect(container.textContent).not.toContain("Error: font file is gone");
-});
+  await mountToaster();
+  await mount();
+  await shown("font file is gone");
+  expect(toastTitles()).toEqual(["font file is gone"]);
+}, 30_000);
 
 it("adds a layer from the palette", async () => {
   const { container } = await mount();

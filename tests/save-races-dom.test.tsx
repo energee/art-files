@@ -12,14 +12,24 @@ import { fileDrag } from "./dom-drag";
 import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 import type { Command } from "../src/components/CommandMenu";
 
-const menu = vi.hoisted(() => ({ actions: [] as Command[], renderError: null as null | ((m: string) => void) }));
+const menu = vi.hoisted(() => ({
+  actions: [] as Command[], renderError: null as null | ((m: string) => void),
+  /** When set, loading the label's font faces fails with this message. */
+  fontError: "",
+}));
 vi.mock("../src/components/PreviewCompare", () => ({
   PreviewCompare: (p: { onRenderError: (m: string) => void }) => { menu.renderError = p.onRenderError; return null; },
 }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/components/AppMenu", () => ({ AppMenu: (p: { actions: Command[] }) => { menu.actions = p.actions; return null; } }));
-vi.mock("../src/fonts", () => ({ loadLabelFaces: async () => (t: string, s: number) => t.length * s * 0.55, labelFontCss: () => "sans-serif", FONT_URLS: { poppins: {} } }));
+vi.mock("../src/fonts", () => ({
+  loadLabelFaces: async () => {
+    if (menu.fontError) throw new Error(menu.fontError);
+    return (t: string, s: number) => t.length * s * 0.55;
+  },
+  labelFontCss: () => "sans-serif", FONT_URLS: { poppins: {} },
+}));
 vi.mock("../src/pdf/fonts", async () => {
   const { assets } = await import("./fixtures");
   return { loadFonts: async () => assets.fonts };
@@ -61,6 +71,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   localStorage.clear();
   desktopSave.path = null;
+  menu.fontError = "";
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -265,11 +276,50 @@ it("Save Master keeps a promotion when the master is edited during the write", a
   expect(document.querySelector('[data-row*="warning"]')).toBeNull();
 });
 
+/** Drops `file` on the preview: the left half takes it as the texture, the
+ *  right half as the mask. */
+async function dropArt(file: File, clientX = 10) {
+  const e = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(e, "dataTransfer", { value: { types: ["Files"], items: [{ kind: "file", type: file.type }], files: [file] } });
+  Object.defineProperty(e, "clientX", { value: clientX });
+  await act(async () => { document.body.dispatchEvent(e); await new Promise((r) => setTimeout(r, 10)); });
+}
+const textureFile = (name: string) => new File([name], name, { type: "image/png" });
+/** Decodes succeed, except for the files `broken` names; the canvas is stubbed
+ *  for the preview pass. */
+function stubDecoding(broken: string[]) {
+  class FakeBitmap { width = 10; height = 10; close() {} }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  vi.stubGlobal("createImageBitmap", async (f: Blob) => {
+    if (broken.includes((f as File).name)) throw new Error("Invalid image");
+    return new FakeBitmap();
+  });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
+}
+const TEXTURE_FAILED = 'Could not load texture "broken.png": Invalid image';
+const toastTypes = () => [...document.querySelectorAll("[data-sonner-toast]")].map((el) => el.getAttribute("data-type"));
+
 it("reports a failed texture decode without an unhandled rejection (#266)", async () => {
   vi.stubGlobal("createImageBitmap", async () => { throw new Error("Invalid image"); });
   await mount();
   await act(async () => { fileDrag("drop", new File(["bad"], "broken.png", { type: "image/png" })); });
-  expect(document.body.textContent).toContain('Could not load texture "broken.png": Invalid image');
+  await shown(TEXTURE_FAILED);
+  expect(toastTitles()).toEqual([TEXTURE_FAILED]);
+});
+
+// The error belongs to the texture slot: it stays on screen (no fade) until a
+// texture that decodes replaces the broken one.
+it("a texture that fails to decode keeps an error toast until a good texture replaces it", async () => {
+  stubDecoding(["broken.png"]);
+  await mount();
+  await dropArt(textureFile("broken.png"));
+  await shown(TEXTURE_FAILED);
+  expect(toastTypes()).toEqual(["error"]);
+  await settle();
+  expect(toastTitles()).toEqual([TEXTURE_FAILED]);
+  await dropArt(textureFile("art.png"));
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
 });
 
 // Opening a label swaps the texture and mask out with the old label, so a load
@@ -278,37 +328,25 @@ it("a texture load error does not outlive opening another label", async () => {
   vi.stubGlobal("createImageBitmap", async () => { throw new Error("Invalid image"); });
   const { props } = await mount();
   await act(async () => { fileDrag("drop", new File(["bad"], "broken.png", { type: "image/png" })); });
-  expect(document.body.textContent).toContain('Could not load texture "broken.png": Invalid image');
+  await shown(TEXTURE_FAILED);
+  expect(toastTitles()).toEqual([TEXTURE_FAILED]);
   const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} }, {});
   await act(async () => root.render(createElement(DocumentEditor, {
     ...props, fileToOpen: { seq: 1, file: new File([label as unknown as BlobPart], "beer.label") },
   })));
   await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
-  await act(async () => {});
-  expect(document.body.textContent).not.toContain("Could not load texture");
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
 });
 
 it("a texture that loads keeps another slot's error on screen", async () => {
-  // Decodes succeed except the mask's; canvas is stubbed for the preview pass.
-  class FakeBitmap { width = 10; height = 10; close() {} }
-  vi.stubGlobal("ImageBitmap", FakeBitmap);
-  vi.stubGlobal("createImageBitmap", async (f: Blob) => {
-    if ((f as File).name === "broken-mask.png") throw new Error("Invalid image");
-    return new FakeBitmap();
-  });
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
-  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
+  stubDecoding(["broken-mask.png"]);
   await mount();
-  const drop = async (file: File, clientX: number) => {
-    const e = new Event("drop", { bubbles: true, cancelable: true });
-    Object.defineProperty(e, "dataTransfer", { value: { types: ["Files"], items: [{ kind: "file", type: file.type }], files: [file] } });
-    Object.defineProperty(e, "clientX", { value: clientX });
-    await act(async () => { document.body.dispatchEvent(e); await new Promise((r) => setTimeout(r, 10)); });
-  };
-  await drop(new File(["bad"], "broken-mask.png", { type: "image/png" }), window.innerWidth - 10);
-  expect(document.body.textContent).toContain('Could not load mask "broken-mask.png"');
-  await drop(new File(["ok"], "art.png", { type: "image/png" }), 10);
-  expect(document.body.textContent).toContain('Could not load mask "broken-mask.png"');
+  const maskFailed = 'Could not load mask "broken-mask.png": Invalid image';
+  await dropArt(textureFile("broken-mask.png"), window.innerWidth - 10);
+  await shown(maskFailed);
+  await dropArt(textureFile("art.png"));
+  await settle();
+  expect(toastTitles()).toEqual([maskFailed]);
 });
 
 // Export PSD saves one file (White Ink is a spot channel inside it), so it
@@ -846,4 +884,76 @@ it("an image with no file to save warns in its own toast", async () => {
   expect(saved.querySelector("[data-title]")!.textContent).toBe("Saved Lolev.master");
   expect(saved.textContent).not.toContain("no file");
   expect(toasts).toHaveLength(2);
+});
+
+// The header carries no messages: every error, warning and result is a toast
+// (src/notify.ts), so the red/amber pills and the blocked pill are gone.
+const headerMessages = () =>
+  document.querySelectorAll('header [role="alert"], header [data-blocked-export], header .text-warning-text');
+
+// A render error belongs to the tab whose preview failed: it shows while that
+// tab is in front, goes when it is not, and comes back with it. A frame that
+// draws fine takes it away.
+it("a render error toast belongs to its tab", async () => {
+  const { props } = await mount();
+  const showTab = (active: boolean) => act(async () => root.render(createElement(DocumentEditor, { ...props, active })));
+  await act(async () => menu.renderError!("Preview failed: boom"));
+  await shown("Preview failed: boom");
+  expect(toastTypes()).toEqual(["error"]);
+  expect(headerMessages()).toHaveLength(0);
+
+  await showTab(false);
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
+  await showTab(true);
+  await shown("Preview failed: boom");
+  expect(toastTitles()).toEqual(["Preview failed: boom"]);
+
+  await act(async () => menu.renderError!(""));
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
+});
+
+// The warning is about the label, not about one edit: it shows when it first
+// appears, and an edit that leaves the same warning in place does not bring it
+// back after the user closed it.
+it("a label overriding an unknown layer warns once", async () => {
+  const ghost = packLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {}, overrides: { ghost: { x: 10 } },
+  }, {});
+  await mount({ seq: 1, file: new File([ghost as unknown as BlobPart], "ghost.label") });
+  const sentence = 'Label overrides unknown layer "ghost"; skipped.';
+  await shown(sentence);
+  expect(toastTitles()).toEqual([sentence]);
+  expect(toastTypes()).toEqual(["warning"]);
+  expect(headerMessages()).toHaveLength(0);
+
+  act(() => { document.querySelector<HTMLButtonElement>("[data-close-button]")!.click(); });
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]));
+  await toggle("warning");
+  await settle();
+  expect(toastTitles()).toEqual([]);
+});
+
+it("the header shows no message after an export succeeds", async () => {
+  vi.stubGlobal("showSaveFilePicker", vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
+    { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) })));
+  flatCanvas(0);
+  await mount();
+  await act(async () => { menu.actions.find((c) => c.id === "export-psd")!.run(); });
+  await shown("Saved ");
+  expect(toastTypes()).toEqual(["success"]);
+  expect(headerMessages()).toHaveLength(0);
+  expect(document.querySelector("header")!.textContent).not.toContain("Saved");
+});
+
+// The font gate and the asset assembly both hit the failure; they are one
+// source, so there is one toast.
+it("the header shows no message after an asset error", async () => {
+  menu.fontError = "font file is gone";
+  await mount();
+  await shown("font file is gone");
+  await settle();
+  expect(toastTitles()).toEqual(["font file is gone"]);
+  expect(toastTypes()).toEqual(["error"]);
+  expect(headerMessages()).toHaveLength(0);
+  expect(document.querySelector("header")!.textContent).not.toContain("font file is gone");
 });

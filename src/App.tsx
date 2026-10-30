@@ -31,7 +31,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "@/i18n";
 import { t as translate } from "@/i18n";
 import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
@@ -75,7 +75,6 @@ import {
 import { useExport } from "@/useExport";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { useProjectSave } from "@/useProjectSave";
-import { NO_MESSAGE, useOwnedError, type HeaderMessage } from "@/useOwnedError";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
@@ -104,7 +103,6 @@ import {
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -192,30 +190,6 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
     const has = l.role === "background" ? hasTexture : hasMask;
     return { ...l, asset: has ? PAGE_ART_ID[l.role] : "" };
   });
-}
-
-/** Colour classes per HeaderAlert tone: [Alert border/background, text]. */
-const HEADER_ALERT_TONE = {
-  destructive: ["border-destructive/50", ""],
-  warning: ["border-warning/50 bg-warning-soft", "text-warning-text"],
-} as const;
-
-/** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
- *  warning), sized for the menu bar: the shadcn Alert (the app's one
- *  notification surface — see ui/alert.tsx) compacted to fit inline beside the
- *  menus rather than as a full-width block. Warning uses `variant` "default"
- *  plus its own colour classes rather than the destructive variant, which
- *  paints its descendant text through a selector on Alert itself that a
- *  className override can't reach. */
-function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
-  const [box, text] = HEADER_ALERT_TONE[tone];
-  return (
-    <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}>
-      <AlertDescription className={cn("text-xs", text)}>
-        {children}
-      </AlertDescription>
-    </Alert>
-  );
 }
 
 /** Where the view preferences (the rulers/guides toggles and the length
@@ -496,22 +470,19 @@ export const DocumentEditor = memo(function DocumentEditor({
   // PreviewCompare). While set, planLayers skips it via the render source's
   // skip set so the editor's live DOM text IS the layer — no doubled glyphs.
   const [editSession, setEditSession] = useState<string | null>(null);
-  // Two error channels, split by who can clear them: renderError belongs to
-  // the renderers (every good frame clears it); buildError to asset
-  // assembly, image loads and native menu failures. A successful asset
-  // assembly or image load clears it only while it still holds its own
-  // message (useOwnedError; #473, #511). A note (warning) is marked where it
-  // is made (HeaderMessage.note); setBuildError is the plain setter for errors.
-  // Export results (useExport.ts) and what opening or saving a label or master
-  // reports (notify, below) are toasts, not header messages; loadError holds
-  // only the texture and mask slots' load errors.
-  const [buildError, setBuildMessage] = useState<HeaderMessage>(NO_MESSAGE);
+  // The header carries no messages; everything reported here is a toast
+  // (notify.ts). One that stays true until fixed belongs to the source that
+  // raised it (useOwnedToast): its clear() dismisses only its own, so one
+  // source's success never wipes another's error (#473, #511), and it shows
+  // only while this tab is in front. renderError is the renderers' message
+  // (every good frame clears it); assetsFailed only hides the "rendering
+  // label…" spinner while asset assembly is failing.
   const [renderError, setRenderError] = useState("");
-  const [loadError, setLoadMessage] = useState<HeaderMessage>(NO_MESSAGE);
-  const setBuildError = useCallback((text: string) => setBuildMessage({ text }), []);
-  // Each source of an open, save or load message that stays until closed owns one
-  // toast in this editor, so a repeat replaces it instead of stacking another
-  // (notify.ts). Saved and Switched toasts fade on their own and need no id.
+  const [assetsFailed, setAssetsFailed] = useState(false);
+  // Each one-off error, and each open, save or load message that stays until
+  // closed, owns one toast id in this editor, so a repeat replaces it instead of
+  // stacking another (notify.ts). Saved and Switched toasts fade on their own
+  // and need no id.
   const toastBase = useId();
   const toastId = (source: string) => `${toastBase}:${source}`;
   const reportLoadError = (text: string) => { notify.error(text, { id: toastId("load-error") }); };
@@ -719,7 +690,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       next = checked(doc);
     } catch (err) {
-      setBuildError(errMsg(err)); // parseMaster / checkLabelBindings refusals
+      // parseMaster / checkLabelBindings refusals
+      notify.error(errMsg(err), { id: toastId("edit-refused") });
       return false;
     }
     if (next === doc || (next.master === doc.master && next.label === doc.label)) return false;
@@ -832,6 +804,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
 
+  // The font gate right here and the preview's asset assembly (below) fail on
+  // the same missing font, so they report through one owned toast, not two. Its
+  // clear() leaves an image or texture error alone (#511).
+  const assetError = useOwnedToast(active);
   // Warm the face-aware measure for the families this label uses (the single
   // font gate) and surface a font-load failure early. Only the master's
   // family and the layers' overrides load (#411); picking another family
@@ -844,9 +820,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => {
     let cancelled = false;
     loadLabelFaces(family, fontOverrides)
-      .catch((error) => { if (!cancelled) setBuildError(errMsg(error)); });
+      .catch((error) => { if (!cancelled) assetError.set(errMsg(error)); });
     return () => { cancelled = true; };
-  }, [family, fontOverrides, setBuildError]);
+  }, [family, fontOverrides, assetError]);
 
   // Which instance the window/document-level key listeners below belong to.
   const activeRef = useRef(active);
@@ -978,6 +954,19 @@ export const DocumentEditor = memo(function DocumentEditor({
   // in the header announces the label becoming blocked.
   const blockedToast = useOwnedToast(active);
   useEffect(() => { if (!blocked) blockedToast.clear(); }, [blocked, blockedToast]);
+  // The renderers' message and the resolver's warnings (a label overriding a
+  // layer the master lacks, an unknown variant, a reference to a missing layer)
+  // each own a toast of this tab. It is set when the text appears or changes and
+  // cleared when the text goes; a toast the user closed stays closed until then.
+  const renderErrorToast = useOwnedToast(active);
+  useEffect(() => {
+    if (renderError) renderErrorToast.set(renderError); else renderErrorToast.clear();
+  }, [renderError, renderErrorToast]);
+  const warningToast = useOwnedToast(active);
+  const warningText = resolveWarnings.join(" · ");
+  useEffect(() => {
+    if (warningText) warningToast.set(warningText, "warning"); else warningToast.clear();
+  }, [warningText, warningToast]);
   /** Wraps an export command's `run`: a blocked label shows the toast and
    *  builds nothing. */
   const guardExport = (run: () => void) => () => {
@@ -1016,11 +1005,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   };
 
-  /** A successful decode clears only its own slot's earlier failure — not a
-   *  benched-values note or the other slot's error, which it may land beside
-   *  (adoptMasterAssets decodes both at once, right after commitRebind's note). */
-  const textureError = useOwnedError(setLoadMessage);
-  const maskError = useOwnedError(setLoadMessage);
+  /** A successful decode clears only its own slot's earlier failure — not the
+   *  other slot's error, which it may land beside (adoptMasterAssets decodes
+   *  both at once). */
+  const textureError = useOwnedToast(active);
+  const maskError = useOwnedToast(active);
   async function onTexture(f: File) {
     try { swapLoaded(setTexture, previewOnce(await readRaster(f), f)); textureError.clear(); }
     catch (err) { textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
@@ -1035,7 +1024,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
    *  point the layer back at it (#75); see liveImages. */
   // A good image clears only the load error a bad one set (#511).
-  const imageError = useOwnedError(setBuildMessage);
+  const imageError = useOwnedToast(active);
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
     const mint = previewOnce(await readCustomImage(f), f);
@@ -1121,7 +1110,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
   // Asset assembly's next success clears only the error it set, so an image
   // or master error survives a plate toggle (#511).
-  const assetError = useOwnedError(setBuildMessage);
   useEffect(() => {
     // Not gated on `blocked`: this only decodes fonts and art, and a rejected
     // value already falls back to the master's, so the preview keeps drawing (#127).
@@ -1159,8 +1147,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
         });
         assetError.clear();
+        setAssetsFailed(false);
       })().catch((err) => {
-        if (!cancelled) assetError.set(errMsg(err));
+        if (cancelled) return;
+        assetError.set(errMsg(err));
+        setAssetsFailed(true);
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -1486,7 +1477,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     const unchanged = docRef.current === doc && current.texture === texture
       && current.mask === mask && current.customImages === customImages;
     setDirty(!unchanged);
-    setLoadMessage(NO_MESSAGE);
+    // A Save leaves the texture and mask load errors on screen: the art that
+    // failed to load is still not loaded, and saving does not change that.
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
@@ -1730,7 +1722,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     setDoc(switched);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
-    // loadError stays as it is: the texture and mask survive a master switch, and so do their load errors.
+    // The texture and mask survive a master switch, and so do their load errors.
     const notes = benchedNotes(dropped);
     if (notes.length) notify.info(t("Switched to “{{name}}”", { name: target.name }), {
       description: notes.join(" · "),
@@ -2054,7 +2046,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       setDirty(benched);
       setEdited(benched);
       // The label this replaced took its texture and mask with it, and their load errors.
-      setLoadMessage(NO_MESSAGE);
+      textureError.clear();
+      maskError.clear();
       if (notes.length) notify.warning(notes.join(" · "), { id: toastId("label-warning") });
       return true;
     } catch (err) {
@@ -2236,7 +2229,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The layer a fill field shows: a value the resolver rejected (errors[id])
    *  is shown as STORED, not as the master fallback the resolved layer
-   *  carries — the field and the header error must name the same value. Both
+   *  carries — the field and its error must name the same value. Both
    *  fill fields use it: the inspector's (#128/#129) and the on-canvas
    *  editor's (#171). */
   function shownLayer(resolved: Layer): Layer {
@@ -2369,8 +2362,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     );
   }
 
-  const headerError = buildError.text || renderError;
-
   return (
     <TooltipProvider>
       {/* Suspense around the Dialog, not inside it: the first open then
@@ -2449,17 +2440,14 @@ export const DocumentEditor = memo(function DocumentEditor({
           <SidebarTrigger className="size-6" title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={commands} onNativeError={setBuildError}
+          {active && <AppMenu actions={commands} onNativeError={(text) => notify.error(text, { id: toastId("native-menu") })}
             onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
-          {loadError.text && <HeaderAlert tone={loadError.note ? "warning" : "destructive"}>{loadError.text}</HeaderAlert>}
-          {headerError && <HeaderAlert>{headerError}</HeaderAlert>}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible
               explanation is the toast an export attempt shows. */}
           <span role="status" data-export-blocked-status className="sr-only">
             {blocked ? t("Export blocked: {{reason}}", { reason: blockedWhy }) : ""}
           </span>
-          {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
             onChange={(e) => {
@@ -2581,7 +2569,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {active && <AssetDropOverlay
               onTexture={(f) => void onTexture(f)}
               onMask={(f) => void onMask(f)} />}
-            {!previewReady && !exporting && !buildError.text && !renderError && (
+            {!previewReady && !exporting && !assetsFailed && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
