@@ -1,6 +1,6 @@
 [package]
 name = "label-lab"
-version = "0.1.115"
+version = "0.1.116"
 description = "Desktop label artwork and print plate generator"
 edition = "2021"
 rust-version = "1.90"
