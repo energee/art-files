@@ -26,6 +26,12 @@ when changing it; historical plans describe their own implementation date.
   never browser alert/confirm/prompt (`src/App.tsx`, `src/components/MasterSaveReview.tsx`,
   `src/components/DesktopUpdater.tsx`).
 
+## App copy
+
+- No em dashes (—) in text the app shows: UI strings, toasts and their
+  descriptions, and every language in `src/locales/*.ts` (keys and values). Split
+  the sentence or use a colon or comma. A spaced en dash (–) is no substitute.
+
 ## Tests
 
 - Vitest tests live beside related suites under `tests/`. Pure model tests use
