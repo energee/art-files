@@ -949,9 +949,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // a field, popup, the inspector or a widget owns the key, and so does a
   // focused Layers row, which removes with its own focus hand-off. So does
   // any other focused button (a toolbar control) and anything inside the
-  // toast region (its buttons, and the list Alt+T focuses). Sonner removes a
-  // toast after its action runs, which drops focus onto the page, so an
-  // action that selects a layer must move focus itself (focusContentField).
+  // toast region (its buttons, and the toasts and list focus lands on). Sonner
+  // removes a toast after its action runs, which drops focus onto the page, so
+  // an action that selects a layer must move focus itself (focusContentField).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current || (e.key !== "Delete" && e.key !== "Backspace")) return;

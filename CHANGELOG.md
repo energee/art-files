@@ -9,6 +9,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **Translations tidied.** Removed an unused duplicate of the barcode module-width warning from the translation tables. The warning itself was already translated, so nothing you see changes.
 
+### Fixed
+- **Accessibility fixes for toasts and invalid layers.** A screen reader now reads each toast once; an error toast could be read twice. In the Layers list it now reads an invalid layer's reason along with the layer's name. The outline on a selected invalid layer is easier to see against its red tint, and pressing Option+T (Alt+T) while typing no longer pulls focus into the toasts, so it types the † character on a Mac.
+
 ## [0.1.114] - 2026-10-30
 
 ### Changed

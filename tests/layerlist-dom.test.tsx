@@ -351,6 +351,26 @@ describe("LayerList", () => {
     expect(valid.querySelector('[aria-label="Invalid value"]')).toBeNull();
   });
 
+  // `title` is a mouse tooltip; assistive tech gets the reason from a visually
+  // hidden element the name button points at, outside the button so the reason
+  // is not also read as part of its name.
+  it("gives an invalid row's name button the reason as its accessible description", () => {
+    render(baseProps({ invalid: new Map([["barcode", "Needs 12 digits"]]) }));
+    /** What aria-describedby resolves to, the way assistive tech reads it. */
+    const description = (el: Element) => (el.getAttribute("aria-describedby") ?? "")
+      .split(/\s+/).filter(Boolean)
+      .map((id) => document.getElementById(id)?.textContent ?? "").join(" ").trim();
+
+    const name = rowFor("barcode").querySelector("button")!;
+    expect(description(name)).toBe("Needs 12 digits");
+    expect(name.textContent).not.toContain("Needs 12 digits");
+    // The dot keeps its own "Invalid value" semantics.
+    expect(name.querySelector('[role="img"][aria-label="Invalid value"]')).not.toBeNull();
+
+    // A valid row has no description.
+    expect(rowFor("name").querySelector("button")!.hasAttribute("aria-describedby")).toBe(false);
+  });
+
   it("keeps a selected invalid row distinct from an unselected one, and both inked red", () => {
     render(baseProps({ selected: ["barcode"], invalid: new Map([["barcode", "Needs 12 digits"], ["name", "Too long"]]) }));
     const selected = (rowFor("barcode").firstElementChild as HTMLElement).classList;
@@ -358,11 +378,11 @@ describe("LayerList", () => {
     // Selected: the hover tint plus a ring, so selection reads over the red
     // (a deeper tint would drop destructive-text under 4.5:1 in dark).
     expect(selected.contains("bg-destructive/15")).toBe(true);
-    expect(selected.contains("ring-sidebar-primary/60")).toBe(true);
+    expect(selected.contains("ring-sidebar-primary")).toBe(true);
     expect(selected.contains("text-destructive-text")).toBe(true);
     expect(other.contains("bg-destructive/10")).toBe(true);
     expect(other.contains("text-destructive-text")).toBe(true);
-    expect(other.contains("ring-sidebar-primary/60")).toBe(false);
+    expect(other.contains("ring-sidebar-primary")).toBe(false);
   });
 
   it("drags across multiple rows in one reorder and removes the arrow buttons", () => {

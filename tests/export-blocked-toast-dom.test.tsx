@@ -211,7 +211,7 @@ it("Show layer focuses the invalid layer's field, so Backspace cannot remove the
   expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
 }, 30_000);
 
-// The toast region's own keys never reach Remove Layer: Alt+T focuses the
+// The toast region's own keys never reach Remove Layer: focus can sit on the
 // toast list itself, which is no button.
 it("Backspace from inside the toast region does not remove the selected layer", async () => {
   const { container } = await mountBlocked();

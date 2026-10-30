@@ -5,7 +5,10 @@
 // into slivers behind the newest, and a persistent warning or error must stay
 // readable. Callers can override all three. The region's and close button's
 // labels, which Sonner words in English, go through t(). The icons take the
-// semantic text colours of the rest of the UI. Mount it once (main.tsx) and
+// semantic text colours of the rest of the UI. Sonner's Alt+T hotkey (focus the
+// toast list) is turned off: Option+T types "†" on macOS, so while a toast was
+// up it stole focus from the text field being typed in; with no hotkey Sonner
+// also drops "alt+T" from the region's label. Mount it once (main.tsx) and
 // send messages through src/notify.ts, never Sonner's toast() directly. Where
 // the stack sits is set in index.css (--toast-center-x / --toast-bottom).
 import type { CSSProperties } from "react";
@@ -25,6 +28,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       position="bottom-center"
       visibleToasts={4}
       expand
+      hotkey={[]}
       containerAriaLabel={t("Notifications")}
       icons={{
         success: <CircleCheckIcon className="size-4" />,

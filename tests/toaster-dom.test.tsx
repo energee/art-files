@@ -7,7 +7,7 @@
 // happy-dom with fake timers driving its auto-dismiss and exit animation
 // (tests/toast-harness.ts). Every notify call goes through show() to let the
 // toast land before the test looks.
-import { act } from "react";
+import { act, createElement } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { setLanguage } from "@/i18n";
 import { notify } from "@/notify";
@@ -116,20 +116,55 @@ it("labels the toast region and the close button in the app's language", () => {
   expect(document.querySelector("[data-close-button]")!.getAttribute("aria-label")).toBe("Schließen");
 });
 
-it("announces errors assertively and successes politely", () => {
+// Sonner's <section aria-live="polite"> already announces every toast that
+// lands in it, and it has no per-toast override. Any second live region that
+// holds a toast's text (a role="alert" wrapped around an error's title, a
+// mirror outside the section) makes a screen reader say it twice.
+it("announces each toast's text through exactly one live region, and leaves it readable", () => {
   mount();
   show(
-    () => notify.error("Couldn't save Lupula.pdf"),
+    () => notify.error("Couldn't save Lupula.pdf", { description: "Disk is full" }),
+    () => notify.warning("Lupula-mask.pdf wasn't saved", { description: "Export again to save both files." }),
     () => notify.success("Saved Lupula.pdf"),
+    () => notify.info("Switched to “Lolev”", { description: "Hidden values were set aside." }),
   );
-  const assertive = '[aria-live="assertive"], [role="alert"]';
+
+  const liveRegions = '[aria-live]:not([aria-live="off"]), [role="alert"], [role="status"], [role="log"]';
+  /** Every live region whose text holds `message`: ancestors and mirrors alike. */
+  const announcing = (message: string) =>
+    [...document.querySelectorAll(liveRegions)].filter((el) => el.textContent?.includes(message));
   /** The innermost element holding exactly this text. */
   const elementWith = (message: string) => [...document.querySelectorAll("[data-sonner-toast] *")]
     .find((el) => el.children.length === 0 && el.textContent === message)!;
 
-  expect(elementWith("Couldn't save Lupula.pdf").closest(assertive)).not.toBeNull();
-  expect(elementWith("Saved Lupula.pdf").closest(assertive)).toBeNull();
-  expect(elementWith("Saved Lupula.pdf").closest('[aria-live="polite"]')).not.toBeNull();
+  for (const message of [
+    "Couldn't save Lupula.pdf", "Disk is full",
+    "Lupula-mask.pdf wasn't saved", "Export again to save both files.",
+    "Saved Lupula.pdf",
+    "Switched to “Lolev”", "Hidden values were set aside.",
+  ]) {
+    expect(announcing(message), message).toHaveLength(1);
+    // Screen-reader navigation still reaches the toast itself.
+    expect(elementWith(message).closest('[aria-hidden="true"]'), message).toBeNull();
+  }
+  // Errors are polite like the rest: one region, Sonner's own.
+  expect(announcing("Couldn't save Lupula.pdf")[0].getAttribute("aria-live")).toBe("polite");
+});
+
+// Sonner's default hotkey is Alt+T, which pulls focus into the toast list. On
+// macOS, Option+T types "†" in a text field, so it must stay with the field.
+it("leaves focus in a text field when Alt+T is pressed while a toast is shown", () => {
+  mount(createElement("input", { "aria-label": "Name" }));
+  show(() => notify.warning("Stays until closed"));
+  const field = document.querySelector<HTMLInputElement>("input")!;
+  field.focus();
+  expect(document.activeElement).toBe(field);
+
+  act(() => {
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "†", code: "KeyT", altKey: true, bubbles: true }));
+  });
+
+  expect(document.activeElement).toBe(field);
 });
 
 it("replaces a toast that reuses its id instead of stacking a second", () => {
