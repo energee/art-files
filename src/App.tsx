@@ -2092,7 +2092,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               if (recoveredPath?.rebind) bindPath(recoveredPath.path, recoveredPath.modifiedAt);
               else if (recoveredPath) {
                 // A warning of its own, beside the open's (benched values).
-                notify.warning(t("Restored from {{path}}, which moved, changed or is open in another tab, so Save asks where", { path: baseName(recoveredPath.path) }),
+                notify.warning(t("Restored from {{file}}, which moved, changed or is open in another tab, so Save asks where", { file: baseName(recoveredPath.path) }),
                   { id: toastId("restore-warning") });
               }
               const bytes = new Uint8Array(await file.arrayBuffer());
