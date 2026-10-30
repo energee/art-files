@@ -21,6 +21,7 @@ import {
 } from "@/tabs";
 import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { shortcutLabel } from "@/keys";
+import { notify } from "@/notify";
 import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
@@ -36,6 +37,13 @@ import { cn, errMsg } from "@/lib/utils";
  *  (destroy, close-requested, title) share. The registry caches the load. */
 const currentWindow = () =>
   import("@tauri-apps/api/window").then((m) => m.getCurrentWindow());
+
+/** The one toast the shell's open failures share (a File → Open or Open Recent
+ *  that fails, an OS-opened file that isn't a .label), so a repeat replaces it
+ *  instead of stacking another. No tab exists yet to own such a failure, so
+ *  unlike the editors' toasts it has no per-tab id. */
+const OPEN_ERROR_TOAST = "shell:open-error";
+const reportOpenError = (text: string) => { notify.error(text, { id: OPEN_ERROR_TOAST }); };
 
 /** The shell-side per-tab objects that must stay identity-stable for the
  *  editor's memo bail to hold (see DocumentEditor): the save slots its
@@ -150,9 +158,6 @@ export default function TabsShell() {
   // Updates… becomes Restart to Update (same click, DesktopUpdater decides).
   const [updateInstalled, setUpdateInstalled] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  // A File → Open picker failure (not a cancel): no tab exists yet to show
-  // it, so the strip does. Cleared by the next successful pick.
-  const [pickError, setPickError] = useState("");
 
   const anyUnsaved = state.tabs.some(unsaved);
   const activeTab = state.tabs.find((t) => t.id === state.active)!;
@@ -270,10 +275,9 @@ export default function TabsShell() {
         // (a .label symlink arrives as its target), so a file that isn't a
         // .label says so here instead of vanishing (#554). Never read.
         if (!isLabelName(path)) {
-          setPickError(t("Could not open label: {{path}} isn't a .label file.", { path }));
+          reportOpenError(t("Could not open label: {{path}} isn't a .label file.", { path }));
           continue;
         }
-        setPickError("");
         openRouted({ path });
       }
     }
@@ -326,31 +330,28 @@ export default function TabsShell() {
       const target = await openThrough({ filter: labelFilter(), types: labelTypes() });
       if (target === undefined) { fileInput.current?.click(); return; }
       if (target === null) return;
-      setPickError("");
       openRouted(target);
     } catch (err) {
-      // Failures AFTER a tab is chosen surface in that editor's own alert;
-      // this is the picker itself failing, before any tab exists — shown in
-      // the strip, the shell's one visible surface.
+      // Failures AFTER a tab is chosen surface in that editor's own toast;
+      // this is the picker itself failing, before any tab exists.
       if (!isAbort(err))
-        setPickError(t("Could not open label: {{error}}", { error: errMsg(err) }));
+        reportOpenError(t("Could not open label: {{error}}", { error: errMsg(err) }));
     }
   }
 
   /** File → Open Recent: routed exactly like a Finder open. A file that is
-   *  gone gets the strip's open error and leaves the list (checked here,
+   *  gone gets the open error toast and leaves the list (checked here,
    *  before a tab is chosen, so no tab is spent on it). */
   async function openRecentPath(path: string) {
     try {
       if (!await nativeExists(path)) {
         forgetRecent(path);
-        setPickError(t("Could not open label: {{path}} no longer exists.", { path }));
+        reportOpenError(t("Could not open label: {{path}} no longer exists.", { path }));
         return;
       }
-      setPickError("");
       openRouted({ path });
     } catch (err) {
-      setPickError(t("Could not open label: {{error}}", { error: errMsg(err) }));
+      reportOpenError(t("Could not open label: {{error}}", { error: errMsg(err) }));
     }
   }
   const openRecentRef = useRef(openRecentPath);
@@ -648,11 +649,8 @@ export default function TabsShell() {
         className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         +
       </button>
-      {pickError && (
-        <span role="alert" className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
-      )}
     </div>
-  ), [state.tabs, state.active, pickError, activate, closeReq, newTab, t]);
+  ), [state.tabs, state.active, activate, closeReq, newTab, t]);
 
   return (
     <>

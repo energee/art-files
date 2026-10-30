@@ -1,7 +1,8 @@
-// ui/alert.tsx — the shadcn Alert primitive. The app's ONLY inline
-// notification surface: chrome-level errors (load/build/blocked reasons)
-// render through this, never window.alert/confirm — those block the main
-// thread, escape the app's styling, and can't be dismissed by state.
+// ui/alert.tsx — the shadcn Alert primitive. Messages about what the user just
+// did are toasts (src/notify.ts), not alerts; the one inline use left is
+// ErrorBoundary's render-crash screen, which replaces the whole window. Never
+// window.alert/confirm — those block the main thread, escape the app's
+// styling, and can't be dismissed by state.
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
