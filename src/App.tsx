@@ -219,17 +219,22 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
   ...(dropped.variants.length ? [translate("{{count}} variant benched: {{names}}", { count: dropped.variants.length, names: dropped.variants.join(", ") })] : []),
 ];
 
-/** The toast sources (toastId) that warn about an editor's own content. */
-const CONTENT_WARNINGS = ["label-warning", "master-warning", "restore-warning", "image-warning"] as const;
+/** The toast sources (toastId) that report on an editor's own content and go
+ *  with its tab: its warnings, and the Switched notice whose Undo acts on it. */
+const TAB_TOASTS = ["label-warning", "master-warning", "restore-warning", "image-warning", "switched"] as const;
 
 /** Focuses a layer's value field in the inspector (`<id>-content`, see
  *  contentFor). The inspector mounts a frame or two after a selection, so this
  *  waits for the field. A focused toast control is blurred first: leaving the
  *  toast region any other way lets Sonner hand focus back to whatever held it
- *  before the toast, which would undo this. */
-function focusContentField(layerId: string) {
+ *  before the toast, which would undo this. `stillActive` is read each frame:
+ *  the field is found by layer id, which every tab of a master shares, so once
+ *  the operator has left the tab the wait must end rather than focus the field
+ *  of the tab now in front. */
+function focusContentField(layerId: string, stillActive: () => boolean) {
   let framesLeft = 30;
   const focusWhenMounted = () => {
+    if (!stillActive()) return;
     const field = document.getElementById(`${layerId}-content`);
     if (!field) {
       if (framesLeft-- > 0) requestAnimationFrame(focusWhenMounted);
@@ -509,11 +514,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   const toastBase = useId();
   const toastId = (source: string) => `${toastBase}:${source}`;
   // A warning about this editor's own content (the label or master it opened,
-  // the master it saved) goes with the tab. Load and save failures stay up: no
+  // the master it saved) goes with the tab, and so does the Switched notice, as
+  // its Undo would act on a closed editor. Load and save failures stay up: no
   // other part of the editor reports them.
   useEffect(() => () => {
-    for (const source of CONTENT_WARNINGS) notify.dismiss(`${toastBase}:${source}`);
+    for (const source of TAB_TOASTS) notify.dismiss(`${toastBase}:${source}`);
   }, [toastBase]);
+  // The document the Switched toast's Undo applies to (commitRebind). Once the
+  // document is any other, that Undo could only do nothing, so the toast goes.
+  const switchedDoc = useRef<Doc | null>(null);
+  useEffect(() => {
+    if (!switchedDoc.current || doc === switchedDoc.current) return;
+    switchedDoc.current = null;
+    notify.dismiss(`${toastBase}:switched`);
+  }, [doc, toastBase]);
   const reportLoadError = (text: string) => { notify.error(text, { id: toastId("load-error") }); };
   // A failed label Save has a toast of its own, so the next Save that works can
   // dismiss it without touching an open or load failure.
@@ -977,7 +991,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const id = Object.keys(errors)[0];
     if (!id) return;
     setSelection({ ids: [id], anchor: id });
-    focusContentField(id);
+    focusContentField(id, () => activeRef.current);
   };
   // Read by the toast's action, which outlives the render that showed it: the
   // first invalid layer may have changed by the time it is clicked.
@@ -1766,12 +1780,18 @@ export const DocumentEditor = memo(function DocumentEditor({
     clearSelection();
     // The texture and mask survive a master switch, and so do their load errors.
     const notes = benchedNotes(dropped);
-    // One id per editor, so a second switch replaces the first one's toast.
-    if (notes.length) notify.info(t("Switched to “{{name}}”", { name: target.name }), {
-      id: toastId("switched"),
-      description: notes.join(" · "),
-      action: { label: t("Undo"), onClick: () => { if (docRef.current === switched) mutating(undo)(); } },
-    });
+    // One id per editor, so a second switch replaces the first one's toast. A
+    // switch with nothing to report leaves switchedDoc on the earlier one, so
+    // the effect above retires that toast as the document moves on.
+    if (notes.length) {
+      switchedDoc.current = switched;
+      notify.info(t("Switched to “{{name}}”", { name: target.name }), {
+        id: toastId("switched"),
+        description: notes.join(" · "),
+        // Still checked here: a click can land before the effect has dismissed it.
+        action: { label: t("Undo"), onClick: () => { if (docRef.current === switched) mutating(undo)(); } },
+      });
+    }
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
@@ -2488,7 +2508,8 @@ export const DocumentEditor = memo(function DocumentEditor({
           <SidebarTrigger className="size-6" title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={commands} onNativeError={(text) => notify.error(text, { id: toastId("native-menu") })}
+          {active && <AppMenu actions={commands}
+            onNativeError={(text, source) => notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") })}
             onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible

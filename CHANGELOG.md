@@ -10,7 +10,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Translations tidied.** Removed an unused duplicate of the barcode module-width warning from the translation tables. The warning itself was already translated, so nothing you see changes.
 
 ### Fixed
-- **Accessibility fixes for toasts and invalid layers.** A screen reader now reads each toast once; an error toast could be read twice. In the Layers list it now reads an invalid layer's reason along with the layer's name. The outline on a selected invalid layer is easier to see against its red tint, and pressing Option+T (Alt+T) while typing no longer pulls focus into the toasts, so it types the † character on a Mac.
+- **Accessibility fixes for toasts and invalid layers.** A screen reader now reads each toast once; an error toast could be read twice. In the Layers list it now reads an invalid layer's reason, then how to drag it, along with the layer's name. The outline on a selected invalid layer is easier to see against its red tint, and pressing Option+T (Alt+T) while typing no longer pulls focus into the toasts, so it types the † character on a Mac.
+- **Toast fixes.** The **Switched to …** toast now goes when you close its tab or edit the label, so its **Undo** is never offered when it could do nothing. Up to six toasts show at once (it was four), so a warning or error stays visible beside newer messages. A failed Quit no longer replaces an earlier menu error. **Show layer** no longer moves the cursor in another tab if you switch tabs right after clicking it. A **Something went wrong** toast with no reason no longer starts with a blank line, and a failed **Show in Finder** on a folder path names that path instead of nothing.
 
 ## [0.1.114] - 2026-10-30
 

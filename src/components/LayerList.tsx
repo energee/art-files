@@ -127,7 +127,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   atBack: boolean;
 } & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove">) {
   const { t } = useTranslation();
-  const reasonId = useId();
+  const hintId = useId();
   const { layer } = row;
   const { id, name } = layer;
   const Icon = iconFor(layer);
@@ -138,6 +138,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const dragHint = t("Drag to reorder · Alt+↑/↓ · {{range}} for a range, {{add}} to add", {
     range: isMacOS() ? "⇧-click" : "Shift-click", add: isMacOS() ? "⌘-click" : "Ctrl-click",
   });
+  // What the name button's tooltip says, and what assistive tech reads as its
+  // description for an invalid row: the reason, then the hint.
+  const hint = invalid ? `${invalid} · ${dragHint}` : dragHint;
   // Page art can't be dragged (hittestLayers skips it), so it offers no lock.
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   let variantTitle = "";
@@ -246,10 +249,11 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             onDoubleClick={() => setRenaming(true)}
             onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
             aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-            // The title is a mouse tooltip; assistive tech reads the reason
-            // from the hidden element below.
-            aria-describedby={invalid ? reasonId : undefined}
-            title={invalid ? `${invalid} · ${dragHint}` : dragHint}
+            // The title is a mouse tooltip; for an invalid row aria-describedby
+            // takes over as the description, so the hidden element below holds
+            // the same text and the drag hint is not lost to the reason.
+            aria-describedby={invalid ? hintId : undefined}
+            title={hint}
             className={cn(
               // The row paints hover and selection; its keyboard-focused name
               // keeps the sidebar ring. Focus identifies the next target;
@@ -327,9 +331,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
                 className="size-1.5 shrink-0 rounded-full bg-destructive" />
             )}
           </SidebarMenuButton>
-          {/* Beside the name button, not in it, so the reason describes the
-              button without also becoming part of its name. */}
-          {invalid && <span id={reasonId} className="sr-only">{invalid}</span>}
+          {/* Beside the name button, not in it, so the reason and hint describe
+              the button without also becoming part of its name. */}
+          {invalid && <span id={hintId} className="sr-only">{hint}</span>}
 
           <div className="grid shrink-0 grid-cols-[24px_24px_32px] items-center" onClick={stop}>
             <button

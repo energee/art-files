@@ -18,7 +18,8 @@ export function revealLabel(): string {
 }
 
 /** A toast action that reveals `path` in the OS file manager; undefined in the
- *  browser or without a path. A failure becomes an error toast naming the file.
+ *  browser or without a path. A failure becomes an error toast naming the file
+ *  (the whole path when it ends in a separator and has no file name).
  *  Needs `opener:allow-reveal-item-in-dir`. */
 export function revealAction(path: string | undefined): ToastAction | undefined {
   if (!isTauri() || !path) return undefined;
@@ -28,7 +29,7 @@ export function revealAction(path: string | undefined): ToastAction | undefined 
       void import("@tauri-apps/plugin-opener")
         .then(({ revealItemInDir }) => revealItemInDir(path))
         .catch((err: unknown) => {
-          notify.error(t("Couldn't show {{file}}", { file: baseName(path) }), { description: errMsg(err) });
+          notify.error(t("Couldn't show {{file}}", { file: baseName(path) || path }), { description: errMsg(err) });
         });
     },
   };

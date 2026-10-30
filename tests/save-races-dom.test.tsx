@@ -1,8 +1,9 @@
 // save-races-dom.test.tsx — App-level Save / Save Master write paths: pending
 // writes, cancelled browser save targets, and what a Save Master bundles; and
-// Open Master over hidden values. Export, save and open results are toasts, so
-// the real <Toaster /> is mounted beside the editor (mount) and read from the
-// document.
+// Open Master over hidden values, and the Switched toast that follows it. Export,
+// save and open results are toasts, so the real <Toaster /> is mounted beside
+// the editor (mount) and read from the document. The native menu's errors are
+// toasts too: AppMenu is mocked, and the test calls the callback App gives it.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -14,6 +15,8 @@ import type { Command } from "../src/components/CommandMenu";
 
 const menu = vi.hoisted(() => ({
   actions: [] as Command[], renderError: null as null | ((m: string) => void),
+  /** AppMenu's onNativeError: `source` is "quit" for a failed Quit. */
+  nativeError: (_message: string, _source?: "quit") => {},
   /** When set, loading the label's font faces fails with this message. */
   fontError: "",
 }));
@@ -22,7 +25,11 @@ vi.mock("../src/components/PreviewCompare", () => ({
 }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
-vi.mock("../src/components/AppMenu", () => ({ AppMenu: (p: { actions: Command[] }) => { menu.actions = p.actions; return null; } }));
+vi.mock("../src/components/AppMenu", () => ({
+  AppMenu: (p: { actions: Command[]; onNativeError: typeof menu.nativeError }) => {
+    menu.actions = p.actions; menu.nativeError = p.onNativeError; return null;
+  },
+}));
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => {
     if (menu.fontError) throw new Error(menu.fontError);
@@ -750,17 +757,43 @@ it("Open Master over hidden values offers Undo, which restores them", async () =
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true });
 }, 30_000);
 
-// The undo is the switch's own: once the label has moved on, the offer no
-// longer reaches past the user's later edit to undo the switch.
-it("the Undo offer does nothing once the label was edited", async () => {
+// The undo is the switch's own: once the document has moved on, its Undo could
+// only do nothing, so the toast goes with the edit rather than offer it.
+it("the Switched toast is dismissed once the label is edited", async () => {
   await openHidingMaster();
   await shown("Switched to “Other”");
   await toggle("warning");
-  const undo = [...document.querySelectorAll<HTMLButtonElement>("[data-sonner-toast] button")].find((b) => b.textContent === "Undo")!;
-  await act(async () => undo.click());
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+  // The edit stands; nothing undid the switch.
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(warningPressed()).toBe("false");
 }, 30_000);
+
+// Its Undo acts on this editor's document, so it must not outlive the tab.
+it("closing the tab dismisses its Switched toast", async () => {
+  await openHidingMaster();
+  await shown("Switched to “Other”");
+  await act(async () => root.unmount());
+  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
+}, 30_000);
+
+// "Could not quit" is its own failure: it must not replace the install or
+// update error the menu reported, nor be replaced by one.
+it("a failed Quit and a failed menu install are two toasts", async () => {
+  await mount();
+  await act(async () => { menu.nativeError("Could not install the native menu: no icon"); });
+  await shown("Could not install the native menu: no icon");
+  await act(async () => { menu.nativeError("Could not quit: window is gone", "quit"); });
+  await shown("Could not quit: window is gone");
+  expect([...toastTitles()].sort()).toEqual([
+    "Could not install the native menu: no icon", "Could not quit: window is gone"]);
+  // A repeat of either still replaces its own.
+  await act(async () => { menu.nativeError("Could not update the native menu: busy"); });
+  await shown("Could not update the native menu: busy");
+  await settle();
+  expect([...toastTitles()].sort()).toEqual([
+    "Could not quit: window is gone", "Could not update the native menu: busy"]);
+});
 
 it("⌘Z restores the master the toast's Undo would", async () => {
   await openHidingMaster();

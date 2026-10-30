@@ -351,24 +351,35 @@ describe("LayerList", () => {
     expect(valid.querySelector('[aria-label="Invalid value"]')).toBeNull();
   });
 
-  // `title` is a mouse tooltip; assistive tech gets the reason from a visually
-  // hidden element the name button points at, outside the button so the reason
-  // is not also read as part of its name.
-  it("gives an invalid row's name button the reason as its accessible description", () => {
-    render(baseProps({ invalid: new Map([["barcode", "Needs 12 digits"]]) }));
+  // `title` is a mouse tooltip; assistive tech gets the reason and the drag hint
+  // from a visually hidden element the name button points at (aria-describedby
+  // replaces the title as the description, so it must carry both), outside the
+  // button so they are not also read as part of its name. Each row owns its own.
+  it("gives each invalid row's name button the reason and the drag hint as its accessible description", () => {
+    render(baseProps({ invalid: new Map([["barcode", "Needs 12 digits"], ["name", "Too long"]]) }));
     /** What aria-describedby resolves to, the way assistive tech reads it. */
     const description = (el: Element) => (el.getAttribute("aria-describedby") ?? "")
       .split(/\s+/).filter(Boolean)
       .map((id) => document.getElementById(id)?.textContent ?? "").join(" ").trim();
+    const hint = /Drag to reorder · Alt\+↑\/↓ · .+ for a range, .+ to add$/;
 
-    const name = rowFor("barcode").querySelector("button")!;
-    expect(description(name)).toBe("Needs 12 digits");
-    expect(name.textContent).not.toContain("Needs 12 digits");
+    const barcode = rowFor("barcode").querySelector("button")!;
+    const name = rowFor("name").querySelector("button")!;
+    expect(description(barcode)).toMatch(/^Needs 12 digits · Drag to reorder/);
+    expect(description(barcode)).toMatch(hint);
+    expect(description(name)).toMatch(/^Too long · Drag to reorder/);
+    expect(description(name)).toMatch(hint);
+    // Two invalid rows, two descriptions: neither points at the other's.
+    expect(barcode.getAttribute("aria-describedby")).not.toBe(name.getAttribute("aria-describedby"));
+    expect(barcode.textContent).not.toContain("Needs 12 digits");
+    expect(name.textContent).not.toContain("Too long");
     // The dot keeps its own "Invalid value" semantics.
-    expect(name.querySelector('[role="img"][aria-label="Invalid value"]')).not.toBeNull();
+    expect(barcode.querySelector('[role="img"][aria-label="Invalid value"]')).not.toBeNull();
 
-    // A valid row has no description.
-    expect(rowFor("name").querySelector("button")!.hasAttribute("aria-describedby")).toBe(false);
+    // A valid row has no description element; its title (the drag hint) is its description.
+    const valid = rowFor("wordmark").querySelector("button")!;
+    expect(valid.hasAttribute("aria-describedby")).toBe(false);
+    expect(valid.getAttribute("title")).toMatch(hint);
   });
 
   it("keeps a selected invalid row distinct from an unselected one, and both inked red", () => {

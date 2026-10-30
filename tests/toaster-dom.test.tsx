@@ -94,25 +94,35 @@ it("follows the app theme", () => {
   expect(document.querySelector("[data-sonner-toaster]")!.getAttribute("data-sonner-theme")).toBe("dark");
 });
 
-it("keeps four toasts visible", () => {
+// Sonner hides the OLDEST toast once more than `visibleToasts` are up, and a
+// persistent error or warning is usually older than the Saved/Switched toast
+// that lands after it. Six is what one editor can have up at once in normal use
+// (see sonner.tsx); every one of them must stay readable.
+it("keeps six persistent toasts visible and expanded, and hides the oldest beyond that", () => {
   mount();
-  show(...[1, 2, 3, 4].map((n) => () => notify.warning(`Warning ${n}`)));
-  expect(toastCount()).toBe(4);
-  const visible = [...document.querySelectorAll("[data-sonner-toast]")]
-    .map((li) => li.getAttribute("data-visible"));
-  expect(visible).toEqual(["true", "true", "true", "true"]);
+  const states = (attribute: string) => [...document.querySelectorAll("[data-sonner-toast]")]
+    .map((li) => li.getAttribute(attribute));
+  show(...[1, 2, 3, 4, 5, 6].map((n) => () => notify.warning(`Warning ${n}`)));
+  expect(toastCount()).toBe(6);
+  expect(states("data-visible")).toEqual(Array(6).fill("true"));
   // Sonner's default stack folds older toasts into slivers behind the newest;
   // each one is readable (and a persistent error is seen) only when expanded.
-  const expanded = [...document.querySelectorAll("[data-sonner-toast]")]
-    .map((li) => li.getAttribute("data-expanded"));
-  expect(expanded).toEqual(["true", "true", "true", "true"]);
+  expect(states("data-expanded")).toEqual(Array(6).fill("true"));
+
+  show(() => notify.warning("Warning 7"));
+  expect(toastCount()).toBe(7);
+  const hidden = [...document.querySelectorAll("[data-sonner-toast]")]
+    .filter((li) => li.getAttribute("data-visible") === "false");
+  expect(hidden.map((li) => li.textContent)).toEqual([expect.stringContaining("Warning 1")]);
 });
 
 it("labels the toast region and the close button in the app's language", () => {
   setLanguage("de");
   mount();
   show(() => notify.warning("Warnung"));
-  expect(document.querySelector("section[aria-label]")!.getAttribute("aria-label")).toMatch(/^Benachrichtigungen/);
+  // Exactly the translated word: Sonner appends its hotkey to the label unless
+  // told otherwise, which left a trailing space once the hotkey was turned off.
+  expect(document.querySelector("section[aria-label]")!.getAttribute("aria-label")).toBe("Benachrichtigungen");
   expect(document.querySelector("[data-close-button]")!.getAttribute("aria-label")).toBe("Schließen");
 });
 
