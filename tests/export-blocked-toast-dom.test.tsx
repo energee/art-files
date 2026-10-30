@@ -3,7 +3,8 @@
 // try to export. Every export command stays enabled while the label is invalid
 // (it greys out only while an export runs); choosing one builds nothing and
 // shows the "Can't export yet" error toast with the reason and a Show layer
-// action, which opens a collapsed Layers sidebar and selects the invalid layer.
+// action, which opens a collapsed Layers sidebar and selects the first layer
+// that is invalid when it is clicked.
 // The toast stays until it is dismissed or the label stops being blocked, a
 // repeat attempt replaces it, and the invisible status region still announces
 // when a label becomes blocked. The real editor runs on real timers with the
@@ -216,6 +217,38 @@ it("Show layer focuses the invalid layer's field, so Backspace cannot remove the
     document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
   });
   expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
+}, 30_000);
+
+// The toast outlives the render that showed it, and so does the list of invalid
+// layers it was shown with: Show layer goes to the first layer that is invalid
+// when it is clicked. ABV comes before Barcode in the master; fix ABV after the
+// toast appeared and the barcode is the one left.
+it("Show layer goes to the first layer that is still invalid when it is clicked", async () => {
+  const { container, rerender } = await mount();
+  const bytes = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { abv: "99", barcode: "123" } }, {});
+  await rerender({ fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "bad.label") } });
+  await vi.waitFor(() => expect(reasonOf(container)).toMatch(/ABV.*Barcode/));
+  await press({ key: "e", metaKey: true });
+  await shown("Can't export yet");
+  expect(description()).toMatch(/ABV.*Barcode/);
+
+  // Fix ABV through its own field; this selects the ABV row.
+  await act(async () => {
+    (container.querySelector('[data-layer-id="abv"] [data-slot="sidebar-menu-button"]') as HTMLElement).click();
+  });
+  const field = () => document.querySelector("#abv-content") as HTMLInputElement;
+  await act(async () => { field().focus(); });
+  await act(async () => { typeInto(field(), "5"); });
+  await act(async () => { field().blur(); });
+  await vi.waitFor(() => expect(reasonOf(container)).not.toContain("ABV"));
+  expect(reasonOf(container)).toContain("Barcode");
+  expect(rowSelected(container, "abv")).toBe(true);
+  // The toast still lists both: it was shown before the fix.
+  expect(description()).toMatch(/ABV.*Barcode/);
+
+  await act(async () => { showLayer().click(); });
+  expect(rowSelected(container, "barcode")).toBe(true);
+  expect(rowSelected(container, "abv")).toBe(false);
 }, 30_000);
 
 // Show layer polls a few frames for the inspector's field to mount, and finds
