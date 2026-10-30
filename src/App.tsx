@@ -1092,6 +1092,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (command && !command.disabled) command.run();
     },
   });
+  const exportBusy = exporting !== null;
 
   // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
   // assembled off the asset inputs alone (debounced). Layer edits, a raster's
@@ -2146,26 +2147,26 @@ export const DocumentEditor = memo(function DocumentEditor({
     // with White Ink inside, or the art + mask pairs.
     ...(render.twoFilePdfExport ? [
       { id: "export-both", label: t("Export PDFs"), key: "e", mods: "⌘" as const,
-        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath }, "pair")) },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath }, "pair")) },
       { id: "export-both-as", label: t("Export PDFs As…"),
-        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true }, "pair")) },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true }, "pair")) },
       { id: "export-art", label: t("Export Artwork PDF"),
-        disabled: exporting !== null, run: guardExport(() => void exportPdfPlate("art", { labelPath: filePath })) },
+        disabled: exportBusy, run: guardExport(() => void exportPdfPlate("art", { labelPath: filePath })) },
       { id: "export-mask", label: t("Export Mask PDF"),
-        disabled: exporting !== null, run: guardExport(() => void exportPdfPlate("mask", { labelPath: filePath })) },
+        disabled: exportBusy, run: guardExport(() => void exportPdfPlate("mask", { labelPath: filePath })) },
       { id: "export-psds", label: t("Export PSDs"), key: "e", mods: "⇧⌘" as const,
-        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath }, "pair")) },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath }, "pair")) },
       { id: "export-psds-as", label: t("Export PSDs As…"),
-        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true }, "pair")) },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true }, "pair")) },
     ] : [
       { id: "export-pdf", label: t("Export PDF"), key: "e", mods: "⌘" as const,
-        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath })) },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath })) },
       { id: "export-pdf-as", label: t("Export PDF As…"),
-        disabled: exporting !== null, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true })) },
+        disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true })) },
       { id: "export-psd", label: t("Export PSD"), key: "e", mods: "⇧⌘" as const,
-        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath })) },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath })) },
       { id: "export-psd-as", label: t("Export PSD As…"),
-        disabled: exporting !== null, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true })) },
+        disabled: exportBusy, run: guardExport(() => void exportPsd({ labelPath: filePath, ask: true })) },
     ]),
     { id: "undo", label: t("Undo"), shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: t("Redo"), shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
