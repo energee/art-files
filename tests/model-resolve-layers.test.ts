@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveLayers, valueOf, withStoredValue } from "../src/model/resolveLayers";
 import { uppercaseOf } from "../src/model/layers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "../src/model/layers";

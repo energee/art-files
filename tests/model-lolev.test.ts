@@ -1,7 +1,7 @@
-// tests/model-lolev.test.ts — the shipped Lolev master's (model/lolevLayers.ts)
+// tests/model-lolev.test.ts — the shipped Lolev master's (tests/fixtures/lolevMaster.ts)
 // preset vocabularies.
 import { describe, expect, it } from "vitest";
-import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
+import { lolevMaster as lolevV3 } from "./fixtures/lolevMaster";
 
 // docs/plans/choice-input.md, Task 9. Both lists come back from presets.json
 // (deleted 2026-09-04 in aafc163), verbatim — the styles it offered and the

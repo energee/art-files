@@ -11,7 +11,7 @@ import {
   removeLayerIn, removeVariant, removeVariantIn, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
   structureOnlyMaster, toggleVariant, whereLayerLives, type Doc,
 } from "../src/model/edit";
-import { LOGO_ASSET, lolevMaster } from "../src/model/lolevLayers";
+import { LOGO_ASSET, lolevMaster } from "./fixtures/lolevMaster";
 import { PT_STEP, roundToStep } from "../src/numeric";
 import { parseMaster } from "../src/model/layers";
 import { placeLayers } from "../src/model/place";

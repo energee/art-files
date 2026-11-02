@@ -1,7 +1,9 @@
-// src/model/lolevLayers.ts — the Lolev label as v3 master DATA (spec:
-// "Lolev master"). Every element the hardcoded layout in layout.ts /
-// plan.ts used to place is an ordinary layer here, with explicit positions
-// taken from that layout's constants:
+// tests/fixtures/lolevMaster.ts — the Lolev label as v3 master DATA (spec:
+// "Lolev master"). A test fixture: the app ships the Starter master
+// (src/model/starterLayers.ts), and Lolev reaches users as masters/lolev.master,
+// written from this file by scripts/export-lolev-master.ts. Every element the
+// hardcoded layout in layout.ts / plan.ts used to place is an ordinary layer
+// here, with explicit positions taken from that layout's constants:
 //   text top  = baseline - FONT_ASC * size   (FONT_ASC = 1.05)
 //   text bottom (for `below` bindings) = last baseline + FONT_DESC * size (0.35)
 // The collab block is the `collab` variant: three layers that exist only
@@ -10,13 +12,13 @@
 // tests/legacy as the migration oracle. The laurel is an ordinary SVG image
 // layer on LOGO_ASSET; its bytes (src/assets/logo2025.svg) travel in
 // masters/lolev.master, or in a test's plan assets.
-import type { Choice, Master, TextLayer, ImageLayer } from "./layers";
+import type { Choice, Master, TextLayer, ImageLayer } from "../../src/model/layers";
 import {
   CENTER_X, GOLD, LEFT_X, PAGE, WARNING_TRACKING, DEFAULT_STROKE_PX, PX,
   TRIM, DEFAULT_MARGIN_PT,
-} from "../layout";
-import { KEYLINE, WARNING_TEXT } from "../defaults";
-import { DEFAULT_STROKE_LAYER } from "../strokes";
+} from "../../src/layout";
+import { KEYLINE, WARNING_TEXT } from "../../src/defaults";
+import { DEFAULT_STROKE_LAYER } from "../../src/strokes";
 
 const FONT_ASC = 1.05;
 const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;

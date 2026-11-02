@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import { unpackLabel, unpackMaster, serializeMaster } from "../src/model/files";
 import { foldLabelScale, resolveLayers } from "../src/model/resolveLayers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { planLayers } from "../src/planLayers";
 import type { PlanAssets } from "../src/plan";
 import { laurelCustom } from "./fixtures";

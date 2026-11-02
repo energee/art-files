@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { unpackMaster } from "../src/model/files";
 import { parseMaster } from "../src/model/layers";
-import { LOGO_ASSET, lolevMaster } from "../src/model/lolevLayers";
+import { LOGO_ASSET, lolevMaster } from "./fixtures/lolevMaster";
 import { planLayerScene } from "../src/planLayers";
 import { svgAspect } from "../src/logo";
 import { measure, planAssets } from "./fixtures";

@@ -7,7 +7,7 @@ import { convertConfigV1, convertLabelV2, convertMasterV1 } from "../src/model/c
 import {
   parseMaster, type BarcodeLayer, type ImageLayer, type Layer, type TextLayer,
 } from "../src/model/layers";
-import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
+import { lolevMaster as lolevV3 } from "./fixtures/lolevMaster";
 import { resolveLayers } from "../src/model/resolveLayers";
 import { rebindLabel } from "../src/model/rebindLayers";
 import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";

@@ -37,7 +37,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { planLabel } from "./legacy/plan";
 import { type MeasureFace, type Placed, type PlacedText, type PlacedBarcode, type PlacedPaths, type PlacedImage } from "./legacy/planShared";
 import { planLayers, type PlacedLayer, type TextFaces } from "../src/planLayers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type { Layer, QrLayer, TextLayer, TextLine } from "../src/model/layers";
 import { defaultConfig } from "../src/defaults";
 import { qrUrl } from "../src/qr";

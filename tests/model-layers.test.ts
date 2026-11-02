@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseMaster } from "../src/model/layers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 
 describe("v3 master model", () => {
   it("the Lolev master parses", () => {

@@ -7,7 +7,7 @@ import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { packLabel, packMaster } from "../src/model/files";
 import { starterMaster } from "../src/model/starterLayers";
 import { defaultConfig } from "../src/defaults";

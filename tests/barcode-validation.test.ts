@@ -4,7 +4,7 @@
 // blocks export instead of silently vanishing from the PDF.
 import { describe, expect, it } from "vitest";
 import { applyPromotions, learnChoice, masterChanges, setContentIn } from "../src/model/edit";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { BarcodeLayer, LabelFile, Layer, Master, TextLine } from "../src/model/layers";
 import { GOLD } from "../src/layout";

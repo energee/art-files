@@ -9,7 +9,7 @@ import { createHeightMeasure } from "../src/textheight";
 import { openFont } from "../src/fontkit";
 import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
 import { buildPsd } from "../src/psd/build";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { parseMaster, type TextLayer } from "../src/model/layers";
 import { parseLabel, serializeLabel, serializeMaster } from "../src/model/files";
 import { setLabelOverride } from "../src/model/edit";

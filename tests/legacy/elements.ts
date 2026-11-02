@@ -23,7 +23,7 @@ const SHIPPED: LabelConfig = defaultConfig();
  *  centre collab mark, but it is no longer gated on anything: the shipped
  *  `logo` declares no offsetY, so it is 0 on every label that has not
  *  authored one, and the Collab variant deliberately overrides nothing here
- *  (an explicit 0 would stomp a master-level nudge — see model/lolevLayers.ts).
+ *  (an explicit 0 would stomp a master-level nudge — see tests/fixtures/lolevMaster.ts).
  *  plan.ts reads the nudge through this one gate. */
 export function logoNudge(cfg: LabelConfig): number {
   return cfg.logo.offsetY ?? 0;

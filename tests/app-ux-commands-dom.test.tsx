@@ -20,7 +20,7 @@ const counts = vi.hoisted(() => ({ masterIndex: 0 }));
 const fonts = vi.hoisted(() => ({ pending: new Promise<never>(() => {}), fail: false, loads: 0 }));
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here.
-vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
 vi.mock("../src/masterCache", () => ({ cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {} }));
 vi.mock("../src/masters", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/masters")>();
@@ -246,7 +246,7 @@ it("re-reads the library when its tab comes back to the front", async () => {
   const { container, rerender } = await mount();
   await rerender({ active: false });
   const { rememberMaster } = await import("../src/masters");
-  const { lolevMaster } = await import("../src/model/lolevLayers");
+  const { lolevMaster } = await import("./fixtures/lolevMaster");
   await rememberMaster({ ...lolevMaster(), id: "master-other", name: "Another Brewery" }, "other.master");
   await rerender({ active: true });
   await act(async () => { (container.querySelector("#master-picker") as HTMLElement).click(); });
@@ -257,7 +257,7 @@ it("re-reads the library when its tab comes back to the front", async () => {
 // every path that changes the library must bump it: here Remove and its Undo.
 it("re-lists a master the picker removed and then put back", async () => {
   const { rememberMaster } = await import("../src/masters");
-  const { lolevMaster } = await import("../src/model/lolevLayers");
+  const { lolevMaster } = await import("./fixtures/lolevMaster");
   await rememberMaster({ ...lolevMaster(), id: "master-other", name: "Another Brewery" }, "other.master", undefined, { applied: false });
   const { container } = await mount();
   const listed = () => [...document.querySelectorAll("[role=option]")].some((o) => o.textContent?.includes("Another Brewery"));

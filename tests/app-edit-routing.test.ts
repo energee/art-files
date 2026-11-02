@@ -10,7 +10,7 @@ import {
   adoptMaster, addVariant, removeLayerIn, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
   setLayerIn, showVersion, type Doc,
 } from "../src/model/edit";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { resolveLayers } from "../src/model/resolveLayers";
 
 // Pass-through spy on resolveLayers, so a test can prove checkLabelBindings

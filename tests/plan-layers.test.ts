@@ -14,7 +14,7 @@ import type {
 } from "../src/model/layers";
 import { qrPath, qrShapes } from "../src/qr";
 import { defaultConfig } from "../src/defaults";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { packMaster, unpackMaster } from "../src/model/files";
 import { resolveLayers } from "../src/model/resolveLayers";
 import * as L from "./legacy/layout";

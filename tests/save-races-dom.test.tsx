@@ -32,7 +32,7 @@ const menu = vi.hoisted(() => ({
 // bytes are not loaded in these tests, so the logo layer starts unset; a set
 // asset with no bytes would make every Save Master warn it is missing.
 vi.mock("../src/model/starterLayers", async () => {
-  const { lolevMaster } = await import("../src/model/lolevLayers");
+  const { lolevMaster } = await import("./fixtures/lolevMaster");
   return {
     starterMaster: () => {
       const m = lolevMaster();
@@ -105,7 +105,7 @@ vi.mock("../src/files", async (importOriginal) => {
 });
 import { DocumentEditor, type FileToOpen } from "../src/App";
 import { buildPsd } from "../src/psd/build";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import { packLabel, packMaster, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";

@@ -17,7 +17,7 @@ import { mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster 
 
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here.
-vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
   cachedMaster: async () => null,

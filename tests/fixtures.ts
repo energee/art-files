@@ -16,7 +16,7 @@ import type { MeasureFace, PlanAssets } from "../src/plan";
 import type { MasterAssets } from "../src/model/files";
 import { layerBoxes, planLayers, type PlacedLayer } from "../src/planLayers";
 import { hitBoxesFromLayout, type LayerBox } from "../src/hittestLayers";
-import { LOGO_ASSET, lolevMaster } from "../src/model/lolevLayers";
+import { LOGO_ASSET, lolevMaster } from "./fixtures/lolevMaster";
 import { svgAspect } from "../src/logo";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { Layer, LayerValue, Master } from "../src/model/layers";
@@ -95,7 +95,7 @@ export interface LolevOpts {
   extra?: Layer[];
   /** Asset descriptors planLayers needs (aspect, decoded SVG art). */
   custom?: PlanAssets["custom"];
-  /** A master other than the shipped Lolev one. */
+  /** A master other than the Lolev fixture. */
   master?: Master;
 }
 

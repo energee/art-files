@@ -9,7 +9,7 @@ import {
   masterNameFromFile, packLabel, packMaster, parseLabel, serializeLabel, serializeMaster, unpackLabel, unpackMaster,
 } from "../src/model/files";
 import { starterMaster } from "../src/model/starterLayers";
-import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
+import { lolevMaster as lolevV3 } from "./fixtures/lolevMaster";
 import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import { defaultConfig } from "../src/defaults";
 import type { LabelFile } from "../src/model/layers";

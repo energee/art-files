@@ -13,7 +13,7 @@ type DropProps = { label: string; fileName?: string; onFile: (f: File) => unknow
 const wells = vi.hoisted(() => ({} as Record<string, DropProps>));
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here.
-vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
 vi.mock("../src/components/FileDrop", () => ({
   CHECKER: "", FILE_DROP_ATTR: "data-file-drop",
   FileDrop: (p: DropProps) => { wells[p.label] = p; return null; },

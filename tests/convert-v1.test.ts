@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { convertConfigV1 } from "../src/model/convert";
 import { starterMaster } from "../src/model/starterLayers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { resolveLayers } from "../src/model/resolveLayers";
 import { defaultConfig } from "../src/defaults";
 

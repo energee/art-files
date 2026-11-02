@@ -4,7 +4,7 @@
 // and silently swap the operator's own template for it on every reload.
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { starterMaster } from "../src/model/starterLayers";
 import { packMaster } from "../src/model/files";
 

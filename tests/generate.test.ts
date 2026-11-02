@@ -11,7 +11,7 @@ import {
 import { PNG } from "pngjs";
 import { defaultConfig } from "../src/defaults";
 import { packLabel, packMaster } from "../src/model/files";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { lolevAssets } from "./fixtures";
 
 /** A tiny solid-white PNG, enough to embed and tint. */

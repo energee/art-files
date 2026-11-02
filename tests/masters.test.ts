@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { forgetMaster, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { starterMaster } from "../src/model/starterLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 

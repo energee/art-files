@@ -5,7 +5,7 @@
 // offered for PROMOTION into the template. Pure — the dialog does the rendering.
 import { describe, expect, it } from "vitest";
 import { applyPromotions, bindingPatch, masterChanges, setValue, showVersion, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 

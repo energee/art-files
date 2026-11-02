@@ -5,8 +5,8 @@
 // variants that diff them; a label is a master reference, the variants it
 // turned on, and the values filled into its layers. There is no
 // separate field list, no defaults bag, no Document group: background and
-// mask are the two bottom image layers, and every built-in Lolev element is
-// an ordinary layer in model/lolevLayers.ts.
+// mask are the two bottom image layers, and every element of the shipped
+// Starter master is an ordinary layer in model/starterLayers.ts.
 //
 // This file replaces model/types.ts's Master/Variant/MasterLayer/FieldDecl/
 // LabelFileV2 and LabelConfig's per-element fields. Pure types + parser; no

@@ -6,7 +6,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { packMaster } from "../src/model/files";
-import { LOGO_ASSET, lolevMaster } from "../src/model/lolevLayers";
+import { LOGO_ASSET, lolevMaster } from "../tests/fixtures/lolevMaster";
 
 const root = join(import.meta.dirname, "..");
 const master = lolevMaster();

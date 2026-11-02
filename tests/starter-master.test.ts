@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { parseMaster } from "../src/model/layers";
 import { starterMaster } from "../src/model/starterLayers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 
 describe("starterMaster", () => {
   it("passes the master validator", () => {

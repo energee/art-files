@@ -33,7 +33,7 @@ const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;
 const KEYLINED = { ...GOLD_METAL, ...KEYLINE } as const;
 
 /** A sensible starting layer per kind, dropped at the center guide 100pt
- *  down. Styles mirror lolevLayers' defaults so a new layer looks like it
+ *  down. Styles mirror starterLayers' defaults so a new layer looks like it
  *  belongs. */
 function defaultLayer(kind: LayerKind, id: string): Layer {
   const base = { id, enabled: true, x: CENTER_X, anchor: "center" as const, y: 100 };
