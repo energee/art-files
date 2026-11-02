@@ -229,16 +229,6 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
     const role = l.role;
     return { size: { w: rect.w, h: rect.h }, emit: () => [{ kind: "page", id, role, asset: l.asset, ...rect }] };
   }
-  if (l.asset === "builtin:logo") {
-    const a = parseLogo(assets.logoSvg, l.w);
-    return {
-      size: { w: a.w, h: a.h },
-      emit: (box) => [{
-        kind: "paths", id, paths: a.paths, x: box.x, y: box.y,
-        fill: l.style.fill, layer: l.style.layer, stroke: strokeSpec(l.style),
-      }],
-    };
-  }
   const entry = assets.custom?.[l.asset];
   if (!entry) return null;
   // The envelope the art contain-fits into: w x h (h absent = the asset's

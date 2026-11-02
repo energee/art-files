@@ -62,7 +62,6 @@ import {
   MASTER_EXT, masterNameFromFile, packLabel, packMaster, unpackLabel, unpackMaster,
   type MasterAssets,
 } from "@/model/files";
-import { lolevMaster } from "@/model/lolevLayers";
 import { starterMaster } from "@/model/starterLayers";
 import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes } from "@/planLayers";
@@ -119,7 +118,6 @@ import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
 import { createBitmapCache } from "@/canvas/bitmapCache";
-import logoSvg from "@/assets/logo2025.svg?raw";
 
 // three.js is the largest thing in the bundle and most sessions never leave
 // the 2D view, so the 3D can view (and three.js with it) loads on first use —
@@ -1100,7 +1098,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  SVG source's ink too, so it plans as paths), plus the page art under
    *  PAGE_ART_ID while the slots hold it. */
   const planAssetsOf = (): PlanAssets => ({
-    logoSvg, guides,
+    guides,
     custom: {
       ...Object.fromEntries(Object.entries(liveImages).map(([id, c]) => [
         id,
@@ -2028,12 +2026,16 @@ export const DocumentEditor = memo(function DocumentEditor({
       };
       let next: Doc;
       if (unpacked.legacy !== undefined) {
-        // A v1 config.json has no master concept: it converts against the
-        // shipped Lolev master, its Collab checkbox becoming the variant.
+        // A v1 config.json has no master concept: it converts onto this
+        // tab's master, its Collab checkbox becoming the variant where that
+        // master has one. The master keeps its own images and Save target.
+        const current = docRef.current.master;
         const cfg = parseConfigFile(unpacked.legacy);
-        const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy));
+        const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy), current);
         notes = r.warnings;
-        next = { master: lolevMaster(), label: adoptLegacyCollab(r.label) };
+        masterAssets = { customImages: imageBundle(customImages, masterAssetIds(current)) };
+        masterPath = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
+        next = { master: current, label: adoptLegacyCollab(r.label) };
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
         const hint = ref.masterHint;
@@ -2336,7 +2338,6 @@ export const DocumentEditor = memo(function DocumentEditor({
           fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
       }
-      if (layer.asset === "builtin:logo") return null;
       const file = customImages[layer.asset];
       return <FileDrop label={t("Image")} accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}

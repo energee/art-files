@@ -8,6 +8,7 @@ import { strToU8, zipSync } from "fflate";
 import {
   masterNameFromFile, packLabel, packMaster, parseLabel, serializeLabel, serializeMaster, unpackLabel, unpackMaster,
 } from "../src/model/files";
+import { starterMaster } from "../src/model/starterLayers";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
 import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import { defaultConfig } from "../src/defaults";
@@ -50,12 +51,17 @@ describe(".master v3 container", () => {
     }
   });
 
-  it("opens a legacy JSON-only v1 master converted to v3, with no assets", () => {
+  // A v1 master's built-in ids take their geometry from the shipped Starter
+  // master; the Lolev-only elements (logo, barcode, QR…) have none there and
+  // are dropped, each with a warning. model-convert.test.ts converts against
+  // the Lolev table itself.
+  it("opens a legacy JSON-only v1 master converted to v3 on Starter's layers, with no assets", () => {
     const { master, assets, warnings } = unpackMaster(strToU8(JSON.stringify(lolevV1())));
     expect(master.formatVersion).toBe(3);
-    expect(master.layers.map((l) => l.id)).toEqual(lolevV3().layers.map((l) => l.id));
+    const starterIds = new Set(starterMaster().layers.map((l) => l.id));
+    expect(master.layers.map((l) => l.id)).toEqual(lolevV3().layers.map((l) => l.id).filter((id) => starterIds.has(id)));
     expect(assets).toEqual({});
-    expect(warnings).toEqual([]);
+    expect(warnings).toContain('Layer "logo" is not a built-in element and has no kind; dropped.');
   });
 
   it("opens a v1 ZIP master converted, keeping its assets", () => {

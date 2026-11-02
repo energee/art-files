@@ -13,9 +13,11 @@ import type { Layer as PsdLayer } from "ag-psd";
 import type { Assets } from "../src/pdf/build";
 import type { PsdAssets } from "../src/psd/build";
 import type { MeasureFace, PlanAssets } from "../src/plan";
+import type { MasterAssets } from "../src/model/files";
 import { layerBoxes, planLayers, type PlacedLayer } from "../src/planLayers";
 import { hitBoxesFromLayout, type LayerBox } from "../src/hittestLayers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { LOGO_ASSET, lolevMaster } from "../src/model/lolevLayers";
+import { svgAspect } from "../src/logo";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { Layer, LayerValue, Master } from "../src/model/layers";
 import { convertConfigV1 } from "../src/model/convert";
@@ -25,20 +27,33 @@ import { PAGE } from "../src/layout";
 
 const asset = (p: string) => join(import.meta.dirname ?? __dirname, "..", "src", "assets", p);
 
-/** Raw contents of logo2025.svg — what planLayers draws `builtin:logo` from. */
+/** Raw contents of logo2025.svg — the Lolev laurel's SVG bytes. */
 export const logoSvg = readFileSync(asset("logo2025.svg"), "utf8");
+
+/** The Lolev laurel as planLayers takes a loaded SVG image asset, keyed by
+ *  the Lolev master's logo layer asset (masters/lolev.master carries it). */
+export const laurelCustom: NonNullable<PlanAssets["custom"]> = {
+  [LOGO_ASSET]: { aspect: svgAspect(logoSvg), art: { kind: "svg", svg: logoSvg } },
+};
+
+/** Plan assets with the laurel loaded: what the Lolev master plans against. */
+export const planAssets: PlanAssets = { custom: laurelCustom };
+
+/** The Lolev master's template assets as masters/lolev.master packs them:
+ *  the laurel's SVG bytes under its logo layer's asset id. */
+export const lolevAssets = (): MasterAssets => ({
+  customImages: { [LOGO_ASSET]: { name: "logo2025.svg", bytes: new Uint8Array(readFileSync(asset("logo2025.svg"))) } },
+});
 
 /** Real fonts, loaded from disk the way scripts/generate.ts does. No image
  *  bytes: a build with no `images` is the bare-stock / white-ink-flood case
- *  the byte-locked goldens pin; a test that needs bytes supplies its own.
- *  `logoSvg` rides along for the plan-side suites that read it from here. */
-export const assets: Assets & { logoSvg: string } = {
+ *  the byte-locked goldens pin; a test that needs bytes supplies its own. */
+export const assets: Assets = {
   fonts: {
     regular: readFileSync(asset("fonts/Poppins-Regular.ttf")),
     semibold: readFileSync(asset("fonts/Poppins-SemiBold.ttf")),
     bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
   },
-  logoSvg,
 };
 
 /** The same fonts, in the shape the PSD builder takes. */
@@ -93,7 +108,7 @@ export function lolevLayers(opts: LolevOpts = {}): Layer[] {
 /** The Lolev label's display list, measured with the real Poppins metrics —
  *  what App / generate.ts hand every backend. */
 export async function lolevPlan(opts: LolevOpts = {}): Promise<PlacedLayer[]> {
-  return planLayers(lolevLayers(opts), await pdfMeasure(), { logoSvg, custom: opts.custom });
+  return planLayers(lolevLayers(opts), await pdfMeasure(), { custom: { ...laurelCustom, ...opts.custom } });
 }
 
 /** Every layer in a read PSD, groups flattened, so a test can look one up by
@@ -140,12 +155,12 @@ export const measureBW = (text: string, size: number, bold: boolean) =>
 
 /** Plan legacy config regression fixtures through the production converter. */
 export function configLayers(cfg: LabelConfig): Layer[] {
-  const { label } = convertConfigV1(cfg, false);
+  const { label } = convertConfigV1(cfg, false, lolevMaster());
   return resolveLayers(lolevMaster(), label.enabledVariants, label.values, label.overrides).layers;
 }
 
 export async function configPlan(cfg: LabelConfig): Promise<PlacedLayer[]> {
-  return planLayers(configLayers(cfg), await pdfMeasure(), { logoSvg });
+  return planLayers(configLayers(cfg), await pdfMeasure(), planAssets);
 }
 
 /** Test-side convenience: the hit box of one layer from a fresh layout. */

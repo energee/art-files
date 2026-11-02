@@ -23,7 +23,7 @@ const logoY = () => layer(lolevV3().layers, "logo").y as number;
 
 describe("convertMasterV1", () => {
   it("converts the Lolev v1 master into the v3 Lolev data", () => {
-    const { master, warnings } = convertMasterV1(lolevV1());
+    const { master, warnings } = convertMasterV1(lolevV1(), lolevV3());
     const want = lolevV3();
     expect(warnings).toEqual([]);
     expect(() => parseMaster(master)).not.toThrow();
@@ -55,7 +55,7 @@ describe("convertMasterV1", () => {
       volume: { text: "12 OZ", fill: GOLD, layer: "metallic", bold: false, ...KEYLINE },
       fontFamily: "poppins",
     };
-    const { master, warnings } = convertMasterV1(old);
+    const { master, warnings } = convertMasterV1(old, lolevV3());
     expect(warnings).toEqual([]);
     const name = layer<TextLayer>(master.layers, "name");
     expect(name.lines).toEqual([{ text: "Peregrine", fill: "#FF0000", layer: "white" }]);
@@ -82,7 +82,7 @@ describe("convertMasterV1", () => {
     old.layers = old.layers.map((l) =>
       l.id === "qr" ? { ...l, enabled: false, name: "Code" } : l.id === "logo" ? { ...l, locked: true } : l);
     old.fields = old.fields.filter((f) => f.id !== "style");
-    const { master } = convertMasterV1(old);
+    const { master } = convertMasterV1(old, lolevV3());
     const qr = layer(master.layers, "qr");
     expect([qr.enabled, qr.name]).toEqual([false, "Code"]);
     expect(layer(master.layers, "logo").locked).toBe(true);
@@ -95,7 +95,7 @@ describe("convertMasterV1", () => {
     old.fields = old.fields.map((f) =>
       f.id === "abv" ? { ...f, format: "{abv}% alc by vol" }
         : f.id === "name" ? { ...f, format: "Beer: {name|upper}" } : f);
-    const { master, warnings } = convertMasterV1(old);
+    const { master, warnings } = convertMasterV1(old, lolevV3());
     expect(layer<TextLayer>(master.layers, "abv").suffix).toBe("% alc by vol");
     expect(layer<TextLayer>(master.layers, "name").suffix).toBeUndefined();
     expect(warnings).toHaveLength(1);
@@ -119,7 +119,7 @@ describe("convertMasterV1", () => {
         style: { fill: "none", layer: "white" },
       },
     } as unknown as typeof old.defaults;
-    const { master, warnings } = convertMasterV1(old);
+    const { master, warnings } = convertMasterV1(old, lolevV3());
     expect(warnings).toEqual([]);
     const t = layer<TextLayer>(master.layers, "custom-t");
     expect([t.kind, t.anchor, t.size, t.name]).toEqual(["text", "center", 12, "Tag"]);
@@ -151,7 +151,7 @@ describe("convertMasterV1", () => {
       fields: [{ id: "partner", label: "Partner", kind: "text", path: "custom-x.line.text" }],
       layers: [{ id: "custom-x", name: "Extra", enabled: true, kind: "text" }],
     }];
-    const { master, warnings } = convertMasterV1(old);
+    const { master, warnings } = convertMasterV1(old, lolevV3());
     expect(warnings).toEqual([]);
     const diff = master.variants[1].layers;
     expect(diff.logo!.y).toBe(logoY() + 7);
@@ -166,7 +166,7 @@ describe("convertMasterV1", () => {
     const old = lolevV1();
     old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
     old.defaults = { mystery: 1 } as never;
-    const { master, warnings } = convertMasterV1(old);
+    const { master, warnings } = convertMasterV1(old, lolevV3());
     expect(master.layers.some((l) => l.id === "mystery")).toBe(false);
     expect(warnings.join(" ")).toMatch(/mystery/);
   });
@@ -258,7 +258,7 @@ describe("convertConfigV1", () => {
   it("reports a key the old file left unset instead of resurrecting the default silently", () => {
     const cfg: Partial<LabelConfig> = structuredClone(defaultConfig());
     delete cfg.barcodeStrokeWidth;
-    const { warnings } = convertConfigV1(cfg as LabelConfig, false);
+    const { warnings } = convertConfigV1(cfg as LabelConfig, false, lolevV3());
     expect(warnings).toContain('"barcodeStrokeWidth" was unset in the old file; the master\'s value stands.');
   });
   // Image scale is folded into w/h on read (image-scale-fold.test.ts); an old
@@ -266,16 +266,16 @@ describe("convertConfigV1", () => {
   it("folds a collab slot's scale into its size", () => {
     const cfg = structuredClone(defaultConfig());
     cfg.collabLeft.scale = 0.5;
-    const { label } = convertConfigV1(cfg, true);
+    const { label } = convertConfigV1(cfg, true, lolevV3());
     expect(label.overrides?.collabLeft).toEqual({ w: 35, h: 22 });
     const old = lolevV1();
     (old.defaults as Record<string, Record<string, unknown>>).collabCenter = { scale: 1.5 };
-    const { master } = convertMasterV1(old);
+    const { master } = convertMasterV1(old, lolevV3());
     expect(master.variants[0].layers.collabCenter).toMatchObject({ w: 54, h: 54 });
     expect(JSON.stringify({ label, master })).not.toContain('"scale"');
   });
   it("a default config becomes an override-free label with its filled values", () => {
-    const { label, warnings } = convertConfigV1(defaultConfig(), false);
+    const { label, warnings } = convertConfigV1(defaultConfig(), false, lolevV3());
     expect(warnings).toEqual([]);
     expect(label).toMatchObject({ formatVersion: 3, masterId: "lolev", enabledVariants: [] });
     expect(label.values.name).toEqual([{ text: "", fill: GOLD, layer: "metallic" }]);
@@ -297,7 +297,7 @@ describe("convertConfigV1", () => {
     cfg.nameStyle.fill = "#FF0000";
     cfg.collabLeft.image = "a1";
     cfg.logo.offsetY = 4;
-    const { label, warnings } = convertConfigV1(cfg, true);
+    const { label, warnings } = convertConfigV1(cfg, true, lolevV3());
     expect(warnings).toEqual([]);
     expect(label.enabledVariants).toEqual(["collab"]);
     expect(label.values.name).toEqual([{ text: "Hazy", fill: "#FF0000", layer: "metallic" }]);
@@ -312,7 +312,7 @@ describe("convertConfigV1", () => {
   it("a legacy ABV saved with its own percent sign converts to a valid number (#95)", () => {
     const cfg = defaultConfig();
     cfg.abv = "6.5 %";
-    const { label } = convertConfigV1(cfg, false);
+    const { label } = convertConfigV1(cfg, false, lolevV3());
     expect(label.values.abv).toEqual([{ text: "6.5", fill: GOLD, layer: "metallic" }]);
     const { errors } = resolveLayers(lolevV3(), label.enabledVariants, label.values, label.overrides);
     expect(errors.abv).toBeUndefined();
@@ -325,7 +325,7 @@ describe("convertConfigV1", () => {
       position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
       line: { text: "Z", fill: GOLD, layer: "metallic" },
     }];
-    const { label, warnings } = convertConfigV1(cfg, false);
+    const { label, warnings } = convertConfigV1(cfg, false, lolevV3());
     expect(warnings).toEqual([]);
     expect(label.overrides!["custom-z"]).toMatchObject({ kind: "text", name: "Z", enabled: true });
   });

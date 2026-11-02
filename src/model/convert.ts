@@ -4,9 +4,12 @@ import { isPlain } from "./merge";
 //   convertMasterV1  v1 .master (layers + defaults + fields + variants) → Master
 //   convertLabelV2   v2 .label (field values + LabelConfig overrides) → LabelFile
 //   convertConfigV1  v1 embedded LabelConfig → LabelFile, via the v2 shape
-// A built-in Lolev id (name, logo, barcode, …) takes its kind, position and
-// default content from the v3 Lolev table (model/lolevLayers.ts); whatever
-// the old file's `defaults` said about that element overrides the table.
+// A v1 master's built-in element ids (name, logo, barcode, …) carry no
+// geometry: each takes its kind, position and default content from the
+// `table` master the caller passes (an id the table lacks is dropped and
+// warned); whatever the old file's `defaults` said about that element
+// overrides the table. A v1 config has no master at all: it converts onto
+// the master it opens against.
 // Everything that has no v3 home (format strings, unknown config keys) is
 // dropped and reported in `warnings` — never silently.
 import type { CustomLayer, LabelConfig, Style, StyledLine } from "../types";
@@ -19,7 +22,6 @@ import type {
 import type { DeepPartial } from "./merge";
 import type { GuideLines } from "./position";
 import type { FontFamilyId } from "../fontCatalog";
-import { lolevMaster } from "./lolevLayers";
 import { foldScale } from "./layers";
 import { parseDescription } from "../description";
 import { segments } from "./format";
@@ -277,8 +279,11 @@ function customToLayer(
 
 // --- Fields → fillable ----------------------------------------------------
 
+/** The converted layer a field fills, or undefined when the master has none
+ *  (a built-in id its table lacks was dropped, so its field goes too). */
 function fieldLayerId(f: FieldDecl, ids: Set<string>): string | undefined {
-  if (PATH_LAYER[f.path]) return PATH_LAYER[f.path];
+  const fixed = PATH_LAYER[f.path];
+  if (fixed) return ids.has(fixed) ? fixed : undefined;
   const head = f.path.split(".")[0];
   if (ids.has(head)) return head;
   return ids.has(f.id) ? f.id : undefined;
@@ -313,11 +318,13 @@ function fillableProps(f: FieldDecl, kind: Layer["kind"], warnings: string[]): P
 
 // --- Master ---------------------------------------------------------------
 
-export function convertMasterV1(old: MasterV1): { master: Master; warnings: string[] } {
+/** `table` supplies the geometry of the old file's built-in element ids
+ *  (its layers and its variants' added layers); see the header. */
+export function convertMasterV1(old: MasterV1, table: Master): { master: Master; warnings: string[] } {
   const warnings: string[] = [];
-  const table = lolevMaster();
   const tableLayers = new Map<string, Layer>(
-    [...table.layers, ...(Object.values(table.variants[0].layers) as Layer[])].map((l) => [l.id, l]));
+    [...table.layers, ...table.variants.flatMap((v) => Object.values(v.layers) as Layer[])]
+      .filter((l) => !!l.kind).map((l) => [l.id, l]));
   const g = guideLines(old);
   const defaults = old.defaults as Record<string, unknown>;
   const dp = elementPatches(defaults);
@@ -340,7 +347,7 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
       layer = customToLayer(l.id, l.name, l.enabled, l.locked, src[l.id] as OldCustomStyle, l.kind, g);
     } else {
       const t = tableLayers.get(l.id);
-      if (!t) { warnings.push(`Layer "${l.id}" is not a Lolev element and has no kind; dropped.`); return undefined; }
+      if (!t) { warnings.push(`Layer "${l.id}" is not a built-in element and has no kind; dropped.`); return undefined; }
       layer = applyPatch(structuredClone(t), patches[l.id]);
       layer = { ...layer, name: l.name, enabled: l.enabled, ...(l.locked !== undefined ? { locked: l.locked } : {}) };
     }
@@ -489,8 +496,11 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
 }
 
 /** A v1 embedded-config label: its deviations from defaultConfig() are the
- *  override set and its filled fields the values, through the v2 shape. */
-export function convertConfigV1(cfg: LabelConfig, collabEnabled: boolean): { label: LabelFile; warnings: string[] } {
+ *  override set and its filled fields the values, through the v2 shape,
+ *  converted onto `master` (the open tab's, or the CLI's). Values for layers
+ *  it lacks are benched, and so is the Collab checkbox when it has no
+ *  `collab` variant, for a master that has them. */
+export function convertConfigV1(cfg: LabelConfig, collabEnabled: boolean, master: Master): { label: LabelFile; warnings: string[] } {
   const diff = configDiff(defaultConfig(), cfg) as Record<string, unknown>;
   for (const k of ["beerName", "abv", "description", "upc"]) delete diff[k];
   for (const [k, sub] of [["styleLine", "text"], ["collabLeft", "image"], ["collabCenter", "image"]]) {
@@ -505,8 +515,11 @@ export function convertConfigV1(cfg: LabelConfig, collabEnabled: boolean): { lab
     ...(cfg.collabLeft.image ? { collabLeft: cfg.collabLeft.image } : {}),
     ...(cfg.collabCenter.image ? { collabCenter: cfg.collabCenter.image } : {}),
   };
+  const collab = collabEnabled ? ["collab"] : [];
+  const hasCollab = master.variants.some((v) => v.id === "collab");
   return convertLabelV2({
-    formatVersion: 2, masterId: "lolev", enabledVariants: collabEnabled ? ["collab"] : [],
+    formatVersion: 2, masterId: master.id, enabledVariants: hasCollab ? collab : [],
     values, ...(Object.keys(diff).length ? { overrides: diff as LabelFileV2["overrides"] } : {}),
-  }, lolevMaster());
+    ...(!hasCollab && collab.length ? { dormant: { values: {}, variants: collab } } : {}),
+  }, master);
 }

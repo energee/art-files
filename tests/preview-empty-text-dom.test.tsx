@@ -18,7 +18,7 @@ const layer = (text: string): TextLayer => ({
 });
 const source: CanvasRenderSource = {
   m: measure,
-  planAssets: { logoSvg: "" }, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
+  planAssets: {}, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
 };
 
 let container: HTMLDivElement;

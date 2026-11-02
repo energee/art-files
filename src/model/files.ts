@@ -17,6 +17,7 @@ import type { LabelFileV2 } from "./types";
 import { parseMaster as parseMasterV1 } from "./types";
 import { parseLabelFile } from "./labelfile";
 import { convertMasterV1 } from "./convert";
+import { starterMaster } from "./starterLayers";
 import { unpackArchive, extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
 
 /** The template assets a master carries: the master-owned subset of the
@@ -42,11 +43,13 @@ export function serializeMaster(m: Master): string {
 }
 
 /** A master.json of either generation → v3. A v1 file converts (with the
- *  converter's warnings); a newer format is refused; anything else must
- *  already be v3 and goes through parseMaster's own loud fail(). */
+ *  converter's warnings), its built-in element ids taking their geometry from
+ *  the shipped Starter master (an id Starter lacks, such as the logo or
+ *  barcode, is dropped and warned); a newer format is refused; anything else
+ *  must already be v3 and goes through parseMaster's own loud fail(). */
 export function parseMasterJson(json: unknown): { master: Master; warnings: string[] } {
   const version = (json as { formatVersion?: unknown } | null)?.formatVersion;
-  if (version === 1) return convertMasterV1(parseMasterV1(json));
+  if (version === 1) return convertMasterV1(parseMasterV1(json), starterMaster());
   rejectNewerFormat(version, "master");
   return { master: parseMaster(json), warnings: [] };
 }

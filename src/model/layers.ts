@@ -172,9 +172,10 @@ export interface TextLayer extends LayerBase {
 
 export interface ImageLayer extends LayerBase {
   kind: "image";
-  /** Asset id into the master's or label's image store, or the bundled
-   *  "builtin:logo" (the Lolev laurel SVG). "" = nothing loaded, draws
-   *  nothing. An image layer's .label value is this string. */
+  /** Asset id into the master's or label's image store. "" = nothing
+   *  loaded, draws nothing; so does an id with no bytes behind it (an old
+   *  file's "builtin:logo", from when the app bundled the Lolev laurel).
+   *  An image layer's .label value is this string. */
   asset: string;
   /** Box width in points. */
   w: number;
@@ -425,19 +426,17 @@ export function validateBindings(layers: Layer[], ctx: string, report: (msg: str
 
 /** The size keys of an image layer or diff, plus the `scale` older files
  *  carry: until it was removed, the drawn box was w × scale by h × scale. */
-type ScaledSize = { w?: unknown; h?: unknown; scale?: unknown; asset?: unknown };
+type ScaledSize = { w?: unknown; h?: unknown; scale?: unknown };
 
 /** Fold an old image `scale` into w and h, in place, and drop the key, so the
  *  drawn size does not move and the Width you type is the width drawn.
  *  `base` is the UNFOLDED layer a diff lands on (absent for a whole layer):
  *  a diff that sets a different scale but no size takes the base's size
  *  times it, and a diff that sets a size but no scale inherits the base's.
- *  The laurel (builtin:logo) never drew its scale — parseLogo reads w alone —
- *  so there the key is only dropped. A no-op on anything without a scale. */
+ *  A no-op on anything without a scale. */
 export function foldScale(p: ScaledSize, base?: ScaledSize): void {
   const own = p.scale;
   delete p.scale;
-  if ((p.asset ?? base?.asset) === "builtin:logo") return;
   const under = typeof base?.scale === "number" ? base.scale : 1;
   // No scale of its own inherits; null (a label override clearing the key)
   // is back to the default, 1.

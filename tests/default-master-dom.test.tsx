@@ -9,6 +9,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { packLabel, packMaster } from "../src/model/files";
+import { starterMaster } from "../src/model/starterLayers";
+import { defaultConfig } from "../src/defaults";
+import { strToU8, zipSync } from "fflate";
 
 const cache = new Map<string, Uint8Array>();
 vi.mock("../src/masterCache", () => ({
@@ -54,6 +57,9 @@ async function mountEditor(props: ComponentProps<typeof DocumentEditor>) {
   });
   return {
     container,
+    async rerender(next: ComponentProps<typeof DocumentEditor>) {
+      await act(async () => { root.render(createElement(DocumentEditor, next)); });
+    },
     async unmount() {
       await act(async () => { root.unmount(); });
       container.remove();
@@ -141,6 +147,27 @@ it("does not replace a .label that is already queued to open", async () => {
     await waitFor(() => onMeta.mock.calls.some((c) => c[0]?.title === "Peregrine"));
     expect(pickerText(container)).toContain("Starter");
     expect(pickerText(container)).not.toContain("Mine");
+  } finally {
+    await unmount();
+  }
+});
+
+it("opens an old v1 config.json label onto the tab's master, not Lolev", async () => {
+  const mine = { ...starterMaster(), id: "master-mine", name: "Mine" };
+  await rememberMaster(mine, "mine.master", packMaster(mine, {}));
+  await act(async () => { await Promise.resolve(); });
+
+  const { container, rerender, unmount } = await mountEditor(editorProps);
+  try {
+    await waitFor(() => pickerText(container).includes("Mine"));
+    const cfg = { version: 1, ...defaultConfig(), beerName: "Peregrine" };
+    const bytes = zipSync({ "config.json": strToU8(JSON.stringify(cfg)) });
+    const onMeta = vi.fn();
+    await rerender({ ...editorProps, onMeta, fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "old.label") } });
+    await waitFor(() => onMeta.mock.calls.some((c) => c[0]?.title === "Peregrine"));
+    expect(onMeta.mock.calls.some((c) => c[0]?.title === "Peregrine")).toBe(true);
+    expect(pickerText(container)).toContain("Mine");
+    expect(pickerText(container)).not.toContain("Lolev");
   } finally {
     await unmount();
   }

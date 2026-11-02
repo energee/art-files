@@ -7,7 +7,9 @@
 // The collab block is the `collab` variant: three layers that exist only
 // while it is on, chained with `below` bindings exactly as collabLeftFlow /
 // collabCenterFrame chained them. That historical layout now lives only in
-// tests/legacy as the migration oracle.
+// tests/legacy as the migration oracle. The laurel is an ordinary SVG image
+// layer on LOGO_ASSET; its bytes (src/assets/logo2025.svg) travel in
+// masters/lolev.master, or in a test's plan assets.
 import type { Choice, Master, TextLayer, ImageLayer } from "./layers";
 import {
   CENTER_X, GOLD, LEFT_X, PAGE, WARNING_TRACKING, DEFAULT_STROKE_PX, PX,
@@ -38,6 +40,10 @@ const image = (l: Omit<ImageLayer, "kind" | "enabled" | "style"> &
 /** UPC-A geometry in points, from the historical reference barcode (29 modules deep =
  *  the reference plate's 29.88pt). */
 const UPC_MOD = 29.88 / 29;
+
+/** The laurel's image asset id, fixed rather than minted (App.tsx
+ *  mintCustomAssetId) so masters/lolev.master and the tests agree. */
+export const LOGO_ASSET = "custom-asset-laurel";
 
 /** The styles and barcode tiers Lolev prints, recovered verbatim from
  *  presets.json — deleted 2026-09-04 (aafc163) when a master became the saved
@@ -96,7 +102,7 @@ export function lolevMaster(): Master {
       text({ id: "wordmark", name: "Brand", x: CENTER_X, anchor: "center", y: top(44.96, 22),
         size: 22, align: "center", faces: { base: "bold", bold: "bold" },
         lines: [{ text: "Lolev Beer", ...GOLD_METAL }] }),
-      image({ id: "logo", name: "Logo", asset: "builtin:logo", x: CENTER_X, anchor: "center",
+      image({ id: "logo", name: "Logo", asset: LOGO_ASSET, x: CENTER_X, anchor: "center",
         y: 183 - (33.5 * 525 / 480) / 2, w: 33.5, style: KEYLINED }),
       text({ id: "name", name: "Name", x: CENTER_X, anchor: "center", y: top(317.16, 15.83),
         size: 15.83, align: "center", placeholder: "Name",

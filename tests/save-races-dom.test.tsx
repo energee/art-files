@@ -28,8 +28,18 @@ const menu = vi.hoisted(() => ({
   restoreError: "",
 }));
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
-// so the shipped master is swapped for the Lolev fixture here.
-vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
+// so the shipped master is swapped for the Lolev fixture here. Its laurel's
+// bytes are not loaded in these tests, so the logo layer starts unset; a set
+// asset with no bytes would make every Save Master warn it is missing.
+vi.mock("../src/model/starterLayers", async () => {
+  const { lolevMaster } = await import("../src/model/lolevLayers");
+  return {
+    starterMaster: () => {
+      const m = lolevMaster();
+      return { ...m, layers: m.layers.map((l) => l.id === "logo" ? { ...l, asset: "" } : l) };
+    },
+  };
+});
 vi.mock("../src/components/PreviewCompare", () => ({
   PreviewCompare: (p: { onRenderError: (m: string) => void }) => { menu.renderError = p.onRenderError; return null; },
 }));

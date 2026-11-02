@@ -3,7 +3,7 @@ import { planLabel, barcodeItem } from "./legacy/plan";
 import { lineRuns, rotatedRuns, justifiedRotatedRuns, labelGuides, type MeasureFace, type PlacedText, type PlacedImage } from "./legacy/planShared";
 import * as L from "./legacy/layout";
 import { defaultConfig } from "../src/defaults";
-import { assets } from "./fixtures";
+import { logoSvg as laurelSvg } from "./fixtures";
 import type { CustomTextLayer, CustomImageLayer } from "../src/types";
 
 // Deterministic fake metrics: 0.5pt per char per size unit, bold faces 10% wider.
@@ -157,10 +157,9 @@ describe("planLabel", () => {
     // the lead-in has its own eye — it must survive, or the export diverges
     // from the preview.
     const c = defaultConfig();
-    const { logoSvg } = assets;
     const plan = planLabel(c, m, {
       collab: { left: true, center: false },
-      assets: { logoSvg, collabLeft: null, collabCenter: null },
+      assets: { logoSvg: laurelSvg, collabLeft: null, collabCenter: null },
     });
     expect(plan.some((r) => r.id === "collabLead")).toBe(true);
     expect(plan.some((r) => r.id === "collabLeft")).toBe(false);
@@ -342,7 +341,7 @@ describe("planLabel with customLayers", () => {
       style: { fill: "none", layer: "white" },
     };
     const item = planLabel(
-      { ...cfg, customLayers: [layer] }, m, { assets: { logoSvg: assets.logoSvg, custom: { art1: { aspect: 2 } } } },
+      { ...cfg, customLayers: [layer] }, m, { assets: { logoSvg: laurelSvg, custom: { art1: { aspect: 2 } } } },
     ).find((r): r is PlacedImage => r.id === "custom-i1");
     expect(item).toBeDefined();
     if (item?.kind !== "image") throw new Error("expected an image item");
@@ -357,7 +356,7 @@ describe("planLabel with customLayers", () => {
       style: { fill: "none", layer: "white" },
     };
     const list = planLabel(
-      { ...cfg, customLayers: [layer] }, m, { assets: { logoSvg: assets.logoSvg, custom: {} } },
+      { ...cfg, customLayers: [layer] }, m, { assets: { logoSvg: laurelSvg, custom: {} } },
     );
     expect(list.some((r) => r.id === "custom-i2")).toBe(false);
   });

@@ -43,7 +43,7 @@ import { defaultConfig } from "../src/defaults";
 import { qrUrl } from "../src/qr";
 import { GOLD } from "./legacy/layout";
 import * as L from "./legacy/layout";
-import { assets as fixture } from "./fixtures";
+import { assets as fixture, laurelCustom, logoSvg } from "./fixtures";
 
 const TOL = 0.25;
 const NAME = "Peregrine Falcon";
@@ -82,7 +82,7 @@ function oldPlan(bodyLines: string[], collab: boolean): Placed[] {
   return planLabel(cfg, m, {
     collab: { left: collab, center: collab },
     assets: {
-      logoSvg: fixture.logoSvg,
+      logoSvg,
       collabLeft: collab ? RASTER : null, collabCenter: collab ? RASTER : null,
     },
   });
@@ -134,8 +134,7 @@ function newLayers(bodyLines: string[], collab: boolean): Layer[] {
 
 function newPlan(bodyLines: string[], collab: boolean): PlacedLayer[] {
   return planLayers(newLayers(bodyLines, collab), m, {
-    logoSvg: fixture.logoSvg,
-    custom: { "collabLeft-art": { aspect: 2 }, "collabCenter-art": { aspect: 2 } },
+    custom: { ...laurelCustom, "collabLeft-art": { aspect: 2 }, "collabCenter-art": { aspect: 2 } },
   });
 }
 
@@ -215,7 +214,10 @@ describe("Lolev parity: planLabel vs planLayers", () => {
       items.filter((r): r is PlacedPaths => r.kind === "paths" && r.id === id);
     const [logoA] = paths(a, "logo");
     const [logoB] = paths(b, "logo");
-    expect(logoB.paths).toEqual(logoA.paths);
+    // The v3 laurel is an SVG image asset, fitted by its ink box rather than
+    // the old built-in's viewBox, so its path data differs by under 0.01pt:
+    // the same paths, at the same place.
+    expect(logoB.paths).toHaveLength(logoA.paths.length);
     expect(Math.abs(logoB.x - logoA.x)).toBeLessThanOrEqual(TOL);
     expect(Math.abs(logoB.y - logoA.y)).toBeLessThanOrEqual(TOL);
     expect([logoB.fill, logoB.layer, logoB.stroke]).toEqual([logoA.fill, logoA.layer, logoA.stroke]);

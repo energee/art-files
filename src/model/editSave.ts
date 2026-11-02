@@ -66,7 +66,7 @@ function addedIds(v: Variant, masterIds: { has(id: string): boolean }): string[]
  *  values and per-beer art so a new tab is not the last beer. Per-beer art
  *  is a background/mask (`role`) or a variant's image (the Collab slots).
  *  Template copy (volume, wordmark, warning) and the master's own images
- *  (a script logo, `builtin:` assets) stay. Fillable text is anything with
+ *  (a script logo) stay. Fillable text is anything with
  *  a placeholder or a number/code input. */
 export function structureOnlyMaster(master: Master): Master {
   const byId = new Map(master.layers.map((l) => [l.id, l]));

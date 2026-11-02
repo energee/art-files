@@ -15,7 +15,7 @@ import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
 import { linesProblem, PAGE_ART_ID, patchProblem, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { starterMaster } from "../src/model/starterLayers";
 import { applyDiff, exportBase, foldLabelScale, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
@@ -503,7 +503,6 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   for (const l of resolved.layers)
     if (l.kind === "text" && l.fontFamily) needed.add(l.fontFamily);
 
-  const logoSvg = readAsset(input.assetRoot, "logo2025.svg").toString("utf8");
   const fonts = fontPack(input.assetRoot, defaultFamily);
   // The default family is listed too, as the SAME pack: a text layer may
   // name it explicitly (plan runs are then tagged with it), and newDoc
@@ -549,7 +548,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   }
 
   for (const l of resolved.layers) {
-    if (l.kind !== "image" || !l.asset || l.asset.startsWith("builtin:")) continue;
+    if (l.kind !== "image" || !l.asset) continue;
     if (!images[l.asset]) throw new Error(`${l.id}: missing image asset "${l.asset}"`);
   }
 
@@ -570,7 +569,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   const measure = await pdfMeasureFace(fontFamilies, defaultFamily);
 
   const plan = planLayers(resolved.layers, measure, {
-    logoSvg, guides: guideLines(input.master), custom: planCustom,
+    guides: guideLines(input.master), custom: planCustom,
   });
   const pdfAssets: Assets = { fonts, fontFamilies, title, images };
   const maskPng = decoded[PAGE_ART_ID.mask];
@@ -633,7 +632,7 @@ function outputNames(stem: string, format: FormatSet, twoFile: boolean): string[
 }
 
 function loadMaster(io: GenerateIo, path: string | undefined): { master: Master; assets: MasterAssets; warnings: string[] } {
-  if (!path) return { master: lolevMaster(), assets: {}, warnings: [] };
+  if (!path) return { master: starterMaster(), assets: {}, warnings: [] };
   return unpackMaster(io.readFile(resolve(io.cwd, path)));
 }
 
@@ -694,9 +693,9 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     if (args.maskPath !== "none") extraImages.mask = readImage(io, args.maskPath);
     if (args.collabLeft) extraImages.collabLeft = readImage(io, args.collabLeft);
     if (args.collabCenter) extraImages.collabCenter = readImage(io, args.collabCenter);
-    const converted = convertConfigV1(cfg, !!(args.collabLeft || args.collabCenter));
+    const master = starterMaster();
+    const converted = convertConfigV1(cfg, !!(args.collabLeft || args.collabCenter), master);
     for (const w of converted.warnings) warn(w);
-    const master = lolevMaster();
     const coerced = coerceValues(master, converted.label.values, converted.label.enabledVariants);
     if (Object.keys(coerced.errors).length) throw new Error(errorText(coerced.errors));
     const result = await buildLabel({

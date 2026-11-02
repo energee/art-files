@@ -10,7 +10,7 @@ import type { MeasureFace, PlacedBarcode } from "./legacy/planShared";
 import type { BarcodeLayer } from "../src/model/layers";
 import { MASK_BLUE_HEX, PAGE } from "./legacy/layout";
 import { labelFontCss } from "../src/fonts";
-import { logoSvg, lolevLayers, type LolevOpts } from "./fixtures";
+import { laurelCustom, lolevLayers, planAssets, type LolevOpts } from "./fixtures";
 
 // drawPlate requires the font family explicitly (no poppins default).
 const FONT = labelFontCss("poppins");
@@ -53,7 +53,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const plan = (opts: LolevOpts = {}): PlacedLayer[] =>
-  planLayers(lolevLayers(opts), m, { logoSvg, custom: opts.custom });
+  planLayers(lolevLayers(opts), m, { custom: { ...laurelCustom, ...opts.custom } });
 /** Both page layers bound to assets "tex" / "msk". */
 const withPages: LolevOpts = {
   overrides: { background: { asset: "tex" }, mask: { asset: "msk" } },
@@ -297,7 +297,7 @@ describe("drawPlate", () => {
     const runs = planLayers([{
       id: "s", name: "S", kind: "text", enabled: true, x: 100, y: 200, anchor: "left", size: 10, align: "left",
       lines: [{ text: "IPA", fill: GOLD, layer: "metallic" }], style: { fill: GOLD, layer: "metallic", letterSpacing: 4 },
-    }], m, { logoSvg });
+    }], m, planAssets);
     expect(runs[0].kind === "text" && runs[0].tracking).toBe(4); // the fallback only engages on tracked runs
     const { ctx, log } = fakeCtx();
     drawUnsupported(ctx, runs, {}, "art", FONT);
@@ -346,7 +346,7 @@ describe("drawPlate", () => {
       id: "bc1", name: "BC", kind: "barcode", enabled: true, x: 28.68, y: 28.68, anchor: "left",
       symbology: "code-128", value: "LOLEV-123", h: 30, moduleW: 1, style: { fill: "#000000", layer: "white" },
     };
-    const [item] = planLayers([layer], m, { logoSvg }) as PlacedBarcode[];
+    const [item] = planLayers([layer], m, planAssets) as PlacedBarcode[];
     expect(item.rotated).toBe(false);
     expect(item.digits.length).toBeGreaterThan(0);
     const { ctx, log } = fakeCtx();
