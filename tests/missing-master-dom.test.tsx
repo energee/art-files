@@ -4,13 +4,15 @@
 // re-ask on the quiet retries, and a failed Locate says why instead of
 // re-asking. Only a Cancel is reported to the shell as cancelled (#553),
 // which closes a tab made just for the open; a failed Locate keeps its
-// error on screen (an error toast).
+// error on screen (an error toast), and so does a browser with no picker to
+// Locate with. A located master's own warnings name the located file.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
+import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import { mountToaster, settle, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/masterCache", () => ({
@@ -55,19 +57,22 @@ async function openOrphan(pick: string) {
   await mountToaster();
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
-  await act(async () => { root.render(createElement(DocumentEditor, props)); });
-  for (let i = 0; i < 400 && !button(pick); i++) await tick();
-  expect(document.body.textContent).toContain("This label was made with a different master");
-  await act(async () => { button(pick)!.click(); });
-  for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++) await tick();
-  await settle(); // a toast lands a tick after its message is sent
-  const title = onMeta.mock.calls.at(-1)?.[0]?.title;
-  const reasked = !!button(pick);
-  const toasts = toastTitles();
-  const cancelled = onOpenSettled.mock.calls.at(-1)?.[1];
-  await act(async () => { root.unmount(); });
-  await unmountToaster();
-  return { title, reasked, toasts, cancelled };
+  try {
+    await act(async () => { root.render(createElement(DocumentEditor, props)); });
+    for (let i = 0; i < 400 && !button(pick); i++) await tick();
+    expect(document.body.textContent).toContain("This label was made with a different master");
+    await act(async () => { button(pick)!.click(); });
+    for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++) await tick();
+    await settle(); // the open has settled; a toast lands a tick after its message is sent
+    const title = onMeta.mock.calls.at(-1)?.[0]?.title;
+    const reasked = !!button(pick);
+    const toasts = toastTitles();
+    const cancelled = onOpenSettled.mock.calls.at(-1)?.[1];
+    return { title, reasked, toasts, cancelled };
+  } finally {
+    await act(async () => { root.unmount(); });
+    await unmountToaster();
+  }
 }
 
 it("Use current opens the label on this tab's master", async () => {
@@ -95,6 +100,33 @@ it("Locate shows why it failed instead of quietly asking again", async () => {
     expect(r.reasked).toBe(false);
     expect(r.toasts).toEqual(["Could not open master: disk went away"]);
     expect(r.cancelled).toBe(false);
+  } finally {
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  }
+}, 30_000);
+
+// No FS-Access picker and no desktop dialog: Locate cannot ask for a file, and
+// says so (the File menu's Open Master still has its file input).
+it("Locate without a file picker says so instead of quietly asking again", async () => {
+  const r = await openOrphan("Locate");
+  expect(r.title).not.toBe("Orphan");
+  expect(r.reasked).toBe(false);
+  expect(r.toasts).toEqual(["Could not open master: this browser has no file picker. Use File → Open Master… first."]);
+  expect(r.cancelled).toBe(false);
+}, 30_000);
+
+// The located master is parsed like any Open Master: a v1 file converts, with
+// warnings, and the toast names that file, not the label being opened.
+it("a located master's warnings name the located file", async () => {
+  const old = lolevV1();
+  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
+  old.defaults = { mystery: 1 } as never;
+  const located = { getFile: async () => new File([JSON.stringify(old)], "located.master") };
+  (window as unknown as { showOpenFilePicker: () => Promise<unknown[]> }).showOpenFilePicker = async () => [located];
+  try {
+    const r = await openOrphan("Locate");
+    expect(r.title).toBe("Orphan");
+    expect(r.toasts).toEqual(["Opened located.master with changes"]);
   } finally {
     delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
   }

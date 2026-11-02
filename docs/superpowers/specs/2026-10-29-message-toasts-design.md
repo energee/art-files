@@ -32,6 +32,7 @@ Mockups: `.superpowers/brainstorm/26641-1793315312/content/` (`toast-placement.h
 - A toast offers the obvious next step where one exists (**Show in Finder**, **Export again**, **Show layer**, **Undo**).
 - Shorter wording, action first, no "Note:" prefix. All five UI languages (en, es, fr, de, pt-BR; `src/locales/*.ts`) updated.
 - Each message is announced to screen readers once; errors announced assertively.
+  - Note (2026-10-30): errors are announced once, politely, not assertively. Sonner's live region is fixed to polite and has no per-toast override, so a second assertive region would read an error twice.
 - Toasts follow the app theme (`src/theme.ts`: system/light/dark).
 
 ## Non-goals
@@ -107,4 +108,5 @@ Existing DOM tests assert header text and the `data-export-saved` / `data-blocke
 - How editors reach the toaster (direct `toast()` calls vs a small per-tab helper), within the per-tab id and ownership constraints.
 - Visual tuning of the Sonner theme to the app's tokens, exact offsets, icon set.
 - Whether the invisible `role="status"` announcement spans stay or Sonner's live region replaces them, as long as each message is announced once and errors assertively.
+  - Note (2026-10-30): errors are announced once, politely, not assertively. Sonner's live region is fixed to polite and has no per-toast override, so a second assertive region would read an error twice.
 - Test harness details (Sonner renders into the document; happy-dom is fine).

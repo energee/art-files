@@ -18,7 +18,8 @@ export function revealLabel(): string {
 }
 
 /** A toast action that reveals `path` in the OS file manager; undefined in the
- *  browser or without a path. A failure becomes an error toast naming the file.
+ *  browser or without a path. A failure becomes an error toast naming the file
+ *  (baseName: the whole path when it ends in a separator).
  *  Needs `opener:allow-reveal-item-in-dir`. */
 export function revealAction(path: string | undefined): ToastAction | undefined {
   if (!isTauri() || !path) return undefined;

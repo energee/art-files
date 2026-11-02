@@ -7,7 +7,9 @@
 // happy-dom with fake timers driving its auto-dismiss and exit animation
 // (tests/toast-harness.ts). Every notify call goes through show() to let the
 // toast land before the test looks.
-import { act } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, createElement } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { setLanguage } from "@/i18n";
 import { notify } from "@/notify";
@@ -94,42 +96,126 @@ it("follows the app theme", () => {
   expect(document.querySelector("[data-sonner-toaster]")!.getAttribute("data-sonner-theme")).toBe("dark");
 });
 
-it("keeps four toasts visible", () => {
+// Sonner hides the OLDEST toast once more than `visibleToasts` are up. The
+// limit is four (sonner.tsx says why that fits the smallest window), so a fifth
+// hides the oldest until a newer one closes.
+it("keeps four toasts visible and expanded, hides the oldest for a fifth, and brings it back", () => {
   mount();
-  show(...[1, 2, 3, 4].map((n) => () => notify.warning(`Warning ${n}`)));
+  const toasts = () => [...document.querySelectorAll("[data-sonner-toast]")];
+  const states = (attribute: string) => toasts().map((li) => li.getAttribute(attribute));
+  show(...[1, 2, 3, 4].map((n) => () => notify.warning(`Warning ${n}`, { id: `w${n}` })));
   expect(toastCount()).toBe(4);
-  const visible = [...document.querySelectorAll("[data-sonner-toast]")]
-    .map((li) => li.getAttribute("data-visible"));
-  expect(visible).toEqual(["true", "true", "true", "true"]);
+  expect(states("data-visible")).toEqual(Array(4).fill("true"));
   // Sonner's default stack folds older toasts into slivers behind the newest;
   // each one is readable (and a persistent error is seen) only when expanded.
-  const expanded = [...document.querySelectorAll("[data-sonner-toast]")]
-    .map((li) => li.getAttribute("data-expanded"));
-  expect(expanded).toEqual(["true", "true", "true", "true"]);
+  expect(states("data-expanded")).toEqual(Array(4).fill("true"));
+
+  show(() => notify.warning("Warning 5", { id: "w5" }));
+  expect(toastCount()).toBe(5);
+  const hidden = () => toasts().filter((li) => li.getAttribute("data-visible") === "false");
+  expect(hidden().map((li) => li.textContent)).toEqual([expect.stringContaining("Warning 1")]);
+
+  // The oldest returns as soon as a newer toast closes.
+  show(() => notify.dismiss("w5"));
+  settleDismissal();
+  expect(toastCount()).toBe(4);
+  expect(states("data-visible")).toEqual(Array(4).fill("true"));
+  expect(text()).toContain("Warning 1");
+});
+
+// Sonner hides a toast past the limit with opacity 0 and pointer-events none
+// only, so its buttons would stay in the keyboard tab order and in the
+// accessibility tree. src/index.css adds visibility:hidden for it. The rule is
+// read from that file and applied here (happy-dom does apply stylesheet rules to
+// getComputedStyle); happy-dom does not turn visibility into focusability, which
+// a browser does (a visibility:hidden element cannot be focused or tabbed to).
+it("hides the toast past the limit from the keyboard and assistive tech", () => {
+  const css = readFileSync(join(import.meta.dirname, "..", "src", "index.css"), "utf8");
+  const rule = css.match(/\[data-sonner-toast\]\[data-visible="false"\]\s*\{[^}]*\}/)?.[0];
+  expect(rule, "index.css has no [data-sonner-toast][data-visible=\"false\"] rule").toBeDefined();
+  // Hidden after Sonner's .4s fade-out, not at once; its own transitions stay.
+  expect(rule).toMatch(/transition:[^;]*opacity \.4s[^;]*visibility 0s linear \.4s/);
+  const style = Object.assign(document.createElement("style"), { textContent: rule });
+  document.head.append(style);
+  try {
+    mount();
+    show(...[1, 2, 3, 4, 5].map((n) => () => notify.warning(`Warning ${n}`, { id: `w${n}`, action: { label: `Act ${n}`, onClick: () => {} } })));
+    const toasts = [...document.querySelectorAll<HTMLElement>("[data-sonner-toast]")];
+    const hidden = toasts.filter((li) => li.getAttribute("data-visible") === "false");
+    expect(hidden.map((li) => li.textContent)).toEqual([expect.stringContaining("Warning 1")]);
+    expect(getComputedStyle(hidden[0]).visibility).toBe("hidden");
+    for (const li of toasts.filter((el) => !hidden.includes(el))) expect(getComputedStyle(li).visibility).not.toBe("hidden");
+
+    // Closing a newer toast brings the hidden one back.
+    show(() => notify.dismiss("w5"));
+    settleDismissal();
+    const back = [...document.querySelectorAll<HTMLElement>("[data-sonner-toast]")].find((li) => li.textContent?.includes("Warning 1"))!;
+    expect(back.getAttribute("data-visible")).toBe("true");
+    expect(getComputedStyle(back).visibility).not.toBe("hidden");
+  } finally {
+    style.remove();
+  }
 });
 
 it("labels the toast region and the close button in the app's language", () => {
   setLanguage("de");
   mount();
   show(() => notify.warning("Warnung"));
-  expect(document.querySelector("section[aria-label]")!.getAttribute("aria-label")).toMatch(/^Benachrichtigungen/);
+  // Exactly the translated word: Sonner appends its hotkey to the label unless
+  // told otherwise, which left a trailing space once the hotkey was turned off.
+  expect(document.querySelector("section[aria-label]")!.getAttribute("aria-label")).toBe("Benachrichtigungen");
   expect(document.querySelector("[data-close-button]")!.getAttribute("aria-label")).toBe("Schließen");
 });
 
-it("announces errors assertively and successes politely", () => {
+// Sonner's <section aria-live="polite"> already announces every toast that
+// lands in it, and it has no per-toast override. Any second live region that
+// holds a toast's text (a role="alert" wrapped around an error's title, a
+// mirror outside the section) makes a screen reader say it twice.
+it("announces each toast's text through exactly one live region, and leaves it readable", () => {
   mount();
   show(
-    () => notify.error("Couldn't save Lupula.pdf"),
+    () => notify.error("Couldn't save Lupula.pdf", { description: "Disk is full" }),
+    () => notify.warning("Lupula-mask.pdf wasn't saved", { description: "Export again to save both files." }),
     () => notify.success("Saved Lupula.pdf"),
+    () => notify.info("Switched to “Lolev”", { description: "Hidden values were set aside." }),
   );
-  const assertive = '[aria-live="assertive"], [role="alert"]';
+
+  const liveRegions = '[aria-live]:not([aria-live="off"]), [role="alert"], [role="status"], [role="log"]';
+  /** Every live region whose text holds `message`: ancestors and mirrors alike. */
+  const announcing = (message: string) =>
+    [...document.querySelectorAll(liveRegions)].filter((el) => el.textContent?.includes(message));
   /** The innermost element holding exactly this text. */
   const elementWith = (message: string) => [...document.querySelectorAll("[data-sonner-toast] *")]
     .find((el) => el.children.length === 0 && el.textContent === message)!;
 
-  expect(elementWith("Couldn't save Lupula.pdf").closest(assertive)).not.toBeNull();
-  expect(elementWith("Saved Lupula.pdf").closest(assertive)).toBeNull();
-  expect(elementWith("Saved Lupula.pdf").closest('[aria-live="polite"]')).not.toBeNull();
+  for (const message of [
+    "Couldn't save Lupula.pdf", "Disk is full",
+    "Lupula-mask.pdf wasn't saved", "Export again to save both files.",
+    "Saved Lupula.pdf",
+    "Switched to “Lolev”", "Hidden values were set aside.",
+  ]) {
+    expect(announcing(message), message).toHaveLength(1);
+    // Screen-reader navigation still reaches the toast itself.
+    expect(elementWith(message).closest('[aria-hidden="true"]'), message).toBeNull();
+  }
+  // Errors are polite like the rest: one region, Sonner's own.
+  expect(announcing("Couldn't save Lupula.pdf")[0].getAttribute("aria-live")).toBe("polite");
+});
+
+// Sonner's default hotkey is Alt+T, which pulls focus into the toast list. On
+// macOS, Option+T types "†" in a text field, so it must stay with the field.
+it("leaves focus in a text field when Alt+T is pressed while a toast is shown", () => {
+  mount(createElement("input", { "aria-label": "Name" }));
+  show(() => notify.warning("Stays until closed"));
+  const field = document.querySelector<HTMLInputElement>("input")!;
+  field.focus();
+  expect(document.activeElement).toBe(field);
+
+  act(() => {
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "†", code: "KeyT", altKey: true, bubbles: true }));
+  });
+
+  expect(document.activeElement).toBe(field);
 });
 
 it("replaces a toast that reuses its id instead of stacking a second", () => {

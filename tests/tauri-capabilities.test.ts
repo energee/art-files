@@ -3,7 +3,9 @@
 // not come from a dialog (Finder/argv opens, remembered masters), reach files
 // inside hidden folders, and Open Master must use the native dialog so the
 // index stores a real path rather than a basename. The window also enforces
-// a content security policy that keeps it to its own bundled code.
+// a content security policy that keeps it to its own bundled code. Its macOS
+// overlay title bar needs the window to start a drag and to zoom on a
+// double-click, and keeps naming the window after the document.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -12,7 +14,7 @@ const caps = JSON.parse(readFileSync("src-tauri/capabilities/default.json", "utf
 };
 const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8")) as {
   plugins?: { fs?: { requireLiteralLeadingDot?: boolean } };
-  app: { security: { csp: string | null } };
+  app: { security: { csp: string | null }; windows: Array<{ label: string; titleBarStyle?: string; hiddenTitle?: boolean }> };
 };
 
 /** Glob paths a scoped fs permission allows, across every entry for it;
@@ -85,6 +87,42 @@ describe("desktop master-file access", () => {
       .map((p) => (typeof p === "string" ? p : p.identifier))
       .filter((id) => id.startsWith("opener:"));
     expect(opener).toEqual(["opener:allow-reveal-item-in-dir"]);
+  });
+});
+
+// The overlay title bar (src/titlebar.ts) runs the web content under a
+// transparent title bar, so the header drags the window itself: Tauri's drag
+// script calls start_dragging on a press and internal_toggle_maximize on a
+// double-click (macOS zooms). Both are named here although the second is also
+// in core:default, so narrowing that cannot silently break zooming. Nothing
+// wider (no window-wide set); set-title keeps Mission Control naming the
+// document now that the title text is hidden. titleBarStyle and hiddenTitle
+// are macOS-only keys that Windows and Linux ignore.
+describe("desktop overlay title bar", () => {
+  const ids = caps.permissions.map((p) => (typeof p === "string" ? p : p.identifier));
+
+  it("can start a window drag and zoom on a double-click, and still title the window", () => {
+    expect(ids).toEqual(expect.arrayContaining([
+      "core:window:allow-start-dragging",
+      "core:window:allow-internal-toggle-maximize",
+      "core:window:allow-set-title",
+    ]));
+  });
+
+  it("grants no window permission beyond the ones it names", () => {
+    expect(ids.filter((id) => id.startsWith("core:window:")).sort()).toEqual([
+      "core:window:allow-close",
+      "core:window:allow-destroy",
+      "core:window:allow-internal-toggle-maximize",
+      "core:window:allow-set-title",
+      "core:window:allow-start-dragging",
+    ]);
+  });
+
+  it("overlays the main window's title bar and hides its title text", () => {
+    const main = tauriConf.app.windows.find((w) => w.label === "main");
+    expect(main?.titleBarStyle).toBe("Overlay");
+    expect(main?.hiddenTitle).toBe(true);
   });
 });
 

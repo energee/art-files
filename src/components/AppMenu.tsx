@@ -576,7 +576,7 @@ function useNativeMenu(
   desktop: boolean,
   commands: CommandIndex,
   checked: CheckedState,
-  onError: (message: string) => void,
+  onError: (message: string, source?: "quit") => void,
   onCheckForUpdates: () => void,
   updateInstalled: boolean,
   labels: NativeMenuLabels,
@@ -662,7 +662,7 @@ function useNativeMenu(
           // onCloseRequested sweep prompts for unsaved tabs before exit.
           const quit = () => void import("@tauri-apps/api/window")
             .then((m) => m.getCurrentWindow().close())
-            .catch((error) => errorRef.current(translate("Could not quit: {{error}}", { error: errMsg(error) })));
+            .catch((error) => errorRef.current(translate("Could not quit: {{error}}", { error: errMsg(error) }), "quit"));
           const settings = actionsIn(menus).find((entry) => entry.id === "settings")!;
           roots.unshift(await macApplicationMenu(
             api, resources, () => updateRef.current(), quit, await native(settings), tag, labels));
@@ -814,7 +814,9 @@ function useNativeMenu(
 export function AppMenu(props: {
   actions: Command[];
   checked: CheckedState;
-  onNativeError: (message: string) => void;
+  /** Reports a native menu failure. `source` is "quit" for a failed Quit, a
+   *  different failure from the menu's own, so it shows as a toast of its own. */
+  onNativeError: (message: string, source?: "quit") => void;
   onCheckForUpdates: () => void;
   /** Relabels Check for Updates… to Restart to Update. */
   updateInstalled?: boolean;

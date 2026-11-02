@@ -3,7 +3,8 @@
 // try to export. Every export command stays enabled while the label is invalid
 // (it greys out only while an export runs); choosing one builds nothing and
 // shows the "Can't export yet" error toast with the reason and a Show layer
-// action, which opens a collapsed Layers sidebar and selects the invalid layer.
+// action, which opens a collapsed Layers sidebar and selects the first layer
+// that is invalid when it is clicked.
 // The toast stays until it is dismissed or the label stops being blocked, a
 // repeat attempt replaces it, and the invisible status region still announces
 // when a label becomes blocked. The real editor runs on real timers with the
@@ -50,8 +51,10 @@ afterEach(async () => {
 });
 
 type EditorProps = ComponentProps<typeof DocumentEditor>;
-async function mount(over: Partial<EditorProps> = {}) {
-  await mountToaster();
+/** One editor in its own container, beside whatever else is mounted (the
+ *  toaster is mount()'s to add). `draw` renders it again without act(), for a
+ *  test that must change several editors inside one act. */
+async function mountEditor(over: Partial<EditorProps> = {}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -62,9 +65,14 @@ async function mount(over: Partial<EditorProps> = {}) {
     onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(), ...over,
   };
   await act(async () => { root.render(createElement(DocumentEditor, props)); });
-  cleanup = async () => { await act(async () => root.unmount()); container.remove(); };
-  return { container, rerender: (p: Partial<EditorProps>) =>
-    act(async () => { root.render(createElement(DocumentEditor, { ...props, ...p })); }) };
+  const before = cleanup;
+  cleanup = async () => { await before?.(); await act(async () => root.unmount()); container.remove(); };
+  const draw = (p: Partial<EditorProps>) => root.render(createElement(DocumentEditor, { ...props, ...p }));
+  return { container, draw, rerender: (p: Partial<EditorProps>) => act(async () => { draw(p); }) };
+}
+async function mount(over: Partial<EditorProps> = {}) {
+  await mountToaster();
+  return mountEditor(over);
 }
 
 const press = async (init: KeyboardEventInit) => {
@@ -211,7 +219,66 @@ it("Show layer focuses the invalid layer's field, so Backspace cannot remove the
   expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
 }, 30_000);
 
-// The toast region's own keys never reach Remove Layer: Alt+T focuses the
+// The toast outlives the render that showed it, and so does the list of invalid
+// layers it was shown with: Show layer goes to the first layer that is invalid
+// when it is clicked. ABV comes before Barcode in the master; fix ABV after the
+// toast appeared and the barcode is the one left.
+it("Show layer goes to the first layer that is still invalid when it is clicked", async () => {
+  const { container, rerender } = await mount();
+  const bytes = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { abv: "99", barcode: "123" } }, {});
+  await rerender({ fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "bad.label") } });
+  await vi.waitFor(() => expect(reasonOf(container)).toMatch(/ABV.*Barcode/), { timeout: 5_000 });
+  await press({ key: "e", metaKey: true });
+  await shown("Can't export yet");
+  expect(description()).toMatch(/ABV.*Barcode/);
+
+  // Fix ABV through its own field; this selects the ABV row.
+  await act(async () => {
+    (container.querySelector('[data-layer-id="abv"] [data-slot="sidebar-menu-button"]') as HTMLElement).click();
+  });
+  const field = () => document.querySelector("#abv-content") as HTMLInputElement;
+  await act(async () => { field().focus(); });
+  await act(async () => { typeInto(field(), "5"); });
+  await act(async () => { field().blur(); });
+  await vi.waitFor(() => expect(reasonOf(container)).not.toContain("ABV"), { timeout: 5_000 });
+  expect(reasonOf(container)).toContain("Barcode");
+  expect(rowSelected(container, "abv")).toBe(true);
+
+  await act(async () => { showLayer().click(); });
+  expect(rowSelected(container, "barcode")).toBe(true);
+  expect(rowSelected(container, "abv")).toBe(false);
+}, 30_000);
+
+// Show layer polls a few frames for the inspector's field to mount, and finds
+// it by layer id. If the operator switches tabs in that time, another tab's
+// field with the same id (every tab of a master has a Barcode) must not take
+// focus. Tab B is inspecting its Barcode; tab A is blocked on its own.
+it("Show layer does not focus another tab's field after the operator switched tabs", async () => {
+  await mountToaster();
+  const a = await mountEditor({ active: false, fileToOpen: badLabel() });
+  const b = await mountEditor({ active: true, fileToOpen: badLabel() });
+  await vi.waitFor(() => expect(reasonOf(a.container)).toContain("Barcode"));
+  await vi.waitFor(() => expect(reasonOf(b.container)).toContain("Barcode"));
+  await act(async () => {
+    (b.container.querySelector('[data-layer-id="barcode"] [data-slot="sidebar-menu-button"]') as HTMLElement).click();
+  });
+  expect(document.querySelectorAll("#barcode-content")).toHaveLength(1);
+
+  // Tab A comes to the front and is told it cannot export; B's inspector goes.
+  await a.rerender({ active: true }); await b.rerender({ active: false });
+  expect(document.querySelectorAll("#barcode-content")).toHaveLength(0);
+  await press({ key: "e", metaKey: true });
+  await shown("Show layer");
+
+  // Show layer, and back to B before the poll's first frame: B's field is now
+  // the only #barcode-content in the document.
+  await act(async () => { showLayer().click(); a.draw({ active: false }); b.draw({ active: true }); });
+  await vi.waitFor(() => expect(document.querySelectorAll("#barcode-content")).toHaveLength(1));
+  await new Promise((resolve) => setTimeout(resolve, 500)); // longer than the poll's 30 frames
+  expect(document.activeElement).not.toBe(document.querySelector("#barcode-content"));
+}, 30_000);
+
+// The toast region's own keys never reach Remove Layer: focus can sit on the
 // toast list itself, which is no button.
 it("Backspace from inside the toast region does not remove the selected layer", async () => {
   const { container } = await mountBlocked();

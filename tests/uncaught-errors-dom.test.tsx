@@ -60,6 +60,17 @@ it("falls back to the event message, shows a non-Error rejection as text, and th
   expect(toastCount()).toBe(1);
 });
 
+// The description keeps line breaks (white-space: pre-line), so an empty message
+// joined to the advice with "\n" would leave a blank first line under the title.
+it.each([["an empty Error", new Error("")], ["an empty string", ""], ["blank text", "  "]])(
+  "%s leaves no blank line before the advice", (_name, reason) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mount(createElement(UncaughtErrors));
+    show(() => window.dispatchEvent(rejection(reason)));
+    expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toBe(
+      "The last action may not have finished. Your open tabs are intact; check the result before relying on it.");
+  });
+
 it("an aborted picker shows nothing", () => {
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   mount(createElement(UncaughtErrors));

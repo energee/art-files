@@ -2,13 +2,14 @@
 // that binds to a .label path (an open or a Save As, reported through onMeta)
 // joins the recent list, and choosing a recent path routes it exactly like a
 // Finder open — or, when the file is gone, shows the open error as a toast
-// and drops it from the list.
+// and drops it from the list (a file that cannot be checked shows the error
+// too, and stays).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { DocumentMeta, FileToOpen } from "../src/App";
-import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
+import { mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 type EditorProps = {
   fileToOpen: FileToOpen | null;
@@ -119,7 +120,21 @@ it("a second missing recent file replaces the first toast, and a later good open
   expect(toastTitles()).toEqual(["Could not open label: /labels/AlsoGone.label no longer exists."]);
   // The first file is still gone, so a good open elsewhere does not dismiss its error.
   await act(async () => { openRecent("/labels/Here.label"); });
+  await vi.waitFor(() => expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" }), { timeout: 5_000 });
   await settle();
-  expect(mocks.editors[0].fileToOpen).toMatchObject({ path: "/labels/Here.label" });
   expect(toastTitles()).toHaveLength(1);
+  expect(removedFlags()).toEqual(["false"]);
+}, 30_000);
+
+// Not knowing whether the file is there is not the same as it being gone: the
+// error is shown, and the entry stays in the list.
+it("a recent file that cannot be checked shows an error toast and stays in the list", async () => {
+  rememberRecent("/labels/Locked.label");
+  mocks.exists.mockRejectedValue(new Error("permission denied"));
+  await act(async () => { openRecent("/labels/Locked.label"); });
+  await shown("Could not open label: permission denied");
+  expect(toastTitles()).toEqual(["Could not open label: permission denied"]);
+  expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("error");
+  expect(mocks.editors[0].fileToOpen).toBeNull();
+  expect(recentLabels()).toEqual(["/labels/Locked.label"]);
 }, 30_000);

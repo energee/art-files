@@ -13,9 +13,11 @@ export function cn(...inputs: ClassValue[]) {
 export const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** A file path's last segment, split on either separator (desktop paths come
- *  as "/Users/x/Lupula.pdf" or "C:\\x\\Lupula.pdf"); a bare name stays as it is.
- *  Synchronous, unlike Tauri's basename(), which is an IPC call. */
-export const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+ *  as "/Users/x/Lupula.pdf" or "C:\\x\\Lupula.pdf"); a bare name stays as it is,
+ *  and so does a path that ends in a separator (a folder has no last segment, and
+ *  an empty name would read as nothing in a toast). Synchronous, unlike Tauri's
+ *  basename(), which is an IPC call. */
+export const baseName = (path: string) => path.split(/[\\/]/).pop() || path;
 
 /** "Oct 11, 2026" in the selected UI language, in the operator's own region
  *  of it when the system lists one (en-GB gets "11 Oct 2026"); "" for an

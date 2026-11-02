@@ -17,7 +17,7 @@ import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real
 const counts = vi.hoisted(() => ({ masterIndex: 0 }));
 // The preview's font load never settles here (unless a test makes it fail),
 // so the preview stays "rendering" throughout.
-const fonts = vi.hoisted(() => ({ pending: new Promise<never>(() => {}), fail: false }));
+const fonts = vi.hoisted(() => ({ pending: new Promise<never>(() => {}), fail: false, loads: 0 }));
 vi.mock("../src/masterCache", () => ({ cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {} }));
 vi.mock("../src/masters", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/masters")>();
@@ -28,7 +28,10 @@ vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare:
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/fonts", () => ({
-  loadLabelFaces: () => fonts.fail ? Promise.reject(new Error("font file is gone")) : fonts.pending,
+  loadLabelFaces: () => {
+    fonts.loads++;
+    return fonts.fail ? Promise.reject(new Error("font file is gone")) : fonts.pending;
+  },
   labelFontCss: () => "sans-serif",
 }));
 const { DocumentEditor } = await import("../src/App");
@@ -44,7 +47,7 @@ const editorProps = (): ComponentProps<typeof DocumentEditor> => ({
 });
 
 let cleanup: (() => Promise<void>) | null = null;
-beforeEach(() => { localStorage.clear(); counts.masterIndex = 0; fonts.fail = false; });
+beforeEach(() => { localStorage.clear(); counts.masterIndex = 0; fonts.fail = false; fonts.loads = 0; });
 afterEach(async () => { await cleanup?.(); cleanup = null; await unmountToaster(); document.body.replaceChildren(); localStorage.clear(); });
 
 async function mount(over: Partial<ComponentProps<typeof DocumentEditor>> = {}) {
@@ -182,7 +185,9 @@ it("shows a failed preview build's bare reason in one toast", async () => {
   await mountToaster();
   await mount();
   await shown("font file is gone");
-  // Asset assembly is debounced (150 ms): let a duplicate toast land too.
+  // Asset assembly is debounced (150 ms) and loads the fonts again, failing the
+  // same way: wait for that attempt, then let a duplicate toast land too.
+  await vi.waitFor(() => expect(fonts.loads).toBeGreaterThanOrEqual(2), { timeout: 5_000 });
   await settle();
   expect(toastTitles()).toEqual(["font file is gone"]);
 }, 30_000);

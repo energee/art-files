@@ -3,8 +3,12 @@
 // its sibling for suites that fake the clock. Call mountToaster() before the
 // editor sends its first message (Sonner needs the toaster mounted), and
 // unmountToaster() when the test ends. A toast lands a tick after its message
-// is sent, so use shown() to wait for one and settle() to give one that was
-// NOT sent time to (wrongly) land.
+// is sent, so use shown() to wait for one. To check that a toast did NOT land
+// (or was not dismissed), first await the event that would have caused it (an
+// open or a decode settling, a write finishing), then settle() so the toast
+// has the tick Sonner needs to appear; settle() alone proves nothing unless
+// there is no such event to await. A toast that should still be up is checked
+// with removedFlags() too, not only by its title.
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { toast } from "sonner";
@@ -35,10 +39,19 @@ export const shown = (message: string) => vi.waitFor(async () => {
   expect(document.body.textContent).toContain(message);
 }, { timeout: 15000 });
 
+/** One tick for Sonner to render a toast sent, or flag one dismissed, just
+ *  before (it defers both). Not a substitute for awaiting the event itself. */
 export const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
 
 export const toastTitles = () =>
   [...document.querySelectorAll("[data-sonner-toast] [data-title]")].map((el) => el.textContent);
+
+/** Sonner flags a dismissed toast (data-removed="true") a couple of frames
+ *  after the dismissal but keeps it in the DOM for its ~200 ms exit, so a toast
+ *  that is leaving still shows in toastTitles(). A toast that should still be
+ *  up reads "false" here. */
+export const removedFlags = () =>
+  [...document.querySelectorAll("[data-sonner-toast]")].map((el) => el.getAttribute("data-removed"));
 
 /** What the editor's header still shows as a message: the alerts, blocked pill
  *  and warning text it used to carry. Every message is a toast now, so none. */
