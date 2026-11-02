@@ -487,13 +487,16 @@ describe("LayerInspector style", () => {
 
   // Raster art prints on solid white ink whatever its plate says (the mask
   // paints its whole footprint), so the Metallic toggle would do nothing.
-  it("hides the plate toggle on raster image art, with a note; SVG art keeps it", () => {
-    render(image({ asset: "img-1" }), { rasterArt: true });
-    expect(byLabel("Metallic")).toBeNull();
-    expect(container.textContent).toContain("Raster art always prints on white ink");
+  it("shows the plate toggle inert on raster image art, with the reason; SVG art can use it", () => {
+    const { onChange } = render(image({ asset: "img-1" }), { rasterArt: true });
+    const toggle = byLabel("Metallic")!;
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    expect(document.getElementById(toggle.getAttribute("aria-describedby")!)!.textContent)
+      .toBe("Raster art always prints on white ink. Use an SVG for metallic.");
+    click(toggle);
+    expect(onChange).not.toHaveBeenCalled();
     render(image());
-    expect(byLabel("Metallic")).not.toBeNull();
-    expect(container.textContent).not.toContain("Raster art always prints on white ink");
+    expect(byLabel("Metallic")!.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("tracking is offered for text only", () => {

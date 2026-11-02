@@ -82,7 +82,7 @@ const reviewOpen = () =>
 
 const closePrompt = () =>
   Array.from(document.querySelectorAll('[role="dialog"]'))
-    .find((d) => d.textContent?.includes("unsaved changes")) ?? null;
+    .find((d) => d.textContent?.includes("will be lost")) ?? null;
 
 it.each([true, false])(
   "close-prompt Save saves the label and lets the tab close (master edit: %s)",

@@ -65,7 +65,7 @@ const openDialogs = () =>
   Array.from(document.querySelectorAll('[data-slot="dialog-content"]:not([data-closed])'));
 /** The per-tab Save / Discard / Cancel prompt. */
 const prompt = () =>
-  openDialogs().find((d) => d.textContent?.includes("unsaved changes") && !d.textContent.includes("Discard All")) ?? null;
+  openDialogs().find((d) => d.textContent?.includes("will be lost") && !d.textContent.includes("Discard All")) ?? null;
 /** The one-time prompt before a sweep of more than one unsaved tab. */
 const summary = () => openDialogs().find((d) => d.textContent?.includes("Discard All")) ?? null;
 const button = (text: string, scope = prompt()) =>
@@ -108,12 +108,10 @@ it("words the prompt for quitting during a window close, and for the tab otherwi
   await twoTabsClosingWindow();
   const title = () => prompt()!.querySelector('[data-slot="dialog-title"]')!.textContent;
   expect(title()).toBe("Save changes to “A” before quitting?");
-  expect(prompt()!.textContent).toContain("cancel to keep Label Lab open");
   await act(async () => { button("Cancel").click(); });
   await act(async () => { (document.querySelector('[aria-label^="Close B"]') as HTMLElement).click(); });
   await vi.waitFor(() => expect(prompt()?.textContent).toContain("“B”"));
   expect(title()).toBe("Close “B”?");
-  expect(prompt()!.textContent).toContain("keep the tab open");
 });
 
 it("a cancelled review aborts the window close and keeps every tab", async () => {
@@ -147,7 +145,7 @@ it("asks once before walking more than one unsaved tab", async () => {
   await act(async () => { await emit("tauri://close-requested"); });
   await vi.waitFor(() => expect(summary()).not.toBeNull());
   expect(prompt()).toBeNull();
-  expect(summary()!.textContent).toContain("2 tabs have unsaved changes");
+  expect(summary()!.textContent).toContain("Review unsaved changes before quitting?");
   expect(Array.from(summary()!.querySelectorAll("button")).map((b) => b.textContent))
     .toEqual(["Cancel", "Discard All", "Review Changes…"]);
 });
