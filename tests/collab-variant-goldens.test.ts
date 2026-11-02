@@ -34,6 +34,14 @@
 // at 600 DPI on these fixtures; over a dark flood, 5,844 px at the backing's
 // two ends only (see goldens/README.md).
 //
+// All hashes re-baselined 2026-11-02 (Starter master): the app no longer
+// bundles the laurel as `builtin:logo`; the Lolev master carries it as an SVG
+// image asset, which planLayers fits by its ink box instead of its viewBox
+// (0.009pt taller). The only changed pixels at 600 DPI are a one-pixel
+// anti-alias fringe around the laurel's outline (2171 art / 1312 mask, the
+// same OFF and ON): tests/goldens/collab-{off,on}-{art,mask}-laurel-asset.diff.png.
+// The PSD digests move for the same laurel path data.
+//
 // All hashes re-baselined 2026-09-27 (#284): barcode backing added.
 // The bare-stock/flood PDF fixtures have zero changed pixels at 600 DPI.
 // PSD backing geometry is tested; Photoshop visual review remains pending.
@@ -112,9 +120,9 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "e27905f277f406b6a4c540119b5be34d1698007575ffa82110014f5d1dd0d941", artLen: 71223,
-      mask: "1cd8b8976beb293149440f8414a15d94882b17665ce2e50f145039a8a1d7eac5", maskLen: 71337,
-      psd: "fda7b409dbb1e6d3b6abfdaa3c4df5b87c295962010759bdc1690598117f753b", psdLen: 1169316,
+      art: "9696a852e6b242588e7a641a764c9eff0776516702677ee33e62d7c7187a6b9b", artLen: 71227,
+      mask: "e16db7a3fc2c8e63b18f5d6f881b3f1a1066cc4a2abafb044fd3b7a39a9d4e33", maskLen: 71336,
+      psd: "4fe3b1b28b2822389ee437c48aaee81fbd73fdd4046220a7fc5925c724f782f4", psdLen: 1169316,
     });
   });
 });
@@ -122,9 +130,9 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "59ec5a6ea1ee65123a329c9f1b253a03ae9c9855a5dee3419d1db0148433ddb0", artLen: 73126,
-      mask: "ea1fec44e7188212333a40d14dd1ffaf3be7bc2b89861c9078d1ad180bde1afd", maskLen: 73151,
-      psd: "78cb7e412db6ed3546d913b5ed0d71e001872d9a9fa2f1ee927d3533bd012c54", psdLen: 1179336,
+      art: "2800cc460d4a758b7f69c8a665b1a2fde8748d5e770a780eb869d92e9ba98590", artLen: 73132,
+      mask: "624427e03792aaaad0cede876f196796c9c6c2b4c070ebf124ca6d67b3cdc291", maskLen: 73159,
+      psd: "8fa9894c061bd463496d54edbfb8b936e65b3071bf5827afdb7c3aba60821aaa", psdLen: 1179336,
     });
   });
 });

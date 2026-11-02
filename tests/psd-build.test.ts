@@ -263,6 +263,8 @@ describe("added layers", () => {
   // re-pinned 2026-09-28: the barcode shape is the glyph outline on both
   // plates. Art is unchanged. Re-pinned earlier that day when the quiet-zone
   // plate left the group, and for #143 (autoKerning: false).
+  // re-pinned 2026-11-02: the laurel is an SVG image asset, fitted by its
+  // ink box rather than builtin:logo's viewBox (collab-variant-goldens.test.ts).
   it("builds byte-identical output for the shipped label", async () => {
     const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
     const items = await lolevPlan();
@@ -270,8 +272,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "fda7b409dbb1e6d3b6abfdaa3c4df5b87c295962010759bdc1690598117f753b", artLen: 1169316,
-      mask: "6a5efeed74767e356addc7f570fe9c50693324c51f3336e7d323a2f858002d38", maskLen: 1169838,
+      art: "4fe3b1b28b2822389ee437c48aaee81fbd73fdd4046220a7fc5925c724f782f4", artLen: 1169316,
+      mask: "bf53414efad788e5f78e25e2e868d89916c0f338a69da4f47c99cc5cf89695a8", maskLen: 1169838,
     });
   });
 
