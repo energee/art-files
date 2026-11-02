@@ -3,10 +3,10 @@ import { FONT_FAMILIES } from "../fontCatalog";
 // as before: master.json or label.json plus the asset role directories
 // labelfile.ts's packAssets/extractAssets own (texture/<name>, mask/<name>,
 // custom/<assetId>/<name>), so the two containers cannot drift. Opening
-// converts on the way in (a v1 master.json through convertMasterV1; a v2
-// label.json is handed back as `v2` because it needs the master to convert;
-// a v1 config.json comes back raw for parseConfigFile + convertConfigV1) and
-// saving always writes v3. The legacy '{' sniff for JSON-only .master files
+// refuses a v1 master.json (Label Lab 0.1.116 is the last build that
+// converts one), hands a v2 label.json back as `v2` because it needs the
+// master to convert, returns a v1 config.json raw for parseConfigFile +
+// convertConfigV1, and saving always writes v3. The legacy '{' sniff for JSON-only .master files
 // stays. Replaces the v1 .master packer and the v2 half of src/labelfile.ts.
 import { strFromU8, strToU8, zipSync, type Zippable } from "fflate";
 import type { LabelFile, Master } from "./layers";
@@ -14,10 +14,7 @@ import { linesProblem, parseMaster, patchProblem, validateLayer, type Layer, typ
 import { t } from "@/i18n";
 import { applyDiff } from "./resolveLayers";
 import type { LabelFileV2 } from "./types";
-import { parseMaster as parseMasterV1 } from "./types";
 import { parseLabelFile } from "./labelfile";
-import { convertMasterV1 } from "./convert";
-import { starterMaster } from "./starterLayers";
 import { unpackArchive, extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
 
 /** The template assets a master carries: the master-owned subset of the
@@ -42,16 +39,15 @@ export function serializeMaster(m: Master): string {
   return JSON.stringify(m, null, 2);
 }
 
-/** A master.json of either generation → v3. A v1 file converts (with the
- *  converter's warnings), its built-in element ids taking their geometry from
- *  the shipped Starter master (an id Starter lacks, such as the logo or
- *  barcode, is dropped and warned); a newer format is refused; anything else
- *  must already be v3 and goes through parseMaster's own loud fail(). */
-export function parseMasterJson(json: unknown): { master: Master; warnings: string[] } {
+/** A master.json → v3. A v1 file is refused with the release that still
+ *  converts it, as is a newer format; anything else must already be v3 and
+ *  goes through parseMaster's own loud fail(). */
+export function parseMasterJson(json: unknown): Master {
   const version = (json as { formatVersion?: unknown } | null)?.formatVersion;
-  if (version === 1) return convertMasterV1(parseMasterV1(json), starterMaster());
+  if (version === 1)
+    throw new Error(t("This master is from Label Lab 0.1.36 or earlier. Open it in Label Lab 0.1.116 and save it to update it."));
   rejectNewerFormat(version, "master");
-  return { master: parseMaster(json), warnings: [] };
+  return parseMaster(json);
 }
 
 /** The display name a master forked by Save Master As… takes: the file the
@@ -70,13 +66,13 @@ export function packMaster(m: Master, assets: MasterAssets): Uint8Array {
   return zipSync(zip);
 }
 
-export function unpackMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets; warnings: string[] } {
+export function unpackMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } {
   const legacy = legacyJsonText(bytes); // a legacy JSON-only master, no assets
-  if (legacy !== undefined) return { ...parseMasterJson(JSON.parse(legacy)), assets: {} };
+  if (legacy !== undefined) return { master: parseMasterJson(JSON.parse(legacy)), assets: {} };
   const entries = unpackArchive(bytes);
   const entry = entries["master.json"];
   if (!entry) throw new Error(t("Not a .master file: missing master.json"));
-  return { ...parseMasterJson(JSON.parse(strFromU8(entry))), assets: extractAssets(entries) };
+  return { master: parseMasterJson(JSON.parse(strFromU8(entry))), assets: extractAssets(entries) };
 }
 
 // --- .label ---------------------------------------------------------------

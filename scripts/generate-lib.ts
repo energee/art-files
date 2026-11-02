@@ -631,8 +631,8 @@ function outputNames(stem: string, format: FormatSet, twoFile: boolean): string[
   return names;
 }
 
-function loadMaster(io: GenerateIo, path: string | undefined): { master: Master; assets: MasterAssets; warnings: string[] } {
-  if (!path) return { master: starterMaster(), assets: {}, warnings: [] };
+function loadMaster(io: GenerateIo, path: string | undefined): { master: Master; assets: MasterAssets } {
+  if (!path) return { master: starterMaster(), assets: {} };
   return unpackMaster(io.readFile(resolve(io.cwd, path)));
 }
 
@@ -678,8 +678,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   };
 
   if (args.mode === "inspect") {
-    const { master, warnings } = loadMaster(io, args.masterPath);
-    for (const w of warnings) warn(w);
+    const { master } = loadMaster(io, args.masterPath);
     io.stdout(`${JSON.stringify(inspectMaster(master), null, 2)}\n`);
     return 0;
   }
@@ -715,8 +714,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     return 0;
   }
 
-  const { master, assets: masterAssets, warnings } = loadMaster(io, args.masterPath);
-  for (const w of warnings) warn(w);
+  const { master, assets: masterAssets } = loadMaster(io, args.masterPath);
 
   let jobs: JobInput[];
   const labelExtras: GenerateInput["extraImages"] = {};

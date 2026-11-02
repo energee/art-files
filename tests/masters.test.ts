@@ -208,7 +208,7 @@ describe("master library index", () => {
   // Task 4 is App.tsx's save/open wiring, which has no automated harness
   // (see task-4-report.md).
   it("a saved master registers in the library index under its own id", () => {
-    const m = parseMasterJson(JSON.parse(serializeMaster(starterMaster()))).master;
+    const m = parseMasterJson(JSON.parse(serializeMaster(starterMaster())));
     rememberMaster(m, "/tmp/starter.master");
     expect(masterIndex()[m.id]).toMatchObject({ name: "Starter", path: "/tmp/starter.master" });
   });

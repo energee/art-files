@@ -18,7 +18,6 @@ const file = unpackMaster(new Uint8Array(readFileSync(join(root, "masters", "lol
 
 describe("masters/lolev.master", () => {
   it("unpacks cleanly and validates", () => {
-    expect(file.warnings).toEqual([]);
     expect(() => parseMaster(JSON.parse(JSON.stringify(file.master)))).not.toThrow();
   });
 

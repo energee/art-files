@@ -235,7 +235,7 @@ export type Layer = TextLayer | ImageLayer | BarcodeLayer | QrLayer;
  *  code value. */
 export type LayerValue = TextLine[] | string;
 
-/** Master guide positions; v1 masters (model/types.ts) share this shape. */
+/** Master guide positions. */
 export interface Guides {
   left: number | null; center: "auto" | null; right: number | null;
   top: number | null; bottom: number | null;   // null = guide removed

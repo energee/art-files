@@ -170,8 +170,8 @@ function lastMasterId(): string {
 }
 
 /** A resolved master with its template assets — what unpackMaster returns
- *  (a legacy JSON master resolves with empty assets; a v1 file is converted
- *  on the way in, see model/files.ts). `path` is the native file it was read
+ *  (a legacy JSON master resolves with empty assets; a v1 file is refused,
+ *  see model/files.ts). `path` is the native file it was read
  *  from, when it was read from one: the tab binds Save Master and the saved
  *  label's masterHint to that file, not to the index row for the id (#405). */
 export type ResolvedMaster = { master: Master; assets: MasterAssets; path?: string };

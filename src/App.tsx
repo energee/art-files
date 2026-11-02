@@ -221,7 +221,7 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
 
 /** The toast sources (toastId) that report on an editor's own content and go
  *  with its tab: its warnings, and the Switched notice whose Undo acts on it. */
-const TAB_TOASTS = ["label-warning", "master-warning", "restore-warning", "image-warning", "switched"] as const;
+const TAB_TOASTS = ["label-warning", "restore-warning", "image-warning", "switched"] as const;
 
 /** Focuses a layer's value field in the inspector (`<id>-content`, see
  *  contentFor). The inspector mounts a frame or two after a selection, so this
@@ -1721,15 +1721,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
 
-  /** Parse a candidate .master file (ZIP, legacy JSON, or a v1 file, which
-   *  converts), reporting a clear error and leaving the document untouched
+  /** Parse a candidate .master file (ZIP or legacy JSON; a v1 file is
+   *  refused), reporting a clear error and leaving the document untouched
    *  on a bad file. */
-  function tryParseMaster(bytes: Uint8Array, name: string): { master: Master; assets: MasterAssets } | null {
+  function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
-      const r = unpackMaster(bytes);
-      if (r.warnings.length) notify.warning(t("Opened {{file}} with changes", { file: baseName(name) }),
-        { id: toastId("master-warning"), description: r.warnings.join(" · ") });
-      return r;
+      return unpackMaster(bytes);
     } catch (err) {
       reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
@@ -1800,7 +1797,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
-    const r = tryParseMaster(bytes, name);
+    const r = tryParseMaster(bytes);
     if (!r) return;
     await rememberMaster(r.master, name, bytes);
     refreshLibrary();
@@ -1960,22 +1957,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
     // one on a quiet attempt and ask again with no explanation.
-    let bytes: Uint8Array, path: string, name: string;
+    let bytes: Uint8Array, path: string;
     try {
       const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
       if (target === undefined) { reportLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
       if ("path" in target) {
-        [bytes, path, name] = [await readNativeFile(target.path), target.path, target.path];
+        [bytes, path] = [await readNativeFile(target.path), target.path];
       } else {
         const file = await target.handle.getFile();
-        [bytes, path, name] = [new Uint8Array(await file.arrayBuffer()), "", file.name];
+        [bytes, path] = [new Uint8Array(await file.arrayBuffer()), ""];
       }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
-    const r = tryParseMaster(bytes, name);
+    const r = tryParseMaster(bytes);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
     return r && { ...r, path: path || undefined };
   }
