@@ -139,8 +139,8 @@ export interface LabelConfig {
   barcodeStrokeWidth?: number;
   barcodeLayer: Layer;
   barcodeStrokeLayer: Layer;
-  /** QR payload is derived: https://lolev.beer/beer/<machineName(beerName)>.
-   *  Fill is free hex; qrStroke "none" = no stroke, else modules get an
+  /** QR payload is derived from the beer name (machineName) by the master's
+   *  QR layer. Fill is free hex; qrStroke "none" = no stroke, else modules get an
    *  outer stroke in that color, qrStrokeWidth px @600dpi wide. Its plate is
    *  independent of qrLayer and defaults to white/non-metallic. */
   qrFill: Fill;

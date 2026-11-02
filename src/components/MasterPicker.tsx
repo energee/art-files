@@ -70,7 +70,7 @@ export type LibraryEntry = { name: string; inLibrary?: boolean; builtIn?: boolea
   // marks the shipped master, which may have no file behind it.
   & Partial<Pick<MasterIndexEntry, "path" | "lastSeen">>;
 
-/** Each row's second line, by id: "lolev.master · Used Oct 11, 2026", only
+/** Each row's second line, by id: "brewery.master · Used Oct 11, 2026", only
  *  for masters whose name another row shares — a unique name needs no
  *  second line (""). The file name gains its folder when two rows share one
  *  (recentTitles). No path reads "Built in" for the shipped master and
@@ -227,7 +227,7 @@ export function MasterPicker(props: {
   /** The working version, narrowed once so the variant verbs below need no
    *  non-null assertion in their handlers. */
   const version = props.version;
-  /** "Lolev" on the base version, "Lolev / Collab" while editing one. */
+  /** "Brewery" on the base version, "Brewery / Collab" while editing one. */
   const versionName = props.master.variants.find((v) => v.id === version)?.name;
   const editing = versionName ? `${props.master.name} / ${versionName}` : props.master.name;
   /** Every OTHER master in the library — this one already heads the menu. */

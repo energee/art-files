@@ -52,7 +52,7 @@ export function parseMasterJson(json: unknown): Master {
 
 /** The display name a master forked by Save Master As… takes: the file the
  *  user just named it, minus directories and extension. Without it the library
- *  would list two masters called "Lolev" — there is no master-name field
+ *  would list two masters with the same name — there is no master-name field
  *  anywhere in the UI to tell them apart afterwards. Empty for a path with no
  *  usable basename, which the caller reads as "keep the name you had".
  *  Accepts a POSIX path, a Windows path, or a bare file name. */

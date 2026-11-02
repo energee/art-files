@@ -19,6 +19,7 @@ import {
 } from "../../src/layout";
 import { KEYLINE, WARNING_TEXT } from "../../src/defaults";
 import { DEFAULT_STROKE_LAYER } from "../../src/strokes";
+import { machineName } from "../../src/qr";
 
 const FONT_ASC = 1.05;
 const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;
@@ -46,6 +47,10 @@ const UPC_MOD = 29.88 / 29;
 /** The laurel's image asset id, fixed rather than minted (App.tsx
  *  mintCustomAssetId) so masters/lolev.master and the tests agree. */
 export const LOGO_ASSET = "custom-asset-laurel";
+
+/** What the QR layer's value ("https://lolev.beer/beer/{name|slug}") expands
+ *  to for a beer name. Moved here from src/qr.ts, which no longer ships it. */
+export const lolevQrUrl = (name: string): string => `https://lolev.beer/beer/${machineName(name)}`;
 
 /** The styles and barcode tiers Lolev prints, recovered verbatim from
  *  presets.json — deleted 2026-09-04 (aafc163) when a master became the saved

@@ -101,7 +101,7 @@ export interface LayerBase {
    *  rotated box's top. */
   y: number | RelativeY;
   /** Which edge `y` (a number) places: the box's top (absent) or its
-   *  bottom — a bottom-anchored layer grows upward, which is how the Lolev
+   *  bottom — a bottom-anchored layer grows upward, which is how a
    *  right-hand column hangs from the bottom margin. Ignored when `y` is a
    *  binding (a bound layer's top follows the layer above). */
   vAnchor?: "top" | "bottom";
@@ -110,7 +110,7 @@ export interface LayerBase {
   guideX?: "none" | "left" | "center" | "right";
   /** Numeric y is an offset from this margin guide; none keeps absolute y. */
   guideY?: "none" | "top" | "middle" | "bottom";
-  /** 90 = rotated counter-clockwise, reading bottom-to-top (the Lolev
+  /** 90 = rotated counter-clockwise, reading bottom-to-top (a
    *  right-hand column). Absent = 0. */
   rotation?: 0 | 90;
 }
@@ -219,7 +219,7 @@ export interface BarcodeLayer extends LayerBase {
 export interface QrLayer extends LayerBase {
   kind: "qr";
   /** Payload; format string over text-layer ids with format.ts transforms
-   *  ("https://lolev.beer/beer/{name|slug}"). */
+   *  ("https://example.com/beer/{name|slug}"). */
   value: string;
   /** Resolve-time only: the unexpanded `value` template — see BarcodeLayer. */
   format?: string;

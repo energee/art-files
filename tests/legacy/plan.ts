@@ -11,7 +11,8 @@ import { displayAbv, displayName, displayStyle } from "../../src/defaults";
 import { parseDescription, parseInfoLine } from "../../src/description";
 import { warningMeasure, wrapWarning } from "../../src/warning";
 import { parseLogo } from "../../src/logo";
-import { qrPath, qrShapes, qrUrl } from "../../src/qr";
+import { qrPath, qrShapes } from "../../src/qr";
+import { lolevQrUrl } from "../fixtures/lolevMaster";
 import {
   barcodeDigitsFor, barcodeFootprint, barcodeGeometry, barcodeStrokePt,
   CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
@@ -355,7 +356,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
   // QR — payload derived from the beer name; the stroked underlay is its own
   // paths item (the grow'd path IS the stroke, so the item itself is unstroked).
   if (A && !skip("qr")) {
-    const shapes = qrShapes(qrUrl(displayName(cfg)));
+    const shapes = qrShapes(lolevQrUrl(displayName(cfg)));
     const at = { x: L.QR.x, y: L.QR.yTop };
     if (cfg.qrStroke !== "none")
       out.push({

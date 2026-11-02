@@ -37,10 +37,9 @@ import fontkit from "@pdf-lib/fontkit";
 import { planLabel } from "./legacy/plan";
 import { type MeasureFace, type Placed, type PlacedText, type PlacedBarcode, type PlacedPaths, type PlacedImage } from "./legacy/planShared";
 import { planLayers, type PlacedLayer, type TextFaces } from "../src/planLayers";
-import { lolevMaster } from "./fixtures/lolevMaster";
+import { lolevMaster, lolevQrUrl } from "./fixtures/lolevMaster";
 import type { Layer, QrLayer, TextLayer, TextLine } from "../src/model/layers";
 import { defaultConfig } from "../src/defaults";
-import { qrUrl } from "../src/qr";
 import { GOLD } from "./legacy/layout";
 import * as L from "./legacy/layout";
 import { assets as fixture, laurelCustom, logoSvg } from "./fixtures";
@@ -118,7 +117,7 @@ function newLayers(bodyLines: string[], collab: boolean): Layer[] {
   const filled = master.layers.map((l): Layer => {
     if (l.kind === "text" && values[l.id]) return { ...l, lines: values[l.id] };
     if (l.kind === "barcode") return { ...l, value: UPC };
-    if (l.kind === "qr") return { ...l, value: qrUrl(NAME) };
+    if (l.kind === "qr") return { ...l, value: lolevQrUrl(NAME) };
     return l;
   });
   const variant = master.variants.find((v) => v.id === "collab")!;

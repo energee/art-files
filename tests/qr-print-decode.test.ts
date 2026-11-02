@@ -14,8 +14,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 prepareZXingModule({ overrides: { wasmBinary: readFileSync(require.resolve("zxing-wasm/reader/zxing_reader.wasm")) } });
 import { buildArtPdf } from "../src/pdf/build";
-import { lolevMaster } from "./fixtures/lolevMaster";
-import { qrUrl } from "../src/qr";
+import { lolevMaster, lolevQrUrl } from "./fixtures/lolevMaster";
 import { assets, lolevPlan } from "./fixtures";
 
 /** Ordinary beer names of every length the shipped layout takes. */
@@ -65,7 +64,7 @@ it.each([0, 90])("decodes the printed dots QR at %s degrees (#295)", async (rota
 
 it("decodes the printed dots QR for every name in the corpus (#542)", async () => {
   const misses: string[] = [];
-  for (const name of NAMES) if (await printedQr(name, 0) !== qrUrl(name)) misses.push(name);
+  for (const name of NAMES) if (await printedQr(name, 0) !== lolevQrUrl(name)) misses.push(name);
   expect(misses).toEqual([]);
 }, 60_000);
 

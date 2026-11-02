@@ -1,5 +1,8 @@
 // defaults.ts — default LabelConfig mirroring the Labradorite reference label,
 // plus the fixed template strings (warning text, address) used by the layout.
+// defaultConfig() is what Label Lab's v1 builds wrote, Lolev values included:
+// convertConfigV1 diffs an old config.json against it, so a value changed here
+// would turn into a spurious override on every legacy label.
 import type { LabelConfig } from "./types";
 import { machineName } from "./qr";
 import { DEFAULT_STROKE_PX, GOLD, WARNING_TRACKING } from "./layout";
