@@ -16,6 +16,9 @@ const probe = vi.hoisted(() => ({
   previewUnit: null as string | null,
   rulers: null as { unit: string; onUnitChange: (unit: LengthUnit) => void } | null,
 }));
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here.
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
 vi.mock("../src/components/PreviewCompare", () => ({
   SNAP_PT: 6, PreviewCompare: (props: { unit: string }) => { probe.previewUnit = props.unit; return null; },
 }));

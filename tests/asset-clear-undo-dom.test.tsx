@@ -11,6 +11,9 @@ import { DEFAULT_RENDER } from "../src/settings";
 
 type DropProps = { label: string; fileName?: string; onFile: (f: File) => unknown; onClear?: () => unknown };
 const wells = vi.hoisted(() => ({} as Record<string, DropProps>));
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here.
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
 vi.mock("../src/components/FileDrop", () => ({
   CHECKER: "", FILE_DROP_ATTR: "data-file-drop",
   FileDrop: (p: DropProps) => { wells[p.label] = p; return null; },

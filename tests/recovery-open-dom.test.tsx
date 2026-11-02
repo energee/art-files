@@ -15,6 +15,9 @@ import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real
 
 const calls = vi.hoisted(() => [] as string[]);
 const kept = vi.hoisted(() => [] as { key: string; filePath?: string; fileModifiedAt?: number }[]);
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here.
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
 vi.mock("../src/recovery", () => ({
   keepRecovery: async (key: string, snap: { filePath?: string; fileModifiedAt?: number }) => {
     calls.push(`keep ${key}`);

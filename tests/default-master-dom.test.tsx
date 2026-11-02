@@ -1,6 +1,7 @@
 // default-master-dom.test.tsx — an untitled editor boots onto the last
 // master this operator applied (layers and positions), without that master's
-// fill values or raster art.
+// fill values or raster art. With nothing remembered it opens on the shipped
+// Starter master, not the Lolev design.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -64,6 +65,17 @@ function pickerText(container: HTMLElement) {
   return container.querySelector("#master-picker")?.textContent ?? "";
 }
 
+it("opens a fresh tab on the Starter master when nothing is remembered", async () => {
+  const { container, unmount } = await mountEditor(editorProps);
+  try {
+    await waitFor(() => pickerText(container).includes("Starter"));
+    expect(pickerText(container)).toContain("Starter");
+    expect(pickerText(container)).not.toContain("Lolev");
+  } finally {
+    await unmount();
+  }
+});
+
 it("loads the last master's layers without its fill values or art", async () => {
   const base = lolevMaster();
   const mine = {
@@ -104,6 +116,7 @@ it("shows the last applied master on a fresh untitled document", async () => {
     await waitFor(() => pickerText(container).includes("Mine"));
     expect(pickerText(container)).toContain("Mine");
     expect(pickerText(container)).not.toContain("Lolev");
+    expect(pickerText(container)).not.toContain("Starter");
   } finally {
     await unmount();
   }
@@ -115,7 +128,7 @@ it("does not replace a .label that is already queued to open", async () => {
   await act(async () => { await Promise.resolve(); });
 
   const bytes = packLabel({
-    formatVersion: 3, masterId: "lolev", enabledVariants: [],
+    formatVersion: 3, masterId: "starter", enabledVariants: [],
     values: { name: [{ text: "Peregrine", fill: "#F3CD80", layer: "metallic" }] },
   }, {});
   const onMeta = vi.fn();
@@ -126,7 +139,7 @@ it("does not replace a .label that is already queued to open", async () => {
   });
   try {
     await waitFor(() => onMeta.mock.calls.some((c) => c[0]?.title === "Peregrine"));
-    expect(pickerText(container)).toContain("Lolev");
+    expect(pickerText(container)).toContain("Starter");
     expect(pickerText(container)).not.toContain("Mine");
   } finally {
     await unmount();

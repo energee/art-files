@@ -63,6 +63,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
+import { starterMaster } from "@/model/starterLayers";
 import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes } from "@/planLayers";
 import type { Box } from "@/model/place";
@@ -381,7 +382,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
   const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
-    useHistory<Doc>(() => { const m = lolevMaster(); return { master: m, label: newLabel(m) }; });
+    useHistory<Doc>(() => { const m = starterMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -1658,11 +1659,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { assets, missing } = masterAssetBundle(forked);
     const suggested = machineName(forked.name) || "master";
     /** A fork takes its display name from the file it was saved as — without
-     *  this the library would list two masters called "Lolev" and no way to
+     *  this the library would list two masters called "Starter" and no way to
      *  tell them apart (there is no master-name field anywhere in the UI).
      *
      *  Only a name the user actually TYPED counts: accepting the suggested
-     *  filename must not rename "Lolev" to its own slug, and that is also the
+     *  filename must not rename "Starter" to its own slug, and that is also the
      *  common case, which keeps the original display name. */
     const titled = (file: string): Master => {
       const base = masterNameFromFile(file);
@@ -1836,7 +1837,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const idx = masterIndex();
     const entries: Record<string, LibraryEntry> = {
       // Always listed; the loop below replaces it when the index has a row.
-      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, builtIn: true },
+      [SHIPPED_MASTER_ID]: { name: starterMaster().name, builtIn: true },
     };
     for (const [id, e] of Object.entries(idx)) entries[id] = { ...entries[id], ...e, inLibrary: true };
     return entries;

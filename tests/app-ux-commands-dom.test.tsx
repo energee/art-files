@@ -18,6 +18,9 @@ const counts = vi.hoisted(() => ({ masterIndex: 0 }));
 // The preview's font load never settles here (unless a test makes it fail),
 // so the preview stays "rendering" throughout.
 const fonts = vi.hoisted(() => ({ pending: new Promise<never>(() => {}), fail: false, loads: 0 }));
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here.
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
 vi.mock("../src/masterCache", () => ({ cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {} }));
 vi.mock("../src/masters", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/masters")>();

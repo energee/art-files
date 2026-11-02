@@ -9,6 +9,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here.
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("../src/model/lolevLayers")).lolevMaster }));
 vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
