@@ -29,7 +29,7 @@ export const USAGE =
   "[--variant id] [--asset layerId=path] [--set id=value] [--format pdf|psd|all] [--two-file] [--label file.label]\n" +
   "       npm run generate -- [master.master] [values.json|-] --check [same flags; writes nothing]\n" +
   "       npm run generate -- [master.master] --inspect\n" +
-  "       npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
+  "       npm run generate -- --master <file> <texture|none> <mask.png|none> <outDir> [config.json] " +
   "[--collab-left=file] [--collab-center=file] [--two-file]";
 
 /** Which plates to write. A closed union, so "nothing" is unrepresentable
@@ -41,6 +41,8 @@ const wantsPsd = (f: FormatSet) => f !== "pdf";
 export type GenerateArgs =
   | {
       mode: "legacy";
+      /** Required: the legacy argv fills the old Lolev layer ids. */
+      masterPath: string;
       texturePath: string;
       maskPath: string;
       outDir: string;
@@ -135,11 +137,11 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     return { mode: "inspect", ...(masterPath ? { masterPath } : {}) };
   }
 
-  // Fewer than three positionals can only be the new form (`[values|-] <out>`
-  // on the shipped master): the legacy argv needs texture, mask and out (#105).
-  const newForm = !!(check || singles.master || singles.values || singles.label || masterPath
+  // Fewer than three positionals besides the master can only be the new form
+  // (`[values|-] <out>`): the legacy argv needs texture, mask and out (#105).
+  const newForm = !!(check || singles.values || singles.label
     || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
-    || positional.length < 3);
+    || rest.length < 3);
   if (newForm) {
     if (singles["collab-left"] || singles["collab-center"])
       throw new Error("use --asset collabLeft=file --variant collab\n" + USAGE);
@@ -175,12 +177,15 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     };
   }
 
-  // Not the new form, so three or more positionals: the legacy argv.
-  const [texturePath, maskPath, outDir, configPath] = positional;
-  if (positional.length > 4) throw new Error(USAGE);
+  // Not the new form, so three or more positionals: the legacy argv. It fills
+  // the old Lolev layer ids (background, mask, the collab slots), which the
+  // shipped Starter master partly lacks, so it must name its master.
+  if (!masterPath) throw new Error(`the texture/mask/config form needs --master <file>\n${USAGE}`);
+  const [texturePath, maskPath, outDir, configPath] = rest;
+  if (rest.length > 4) throw new Error(USAGE);
   return {
     mode: "legacy",
-    texturePath, maskPath, outDir,
+    masterPath, texturePath, maskPath, outDir,
     ...(configPath ? { configPath } : {}),
     ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
     ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
@@ -692,14 +697,14 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     if (args.maskPath !== "none") extraImages.mask = readImage(io, args.maskPath);
     if (args.collabLeft) extraImages.collabLeft = readImage(io, args.collabLeft);
     if (args.collabCenter) extraImages.collabCenter = readImage(io, args.collabCenter);
-    const master = starterMaster();
+    const { master, assets: masterAssets } = loadMaster(io, args.masterPath);
     const converted = convertConfigV1(cfg, !!(args.collabLeft || args.collabCenter), master);
     for (const w of converted.warnings) warn(w);
     const coerced = coerceValues(master, converted.label.values, converted.label.enabledVariants);
     if (Object.keys(coerced.errors).length) throw new Error(errorText(coerced.errors));
     const result = await buildLabel({
       master,
-      masterAssets: {},
+      masterAssets,
       values: coerced.values,
       enabledVariants: converted.label.enabledVariants,
       overrides: converted.label.overrides,

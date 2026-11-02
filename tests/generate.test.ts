@@ -64,9 +64,18 @@ describe("parseGenerateArgs", () => {
   });
 
   it("legacy positional accepts --two-file", () => {
-    expect(parseGenerateArgs(["none", "none", "out", "cfg.json", "--collab-left=a.svg", "--two-file"]))
-      .toMatchObject({ mode: "legacy", texturePath: "none", maskPath: "none",
+    expect(parseGenerateArgs(["--master", "m.master", "none", "none", "out", "cfg.json", "--collab-left=a.svg", "--two-file"]))
+      .toMatchObject({ mode: "legacy", masterPath: "m.master", texturePath: "none", maskPath: "none",
         outDir: "out", configPath: "cfg.json", collabLeft: "a.svg", twoFile: true });
+  });
+
+  // The legacy form fills the old Lolev layer ids (background, mask, the
+  // collab slots), which the shipped Starter master partly lacks.
+  it("legacy positional needs --master", () => {
+    expect(() => parseGenerateArgs(["none", "none", "out"]))
+      .toThrow(/texture\/mask\/config form needs --master <file>/);
+    expect(() => parseGenerateArgs(["tex.png", "mask.png", "out", "cfg.json", "--collab-left=a.svg"]))
+      .toThrow(/needs --master/);
   });
 
   it("--two-file is unavailable with --inspect", () => {
@@ -324,16 +333,23 @@ describe("runGenerate", () => {
 
   it("legacy none none out writes a print PDF and PSD pair", async () => {
     const io = memIo();
-    expect(await io.run(["none", "none", "/out"])).toBe(0);
+    expect(await io.runLolev(["none", "none", "/out"])).toBe(0);
     expect(io.files.has("/out/label.pdf")).toBe(true);
     expect(io.files.has("/out/label-mask.pdf")).toBe(false);
     expect(io.files.has("/out/label.psd")).toBe(true);
     expect(io.files.has("/out/label-mask.psd")).toBe(true);
   });
 
+  it("legacy without --master exits 2 with the usage", async () => {
+    const io = memIo();
+    expect(await io.run(["none", "none", "/out"])).toBe(2);
+    expect(io.stderr.join("")).toMatch(/needs --master <file>[\s\S]*usage:/);
+    expect([...io.files.keys()]).toEqual(["/lolev.master"]);
+  });
+
   it("legacy --two-file writes the old PDF pair", async () => {
     const io = memIo();
-    expect(await io.run(["none", "none", "/out", "--two-file"])).toBe(0);
+    expect(await io.runLolev(["none", "none", "/out", "--two-file"])).toBe(0);
     expect(io.files.has("/out/label.pdf")).toBe(true);
     expect(io.files.has("/out/label-mask.pdf")).toBe(true);
   });
@@ -449,7 +465,7 @@ describe("runGenerate", () => {
     const io = memIo();
     io.files.set("/cfg.json", json({ version: 1, ...defaultConfig(), beerName: "Old Way" }));
     io.files.set("/left.png", whitePng());
-    expect(await io.run(["none", "none", "/out", "/cfg.json", "--collab-left=/left.png"])).toBe(0);
+    expect(await io.runLolev(["none", "none", "/out", "/cfg.json", "--collab-left=/left.png"])).toBe(0);
     expect(io.files.has("/out/old-way.pdf")).toBe(true);
   });
 
