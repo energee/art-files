@@ -9,6 +9,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Security
 - **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
 
+### Changed
+- **Less explanatory text.** Removed helper lines that only repeated what the control next to them already shows: the notes under Language and Two-file export in Settings, under Margin inset, the template-field hints (Field label, Placeholder, Suffix), the link-slug note under a QR link (the preview line below it already shows the result), the "Page art always covers the full page" note, and the file-type hints in the drop zones. The Two-file export label now matches the other settings.
+
 ## [0.1.116] - 2026-10-30
 
 ### Changed

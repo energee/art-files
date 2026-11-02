@@ -96,7 +96,6 @@ function RulerSettings(props: {
         value={Number(marginValue.toFixed(decimalsOf(MARGIN_STEP[unit])))}
         min={0} max={marginMax} step={MARGIN_STEP[unit]} disabled={marginLocked}
         onChange={(value) => onMarginChange(clampMargin(unitToPoint(value, 0, unit)))} />
-      <p className="text-[11px] text-muted-foreground">{t("Sets all four margins in the master. Use Save Master to keep it.")}</p>
     </div>
   );
 }

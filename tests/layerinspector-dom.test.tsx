@@ -392,7 +392,6 @@ describe("LayerInspector geometry follows the kind", () => {
   it("background image layer fills the page without ineffective geometry controls", () => {
     render(image({ id: "background", name: "Background", role: "background", fit: "cover" }));
     expect(byLabel("Fit")).toBeNull();
-    expect(container.textContent).toContain("Page art always covers the full page.");
     expect($("#background-scale")).toBeNull();
     expect($("#background-w")).toBeNull();
     expect(byLabel("Tint raster")).toBeNull();
@@ -710,8 +709,6 @@ it("keeps typography together and template-only settings in a closed disclosure"
   expect($("#name-size")!.parentElement?.closest("details")).toBeNull();
   expect(Array.from(container.querySelectorAll("h2")).map((el) => el.textContent))
     .toEqual(["Typography", "Position", "Color", "Stroke"]);
-  expect($("#name-placeholder")!.getAttribute("aria-describedby")).toBe("name-placeholder-hint");
-  expect($("#name-placeholder-hint")!.textContent).toBe("Drawn while the layer is empty");
 });
 
 

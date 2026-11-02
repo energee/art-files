@@ -223,10 +223,7 @@ export function LayerInspector(props: {
             {t("Template field settings")}
           </summary>
           <div className="space-y-3 pt-2">
-            {layer.kind === "text" ? <FillContract layer={layer} {...ctx} /> : <>
-              <p className="text-xs text-muted-foreground">{t("Set the field label and saved choices in the master.")}</p>
-              <Vocabulary layer={layer} {...ctx} />
-            </>}
+            {layer.kind === "text" ? <FillContract layer={layer} {...ctx} /> : <Vocabulary layer={layer} {...ctx} />}
           </div>
         </details>
       )}
