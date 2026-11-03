@@ -1,13 +1,10 @@
 {
-  "title": "Authoring",
-  "description": "Masters, layers, the inspector, and the preview",
+  "title": "Fill and check",
   "defaultOpen": true,
   "pages": [
-    "masters-and-labels",
     "layers",
     "inspector",
     "editing",
-    "preview",
-    "variants"
+    "preview"
   ]
 }

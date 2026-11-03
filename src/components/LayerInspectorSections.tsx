@@ -4,7 +4,7 @@
 // through `set` with a minimal patch (LayerInspector.tsx's header). Split out
 // of LayerInspector.tsx (#433).
 import { useTranslation } from "@/i18n";
-import { ChevronsUpDown, Heading1, Link2, Link2Off, RotateCcw, WholeWord } from "lucide-react";
+import { Link2, Link2Off, RotateCcw } from "lucide-react";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
 import type {
   BindingSide, BarcodeLayer, ImageLayer, Layer, QrLayer, Symbology, TextLayer,
@@ -31,7 +31,7 @@ import { ScrubField } from "./ScrubField";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import {
-  BlankableField, DimensionField, Field, Heading, PT, Row, Segmented, SelectField, SwitchRow,
+  BadgeSlot, BlankableField, DimensionField, Field, Heading, PT, Row, Segmented, SelectField, SwitchRow,
   useInspectorOptions, type Ctx,
 } from "./LayerInspectorControls";
 
@@ -164,22 +164,20 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
   return (
     <div className="space-y-1.5">
       <Heading>{t("Typography")}</Heading>
-      <Row badge={badge(["fontFamily"], t("Font"))}>
-        <Field label={t("Font")}>
-          <Select value={layer.fontFamily ?? "inherit"}
-            onValueChange={(value) => set({ fontFamily: value === "inherit" ? undefined : value as FontFamilyId })}>
-            <SelectTrigger size="sm" aria-label={t("Font")} className="h-7 w-40 text-xs">
-              <SelectValue>{layer.fontFamily ? FONT_FAMILIES[layer.fontFamily].label : t("Default ({{font}})", { font: FONT_FAMILIES[fontFamilyOf(props)].label })}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="inherit">{t("Default ({{font}})", { font: FONT_FAMILIES[fontFamilyOf(props)].label })}</SelectItem>
-              {Object.entries(FONT_FAMILIES).map(([value, font]) => (
-                <SelectItem key={value} value={value}>{font.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </Row>
+      <Field label={t("Font")} badge={badge(["fontFamily"], t("Font"))}>
+        <Select value={layer.fontFamily ?? "inherit"}
+          onValueChange={(value) => set({ fontFamily: value === "inherit" ? undefined : value as FontFamilyId })}>
+          <SelectTrigger size="sm" aria-label={t("Font")} className="h-7 w-40 text-xs">
+            <SelectValue>{layer.fontFamily ? FONT_FAMILIES[layer.fontFamily].label : t("Default ({{font}})", { font: FONT_FAMILIES[fontFamilyOf(props)].label })}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="inherit">{t("Default ({{font}})", { font: FONT_FAMILIES[fontFamilyOf(props)].label })}</SelectItem>
+            {Object.entries(FONT_FAMILIES).map(([value, font]) => (
+              <SelectItem key={value} value={value}>{font.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
       <Row badge={badge(["size"], t("Size"))}>
         <ScrubField
           id={`${id}-size`} label={t("Size")} unit="pt" unitTitle={t("Type size is always points")} value={layer.size}
@@ -203,14 +201,14 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
       />
       <Row badge={badge(["leading"], t("Leading"))}>
         <ScrubField
-          id={`${id}-leading`} label={t("Line spacing")} icon={ChevronsUpDown} unit="×"
+          id={`${id}-leading`} label={t("Line spacing")} unit="×"
           value={layer.leading ?? 1.2} min={0.5} max={4} step={0.01} dragStep={0.05}
           onChange={(leading) => set({ leading })}
         />
       </Row>
       <Row badge={badge(["headerScale"], t("Header scale"))}>
         <ScrubField
-          id={`${id}-header-scale`} label={t("Heading scale")} icon={Heading1} unit="×"
+          id={`${id}-header-scale`} label={t("Heading scale")} unit="×"
           value={layer.headerScale ?? 1} min={0.5} max={4} step={0.01} dragStep={0.05}
           onChange={(headerScale) => set({ headerScale })}
         />
@@ -219,7 +217,7 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
           the label reads as a broken line, not a style. */}
       <Row badge={badge(["style.letterSpacing"], t("Letter Spacing"))}>
         <ScrubField
-          id={`${id}-tracking`} label={t("Letter spacing")} icon={WholeWord} unit="pt"
+          id={`${id}-tracking`} label={t("Letter spacing")} unit="pt"
           unitTitle={t("Letter spacing is always points")}
           value={layer.style.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
           onChange={(letterSpacing) => set({ style: { letterSpacing } })}
@@ -383,8 +381,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
 
 
       <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <Heading>{t("Stroke")}</Heading>
+        <Heading control={
           <span className="flex items-center gap-1.5">
             <Switch
               aria-label={t("Outer stroke")}
@@ -397,9 +394,9 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             />
             {/* One reset per state: here while the stroke is off, beside
                 the colour while it is on. */}
-            {!strokeOn && badge(["style.stroke"], t("Stroke"))}
+            <BadgeSlot badge={!strokeOn && badge(["style.stroke"], t("Stroke"))} />
           </span>
-        </div>
+        }>{t("Stroke")}</Heading>
         {strokeOn && (
           <>
             <div className="flex items-center gap-1.5">

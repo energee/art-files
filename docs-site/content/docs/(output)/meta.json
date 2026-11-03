@@ -1,9 +1,7 @@
 {
-  "title": "Files and output",
-  "description": "Labels, export, and settings",
+  "title": "Output",
   "defaultOpen": true,
   "pages": [
-    "files",
     "export",
     "settings"
   ]

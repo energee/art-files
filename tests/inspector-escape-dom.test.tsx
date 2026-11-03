@@ -2,7 +2,8 @@
 // Escape that an input already owns (cancel a draft, close suggestions, end an
 // on-canvas edit or drag) must not also close the inspector and clear the
 // selection; a bare Escape with nothing editable focused still closes it, and
-// so does the inspector's visible close button.
+// so does the inspector's visible close button. Also: the dialog is named by
+// the layer-name box (#616).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -167,4 +168,11 @@ it("closing from the close button by keyboard returns focus to where the layer w
   await act(async () => { await Promise.resolve(); });
   expect(field()).toBeNull();
   expect(document.activeElement).toBe(rowButton());
+});
+
+// #616: the inspector is a dialog, and it is named by the layer-name box.
+it("names the inspector dialog by the layer name", () => {
+  const dialog = document.querySelector('[role="dialog"]')!;
+  const by = document.getElementById(dialog.getAttribute("aria-labelledby") ?? "");
+  expect(by).toBe(document.querySelector("#barcode-name"));
 });
