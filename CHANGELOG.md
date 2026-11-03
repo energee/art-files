@@ -16,6 +16,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Generic link placeholders.** The QR link and value boxes now show `https://example.com/beer/` as their example instead of a brewery's own address.
 - **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
 - **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
+- **The 3D can looks like bare aluminium.** The can's top and bottom are now bright brushed silver, matching a printed can, instead of a dark mirror that turned the shoulder near-black.
 
 ## [0.1.116] - 2026-10-30
 
