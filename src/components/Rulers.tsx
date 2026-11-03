@@ -12,7 +12,7 @@ import {
 import { useTranslation } from "@/i18n";
 import { ART, PAGE } from "@/layout";
 import {
-  clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
+  clampMargin, layoutGuides, pointToScreen, pointToUnit, RULER_SIZE, rulerTicks, screenToPoint,
   unitToPoint, VERTICAL_LABEL_GAP, withCornerClear,
   type GuideAxis, type ManualGuide, type LengthUnit,
 } from "@/rulers";
@@ -27,7 +27,6 @@ import {
 import { RulerUnitPicker } from "@/components/RulerUnitPicker";
 import { Lock, LockOpen } from "lucide-react";
 
-const RULER_SIZE = 20;
 /** The manual-guide × (px) — sits centred in the ruler's thickness. */
 const REMOVE_SIZE = 14;
 const MARGIN_STROKE = "stroke-cyan-500/70";

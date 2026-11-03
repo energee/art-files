@@ -245,6 +245,17 @@ describe("TextEditor", () => {
     expect(box.textContent).toBe("HOPS");
   });
 
+  // #617: a <label for> can't name a contenteditable div; the caption names
+  // it through aria-labelledby instead, as the number box's caption does.
+  it("names the rich field by its caption, without a label[for]", () => {
+    renderEditor({ id: "description", label: "Description", title: "Tasting notes", lines: [] });
+    expect(container.querySelector("label[for]")).toBeNull();
+    const box = container.querySelector("#description") as HTMLElement;
+    const caption = document.getElementById(box.getAttribute("aria-labelledby") ?? "");
+    expect(caption?.textContent).toBe("Tasting notes");
+    expect(box.hasAttribute("aria-label")).toBe(false);
+  });
+
   it("shows the toolbar with Header only while focused", () => {
     renderEditor({ lines: [line("x")] });
     expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();

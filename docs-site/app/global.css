@@ -2,6 +2,17 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
+/* The app's accent (--primary in src/index.css), so the guide reads as Label Lab. */
+:root {
+  --color-fd-primary: #2563eb;
+  --color-fd-primary-foreground: #ffffff;
+}
+
+.dark {
+  --color-fd-primary: #60a5fa;
+  --color-fd-primary-foreground: #1e1f1a;
+}
+
 html {
   scrollbar-gutter: stable;
 }

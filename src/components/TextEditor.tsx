@@ -550,8 +550,9 @@ export function TextToolbarButtons(props: {
 // ---- Sidebar editor --------------------------------------------------
 
 export interface TextEditorProps {
-  /** DOM id of the widget (the contenteditable or the input) — the label's
-   *  htmlFor and what tests query. */
+  /** DOM id of the widget (the contenteditable or the input) — what the
+   *  caption names (htmlFor on an input, aria-labelledby on the rich field)
+   *  and what tests query. */
   id: string;
   label: string;
   lines: TextLine[];
@@ -577,8 +578,8 @@ export interface TextEditorProps {
   /** Caption for the field, when the layer's name is not what to say to
    *  whoever is filling it (LayerBase.title). Absent = `label`. Honoured by
    *  every field — the contract offers it on any text layer, so a plain
-   *  number box must not be the one that quietly ignores it. The aria name
-   *  stays `label`, which is the layer's identity. */
+   *  number box must not be the one that quietly ignores it. The caption is
+   *  also every widget's accessible name. */
   title?: string;
 }
 
@@ -736,7 +737,8 @@ function RichField(props: TextEditorProps) {
       {/* h-7, matching the size-sm toggles inside: a shorter row lets them
           overflow onto the field's outline below. */}
       <div className="flex h-7 items-center justify-between gap-1">
-        <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
+        {/* No htmlFor: a <label> can't name a contenteditable div (#617). */}
+        <Label id={`${id}-label`} className={LABEL_CLASS}>{title ?? label}</Label>
         <div className="flex gap-1">
           {focused && (
             <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
@@ -747,7 +749,7 @@ function RichField(props: TextEditorProps) {
         {...fieldProps}
         onBlur={undefined}
         id={id}
-        aria-label={label}
+        aria-labelledby={`${id}-label`}
         className={cn(
           "min-h-[8.5rem]",
           "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",

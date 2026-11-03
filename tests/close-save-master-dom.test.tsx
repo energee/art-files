@@ -102,7 +102,7 @@ it.each([true, false])(
 it("the close prompt offers Cancel, Discard and Save, with no master warning", async () => {
   await render(createElement(TabsShell));
   await addTextLayer();
-  const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
+  const close = document.querySelector('[role="tab"] + button') as HTMLElement;
   await act(async () => { close.click(); });
   const prompt = closePrompt();
   expect(prompt).not.toBeNull();
@@ -132,7 +132,7 @@ const nothingMounted = () => vi.waitFor(() => expect(document.querySelectorAll(
   '[data-slot="dialog-overlay"], [data-slot="dialog-content"]')).toHaveLength(0));
 
 async function pressCloseSave() {
-  const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
+  const close = document.querySelector('[role="tab"] + button') as HTMLElement;
   await act(async () => { close.click(); });
   await act(async () => { button(closePrompt()!, "Save").click(); });
 }

@@ -16,7 +16,7 @@ import type {
 import { uppercaseOf } from "./model/layers";
 import type { StyledLine } from "./types";
 import { placeLayers, type Box } from "./model/place";
-import { anchorFraction } from "./model/position";
+import { anchorFraction, type GuideLines } from "./model/position";
 import {
   digitStartX, justifiedRotatedRuns, rotatedRuns, strokeSpec,
   type Face, type MeasureFace, type Mode, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
@@ -73,6 +73,10 @@ interface Prepared { size: { w: number; h: number }; emit(box: Box): PlacedLayer
 
 // --- text -----------------------------------------------------------------
 
+/** True when a text layer is empty and draws its placeholder instead. */
+const showsPlaceholder = (l: Layer): l is TextLayer & { placeholder: string } =>
+  l.kind === "text" && !!l.placeholder && l.lines.every((ln) => !printableText(ln.text).trim());
+
 /** The lines a text layer actually draws: the placeholder when every line is
  *  empty, the suffix on the first line, uppercase applied, and every line
  *  carrying the layer's block style (fill, plate, stroke, tracking) under its
@@ -90,7 +94,7 @@ interface Prepared { size: { w: number; h: number }; emit(box: Box): PlacedLayer
 function drawableLines(l: TextLayer): TextLine[] {
   const s = l.style;
   let lines = l.lines;
-  if (l.placeholder && lines.every((ln) => !printableText(ln.text).trim()))
+  if (showsPlaceholder(l))
     lines = [{ ...(lines[0] ?? { fill: s.fill, layer: s.layer }), text: l.placeholder }];
   if (l.suffix)
     lines = lines.length
@@ -433,11 +437,32 @@ export function layerBoxes(layers: Layer[], m: MeasureFace, assets: PlanAssets):
   return layout(layers, m, assets).boxes;
 }
 
+/** Ids of the layers whose drawn box crosses the lines `g` — App passes the
+ *  die, to flag a layer that runs off the label (#607): a warning, never an
+ *  export block. Not the safe area: the shipped designs' own boxes cross it
+ *  by a few points (an ascender above the top guide, the rotated Store Cold
+ *  column in the right margin). `g` is in guide space and the boxes in page
+ *  space, so BLEED_SHIFT re-bases each box first (App's snapTargets does the
+ *  same). A zero box (page art, an empty code) has no edges to cross. */
+export function outsideGuides(boxes: ReadonlyMap<string, Box>, g: GuideLines): Set<string> {
+  const out = new Set<string>();
+  for (const [id, b] of boxes) {
+    if (b.w <= 0 || b.h <= 0) continue;
+    const x = b.x - L.BLEED_SHIFT, y = b.y - L.BLEED_SHIFT;
+    if (x < g.left || x + b.w > g.right || y < g.top || y + b.h > g.bottom) out.add(id);
+  }
+  return out;
+}
+
 export interface PlanLayersOpts {
   /** Layers to omit from the list (the in-place editor's session layer).
    *  Layout is untouched: a skipped layer still holds its box, so nothing
    *  bound below it moves. Disabled layers are the caller's to drop. */
   skip?: { has(id: string): boolean };
+  /** Plan for print (PDF, PSD): a layer showing its placeholder emits
+   *  nothing, so an unfilled field prints blank (#604). Its box stays the
+   *  placeholder's, so the print lays out exactly as the preview does. */
+  output?: boolean;
 }
 
 /** The complete display list, in array (draw) order. */
@@ -447,7 +472,7 @@ export function planLayerScene(
   const { prepared, boxes } = layout(layers, m, assets);
   const out: PlacedLayer[] = [];
   for (const l of layers) {
-    if (opts.skip?.has(l.id)) continue;
+    if (opts.skip?.has(l.id) || (opts.output && showsPlaceholder(l))) continue;
     const p = prepared.get(l.id);
     if (p) out.push(...p.emit(boxes.get(l.id)!));
   }
