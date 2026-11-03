@@ -193,22 +193,23 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
   });
 }
 
-/** Where the view preferences (the rulers/guides toggles and the length
- *  unit) persist — localStorage, like every other per-operator setting
- *  (settings.ts, masters.ts). Only the known keys are read, so an entry
+/** Where the view preferences (the rulers/guides toggles, the length
+ *  unit and the 3D lighting angle) persist — localStorage, like every other
+ *  per-operator setting (settings.ts, masters.ts). Only the known keys are read, so an entry
  *  written by an earlier build sheds its extras on the next write instead of
  *  leaking them in. Reads and writes are both guarded: storage can be missing
  *  or full, and a view preference is never worth an error. */
 // The key predates the app's name; renaming it would reset every saved view.
 const VIEW_KEY = "lolev-view";
-type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit };
+type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit; lightDeg: number };
 function loadViewPrefs(): ViewPrefs {
-  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in" };
+  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in", lightDeg: 0 };
   try {
     const stored = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
     if (typeof stored.showRulers === "boolean") prefs.showRulers = stored.showRulers;
     if (typeof stored.showGuides === "boolean") prefs.showGuides = stored.showGuides;
     if (LENGTH_UNITS.includes(stored.unit as LengthUnit)) prefs.unit = stored.unit as LengthUnit;
+    if (typeof stored.lightDeg === "number" && Math.abs(stored.lightDeg) <= 180) prefs.lightDeg = stored.lightDeg;
   } catch {
     // a hand-mangled entry falls back to the defaults rather than crashing boot
   }
@@ -688,6 +689,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [showRulers, setShowRulers] = useState(() => loadViewPrefs().showRulers);
   const [unit, setUnit] = useState(() => loadViewPrefs().unit);
   const [showGuides, setShowGuides] = useState(() => loadViewPrefs().showGuides);
+  // The 3D light rig's angle, in degrees (0 = the default rig). Set in the
+  // Can view; it lights the Rendered view too.
+  const [lightDeg, setLightDeg] = useState(() => loadViewPrefs().lightDeg);
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -702,11 +706,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
   useEffect(() => {
     try {
-      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit }));
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit, lightDeg }));
     } catch {
       // full or missing storage: the preference lasts this session only
     }
-  }, [showRulers, showGuides, unit]);
+  }, [showRulers, showGuides, unit, lightDeg]);
 
   /** Whether the document differs from the last saved/opened project —
    *  File → Save Label disables while clean. Clear it ONLY after a completed open
@@ -2664,7 +2668,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 }}
                 layers={drawLayers} source={canvasSource} bleedIn={render.bleedIn}
                 mode={canSceneMode} cornerRadiusPct={render.cornerRadius}
-                edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} exporting={!!exporting}
+                edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} lightDeg={lightDeg} exporting={!!exporting}
                 onRenderError={setRenderError} />
               </Suspense>
             )}
@@ -2751,6 +2755,16 @@ export const DocumentEditor = memo(function DocumentEditor({
                   </button>
                 ))}
               </div>
+            )}
+            {viewMode === "can" && (
+              <label title={t("Turn the lights around the can")}
+                className="ml-2 flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                {t("Lighting")}
+                <input type="range" aria-label={t("Lighting")} min={-180} max={180} step={5}
+                  value={lightDeg} onChange={(e) => setLightDeg(Number(e.target.value))}
+                  className="w-24 accent-primary" />
+                <span className="w-10 tabular-nums">{lightDeg}°</span>
+              </label>
             )}
             {viewMode === "rendered" && (
               <label title={t("Bend the label like it's on a can: 0% flat, 100% the can's curve")}

@@ -502,6 +502,8 @@ const de: Record<keyof typeof en, string> = {
   "One can": "Eine Dose",
   "Four-pack": "Viererpack",
   "Bend the label like it's on a can: 0% flat, 100% the can's curve": "Etikett wie auf einer Dose krümmen: 0 % flach, 100 % Dosenkrümmung",
+  "Lighting": "Beleuchtung",
+  "Turn the lights around the can": "Lichter um die Dose drehen",
   "Curve": "Krümmung",
   "Close {{name}} (unsaved changes)": "{{name}} schließen (ungespeicherte Änderungen)",
   "Close {{name}}": "{{name}} schließen",

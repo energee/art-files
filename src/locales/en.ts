@@ -501,6 +501,8 @@ const en = {
   "One can": "One can",
   "Four-pack": "Four-pack",
   "Bend the label like it's on a can: 0% flat, 100% the can's curve": "Bend the label like it's on a can: 0% flat, 100% the can's curve",
+  "Lighting": "Lighting",
+  "Turn the lights around the can": "Turn the lights around the can",
   "Curve": "Curve",
   "Close {{name}} (unsaved changes)": "Close {{name}} (unsaved changes)",
   "Close {{name}}": "Close {{name}}",

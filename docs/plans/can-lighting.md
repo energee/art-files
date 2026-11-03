@@ -1,6 +1,6 @@
 # Configurable can lighting
 
-Status: Phase 1 plan, awaiting approval. Issue #570 (follow-up to #666).
+Status: approved and implemented. The control is labelled **Lighting**, not **Light**: `Light` is already the theme option's translation key (es *Claro*, de *Hell*). Issue #570 (follow-up to #666).
 
 ## Why
 
