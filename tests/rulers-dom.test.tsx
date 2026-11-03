@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rulers } from "../src/components/Rulers";
 import type { PreviewCompareHandle } from "../src/components/PreviewCompare";
 import { DEFAULT_MARGIN_PT, type ManualGuide } from "../src/rulers";
+import { DEFAULT_RENDER } from "../src/settings";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -57,6 +58,7 @@ function renderRulers(over: Partial<Parameters<typeof Rulers>[0]> = {}) {
     showRulers: true, unit: "in", onUnitChange: vi.fn(),
     showGuides: true, marginPt: DEFAULT_MARGIN_PT, onMarginChange: vi.fn(),
     manual: MANUAL, onAddManual: vi.fn(), onMoveManual: vi.fn(), onRemoveManual: vi.fn(),
+    bleedIn: DEFAULT_RENDER.bleedIn, dpi: DEFAULT_RENDER.dpi,
     ...over,
   };
   act(() => { root.render(createElement(Rulers, props)); });

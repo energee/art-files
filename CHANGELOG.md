@@ -20,6 +20,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Generic link placeholders.** The QR link and value boxes now show `https://example.com/beer/` as their example instead of a brewery's own address.
 - **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
 - **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
+- **Faster typing in the inspector.** Typing in a layer's Text field no longer redraws the Layers list, the rulers or the menu bar on every key, so about 30% fewer components redraw per key.
 - **The 3D can looks like bare aluminium.** The can's top and bottom are now bright brushed silver, matching a printed can, instead of a dark mirror that turned the shoulder near-black.
 - **New barcodes and QR codes start black with a white halo.** A newly added Barcode or QR layer is now black on white ink inside the white outline the Stroke switch already uses for codes, instead of metallic gold with a black outline. Scan a proof before printing.
 - **Shorter export file names.** The suggested PDF, PSD and project file name is cut at a word boundary within 40 characters of the beer name, instead of the whole name.
