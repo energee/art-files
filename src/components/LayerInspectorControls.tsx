@@ -96,13 +96,23 @@ export function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "u
 
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
- *  panel reads in the app's established voice. */
-export function Heading(props: { children?: ReactNode }) {
+ *  panel reads in the app's established voice. `control` sits at the
+ *  heading's right (Stroke's switch), inside the same full-width rule and
+ *  centred on the heading text (#621). */
+export function Heading(props: { children?: ReactNode; control?: ReactNode }) {
   return (
-    <h2 className="mb-2 mt-4 border-t border-border pt-3 text-xs font-medium text-foreground">
-      {props.children}
-    </h2>
+    <div className="mb-2 mt-4 flex items-center justify-between border-t border-border pt-3">
+      <h2 className="text-xs font-medium text-foreground">{props.children}</h2>
+      {props.control}
+    </div>
   );
+}
+
+/** The override badge's column, held open while no badge shows, so every
+ *  control lines up and none shifts left when its reset dot appears (#619),
+ *  like the Layers list's fixed control columns. */
+export function BadgeSlot(props: { badge?: ReactNode }) {
+  return <span className="flex min-w-6 shrink-0 justify-end">{props.badge}</span>;
 }
 
 /** A field with its (optional) override badge to the right, so the badge
@@ -111,7 +121,7 @@ export function Row(props: { badge?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="min-w-0 flex-1">{props.children}</div>
-      {props.badge}
+      <BadgeSlot badge={props.badge} />
     </div>
   );
 }
@@ -124,7 +134,7 @@ export function Field(props: { id?: string; label: string; badge?: ReactNode; ch
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
       <span className="flex items-center gap-1.5">
         {props.children}
-        {props.badge}
+        <BadgeSlot badge={props.badge} />
       </span>
     </div>
   );
