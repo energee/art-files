@@ -3,14 +3,16 @@
 // review's itemised changes (masterChanges) and folding its ticked promote
 // rows back in (applyPromotions).
 import type { LabelFile, Layer, Master, Variant } from "./layers";
-import { isPlain, deepEqual, deepMerge, getPath } from "./merge";
+import { isPlain, deepEqual, deepMerge, getPath, unsafePath } from "./merge";
 import { valueOf, valuePath, widenValue } from "./resolveLayers";
 import { variantOf, withEntries, type Entry, type LayerPatch } from "./editRecords";
 import { labelOverriddenPaths, leafPaths, ownsBytes, patchLayer, patchLayerIn } from "./editLayers";
 import { clearLabelOverride, clearValue, setLabelOverride } from "./editLabel";
 
-/** Dot-path write, creating intermediate objects on the way down. */
+/** Dot-path write, creating intermediate objects on the way down. An unsafe
+ *  path writes nothing. */
 function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
+  if (unsafePath(path)) return;
   const keys = path.split(".");
   let at = obj;
   for (const k of keys.slice(0, -1)) at = (at[k] ??= {}) as Record<string, unknown>;

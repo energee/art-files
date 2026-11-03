@@ -7,7 +7,7 @@
 // wrappers over it.
 import { describe, expect, it, vi } from "vitest";
 import {
-  adoptMaster, addVariant, removeLayerIn, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
+  adoptMaster, addVariant, applyPromotions, pinPromoted, removeLayerIn, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
   setLayerIn, showVersion, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "./fixtures/lolevMaster";
@@ -319,4 +319,23 @@ it("inspects, moves, edits and removes label-only legacy layers (#264)", () => {
   const removed = removeLayerIn(moved, "legacy");
   expect(byId(removed, "legacy")).toBeUndefined();
   expect(removed.master).toBe(d.master);
+});
+
+// Override paths come from parsed .label/.master JSON, where JSON.parse keeps
+// "__proto__" as an own key: no path walk may reach Object.prototype.
+it("a __proto__ override path never writes Object.prototype", () => {
+  const m = lolevMaster();
+  const label: LabelFile = { ...newLabel(m), overrides: JSON.parse('{"name":{"__proto__":{"polluted":1}}}') };
+  const promote = [{ kind: "promote", layerId: "name", layerName: "Name", path: "__proto__.polluted", from: undefined, to: 1 } as const];
+  const clean = () => expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  try { applyPromotions(m, label, promote); } catch { /* a refusal is fine; a write is not */ }
+  clean();
+  pinPromoted(newLabel(m), promote);
+  clean();
+  // A walk that DELETES through __proto__ would strip Object.prototype.
+  (Object.prototype as Record<string, unknown>).polluted = "builtin";
+  try {
+    patchLayers({ master: m, label }, [["name", { x: 1 }]]);
+    expect(({} as Record<string, unknown>).polluted).toBe("builtin");
+  } finally { delete (Object.prototype as Record<string, unknown>).polluted; }
 });

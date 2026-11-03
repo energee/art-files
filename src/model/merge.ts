@@ -17,8 +17,16 @@ export function deepMerge<T>(base: T, patch: DeepPartial<T>): T {
   return out as T;
 }
 
-/** Dot-path read; undefined when the path doesn't resolve. */
+/** A dotted path no walk may follow. Paths come from parsed .label/.master
+ *  JSON, where JSON.parse keeps "__proto__" as an own key; following it (or
+ *  constructor.prototype) reaches Object.prototype, so a write or delete
+ *  there would pollute every object. */
+export const unsafePath = (path: string): boolean =>
+  path.split(".").some((k) => k === "__proto__" || k === "constructor" || k === "prototype");
+
+/** Dot-path read; undefined when the path doesn't resolve or is unsafe. */
 export function getPath(obj: unknown, path: string): unknown {
+  if (unsafePath(path)) return undefined;
   let at: unknown = obj;
   for (const k of path.split(".")) {
     if (!at || typeof at !== "object") return undefined;

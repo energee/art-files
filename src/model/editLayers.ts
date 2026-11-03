@@ -9,7 +9,7 @@ import type {
 } from "./layers";
 import type { Box } from "./place";
 import { parseMaster } from "./layers";
-import { isPlain, deepMerge, type DeepPartial } from "./merge";
+import { isPlain, deepMerge, unsafePath, type DeepPartial } from "./merge";
 import { resolveLayers } from "./resolveLayers";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
@@ -303,8 +303,9 @@ export function patchLayerIn(master: Master, variant: string, id: string, patch:
 }
 
 /** Deletes one dot-path in place, pruning any object left empty above it.
- *  No-op when the path doesn't resolve. */
+ *  No-op when the path doesn't resolve or is unsafe (unsafePath). */
 function deletePath(obj: Record<string, unknown>, path: string): void {
+  if (unsafePath(path)) return;
   const keys = path.split(".");
   const chain: Record<string, unknown>[] = [obj];
   for (let i = 0; i < keys.length - 1; i++) {
