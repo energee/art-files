@@ -288,8 +288,11 @@ export class CanScene {
     if (!gltf || this.disposed) return;
 
     const model = gltf.scene;
+    // Matched to a studio photo of a printed can, where the bare top and
+    // bottom read bright silver: a darker colour or a smoother finish mirrors
+    // the HDRI's dark regions and turns the shoulder near-black (#570).
     this.canMaterial = new THREE.MeshPhysicalMaterial({
-      color: "#999999", metalness: 1.0, roughness: 0.24,
+      color: "#d0d0d0", metalness: 1.0, roughness: 0.4,
       clearcoat: 1.0, clearcoatRoughness: 0.1, side: THREE.DoubleSide,
     });
     model.traverse((child) => {

@@ -289,6 +289,22 @@ describe("selected invalid Layers row: ring on its tint", () => {
   });
 });
 
+// The label sheet's edge (PreviewCompare.tsx, border-plate-edge) is what
+// separates the white plate from the workspace in light. It needs the 3:1
+// non-text minimum against both; dark keeps its quiet --border edge.
+describe("label sheet edge", () => {
+  it("holds 3:1 against the workspace and a white plate in light", () => {
+    for (const bg of [token("background", "light"), "#ffffff"]) {
+      const ratio = contrast(token("plate-edge", "light"), bg);
+      expect(ratio, `--plate-edge on ${bg}: ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("is the plain --border in dark", () => {
+    expect(token("plate-edge", "dark")).toBe(token("border", "dark"));
+  });
+});
+
 describe("semantic utilities — @theme inline exposure", () => {
   it("exposes --color-<accent>, --color-<accent>-text and --color-<accent>-soft for all six accents", () => {
     for (const accent of ACCENTS) {

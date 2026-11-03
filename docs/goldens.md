@@ -31,15 +31,19 @@ Afterwards the golden is byte-locked again.
 
    ```sh
    git worktree add .agents/worktrees/golden-old <last-good-sha>
-   (cd .agents/worktrees/golden-old && npm install && \
-     npm run generate -- <texture.png|none> <mask.png|none> /tmp/golden-old [config.json])
+   (cd .agents/worktrees/golden-old && npm ci && \
+     npm run generate -- --master masters/lolev.master \
+       <texture.png|none> <mask.png|none> /tmp/golden-old [config.json] --two-file)
    ```
 
-   The same four files also come from the master/values form, e.g.
-   `npm run generate -- --out /tmp/golden-old --format all` for the shipped
-   Lolev master with empty fills, or a `.master` plus `values.json`.
+   This is the older texture/mask/config.json argv, kept for re-baselines. It
+   fills the Lolev layer ids, so it needs a master that has them. Commits from
+   before the Starter master (#603) take it without `--master`. The same files
+   also come from the master/values form:
+   `npm run generate -- --master masters/lolev.master --out /tmp/golden-old --two-file`
+   for the Lolev master with empty fills, or a `.master` plus `values.json`.
 
-   `generate` writes `{slug}.pdf`, `{slug}-mask.pdf`, `{slug}.psd` and
+   With `--two-file`, `generate` writes `{slug}.pdf`, `{slug}-mask.pdf`, `{slug}.psd` and
    `{slug}-mask.psd`, where `slug` is `machineName` of the name layer (or
    `label` if that layer is blank). A beer named Labradorite is
    `labradorite.pdf`. Use the same texture, mask and values the golden

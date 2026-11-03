@@ -8,9 +8,11 @@
 // template with File → Save Master As…, which mints a new master id, rebinds
 // this document onto it and actually writes the file (the old "Duplicate as
 // new master…" did all of that except the writing). The ONE exception is
-// "Save Master…/Save Variant…" button below, shown only while there is
-// something to save: a save writes into whichever version this Select names,
-// so the picker is where you can see the target while choosing to write it.
+// "Save Master…/Save Variant…" button at the end of the Select's row (not a
+// row of its own, which pushed the Layers list down), shown only while there
+// is something to save: a save writes into whichever version this Select
+// names, so the picker is where you can see the target while choosing to
+// write it.
 // It runs the File menu's own Save Master (App's requestMasterSave) — the
 // same direct write or review, same dirty gate, no second path.
 //
@@ -28,7 +30,8 @@
 //   * actions at the foot: New Variant, plus Rename Variant… and Delete
 //     Variant while a variant is the version (they were permanent buttons
 //     under the Select; a red Delete always in reach was the wrong default).
-// The first two sit under "Current master" / "Other masters" headings, and
+// The current master heads the menu with no heading of its own; the others
+// sit under an "Other masters" heading, and
 // every master row carries a second line — its file name and the day it was
 // last opened, saved or picked here (the index's lastSeen) — because two
 // masters can share a name (a fork keeps it until renamed).
@@ -135,7 +138,7 @@ export function MasterPicker(props: {
   onRenameVersion: (id: string, name: string) => void;
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
-  /** File → Save Master…, the button under the Select while `templateMoved`:
+  /** File → Save Master…, the button beside the Select while `templateMoved`:
    *  writes into whichever version the Select names, through the review
    *  when the label has something to promote. */
   onSaveMaster: () => void;
@@ -248,6 +251,7 @@ export function MasterPicker(props: {
 
   return (
     <div className="px-2 py-2">
+      <div className="flex items-center gap-1.5">
       <Select
         value={props.version === null ? props.master.id : VERSION + props.version}
         // Also while a switch commits: a second pick would rebind twice.
@@ -271,13 +275,12 @@ export function MasterPicker(props: {
           if (id === props.master.id) { props.onVersion(null); return; }
           void pickEntry(id);
         }}>
-        <SelectTrigger ref={triggerRef} id="master-picker" aria-label={translate("Master")} size="sm" className="w-full">
+        <SelectTrigger ref={triggerRef} id="master-picker" aria-label={translate("Master")} size="sm" className="min-w-0 flex-1">
           <span className="text-muted-foreground">{translate("Master:")}</span>
           <SelectValue>{editing}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectLabel>{translate("Current master")}</SelectLabel>
             <SelectItem value={props.master.id} label={props.master.name}>
               <MasterRow name={props.master.name} detail={details[props.master.id]} />
             </SelectItem>
@@ -327,7 +330,14 @@ export function MasterPicker(props: {
           </>)}
         </SelectContent>
       </Select>
-      {naming !== null ? (
+      {naming === null && props.templateMoved && (
+        <Button type="button" id="variant-save" size="xs" variant="attention"
+          className="shrink-0" onClick={props.onSaveMaster}>
+          {props.saveLabel}
+        </Button>
+      )}
+      </div>
+      {naming !== null && (
         <input
           autoFocus
           aria-label={translate("Variant name")}
@@ -342,11 +352,6 @@ export function MasterPicker(props: {
             if (e.key === "Escape") setNaming(null);
           }}
         />
-      ) : props.templateMoved && (
-        <Button type="button" id="variant-save" size="xs" variant="attention"
-          className="mt-1" onClick={props.onSaveMaster}>
-          {props.saveLabel}
-        </Button>
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">{translate("Opening master…")}</p>}
       {/* Always mounted: screen readers announce a change inside a live

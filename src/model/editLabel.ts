@@ -3,15 +3,15 @@
 // edit to the label and only the fill contract to the master; patchLayer, the
 // Design write path it hands the fill contract to, is editLayers'. checkLabelBindings is
 // the label-side twin of parseMaster's binding check.
-import type { LabelFile, LayerValue, Master } from "./layers";
+import type { LabelFile, Layer, LayerValue, Master } from "./layers";
 import { validateBindings } from "./layers";
-import { deepMerge, type DeepPartial } from "./merge";
-import { resolveLayers } from "./resolveLayers";
+import { deepEqual, deepMerge, getPath, type DeepPartial } from "./merge";
+import { applyDiff, resolveLayers } from "./resolveLayers";
 import { validateFor } from "../barcode";
 import { upcDigits } from "../upc";
 import { fieldRefs } from "./format";
 import { without, type Doc, type Entry, type LayerPatch } from "./editRecords";
-import { clearEntry, isLabelOnly, patchLayer } from "./editLayers";
+import { clearEntry, isLabelOnly, leafPaths, patchLayer } from "./editLayers";
 import { enableBeneathVersion } from "./editVariants";
 import { t } from "@/i18n";
 
@@ -82,6 +82,10 @@ const MASTER_PATHS: ReadonlySet<string> =
  *  no warning. The fill contract still routes to the master, since those
  *  fields live in the master file whether the variant is on or not.
  *
+ *  An override path that lands back on the value the master (and the
+ *  enabled variants) already give the layer is dropped, not stored: a layer
+ *  dragged back where it started is no longer "set by this label" (#624).
+ *
  *  Bindings are NOT checked here — see checkLabelBindings (#93). */
 export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
@@ -114,9 +118,30 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
         resolves = resolvable(label);
       }
     }
-    if (rest.length && resolves.has(id)) label = setLabelOverride(label, id, pick(rest));
+    if (rest.length && resolves.has(id))
+      label = labelOnly ? setLabelOverride(label, id, pick(rest))
+        : dropRedundant(d.master, setLabelOverride(label, id, pick(rest)), id);
     return master === d.master && label === d.label ? d : { master, label };
   }, doc);
+}
+
+/** `label` without the paths of its override for `id` that equal what the
+ *  master and the label's enabled variants already give that layer. A null
+ *  path (unset) is redundant where the base has no value either. */
+function dropRedundant(master: Master, label: LabelFile, id: string): LabelFile {
+  const own = label.overrides?.[id];
+  if (!own) return label;
+  let base = master.layers.find((l) => l.id === id);
+  for (const vid of label.enabledVariants) { // enable order, as resolveLayers
+    const p = master.variants.find((v) => v.id === vid)?.layers[id];
+    if (p) base = applyDiff(base ?? ({} as Layer), p);
+  }
+  const paths = new Set<string>();
+  leafPaths(own, "", paths);
+  return [...paths].reduce((l, path) => {
+    const value = getPath(own, path);
+    return deepEqual(value === null ? undefined : value, getPath(base, path)) ? clearLabelOverride(l, id, path) : l;
+  }, label);
 }
 
 /** Returns `doc` unchanged, or THROWS when its label's resolved layers break

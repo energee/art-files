@@ -5,7 +5,7 @@
 // Pure values and style objects, no React state. Split out of
 // PreviewCompare.tsx (#433).
 import type { ResizeHandle } from "@/model/edit";
-import { ART, PAGE } from "@/layout";
+import { ART, cssFill, PAGE } from "@/layout";
 import type { Style } from "@/types";
 
 /** The eight selection ticks, which double as resize handles. hx/hy name
@@ -92,4 +92,4 @@ export const corner = (x: number, y: number): React.CSSProperties => ({
  *  anything else shows its fill (flat — the metallic sheen is the print's,
  *  not the screen's). */
 export const inkOf = (st: Style) =>
-  (st.layer === "white" || st.fill === "none" ? "#FFFFFF" : st.fill);
+  (st.layer === "white" ? "#FFFFFF" : cssFill(st.fill));

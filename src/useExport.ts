@@ -226,14 +226,15 @@ export function useExport({
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the pdf-lib widths the PDF draws with
    *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
-   *  Every bundled family is loaded so a layer's own font measures true. */
+   *  Every bundled family is loaded so a layer's own font measures true.
+   *  An output plan: an empty field's placeholder is left out (#604). */
   async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
     const [{ pdfMeasureFace }, loaded] = await Promise.all([
       import("@/pdf/build"),
       Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
     ]);
     const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
-    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssets());
+    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssets(), { output: true });
     const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
     const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
     return { plan, images: await imageAssets(), fontFamilies };

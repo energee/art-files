@@ -1,4 +1,4 @@
-// field-input-dom.test.tsx — scrub rate changes and ordinary pasted hex colors.
+// field-input-dom.test.tsx — scrub rate changes and typed hex and CMYK colors.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -61,6 +61,19 @@ it("applies a full #rrggbb as it is typed, a 3-digit hex only on commit", () => 
     typeHex(input, "#abc");
     act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
     expect(change).toHaveBeenLastCalledWith("#aabbcc");
+  } finally { done(); }
+});
+// CMYK is typed into the same box (#571): it applies, canonical, once the
+// closing parenthesis lands, and never mid-entry.
+it("applies a typed cmyk(c,m,y,k) once it is complete", () => {
+  const { input, change, done } = mountColor();
+  try {
+    typeHex(input, "cmyk(15, 25, 70, 5");
+    expect(change).not.toHaveBeenCalled();
+    typeHex(input, "cmyk(15, 25, 70, 5)");
+    expect(change).toHaveBeenLastCalledWith("cmyk(15,25,70,5)");
+    typeHex(input, "cmyk(15,25,70,500)");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
   } finally { done(); }
 });
 // Delete on the last saved swatch moved focus to the Save button while it was

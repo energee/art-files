@@ -249,7 +249,7 @@ it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
 // the ABV's number box. The caption now names the input kind.
 it("captions the fill field by input kind", async () => {
   await withEditor(async () => {
-    const caption = (id: string) => document.querySelector(`label[for="${id}-content"]`)?.textContent;
+    const caption = (id: string) => document.querySelector(`label[for="${id}-content"], #${id}-content-label`)?.textContent;
     await selectLayer("abv");
     expect(caption("abv")).toBe("Number");
     await selectLayer("name");

@@ -14,7 +14,7 @@ import { barcodeDigitsFor, barcodeGeometry, barcodeStrokePt } from "./legacy/bar
 import { encodeUpc, encodeEan13 } from "../src/upc";
 import { encodeCode128 } from "../src/code128";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
-import { BARCODE as B, COLORS, PAGE, PX, parseHexFill } from "./legacy/layout";
+import { BARCODE as B, COLORS, PAGE, PX, parseFill, parseHexFill } from "./legacy/layout";
 
 const UPC = "850051366224";
 
@@ -49,7 +49,7 @@ const sameColor = (a: Color, b: { r: number; g: number; b: number }) =>
 /** Split an art pass into its stroke-colored halo shapes and its fill ones. */
 function split(cfg: LabelConfig) {
   const { rects, texts } = draw(cfg, "art");
-  const ink = parseHexFill(cfg.barcodeFill);
+  const ink = parseFill(cfg.barcodeFill).rgb;
   return {
     bars: rects.filter((r) => sameColor(r.color, ink)),
     halo: rects.filter((r) => !sameColor(r.color, ink)),
