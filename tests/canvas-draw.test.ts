@@ -394,6 +394,7 @@ describe("canvas text is unkerned, like the PDF (#86)", () => {
       measureText: () => { seen.push(String(measureCtx.fontKerning)); return { width: 1 }; },
     };
     vi.stubGlobal("FontFace", class { load() { return Promise.resolve(this); } });
+    vi.stubGlobal("fetch", async () => new Response(new Uint8Array(1)));
     vi.stubGlobal("document", { fonts: { add() {} }, createElement: () => ({ getContext: () => measureCtx }) });
     const { loadLabelFaces } = await import("../src/fonts");
     (await loadLabelFaces("barlow-condensed"))("AVATAR", 10, "regular");

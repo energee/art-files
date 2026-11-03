@@ -7,13 +7,12 @@
 // PDF with pdftoppm at 72 * SCALE dpi and the two rasters line up. Run:
 // npm run strokecap. Results land on window.__cap for a driver to read.
 import { buildArtPdf } from "../pdf/build";
-import { loadFonts } from "../pdf/fonts";
 import { planLayers } from "../planLayers";
 import { convertConfigV1 } from "../model/convert";
 import { resolveLayers } from "../model/resolveLayers";
 import { starterMaster } from "../model/starterLayers";
 import { drawPlate } from "../canvas/draw";
-import { labelFontCss, loadLabelFaces } from "../fonts";
+import { labelFontCss, loadFonts, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
 import { hitBoxesFromLayout } from "../hittestLayers";
 import { layerBoxes } from "../planLayers";

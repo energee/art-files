@@ -31,11 +31,10 @@ vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => save.desktop }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: save.revealItemInDir }));
 // The real builders run (as save-races-dom does) on the fixture fonts; only
 // the save dialog is faked. An empty layer list still yields both plates.
-vi.mock("../src/fonts", () => ({ FONT_URLS: { poppins: {} } }));
-vi.mock("../src/pdf/fonts", async () => {
-  const { assets } = await import("./fixtures");
-  return { loadFonts: async () => assets.fonts };
-});
+vi.mock("../src/fonts", () => ({
+  FONT_URLS: { poppins: {} },
+  loadFonts: async () => (await import("./fixtures")).assets.fonts,
+}));
 
 await import("../src/pdf/build"); // before any test fakes the clock (tests/toast-harness.ts)
 const { useExport } = await import("../src/useExport");

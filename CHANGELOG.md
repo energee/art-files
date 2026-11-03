@@ -16,6 +16,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Generic link placeholders.** The QR link and value boxes now show `https://example.com/beer/` as their example instead of a brewery's own address.
 - **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
 - **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
+- **Faster start-up.** Label Lab now loads only the translations for the language you use, instead of all five, and opens straight in that language. A PDF or PSD export no longer loads every translation in the background either.
+- **Label fonts load once.** Each label font file is now read once and shared by the preview, the export and the character-height checks, instead of being read separately for each.
 
 ## [0.1.116] - 2026-10-30
 

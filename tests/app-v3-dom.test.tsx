@@ -20,15 +20,13 @@ vi.mock("../src/fonts", () => ({
   loadLabelFaces: async (...args: unknown[]) => { perf.fontLoads++; perf.fontArgs.push(args); await perf.facesGate; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
   FONT_URLS: { poppins: {}, "barlow-condensed": {} },
+  loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
 }));
 // Exports wait on loadFonts; the export test holds every call open to read
 // the in-flight overlay, then rejects them all to finish the export. Every
 // pending reject is kept: an export makes several loadFonts calls, and the
 // inspector's character-height readout may make another.
 const exportFonts = vi.hoisted(() => ({ rejects: [] as ((e: Error) => void)[] }));
-vi.mock("../src/pdf/fonts", () => ({
-  loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
-}));
 import { DocumentEditor } from "../src/App";
 
 /** Mount a real DocumentEditor; `onMeta` records the tab metadata it reports. */

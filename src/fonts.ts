@@ -1,10 +1,11 @@
-// fonts.ts — the ONE gate between the label's font and the DOM. Registers
-// the bundled TTFs the PDF builds embed (see pdf/fonts.ts, which shares the
-// FONT_URLS map below) as document faces under labelFontCss(id), and hands
-// back the face-aware canvas measure that hit-testing and the in-place editor
-// share. Measurement is unkerned, matching the PDF's drawText (#86). Text
-// layers may override the master family; the same family choice reaches
-// measurement, drawing, the editor and export. Loaded faces are cached.
+// fonts.ts — the ONE gate between the label's font files and the app. Fetches
+// each family's bundled TTFs once (loadFonts: the bytes the PDF/PSD builds
+// embed and the inspector's glyph checks parse), registers those same bytes
+// as document faces under labelFontCss(id), and hands back the face-aware
+// canvas measure that hit-testing and the in-place editor share. Measurement
+// is unkerned, matching the PDF's drawText (#86). Text layers may override
+// the master family; the same family choice reaches measurement, drawing,
+// the editor and export. Loaded faces are cached.
 // Parsing font bytes with fontkit (glyph outlines and metrics) goes through
 // fontkit.ts instead: it must stay Node-safe, and this module's ?url imports
 // are not.
@@ -16,13 +17,13 @@ import barlowSemiBold from "./assets/fonts/BarlowCondensed-SemiBold.ttf?url";
 import barlowBold from "./assets/fonts/BarlowCondensed-Bold.ttf?url";
 import type { FontFamilyId } from "./fontCatalog";
 import type { MeasureFace } from "./plan";
+import type { Assets } from "./pdf/build";
 import { t } from "@/i18n";
 
 type Face = "regular" | "semibold" | "bold";
 
 /** The ?url side of the catalog: Vite needs static imports, so this is the
- *  one place a family's face URLs are wired up. Consumed here and by
- *  pdf/fonts.ts (loadFonts), so the URL side has one source. */
+ *  one place a family's face URLs are wired up. */
 export const FONT_URLS: Record<FontFamilyId, Record<Face, string>> = {
   poppins: { regular: poppinsRegular, semibold: poppinsSemiBold, bold: poppinsBold },
   "barlow-condensed": { regular: barlowRegular, semibold: barlowSemiBold, bold: barlowBold },
@@ -50,19 +51,41 @@ function unkernedContext(): CanvasRenderingContext2D {
   return ctx;
 }
 
+const fontsPromises = new Map<FontFamilyId, Promise<Assets["fonts"]>>();
+
+/** A family's three face files, fetched once per page (the app window, the
+ *  dev strokecap page). Memoized per family; a failed load clears
+ *  that family's memo so the next caller retries rather than replaying the
+ *  rejection forever. */
+export function loadFonts(id: FontFamilyId = "poppins"): Promise<Assets["fonts"]> {
+  const cached = fontsPromises.get(id);
+  if (cached) return cached;
+  const urls = FONT_URLS[id];
+  const get = async (url: string) => new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const p = Promise.all([get(urls.regular), get(urls.semibold), get(urls.bold)])
+    .then(([regular, semibold, bold]) => ({ regular, semibold, bold }))
+    .catch((error) => {
+      fontsPromises.delete(id);
+      throw error;
+    });
+  fontsPromises.set(id, p);
+  return p;
+}
+
 const registrationPromises = new Map<FontFamilyId, Promise<void>>();
 
-/** Register each family once; failed loads can be retried. */
+/** Register each family once, from loadFonts' bytes (FontFace copies them,
+ *  so the builds still own theirs); failed loads can be retried. */
 function registerFaces(id: FontFamilyId = "poppins"): Promise<void> {
   const cached = registrationPromises.get(id);
   if (cached) return cached;
   const css = labelFontCss(id);
-  const urls = FONT_URLS[id];
-  const p = Promise.all([
-    new FontFace(css, `url(${urls.regular})`, { weight: "400" }).load(),
-    new FontFace(css, `url(${urls.semibold})`, { weight: "600" }).load(),
-    new FontFace(css, `url(${urls.bold})`, { weight: "700" }).load(),
-  ]).then((faces) => {
+  // Assets types the bytes over ArrayBufferLike; loadFonts' come from fetch,
+  // never a SharedArrayBuffer, which is all FontFace rules out.
+  const face = (bytes: Uint8Array, weight: string) => new FontFace(css, bytes as Uint8Array<ArrayBuffer>, { weight }).load();
+  const p = loadFonts(id).then((bytes) => Promise.all([
+    face(bytes.regular, "400"), face(bytes.semibold, "600"), face(bytes.bold, "700"),
+  ])).then((faces) => {
     faces.forEach((face) => document.fonts.add(face));
   }).catch((error) => {
     registrationPromises.delete(id);
