@@ -15,7 +15,8 @@ import { WHITE_INK } from "../layout";
 
 const colorSpaces = new WeakMap<PDFDocument, PDFRef>();
 
-function whiteInkColorSpace(doc: PDFDocument): PDFRef {
+/** The White Ink Separation colour space, registered once per document. */
+export function whiteInkColorSpace(doc: PDFDocument): PDFRef {
   const existing = colorSpaces.get(doc);
   if (existing) return existing;
 

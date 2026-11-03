@@ -118,9 +118,12 @@ const ink = (mode: Mode, fill: Fill, layer: Style["layer"]) =>
 /** A bitmap repainted in `fill`, keeping its alpha — tintRgba's color
  *  overlay done by the compositor (source-in) instead of a pixel loop, so a
  *  fill edit costs a draw, not a decode/re-encode (#414). One entry per
- *  bitmap: repaints at the same fill reuse it; a new fill redraws it. */
-const tintCache = new WeakMap<ImageBitmap, { fill: Fill; canvas: HTMLCanvasElement }>();
-function tinted(bmp: ImageBitmap, fill: Fill): HTMLCanvasElement {
+ *  bitmap per plate (the art tint, the mask's blue), so painting both plates
+ *  redraws neither: repaints at the same fill reuse it; a new fill redraws it. */
+const tintCaches: Record<Mode, WeakMap<ImageBitmap, { fill: Fill; canvas: HTMLCanvasElement }>> =
+  { art: new WeakMap(), mask: new WeakMap() };
+function tinted(bmp: ImageBitmap, fill: Fill, mode: Mode): HTMLCanvasElement {
+  const tintCache = tintCaches[mode];
   const hit = tintCache.get(bmp);
   if (hit?.fill === fill) return hit.canvas;
   const canvas = hit?.canvas ?? document.createElement("canvas");
@@ -233,14 +236,10 @@ export function drawPlate(
       // missing-asset contract: no asset means no ink and no mask footprint.
       const bmp = r.asset ? bitmapOf(r.asset) : null;
       if (!bmp) continue;
-      if (mode === "art") {
-        const src = r.tint ? tinted(bmp as ImageBitmap, r.tint) : bmp;
-        c.drawImage(src, r.x, r.y, r.w, r.h);
-      } else {
-        // Raster art prints on white ink: the mask paints its footprint blue.
-        c.fillStyle = L.MASK_BLUE_HEX;
-        c.fillRect(r.x, r.y, r.w, r.h);
-      }
+      // Raster art prints on white ink: the mask paints the image's own
+      // alpha blue, so transparent pixels get none (#668).
+      const fill = mode === "art" ? r.tint : L.MASK_BLUE_HEX;
+      c.drawImage(fill ? tinted(bmp as ImageBitmap, fill, mode) : bmp, r.x, r.y, r.w, r.h);
     } else drawBarcode(c, r, mode, fontCss, ring);
   }
 }
