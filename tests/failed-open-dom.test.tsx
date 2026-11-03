@@ -34,7 +34,7 @@ beforeEach(() => {
   // Every raster decode fails, so b.label's embedded texture throws mid-open.
   vi.stubGlobal("createImageBitmap", () => Promise.reject(new Error("decode failed")));
 });
-afterEach(() => { vi.unstubAllGlobals(); setLanguage("system"); localStorage.clear(); });
+afterEach(async () => { vi.unstubAllGlobals(); await setLanguage("system"); localStorage.clear(); });
 
 const labelBytes = (name: string, assets = {}) => packLabel({
   formatVersion: 3, masterId: "lolev", enabledVariants: [],
@@ -71,7 +71,7 @@ it.each([
 // The override check rewrites the layer check's "Invalid master file:" prefix,
 // in whatever language it was translated into, so the error blames the label.
 it("names a label override the UI can't draw as an invalid override, in the UI language", async () => {
-  setLanguage("es");
+  await setLanguage("es");
   await failedOpen({ overrides: { name: { style: null } } }, (text) => {
     expect(text).toContain("No se pudo abrir b.label: anulación no válida: ");
     expect(text).not.toContain("Archivo de plantilla no válido");

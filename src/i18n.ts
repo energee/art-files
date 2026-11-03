@@ -1,13 +1,6 @@
 import i18next from "i18next";
 import { initReactI18next, useTranslation } from "react-i18next";
-import core from "./locales/core";
-import shell from "./locales/shell";
-import controls from "./locales/controls";
-import messages from "./locales/messages";
-import workspace from "./locales/workspace";
-import inspector from "./locales/inspector";
-import editor from "./locales/editor";
-import validation from "./locales/validation";
+import en from "./locales/en";
 
 // Every UI consumer loads the configured instance, including isolated dialogs.
 export { useTranslation } from "react-i18next";
@@ -54,16 +47,19 @@ function systemLanguages(): readonly string[] {
   return navigator.languages?.length ? navigator.languages : [navigator.language];
 }
 
-// Later catalogs win on a duplicate key, so keep each key in one catalog.
-const catalogs = [core, shell, controls, messages, inspector, workspace, editor, validation];
-const resources = Object.fromEntries(languages.map(({ value }) => [value, {
-  translation: Object.assign({}, ...catalogs.map((catalog) => catalog[value])),
-}]));
+/** English ships inside this module; every other catalog is its own chunk,
+ *  fetched only when that language becomes active. */
+const catalogs: Record<Exclude<Language, "en">, () => Promise<{ default: Record<string, string> }>> = {
+  es: () => import("./locales/es"),
+  fr: () => import("./locales/fr"),
+  de: () => import("./locales/de"),
+  pt: () => import("./locales/pt"),
+};
 
 const i18n = i18next.createInstance();
 void i18n.use(initReactI18next).init({
-  resources,
-  lng: resolveLanguage(preference, systemLanguages()),
+  resources: { en: { translation: en } },
+  lng: "en",
   fallbackLng: "en",
   supportedLngs: languages.map(({ value }) => value),
   keySeparator: false,
@@ -85,8 +81,25 @@ function syncDocumentLang(): void {
 i18n.on("languageChanged", syncDocumentLang);
 syncDocumentLang();
 
-/** Changing UI language never replaces or remounts the document workspace. */
-export function setLanguage(next: LanguagePreference): void {
+/** Fetch the preferred language's catalog, then switch to it. A switch made
+ *  while an earlier catalog was still loading wins over it. */
+async function applyPreference(): Promise<void> {
+  const language = resolveLanguage(preference, systemLanguages());
+  if (language !== "en" && !i18n.hasResourceBundle(language, "translation")) {
+    const { default: catalog } = await catalogs[language]();
+    i18n.addResourceBundle(language, "translation", catalog);
+  }
+  if (language === resolveLanguage(preference, systemLanguages())) await i18n.changeLanguage(language);
+}
+
+/** Settles once the saved language's catalog is in; main.tsx renders after
+ *  it so the first frame is already in that language. Node (the generate
+ *  harness, tests) resolves English at once, with nothing to fetch. */
+export const languageReady = applyPreference();
+
+/** Changing UI language never replaces or remounts the document workspace.
+ *  Resolves once the new language is showing. */
+export function setLanguage(next: LanguagePreference): Promise<void> {
   preference = next;
   try {
     if (next === "system") localStorage.removeItem(STORAGE_KEY);
@@ -94,7 +107,7 @@ export function setLanguage(next: LanguagePreference): void {
   } catch {
     // A blocked store must not prevent changing language for this session.
   }
-  void i18n.changeLanguage(resolveLanguage(preference, systemLanguages()));
+  return applyPreference();
 }
 
 /** Re-renders on every changeLanguage, which i18next emits even when the

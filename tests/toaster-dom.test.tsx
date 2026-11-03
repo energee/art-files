@@ -17,9 +17,9 @@ import { EXIT_MS, advance, mount, settleDismissal, setupToastHarness, show, text
 
 setupToastHarness();
 
-afterEach(() => {
+afterEach(async () => {
   delete document.documentElement.dataset.theme;
-  setLanguage("en");
+  await setLanguage("en");
   localStorage.clear();
 });
 
@@ -157,8 +157,8 @@ it("hides the toast past the limit from the keyboard and assistive tech", () => 
   }
 });
 
-it("labels the toast region and the close button in the app's language", () => {
-  setLanguage("de");
+it("labels the toast region and the close button in the app's language", async () => {
+  await setLanguage("de");
   mount();
   show(() => notify.warning("Warnung"));
   // Exactly the translated word: Sonner appends its hotkey to the label unless

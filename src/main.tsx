@@ -6,9 +6,12 @@
 // stack (messages go through src/notify.ts); it too sits outside the boundary
 // so a toast can still report a failure while the recovery screen is up.
 // initTitlebar marks <html> for the macOS desktop overlay title bar's layout.
+// The first render waits for the saved language's catalog (languageReady), so
+// the window never flashes English; a catalog that fails to load still renders,
+// in English, and its rejection reaches the console.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./i18n";
+import { languageReady } from "./i18n";
 import "./index.css";
 import TabsShell from "./TabsShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -17,7 +20,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { initTitlebar } from "@/titlebar";
 
 initTitlebar();
-createRoot(document.getElementById("root")!).render(
+void languageReady.finally(() => createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <TabsShell />
@@ -25,4 +28,4 @@ createRoot(document.getElementById("root")!).render(
     <UncaughtErrors />
     <Toaster />
   </StrictMode>,
-);
+));
