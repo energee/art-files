@@ -2749,6 +2749,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             // turn Backspace/arrows into text edits instead of delete/nudge.
             initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
+            // The dialog's name is the layer's, from LayerInspector's name box (#616).
+            aria-labelledby={inspected ? `${inspected.layer.id}-name` : undefined}
             // Sized on the base's own `data-[side=right]:` variant so
             // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
             // at the 13px root); an unprefixed w-[300px] lost to both on

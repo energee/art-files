@@ -17,6 +17,11 @@ that section to the new version (see .agents/release-steward.md).
 - **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
 - **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
 
+### Fixed
+- **Inspector fields stay in one column.** A field no longer jumps left when its reset dot appears, and every value, switch and button in the inspector now lines up on the same right edge, Minimum height and the Stroke switch included.
+- **Tidier Typography and Stroke sections.** The Stroke heading has the same full-width divider as the other sections, with its switch level with the heading. Characters per inch now looks like Tallest character above it, and Line spacing, Heading scale and Letter spacing lose the icons no other row had.
+- **Screen readers name the inspector and the text field.** The inspector is announced with the layer's name, and the rich text field is named by its visible caption.
+
 ## [0.1.116] - 2026-10-30
 
 ### Changed
