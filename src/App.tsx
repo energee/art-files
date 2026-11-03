@@ -83,6 +83,7 @@ import {
   BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
+import { useStableCallback } from "@/useStableCallback";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
@@ -2426,6 +2427,34 @@ export const DocumentEditor = memo(function DocumentEditor({
     );
   }
 
+  // Stable identities for the memoized panels, so a keystroke re-renders only
+  // the inspector and the canvas (#605).
+  const listSelect = useStableCallback(pick);
+  const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) =>
+    patch(id, { [prop]: value }));
+  const listRename = useStableCallback((id: string, name: string) => patch(id, { name }));
+  const listReorder = useStableCallback((id: string, delta: number) =>
+    editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta)));
+  const listAdd = useStableCallback(onAddLayer);
+  const listRemove = useStableCallback(onRemoveLayer);
+  const rulerMargin = useStableCallback((margin: number) =>
+    editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } })));
+  const rulerAdd = useStableCallback(addManualGuide);
+  const rulerMove = useStableCallback(moveManualGuide);
+  const rulerRemove = useStableCallback(removeManualGuide);
+  const rulerSnap = useStableCallback(snapGuidePoint);
+  const menuError = useStableCallback((text: string, source?: "quit") =>
+    notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") }));
+  // The menubar's commands and check states change only when a row would:
+  // JSON drops `run`, and each copy's run calls this render's command.
+  const menuSignature = JSON.stringify([commands, checked]);
+  const menuCommands = useMemo(() => commands.map((c) => ({
+    ...c, run: () => commandsRef.current.find((latest) => latest.id === c.id)!.run(),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- menuSignature is commands minus run
+  })), [menuSignature]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- menuSignature includes checked
+  const menuChecked = useMemo(() => checked, [menuSignature]);
+
   return (
     <TooltipProvider>
       {/* Suspense around the Dialog, not inside it: the first open then
@@ -2495,11 +2524,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               onForget={forgetLibraryMaster}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
-              onSelect={pick}
-              onToggle={(id, prop, value) => patch(id, { [prop]: value })}
-              onRename={(id, name) => patch(id, { name })}
-              onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
-              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={invalidLayers}
+              onSelect={listSelect}
+              onToggle={listToggle}
+              onRename={listRename}
+              onReorder={listReorder}
+              onAdd={listAdd} onRemove={listRemove} invalid={invalidLayers}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
@@ -2520,9 +2549,9 @@ export const DocumentEditor = memo(function DocumentEditor({
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={commands}
-            onNativeError={(text, source) => notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") })}
-            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
+          {active && <AppMenu actions={menuCommands}
+            onNativeError={menuError}
+            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={menuChecked} />}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible
               explanation is the toast an export attempt shows. */}
@@ -2629,9 +2658,9 @@ export const DocumentEditor = memo(function DocumentEditor({
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
                 showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
-                onMarginChange={(margin) => editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } }))} manual={manualGuides}
-                onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
-                onRemoveManual={removeManualGuide} />
+                onMarginChange={rulerMargin} manual={manualGuides}
+                onAddManual={rulerAdd} onMoveManual={rulerMove} onSnapGuide={rulerSnap}
+                onRemoveManual={rulerRemove} bleedIn={render.bleedIn} dpi={render.dpi} />
             )}
             {/* Always mounted, so a screen reader announces the note when
                 an export fills it: a live region that mounts already holding

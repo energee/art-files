@@ -16,6 +16,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Generic link placeholders.** The QR link and value boxes now show `https://example.com/beer/` as their example instead of a brewery's own address.
 - **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
 - **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
+- **Faster typing in the inspector.** Typing in a layer's Text field no longer redraws the Layers list, the rulers or the menu bar on every key, so about 30% fewer components redraw per key.
 
 ## [0.1.116] - 2026-10-30
 
