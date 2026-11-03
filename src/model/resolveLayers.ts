@@ -88,10 +88,17 @@ export function titleOf(layers: Layer[]): string {
   return name?.kind === "text" ? plainText(name.lines).trim() : "";
 }
 
-/** Filename stem for every export (PDF, PSD, and their mask plates): the
- *  title slugged the way the QR URL is. One fallback, so an unnamed label
- *  is "label.*" in the app and the CLI alike. */
-export const exportBase = (layers: Layer[]): string => machineName(titleOf(layers)) || "label";
+/** Filename stem for every export (PDF, PSD, their mask plates and the
+ *  .label): the title slugged the way the QR URL is, cut at the last word
+ *  boundary within 40 characters (#618; one unbroken word is cut at 40).
+ *  The QR slug itself stays whole. One fallback, so an unnamed label is
+ *  "label.*" in the app and the CLI alike. */
+export function exportBase(layers: Layer[]): string {
+  const slug = machineName(titleOf(layers));
+  if (slug.length <= 40) return slug || "label";
+  const cut = slug.lastIndexOf("-", 40);
+  return slug.slice(0, cut > 0 ? cut : 40);
+}
 
 /** What a `{layerId}` ref in a barcode/qr value reads: the layer's plain
  *  text, uppercased if the layer draws that way, or its placeholder while

@@ -52,7 +52,7 @@ import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } 
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
+  applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -64,7 +64,7 @@ import {
 } from "@/model/files";
 import { starterMaster } from "@/model/starterLayers";
 import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
-import { layerBoxes } from "@/planLayers";
+import { layerBoxes, outsideGuides } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
@@ -1270,6 +1270,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
+  /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
+   *  with a line in the inspector, but they do NOT block export. */
+  const pastDie = useMemo(() => canvasAssets
+    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+      guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
+    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+  const flaggedLayers = useMemo(() => pastDie.size
+    ? new Map([...[...pastDie].map((id) => [id, t("Runs past the label edge")] as const), ...invalidLayers])
+    : invalidLayers, [pastDie, invalidLayers, t]);
   /** Every line a gesture can snap to on each axis: the master's guides, plus
    *  the edges and middles of the layers NOT taking part (`skip`) — the
    *  Photoshop/Sketch rule that objects line up with each other, not only with
@@ -1688,7 +1697,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
-        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
+        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
       });
       await rememberMaster(m, where, bytes);
       refreshLibrary();
@@ -2499,7 +2508,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
-              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={invalidLayers}
+              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={flaggedLayers}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
@@ -2771,7 +2780,10 @@ export const DocumentEditor = memo(function DocumentEditor({
                   const box = rowBoxes()?.get(inspected.layer.id);
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
                 }}
-                content={contentFor(inspected.layer)}
+                content={<>
+                  {contentFor(inspected.layer)}
+                  {pastDie.has(inspected.layer.id) && <p className="pt-1 text-xs text-destructive-text">{t("Runs past the label edge")}</p>}
+                </>}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
                 fontFamily={family}
