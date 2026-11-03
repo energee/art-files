@@ -41,5 +41,5 @@ export {
   setLabelOverride, setValue,
 } from "./editLabel";
 export {
-  applyPromotions, masterChanges, masterDiff, structureOnlyMaster, type MasterChange,
+  applyPromotions, masterChanges, masterDiff, pinPromoted, structureOnlyMaster, type MasterChange,
 } from "./editSave";

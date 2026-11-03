@@ -575,7 +575,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
 
   const plan = planLayers(resolved.layers, measure, {
     guides: guideLines(input.master), custom: planCustom,
-  });
+  }, { output: true });
   const pdfAssets: Assets = { fonts, fontFamilies, title, images };
   const maskPng = decoded[PAGE_ART_ID.mask];
   const printAssets: Assets = maskPng ? {

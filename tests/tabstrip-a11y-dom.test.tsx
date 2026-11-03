@@ -54,6 +54,26 @@ afterEach(async () => {
 });
 
 const tabs = () => [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
+const closeButtons = () => [...document.querySelectorAll<HTMLElement>('[role="tab"] + button')];
+/** Focus `el` and press `key` on it; returns the event. */
+const pressOn = (el: HTMLElement, key: string) => {
+  el.focus();
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+  el.dispatchEvent(event);
+  return event;
+};
+
+// ARIA lets a tablist own tabs only (Lighthouse aria-required-children,
+// #615): each × stays a mouse target but is hidden from assistive tech and
+// the Tab order. Delete on a focused tab, or File → Close Tab, closes it.
+it("keeps every × out of the tablist's accessibility tree and Tab order", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  expect(closeButtons()).toHaveLength(2);
+  for (const close of closeButtons()) {
+    expect(close.getAttribute("aria-hidden")).toBe("true");
+    expect(close.tabIndex).toBe(-1);
+  }
+});
 
 it("renders the strip as a tablist with one selected tab", async () => {
   expect(document.querySelector('[role="tablist"]')?.getAttribute("aria-label")).toBeTruthy();
@@ -116,10 +136,6 @@ it("moves focus between tabs with Left/Right, wrapping, without switching", asyn
   expect(document.activeElement).toBe(tabs()[0]);
   await press("ArrowLeft");
   expect(document.activeElement).toBe(tabs()[1]);
-  // From a tab's close button too: it sits in that tab's chip.
-  (document.querySelector('[aria-label^="Close "]') as HTMLElement).focus();
-  await press("ArrowRight");
-  expect(document.activeElement).toBe(tabs()[1]);
   // Focus only: the second tab (from New Tab) is still the selected one.
   expect(tabs().map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
   // A modified arrow (⌘← is "go back") is not the strip's to take.
@@ -143,9 +159,8 @@ it("refocuses the strip once the unsaved-close dialog is cancelled", async () =>
   await act(async () => {
     mocks.onMeta?.({ title: "Draft", dirty: true, edited: true, masterUnsaved: false, filePath: null });
   });
-  const close = document.querySelector<HTMLElement>('[aria-label="Close Draft (unsaved changes)"]')!;
-  close.focus();
-  await act(async () => { close.click(); });
+  expect(tabs()[1].getAttribute("aria-label")).toBe("Draft (unsaved changes)");
+  await act(async () => { pressOn(tabs()[1], "Delete"); });
   const cancel = [...document.querySelectorAll<HTMLElement>('[data-slot="dialog-content"] button')]
     .find((b) => b.textContent === "Cancel")!;
   await act(async () => { cancel.click(); });
@@ -155,19 +170,21 @@ it("refocuses the strip once the unsaved-close dialog is cancelled", async () =>
   expect(document.activeElement).toBe(tabs()[1]);
 });
 
-it("keeps keyboard focus on the strip when Enter closes a tab", async () => {
+it("closes the focused tab with Delete and keeps keyboard focus on the strip", async () => {
   await act(async () => { mocks.newTab?.(); });
   await act(async () => { mocks.newTab?.(); });
-  const closeBtns = () => [...document.querySelectorAll<HTMLElement>('[aria-label^="Close "]')];
   // Close the active (last) tab: its left neighbour takes over and the
   // strip re-hosts in that editor's slot.
-  await act(async () => { closeBtns()[2].click(); });
+  const del = pressOn(tabs()[2], "Delete");
+  await act(async () => {});
+  // Taken by the strip, so the editor's Delete (remove layer) never sees it.
+  expect(del.defaultPrevented).toBe(true);
   expect(tabs()).toHaveLength(2);
   expect(document.activeElement).toBe(tabs()[1]);
-  // Close an inactive tab: nothing re-hosts, but its × is gone. Focus goes
+  // Close an inactive tab: nothing re-hosts, but it is gone. Focus goes
   // to the tab that took its place, not back to the selected one.
   await act(async () => { mocks.newTab?.(); });
-  await act(async () => { closeBtns()[0].click(); });
+  await act(async () => { pressOn(tabs()[0], "Backspace"); });
   expect(tabs()).toHaveLength(2);
   expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
   expect(document.activeElement).toBe(tabs()[0]);
@@ -178,7 +195,7 @@ it("keeps keyboard focus on the strip when Enter closes a tab", async () => {
 // hover so the strip doesn't fill with ×s.
 it("shows the active tab's close button without hover", async () => {
   await act(async () => { mocks.newTab?.(); });
-  const closeBtns = [...document.querySelectorAll<HTMLElement>('[aria-label^="Close "]')];
+  const closeBtns = closeButtons();
   expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
   expect(closeBtns[1].classList.contains("opacity-0")).toBe(false);
   expect(closeBtns[1].classList.contains("opacity-40")).toBe(true);
