@@ -2,12 +2,24 @@ import { loader } from 'fumadocs-core/source';
 import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
 import { docsContentRoute, docsImageRoute, docsRoute } from './shared';
 import { defineDocs } from 'fumadocs-mdx/macro';
+import { applyMdxPreset } from 'fumadocs-mdx/config';
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
 
 const docs = defineDocs({
   dir: 'content/docs',
   docs: {
     schema: pageSchema,
+    // GitHub's comment grey (#6a737d) fails AA on both code backgrounds;
+    // darken it in light mode and lighten it in dark mode.
+    mdxOptions: applyMdxPreset({
+      rehypeCodeOptions: {
+        themes: { light: 'github-light', dark: 'github-dark' },
+        colorReplacements: {
+          'github-light': { '#6a737d': '#57606a' },
+          'github-dark': { '#6a737d': '#8b949e' },
+        },
+      },
+    }),
     postprocess: {
       includeProcessedMarkdown: true,
     },

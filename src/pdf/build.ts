@@ -10,6 +10,7 @@
 // cover-fit, the mask plate draws the mask — each looked up by `asset`,
 // like every raster image.
 import {
+  cmyk,
   LineCapStyle,
   LineJoinStyle,
   PDFDocument,
@@ -48,6 +49,7 @@ import { version } from "../../package.json";
 import { openFont } from "../fontkit";
 import { outlineText } from "./outline";
 import { embedWhiteInkMask, registerWhiteInk, whiteFill, whiteStroke } from "./whiteInk";
+import { savePdfX4 } from "./pdfx";
 
 /** An image asset's source: vector text (already planned as `paths` items by
  *  planLayers, so this backend never draws it) or raster bytes, embedded
@@ -87,7 +89,9 @@ const PDF_EPOCH = new Date("2000-01-01T00:00:00Z");
 const toRgb = (c: { r: number; g: number; b: number }) => rgb(c.r, c.g, c.b);
 
 function fillColor(fill: Fill) {
-  const c = L.parseHexFill(fill);
+  const { rgb: c, cmyk: inks } = L.parseFill(fill);
+  // A CMYK fill is written exactly as the operator typed it, as DeviceCMYK.
+  if (inks) return cmyk(inks[0] / 100, inks[1] / 100, inks[2] / 100, inks[3] / 100);
   // DeviceGray keeps neutral type and vectors on the K plate during CMYK
   // conversion; DeviceRGB black otherwise becomes four-colour rich black.
   return c.r === c.g && c.g === c.b ? grayscale(c.r) : toRgb(c);
@@ -525,7 +529,9 @@ function drawWhiteInk(
   }
 }
 
-/** One print file: unchanged art followed by an outlined, overprinting White Ink OCG. */
+/** One print file: unchanged art followed by an outlined, overprinting White
+ *  Ink OCG, marked PDF/X-4 (pdfx.ts). The two-file art and mask PDFs stay
+ *  unmarked: the mask's blue is a white-ink convention, not a colour. */
 export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
   const embedded = await embedRasters(doc, items, assets, "art");
@@ -543,5 +549,5 @@ export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Asset
   drawWhiteInk(page, items, assets, embedded, mask);
   page.pushOperators(...white.end);
   doc.setTitle(`${assets.title ?? "Label"} label`);
-  return doc.save();
+  return savePdfX4(doc);
 }

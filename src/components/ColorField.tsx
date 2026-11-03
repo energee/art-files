@@ -1,5 +1,6 @@
 // ColorField.tsx — Fill editor: a swatch Button opening a react-colorful
-// picker in a nested popover, a hex Input, and an optional "no ink"
+// picker in a nested popover, a text Input taking a hex or a typed
+// "cmyk(c,m,y,k)" (written exactly to the PDF), and an optional "no ink"
 // checkerboard toggle. All controls are shadcn; the picker is react-colorful
 // (no shadcn color-picker primitive exists). The popover also offers a
 // screen eyedropper where the browser supports the native EyeDropper API.
@@ -9,7 +10,7 @@ import { HexColorPicker } from "react-colorful";
 import { Pipette } from "lucide-react";
 import type { Fill } from "@/types";
 import { cn } from "@/lib/utils";
-import { GOLD, normalizeHex } from "@/layout";
+import { cssFill, GOLD, normalizeFill } from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -38,14 +39,15 @@ export function ColorField(props: {
   const { t } = useTranslation();
   // Local text state so a half-typed hex doesn't clobber the config.
   const [text, setText] = useState<string | null>(null);
-  // Picker and Save still need a real color while the value reads "none".
-  const hex = none ? "#ffffff" : props.value;
+  // The picker and chips need a real "#rrggbb": white while the value reads
+  // "none", the RGB approximation for CMYK (picking from it switches to hex).
+  const hex = cssFill(props.value);
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
   // Blur / Enter: apply a valid typed hex (the 3-digit form lands only here)
   // and drop the local text; an invalid entry stays up, flagged.
   const commitText = () => {
-    const parsed = text === null ? undefined : normalizeHex(text);
+    const parsed = text === null ? undefined : normalizeFill(text);
     if (!parsed) return;
     if (parsed === props.value) setText(null);
     else apply(parsed);
@@ -56,7 +58,9 @@ export function ColorField(props: {
   const colors = useSwatches();
   // addColor owns the lowercase-canonicalization rule; "already saved" is just
   // "adding it changes nothing", so the two can't drift apart.
-  const saved = addColor(colors, hex) === colors;
+  // Save keeps the value as typed, so a saved CMYK swatch stays CMYK.
+  const swatch = none ? "#ffffff" : props.value;
+  const saved = addColor(colors, swatch) === colors;
   return (
     <div className="flex items-center gap-1">
       {props.allowNone !== false && (
@@ -116,7 +120,7 @@ export function ColorField(props: {
                 aria-label={t("Saved color {{color}}", { color: c })}
                 aria-keyshortcuts="Delete Backspace"
                 className="size-5 rounded-sm border border-border"
-                style={{ background: c }}
+                style={{ background: cssFill(c as Fill) }}
                 onKeyDown={(e) => {
                   // A held key must not auto-repeat through the chips that slide into this slot.
                   if ((e.key !== "Delete" && e.key !== "Backspace") || e.repeat) return;
@@ -144,7 +148,7 @@ export function ColorField(props: {
               size="sm"
               className="h-5 px-1.5 text-[11px]"
               disabled={saved}
-              onClick={() => setSwatches((cs) => addColor(cs, hex))}
+              onClick={() => setSwatches((cs) => addColor(cs, swatch))}
             >
               {saved ? t("Saved") : t("Save")}
             </Button>
@@ -156,16 +160,16 @@ export function ColorField(props: {
         aria-label={t("{{label}} color", { label: props.label })}
         value={none ? "none" : (text ?? props.value)}
         disabled={none}
-        // A full #rrggbb applies as it is typed; a 3-digit hex only on
-        // commit (blur / Enter) — every 6-digit entry passes through a valid
-        // 3-digit prefix, which must not flash onto the layer mid-typing.
+        // A full #rrggbb or cmyk(…) applies as it is typed; a 3-digit hex
+        // only on commit (blur / Enter) — every 6-digit entry passes through
+        // a valid 3-digit prefix, which must not flash onto the layer mid-typing.
         onChange={(e) => {
           setText(e.target.value);
-          const parsed = normalizeHex(e.target.value);
-          if (parsed && /[0-9a-f]{6}\s*$/i.test(e.target.value)) props.onChange(parsed);
+          const parsed = normalizeFill(e.target.value);
+          if (parsed && /([0-9a-f]{6}|\))\s*$/i.test(e.target.value)) props.onChange(parsed);
         }}
-        aria-invalid={text !== null && !normalizeHex(text) || undefined}
-        title={text !== null && !normalizeHex(text) ? t("Enter a 3- or 6-digit hex color.") : undefined}
+        aria-invalid={text !== null && !normalizeFill(text) || undefined}
+        title={text !== null && !normalizeFill(text) ? t("Enter a hex color or cmyk(c,m,y,k).") : undefined}
         onKeyDown={(e) => { if (e.key === "Enter") commitText(); }}
         onBlur={commitText}
         // w-24/px-2.5 = a ScrubField's value box, so the hex lands in the

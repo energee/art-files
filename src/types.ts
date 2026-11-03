@@ -7,9 +7,11 @@
 import type { FontFamilyId } from "./fontCatalog";
 import type { LayerPosition } from "./model/position";
 
-/** Fill color drawn in the art PDF: a "#rrggbb" hex string, or "none"
- *  meaning no ink (draws white; stock/white ink shows through). */
-export type Fill = `#${string}` | "none";
+/** Fill color drawn in the art PDF: a "#rrggbb" hex string, a
+ *  "cmyk(c,m,y,k)" of 0-100 percentages written exactly as DeviceCMYK (the
+ *  screen and PSD show an RGB approximation; see layout.ts parseFill), or
+ *  "none" meaning no ink (draws white; stock/white ink shows through). */
+export type Fill = `#${string}` | `cmyk(${string})` | "none";
 
 /** White-ink layer assignment: "metallic" knocks the glyphs out of the white
  *  layer (silver stock shows through); "white" paints white ink under them. */

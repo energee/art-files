@@ -52,7 +52,7 @@ import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } 
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
+  applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -64,7 +64,7 @@ import {
 } from "@/model/files";
 import { starterMaster } from "@/model/starterLayers";
 import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
-import { layerBoxes } from "@/planLayers";
+import { layerBoxes, outsideGuides } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
@@ -99,7 +99,7 @@ import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, typ
 import { Rulers } from "@/components/Rulers";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, LENGTH_UNITS,
+  DEFAULT_MARGIN_PT, LENGTH_UNITS, RULER_SIZE,
   type GuideAxis, type LengthUnit, type ManualGuide,
 } from "@/rulers";
 import {
@@ -1271,6 +1271,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
+  /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
+   *  with a line in the inspector, but they do NOT block export. */
+  const pastDie = useMemo(() => canvasAssets
+    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+      guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
+    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+  // Keyed on the ids, not the Set: pastDie is rebuilt on every keystroke, and a
+  // new Map each time would re-render the memoized LayerList per key (#605).
+  const pastDieKey = [...pastDie].join("\0");
+  const flaggedLayers = useMemo(() => pastDieKey
+    ? new Map([...pastDieKey.split("\0").map((id) => [id, t("Runs past the label edge")] as const), ...invalidLayers])
+    : invalidLayers, [pastDieKey, invalidLayers, t]);
   /** Every line a gesture can snap to on each axis: the master's guides, plus
    *  the edges and middles of the layers NOT taking part (`skip`) — the
    *  Photoshop/Sketch rule that objects line up with each other, not only with
@@ -1689,7 +1701,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
-        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
+        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
       });
       await rememberMaster(m, where, bytes);
       refreshLibrary();
@@ -2528,7 +2540,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onToggle={listToggle}
               onRename={listRename}
               onReorder={listReorder}
-              onAdd={listAdd} onRemove={listRemove} invalid={invalidLayers}
+              onAdd={listAdd} onRemove={listRemove} invalid={flaggedLayers}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
@@ -2607,12 +2619,15 @@ export const DocumentEditor = memo(function DocumentEditor({
                 exporting && "blur-sm opacity-70")}>
             {/* PreviewCompare stays mounted but hidden in 3D modes. The
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
-                their own camera. */}
+                their own camera. Padded, not offset, by the rulers so Fit
+                keeps the label clear of them while the transform's origin
+                stays the pane's top-left. */}
             <div
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
                 transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
+                ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}
               canvasRender={viewMode === "2d" ? canvasSource : null}
@@ -2778,6 +2793,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             // turn Backspace/arrows into text edits instead of delete/nudge.
             initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
+            // The dialog's name is the layer's, from LayerInspector's name box (#616).
+            aria-labelledby={inspected ? `${inspected.layer.id}-name` : undefined}
             // Sized on the base's own `data-[side=right]:` variant so
             // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
             // at the 13px root); an unprefixed w-[300px] lost to both on
@@ -2795,7 +2812,10 @@ export const DocumentEditor = memo(function DocumentEditor({
                   const box = rowBoxes()?.get(inspected.layer.id);
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
                 }}
-                content={contentFor(inspected.layer)}
+                content={<>
+                  {contentFor(inspected.layer)}
+                  {pastDie.has(inspected.layer.id) && <p className="pt-1 text-xs text-destructive-text">{t("Runs past the label edge")}</p>}
+                </>}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
                 fontFamily={family}

@@ -118,6 +118,18 @@ describe("planLayers text", () => {
     expect(texts(planLayers([{ ...name, lines: [line("hazy")] }], m, assets), "name")[0].text).toBe("HAZY");
   });
 
+  it("an output plan leaves an empty fillable field blank but keeps its box (#604)", () => {
+    const abv = text({ id: "abv", x: 0, y: 0, lines: [line("")], placeholder: "#", suffix: "% alc by vol", input: "number" });
+    const below = text({ id: "b", x: 0, y: { below: "abv", gap: 2 }, lines: [line("B")] });
+    const preview = planLayerScene([abv, below], m, assets);
+    const output = planLayerScene([abv, below], m, assets, { output: true });
+    expect(texts(preview.items, "abv").map((r) => r.text).join("")).toBe("#% alc by vol");
+    expect(texts(output.items, "abv")).toEqual([]);
+    expect(output.boxes).toEqual(preview.boxes);
+    const filled = { ...abv, lines: [line("6.5")] };
+    expect(texts(planLayers([filled], m, assets, { output: true }), "abv").map((r) => r.text).join("")).toBe("6.5% alc by vol");
+  });
+
   it("wraps a line longer than width at spaces, greedy like wrapWarning", () => {
     const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 30, lines: [line("aa bb cc")] })], m, assets) as PlacedText[];
     expect(runs.map((r) => [r.text, r.y])).toEqual([["aa bb", ASC * 10], ["cc", ASC * 10 + 12]]);
