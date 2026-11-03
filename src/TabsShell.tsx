@@ -708,11 +708,7 @@ export default function TabsShell() {
                 ? t("Save changes to “{{name}}” before quitting?", { name: confirmTab?.title })
                 : t("Close “{{name}}”?", { name: confirmTab?.title })}
             </DialogTitle>
-            <DialogDescription>
-              {sweep.current
-                ? t("This tab has unsaved changes. Save or discard them to quit, or cancel to keep Label Lab open.")
-                : t("This tab has unsaved changes. Save them, discard them, or keep the tab open.")}
-            </DialogDescription>
+            <DialogDescription>{t("Your changes will be lost if you don't save them.")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" disabled={saving} onClick={cancelClose}>
@@ -749,9 +745,7 @@ export default function TabsShell() {
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>{t("Review unsaved changes before quitting?")}</DialogTitle>
-            <DialogDescription>
-              {t("{{count}} tab has unsaved changes. Review them one at a time, or discard all of them. Cancel keeps Label Lab open.", { count: sweepCount })}
-            </DialogDescription>
+            <DialogDescription>{t("Your changes will be lost if you don't save them.")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={cancelClose}>{t("Cancel")}</Button>

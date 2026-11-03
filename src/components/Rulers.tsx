@@ -78,7 +78,6 @@ function RulerSettings(props: {
     <div className="flex flex-col gap-2.5">
       <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("x", PAGE.w / 2)}>{t("Add vertical guide")}</button>
       <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("y", PAGE.h / 2)}>{t("Add horizontal guide")}</button>
-      <Label className="text-xs text-muted-foreground">{t("Measurement")}</Label>
       <RulerUnitPicker unit={unit} onUnitChange={onUnitChange} />
       <div className="flex items-center justify-between">
         <Label className="text-xs text-muted-foreground">{t("Master")}</Label>

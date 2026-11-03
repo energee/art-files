@@ -70,15 +70,19 @@ export type LibraryEntry = { name: string; inLibrary?: boolean; builtIn?: boolea
   // marks the shipped master, which may have no file behind it.
   & Partial<Pick<MasterIndexEntry, "path" | "lastSeen">>;
 
-/** Each row's second line, by id: "lolev.master · Used Oct 11, 2026". The
- *  file name gains its folder when two rows share one (recentTitles), so
- *  same-named masters stay apart. No path reads "Built in" for the shipped
- *  master and "No file" for any other. */
+/** Each row's second line, by id: "lolev.master · Used Oct 11, 2026", only
+ *  for masters whose name another row shares — a unique name needs no
+ *  second line (""). The file name gains its folder when two rows share one
+ *  (recentTitles). No path reads "Built in" for the shipped master and
+ *  "No file" for any other. */
 export function entryDetails(entries: [string, LibraryEntry][]): Record<string, string> {
   const withPath = entries.filter(([, e]) => e.path);
   const titles = recentTitles(withPath.map(([, e]) => e.path!));
   const file = new Map(withPath.map(([id], i) => [id, titles[i]]));
+  const named = new Map<string, number>();
+  for (const [, e] of entries) named.set(e.name, (named.get(e.name) ?? 0) + 1);
   return Object.fromEntries(entries.map(([id, e]) => {
+    if (named.get(e.name) === 1) return [id, ""];
     const name = file.get(id) ?? (e.builtIn ? t("Built in") : t("No file"));
     const used = e.lastSeen ? shortDate(e.lastSeen) : "";
     return [id, used ? `${name} · ${t("Used {{date}}", { date: used })}` : name];
@@ -90,8 +94,8 @@ export function entryDetails(entries: [string, LibraryEntry][]): Record<string, 
 function MasterRow({ name, detail }: { name: string; detail: string }) {
   return (
     <span className="flex min-w-0 flex-col">
-      <span className="truncate">{name}<span className="sr-only">, </span></span>
-      <span className="truncate text-[11px] text-muted-foreground">{detail}</span>
+      <span className="truncate">{name}{detail && <span className="sr-only">, </span>}</span>
+      {detail && <span className="truncate text-[11px] text-muted-foreground">{detail}</span>}
     </span>
   );
 }

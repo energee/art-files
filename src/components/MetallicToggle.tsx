@@ -6,6 +6,7 @@
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useId } from "react";
 import { useTranslation } from "@/i18n";
 
 function HandMetal(props: { className?: string }) {
@@ -29,21 +30,29 @@ export function MetallicToggle(props: {
   /** The inspector disables the fill's toggle while Fill is "No ink" —
    *  nothing to plate. */
   disabled?: boolean;
+  /** Why metallic can't apply here. The toggle stays visible and focusable,
+   *  greyed out and inert, with this as its tooltip and description. */
+  unavailable?: string;
 }) {
   const { t } = useTranslation();
+  const reasonId = useId();
+  const off = props.unavailable !== undefined;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Toggle
             size="sm"
-            pressed={props.pressed}
-            onPressedChange={props.onPressedChange}
+            pressed={props.pressed && !off}
+            onPressedChange={off ? () => {} : props.onPressedChange}
             disabled={props.disabled}
+            aria-disabled={off || undefined}
+            aria-describedby={off ? reasonId : undefined}
             aria-label={props.label ? t("{{label}}: metallic", { label: props.label }) : t("Metallic")}
             className={cn(
               "size-5 min-w-0 shrink-0 rounded-sm p-0",
               !props.pressed && "opacity-40 hover:opacity-100",
+              off && "cursor-not-allowed hover:bg-transparent hover:opacity-40",
               props.className,
             )}
           >
@@ -51,7 +60,8 @@ export function MetallicToggle(props: {
           </Toggle>
         }
       />
-      <TooltipContent>{t("Metallic")}</TooltipContent>
+      <TooltipContent aria-hidden={off || undefined}>{props.unavailable ?? t("Metallic")}</TooltipContent>
+      {off && <span id={reasonId} className="sr-only">{props.unavailable}</span>}
     </Tooltip>
   );
 }

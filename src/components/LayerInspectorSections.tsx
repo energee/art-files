@@ -368,25 +368,17 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
           </div>
           {badge(["style.fill"], t("Fill"))}
           {/* Raster art prints its whole footprint on white ink whatever the
-              plate says (the mask paints it solid), so the toggle would do
-              nothing there. SVG art plans as paths and keeps it. */}
-          {!props.rasterArt && (
-            <>
-              <MetallicToggle
-                pressed={style.layer === "metallic"}
-                disabled={style.fill === "none"}
-                onPressedChange={(on) => setStyle({ layer: on ? "metallic" : "white" })}
-                className="size-6 border border-input"
-              />
-              {badge(["style.layer"], t("Plate"))}
-            </>
-          )}
+              plate says (the mask paints it solid), so the toggle is shown
+              inert with the reason. SVG art plans as paths and keeps it. */}
+          <MetallicToggle
+            pressed={style.layer === "metallic"}
+            disabled={style.fill === "none"}
+            unavailable={props.rasterArt ? t("Raster art always prints on white ink. Use an SVG for metallic.") : undefined}
+            onPressedChange={(on) => setStyle({ layer: on ? "metallic" : "white" })}
+            className="size-6 border border-input"
+          />
+          {!props.rasterArt && badge(["style.layer"], t("Plate"))}
         </div>
-        {props.rasterArt && (
-          <p className="text-[11px] text-muted-foreground">
-            {t("Raster art always prints on white ink. Use an SVG for metallic.")}
-          </p>
-        )}
       </div>
 
 

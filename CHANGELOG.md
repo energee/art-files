@@ -11,6 +11,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 - **Less explanatory text.** Removed helper lines that only repeated what the control next to them already shows: the notes under Language and Two-file export in Settings, under Margin inset, the template-field hints (Field label, Placeholder, Suffix), the link-slug note under a QR link (the preview line below it already shows the result), the "Page art always covers the full page" note, and the file-type hints in the drop zones. The Two-file export label now matches the other settings.
+- **Simpler prompts and panels.** The save prompts when closing a tab or quitting now say one line: "Your changes will be lost if you don't save them." The Master menu shows a file name and last-used date only when two masters share a name. The Characters per inch info button and the Measurement caption above the units picker are gone. On raster image art the Metallic button now stays visible but greyed out, and its tooltip says why, instead of a note below it.
 
 ## [0.1.116] - 2026-10-30
 
