@@ -30,6 +30,16 @@ same planned cover-fit rectangle as PDF/canvas. Before certifying the spec's
 PSD visual gate, render the old and new PSDs in Photoshop at 600 DPI and commit
 the reviewed diff PNGs alongside these candidates.
 
+## 2026-11-02 laurel as an SVG image asset (Starter master)
+
+`collab-{off,on}-{art,mask}-laurel-asset.diff.png` compare the four PDF
+fixtures before and after the app stopped bundling the laurel as
+`builtin:logo`: the Lolev master now carries it as an ordinary SVG image asset,
+which planLayers fits by its ink box rather than its viewBox (0.009pt taller).
+Only a one-pixel anti-alias fringe around the laurel's outline is red (2171 px
+art, 1312 px mask, the same OFF and ON); nothing else moved. The PSD digests
+move for the same path data.
+
 ## 2026-10-27 QR error correction L → Q (#542)
 
 `collab-off-{art,mask}-qr-ec.diff.png` (2026-10-27, #542) compare the shipped

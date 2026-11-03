@@ -11,7 +11,7 @@ import {
   removeLayerIn, removeVariant, removeVariantIn, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
   structureOnlyMaster, toggleVariant, whereLayerLives, type Doc,
 } from "../src/model/edit";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { LOGO_ASSET, lolevMaster } from "./fixtures/lolevMaster";
 import { PT_STEP, roundToStep } from "../src/numeric";
 import { parseMaster } from "../src/model/layers";
 import { placeLayers } from "../src/model/place";
@@ -398,11 +398,11 @@ describe("labelOverriddenPaths / referencedAssetIds", () => {
     expect(referencedAssetIds(m, label).has("a2")).toBe(true);
     expect(referencedAssetIds(m, { ...label, overrides: { logo: { asset: "a3" } } }).has("a3")).toBe(true);
   });
-  it("masterAssetIds lists kind-less variant patches, skips builtin and empty assets", () => {
+  it("masterAssetIds lists kind-less variant patches, skips empty assets", () => {
     const m = lolevMaster();
-    expect([...masterAssetIds(m)]).toEqual([]);
+    expect([...masterAssetIds(m)]).toEqual([LOGO_ASSET]);
     m.variants[0].layers.logo = { asset: "a1" };
-    expect([...masterAssetIds(m)]).toEqual(["a1"]);
+    expect([...masterAssetIds(m)]).toEqual([LOGO_ASSET, "a1"]);
   });
 });
 
@@ -551,7 +551,7 @@ describe("structureOnlyMaster", () => {
     expect(stripped.y).toBe(name.y);
     expect(stripped.size).toBe(name.size);
     expect(byId<ImageLayer>(next, "background").asset).toBe("");
-    expect(byId<ImageLayer>(next, "logo").asset).toBe("builtin:logo");
+    expect(byId<ImageLayer>(next, "logo").asset).toBe(LOGO_ASSET);
     expect(byId<TextLayer>(next, "volume").lines[0].text).toBe("1 PINT");
     expect((collab(next).layers.collabLeft as ImageLayer).asset).toBe("");
   });

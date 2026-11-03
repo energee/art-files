@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { forgetMaster, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
+import { starterMaster } from "../src/model/starterLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 
 const stored = new Map<string, string>();
@@ -22,13 +23,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("master library index", () => {
   it("resolves the shipped master with an empty index", async () => {
-    expect(await resolveMasterById(SHIPPED_MASTER_ID)).toEqual({ master: lolevMaster(), assets: {} });
+    expect(await resolveMasterById(SHIPPED_MASTER_ID)).toEqual({ master: starterMaster(), assets: {} });
   });
   it("remembers and lists a master", () => {
-    rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    rememberMaster(starterMaster(), "/tmp/starter.master");
     const idx = masterIndex();
-    expect(idx[SHIPPED_MASTER_ID].path).toBe("/tmp/lolev.master");
-    expect(idx[SHIPPED_MASTER_ID].name).toBe("Lolev");
+    expect(idx[SHIPPED_MASTER_ID].path).toBe("/tmp/starter.master");
+    expect(idx[SHIPPED_MASTER_ID].name).toBe("Starter");
   });
   it("unknown id with no hint resolves null", async () => {
     expect(await resolveMasterById("nope")).toBeNull();
@@ -44,7 +45,7 @@ describe("master library index", () => {
     expect(masterIndex()).toEqual({});
   });
   it("forgets a library master and leaves the next launch unpinned from it", async () => {
-    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    await rememberMaster(starterMaster(), "/tmp/starter.master");
     localStorage.setItem("labellab.lastMaster", SHIPPED_MASTER_ID);
     await forgetMaster(SHIPPED_MASTER_ID);
     expect(masterIndex()[SHIPPED_MASTER_ID]).toBeUndefined();
@@ -60,7 +61,7 @@ describe("master library index", () => {
       ...fakeLocalStorage,
       setItem: () => { throw new DOMException("full", "QuotaExceededError"); },
     });
-    await expect(rememberMaster(lolevMaster(), "/tmp/lolev.master")).resolves.toBeUndefined();
+    await expect(rememberMaster(starterMaster(), "/tmp/starter.master")).resolves.toBeUndefined();
   });
   // The index can outgrow the quota while the short last-master key still
   // fits: a failed index write must not skip pinning the applied master.
@@ -72,7 +73,7 @@ describe("master library index", () => {
         fakeLocalStorage.setItem(k, v);
       },
     });
-    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    await rememberMaster(starterMaster(), "/tmp/starter.master");
     expect(stored.get("labellab.lastMaster")).toBe(SHIPPED_MASTER_ID);
     expect(stored.has(`labellab.master:${SHIPPED_MASTER_ID}`)).toBe(false);
   });
@@ -89,7 +90,7 @@ describe("master library index", () => {
         fakeLocalStorage.setItem(k, v);
       },
     });
-    await expect(rememberMaster(lolevMaster(), "/tmp/lolev.master")).resolves.toBeUndefined();
+    await expect(rememberMaster(starterMaster(), "/tmp/starter.master")).resolves.toBeUndefined();
     expect(masterIndex().old).toMatchObject({ name: "Old" }); // the blob still lists
   });
 
@@ -98,8 +99,8 @@ describe("master library index", () => {
   // dropped the other window's row. The hook below runs window B's save
   // inside window A's first read and hands A the value it read before.
   it("a concurrent save from another window keeps both rows", async () => {
-    const a = { ...lolevMaster(), id: "master-a", name: "A" };
-    const b = { ...lolevMaster(), id: "master-b", name: "B" };
+    const a = { ...starterMaster(), id: "master-a", name: "A" };
+    const b = { ...starterMaster(), id: "master-b", name: "B" };
     let other: (() => void) | null = () => void rememberMaster(b, "/tmp/b.master");
     vi.stubGlobal("localStorage", {
       ...fakeLocalStorage,
@@ -123,7 +124,7 @@ describe("master library index", () => {
       old: { name: "Old", path: "/tmp/old.master", lastSeen: "2026-01-01T00:00:00.000Z" },
     }));
     expect(masterIndex().old).toMatchObject({ name: "Old", path: "/tmp/old.master" });
-    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    await rememberMaster(starterMaster(), "/tmp/starter.master");
     expect(stored.has("labellab.masters")).toBe(false);
     expect(Object.keys(masterIndex()).sort()).toEqual(["old", SHIPPED_MASTER_ID].sort());
     await forgetMaster("old");
@@ -134,7 +135,7 @@ describe("master library index", () => {
   // random, so the index sorts by name to keep the Master menu stable.
   it("lists rows in name order whatever order storage returns them", async () => {
     for (const [id, name] of [["master-1", "Cedar"], ["master-3", "Alder"], ["master-2", "Birch"]]) {
-      await rememberMaster({ ...lolevMaster(), id, name }, `/tmp/${id}.master`);
+      await rememberMaster({ ...starterMaster(), id, name }, `/tmp/${id}.master`);
     }
     expect(Object.values(masterIndex()).map((e) => e.name)).toEqual(["Alder", "Birch", "Cedar"]);
   });
@@ -149,8 +150,8 @@ describe("master library index", () => {
   it("a null legacy blob neither lists nor blocks a save", async () => {
     stored.set("labellab.masters", "null");
     expect(masterIndex()).toEqual({});
-    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
-    expect(masterIndex()[SHIPPED_MASTER_ID]?.path).toBe("/tmp/lolev.master");
+    await rememberMaster(starterMaster(), "/tmp/starter.master");
+    expect(masterIndex()[SHIPPED_MASTER_ID]?.path).toBe("/tmp/starter.master");
     expect(stored.has("labellab.masters")).toBe(false);
   });
 
@@ -165,13 +166,13 @@ describe("master library index", () => {
     }));
     expect(Object.keys(masterIndex())).toEqual(["ok"]);
     expect(hintTrusted("/ok/x.master")).toBe(true);
-    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    await rememberMaster(starterMaster(), "/tmp/starter.master");
     expect(Object.keys(masterIndex()).sort()).toEqual(["ok", SHIPPED_MASTER_ID].sort());
   });
 
   // An id from an untrusted .master is a plain key, never the prototype.
   it("lists and forgets a master whose id is __proto__", async () => {
-    await rememberMaster({ ...lolevMaster(), id: "__proto__", name: "Odd" }, "/tmp/odd.master");
+    await rememberMaster({ ...starterMaster(), id: "__proto__", name: "Odd" }, "/tmp/odd.master");
     expect(Object.keys(masterIndex())).toEqual(["__proto__"]);
     await forgetMaster("__proto__");
     expect(Object.keys(masterIndex())).toEqual([]);
@@ -197,7 +198,7 @@ describe("master library index", () => {
         return v;
       },
     });
-    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    await rememberMaster(starterMaster(), "/tmp/starter.master");
     expect(masterIndex().x).toBeUndefined();
   });
 
@@ -207,23 +208,23 @@ describe("master library index", () => {
   // Task 4 is App.tsx's save/open wiring, which has no automated harness
   // (see task-4-report.md).
   it("a saved master registers in the library index under its own id", () => {
-    const m = parseMasterJson(JSON.parse(serializeMaster(lolevMaster()))).master;
-    rememberMaster(m, "/tmp/lolev.master");
-    expect(masterIndex()[m.id]).toMatchObject({ name: "Lolev", path: "/tmp/lolev.master" });
+    const m = parseMasterJson(JSON.parse(serializeMaster(starterMaster())));
+    rememberMaster(m, "/tmp/starter.master");
+    expect(masterIndex()[m.id]).toMatchObject({ name: "Starter", path: "/tmp/starter.master" });
   });
 
   // Finding #6: a registered .master on disk whose id is the shipped id must
   // win over the built-in fixture — resolveMasterById must consult the
-  // index/hint BEFORE falling back to lolevMaster().
+  // index/hint BEFORE falling back to starterMaster().
   it("a registered .master on disk for the shipped id wins over the built-in fixture", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const edited = lolevMaster();
+    const edited = starterMaster();
     edited.name = "ZZZ-EDITED";
     vi.doMock("@/files", () => ({
       readNativeFile: async () => new TextEncoder().encode(JSON.stringify(edited)),
     }));
     const mod = await import("../src/masters");
-    mod.rememberMaster(edited, "/tmp/lolev.master");
+    mod.rememberMaster(edited, "/tmp/starter.master");
     const resolved = await mod.resolveMasterById(mod.SHIPPED_MASTER_ID);
     // Legacy JSON bytes resolve through unpackMaster's '{' sniff, asset-less.
     expect(resolved?.master.name).toBe("ZZZ-EDITED");
@@ -247,8 +248,8 @@ describe("master library index", () => {
     }));
     const { packMaster } = await import("../src/model/files");
     const mod = await import("../src/masters");
-    const edited = { ...lolevMaster(), name: "ZZZ-CACHED" };
-    await mod.rememberMaster(edited, "lolev.master", packMaster(edited, {}));
+    const edited = { ...starterMaster(), name: "ZZZ-CACHED" };
+    await mod.rememberMaster(edited, "starter.master", packMaster(edited, {}));
     expect((await mod.resolveMasterById(mod.SHIPPED_MASTER_ID))?.master.name).toBe("ZZZ-CACHED");
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
@@ -262,7 +263,7 @@ describe("master library index", () => {
     }));
     const mod = await import("../src/masters");
     const resolved = await mod.resolveMasterById(mod.SHIPPED_MASTER_ID);
-    expect(resolved).toEqual({ master: lolevMaster(), assets: {} });
+    expect(resolved).toEqual({ master: starterMaster(), assets: {} });
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
   });
@@ -273,7 +274,7 @@ describe("master library index", () => {
   // check must reject it rather than handing back the wrong master.
   it("a file that parses but whose id doesn't match the requested id is rejected, not returned", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const wrongMaster = { ...lolevMaster(), id: "master-someone-else" };
+    const wrongMaster = { ...starterMaster(), id: "master-someone-else" };
     vi.doMock("@/files", () => ({
       readNativeFile: async () => new TextEncoder().encode(JSON.stringify(wrongMaster)),
     }));
@@ -297,7 +298,7 @@ describe("master library index", () => {
   // label follows the file; a library lookup by the old id does not revive it.
   it("a label follows the master file when that file was saved under a new id", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const onDisk = { ...lolevMaster(), id: "master-newer", name: "Newer" };
+    const onDisk = { ...starterMaster(), id: "master-newer", name: "Newer" };
     vi.doMock("@/files", () => ({
       readNativeFile: async () => new TextEncoder().encode(JSON.stringify(onDisk)),
     }));
@@ -309,14 +310,14 @@ describe("master library index", () => {
     }));
     const { packMaster } = await import("../src/model/files");
     const mod = await import("../src/masters");
-    const old = { ...lolevMaster(), id: "master-old", name: "Old" };
-    await mod.rememberMaster(old, "/tmp/lolev.master", packMaster(old, {}));
+    const old = { ...starterMaster(), id: "master-old", name: "Old" };
+    await mod.rememberMaster(old, "/tmp/starter.master", packMaster(old, {}));
     localStorage.setItem("labellab.lastMaster", "master-old");
     expect(await mod.resolveMasterById("master-old")).toBeNull();
     expect(held.has("master-old")).toBe(false);
     expect(mod.masterIndex()["master-old"]).toBeUndefined();
     expect(localStorage.getItem("labellab.lastMaster")).toBe("master-newer");
-    const followed = await mod.resolveLabelMaster("master-old", "/tmp/lolev.master", "/tmp/beer.label");
+    const followed = await mod.resolveLabelMaster("master-old", "/tmp/starter.master", "/tmp/beer.label");
     expect(followed?.master.id).toBe("master-newer");
     expect(followed?.master.name).toBe("Newer");
     vi.doUnmock("@tauri-apps/api/core");
@@ -326,16 +327,16 @@ describe("master library index", () => {
 
   // A restart reopens the last master. When its file was saved again under a
   // new id (Save Master As over the same path), the untitled tab follows the
-  // file instead of falling back to shipped Lolev for that launch.
+  // file instead of falling back to the shipped master for that launch.
   it("an untitled restart follows the master file saved under a new id", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const onDisk = { ...lolevMaster(), id: "master-newer", name: "Newer" };
+    const onDisk = { ...starterMaster(), id: "master-newer", name: "Newer" };
     vi.doMock("@/files", () => ({
       readNativeFile: async () => new TextEncoder().encode(JSON.stringify(onDisk)),
     }));
     const mod = await import("../src/masters");
-    const old = { ...lolevMaster(), id: "master-old", name: "Old" };
-    await mod.rememberMaster(old, "/tmp/lolev.master");
+    const old = { ...starterMaster(), id: "master-old", name: "Old" };
+    await mod.rememberMaster(old, "/tmp/starter.master");
     const resolved = await mod.resolveDefaultMaster();
     expect(resolved.master.id).toBe("master-newer");
     vi.doUnmock("@tauri-apps/api/core");
@@ -347,7 +348,7 @@ describe("master library index", () => {
   // the stale index row is retired without taking those bytes with it.
   it("a label falls back to the remembered copy when its hint is unreadable and the index file is another master", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const other = { ...lolevMaster(), id: "master-other", name: "Other" };
+    const other = { ...starterMaster(), id: "master-other", name: "Other" };
     vi.doMock("@/files", () => ({
       readNativeFile: async (p: string) => {
         if (p === "/tmp/indexed.master") return new TextEncoder().encode(JSON.stringify(other));
@@ -362,7 +363,7 @@ describe("master library index", () => {
     }));
     const { packMaster } = await import("../src/model/files");
     const mod = await import("../src/masters");
-    const mine = { ...lolevMaster(), id: "master-mine", name: "Mine" };
+    const mine = { ...starterMaster(), id: "master-mine", name: "Mine" };
     await mod.rememberMaster(mine, "/tmp/indexed.master", packMaster(mine, {}));
     const r = await mod.resolveLabelMaster("master-mine", "/tmp/hint/mine.master", "/tmp/hint/beer.label");
     expect(r?.master.name).toBe("Mine");
@@ -400,7 +401,7 @@ describe("master library index", () => {
       dropCachedMaster: async (id: string) => { held.delete(id); },
     }));
     const mod = await import("../src/masters");
-    const m = { ...lolevMaster(), id: "m1", name: "M" };
+    const m = { ...starterMaster(), id: "m1", name: "M" };
     await mod.rememberMaster(m, "/a.master", new Uint8Array([7]));
     const before = mod.masterIndex().m1;
     const undo = await mod.removeFromLibrary("m1");
@@ -424,7 +425,7 @@ describe("master library index", () => {
       dropCachedMaster: async (id: string) => { held.delete(id); },
     }));
     const mod = await import("../src/masters");
-    const m = { ...lolevMaster(), id: "m1", name: "M" };
+    const m = { ...starterMaster(), id: "m1", name: "M" };
     await mod.rememberMaster(m, "/a.master", new Uint8Array([7]));
     const undo = await mod.removeFromLibrary("m1");
     await mod.rememberMaster({ ...m, name: "M2" }, "/b.master", new Uint8Array([8]));
@@ -449,7 +450,7 @@ describe("master library index", () => {
       dropCachedMaster: async () => {},
     }));
     const mod = await import("../src/masters");
-    const m = { ...lolevMaster(), id: "m1", name: "M" };
+    const m = { ...starterMaster(), id: "m1", name: "M" };
     await mod.rememberMaster(m, "/a.master");
     const undo = await mod.removeFromLibrary("m1");
     onPut = () => {
@@ -467,7 +468,7 @@ describe("master library index", () => {
       cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {},
     }));
     const mod = await import("../src/masters");
-    for (const id of ["a", "b", "c"]) await mod.rememberMaster({ ...lolevMaster(), id, name: id }, `/${id}.master`);
+    for (const id of ["a", "b", "c"]) await mod.rememberMaster({ ...starterMaster(), id, name: id }, `/${id}.master`);
     const undo = await mod.removeFromLibrary("a");
     await undo();
     expect(Object.keys(mod.masterIndex())).toEqual(["a", "b", "c"]);
@@ -503,8 +504,8 @@ describe("master library index", () => {
   // trusted hint before the index's file for that id.
   it("a label opens the master at its own hint path when another file holds the same id", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const theirs = { ...lolevMaster(), id: "master-dup", name: "Theirs" };
-    const ours = { ...lolevMaster(), id: "master-dup", name: "Ours" };
+    const theirs = { ...starterMaster(), id: "master-dup", name: "Theirs" };
+    const ours = { ...starterMaster(), id: "master-dup", name: "Ours" };
     const reads: string[] = [];
     vi.doMock("@/files", () => ({
       readNativeFile: async (p: string) => {
@@ -536,7 +537,7 @@ describe("master library index", () => {
   // seen: the file beside it joins the library so later opens find it.
   it("a hinted master joins the library when the library has no file for its id", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const theirs = { ...lolevMaster(), id: "master-new", name: "New" };
+    const theirs = { ...starterMaster(), id: "master-new", name: "New" };
     vi.doMock("@/files", () => ({
       readNativeFile: async () => new TextEncoder().encode(JSON.stringify(theirs)),
     }));
@@ -552,8 +553,8 @@ describe("master library index", () => {
   // row for the id may name a different file (#405).
   it("a file passed as its own trust root resolves over the library row for its id", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const theirs = { ...lolevMaster(), id: "master-dup", name: "Theirs" };
-    const ours = { ...lolevMaster(), id: "master-dup", name: "Ours" };
+    const theirs = { ...starterMaster(), id: "master-dup", name: "Theirs" };
+    const ours = { ...starterMaster(), id: "master-dup", name: "Ours" };
     vi.doMock("@/files", () => ({
       readNativeFile: async (p: string) =>
         new TextEncoder().encode(JSON.stringify(p === "/elsewhere/ours.master" ? ours : theirs)),
@@ -574,7 +575,7 @@ describe("master library index", () => {
   // repairs the row instead of leaving it pointing at nothing.
   it("a hinted master replaces a library row whose file is gone", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const moved = { ...lolevMaster(), id: "master-moved", name: "Moved" };
+    const moved = { ...starterMaster(), id: "master-moved", name: "Moved" };
     vi.doMock("@/files", () => ({
       readNativeFile: async (p: string) => {
         if (p !== "/beers/moved.master") throw new Error("not found");
@@ -658,7 +659,7 @@ describe("master library index", () => {
   });
   it("a label-relative hint opens its master and binds the tab to the full path", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const ours = { ...lolevMaster(), id: "master-rel", name: "Ours" };
+    const ours = { ...starterMaster(), id: "master-rel", name: "Ours" };
     vi.doMock("@/files", () => ({
       readNativeFile: async (p: string) => {
         if (p !== "/beers/ours.master") throw new Error("not found");
@@ -732,7 +733,7 @@ describe("master library index", () => {
     }));
     const { packMaster } = await import("../src/model/files");
     const mod = await import("../src/masters");
-    const m = { ...lolevMaster(), id: "master-held", name: "Held" };
+    const m = { ...starterMaster(), id: "master-held", name: "Held" };
     await mod.rememberMaster(m, "/lib/held.master", packMaster(m, {}));
     expect((await mod.resolveMasterById("master-held"))?.master.name).toBe("Held");
     expect(mod.masterIndex()["master-held"]?.path).toBe("/lib/held.master");

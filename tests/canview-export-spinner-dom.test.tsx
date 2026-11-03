@@ -22,7 +22,7 @@ vi.mock("../src/three/labelTextures", () => ({
 import { CanView } from "../src/components/CanView";
 
 const source: CanvasRenderSource = {
-  m: measure, planAssets: { logoSvg: "" }, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
+  m: measure, planAssets: {}, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
 };
 
 it("hides the can's rendering spinner while an export runs", async () => {

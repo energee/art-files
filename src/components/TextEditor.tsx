@@ -57,7 +57,7 @@ export function toEditorLines(lines: TextLine[]): EditorLine[] {
  *  own" — planLayers draws such a line on the BLOCK's plate, and every line
  *  in the block's fill, so the copies written here never outvote the
  *  inspector's Fill / Metallic. `bold`/`header` are present only when set,
- *  matching how model/lolevLayers.ts authors lines.
+ *  matching how model/starterLayers.ts authors lines.
  *
  *  `base` must be the layer's block Style, not a StyledLine: its keys are
  *  spread onto every line, so a `text`/`bold` on it would leak through. */

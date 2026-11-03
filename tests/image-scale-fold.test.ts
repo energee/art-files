@@ -9,10 +9,10 @@ import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import { unpackLabel, unpackMaster, serializeMaster } from "../src/model/files";
 import { foldLabelScale, resolveLayers } from "../src/model/resolveLayers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { planLayers } from "../src/planLayers";
 import type { PlanAssets } from "../src/plan";
-import { logoSvg } from "./fixtures";
+import { laurelCustom } from "./fixtures";
 
 const STYLE = { fill: "#F3CD80", layer: "metallic" } as const;
 const art = (id: string, asset: string, size: Record<string, number>) => ({
@@ -20,8 +20,8 @@ const art = (id: string, asset: string, size: Record<string, number>) => ({
 });
 
 /** A v3 master.json as a pre-fold Label Lab wrote it: scale on master layers
- *  (with and without a height, and on the laurel, where it never drew), on a
- *  variant's diff of a master layer, and on a variant's added layer. */
+ *  (with and without a height), on a variant's diff of a master layer, and on
+ *  a variant's added layer. */
 function oldMasterJson() {
   const m = JSON.parse(serializeMaster(lolevMaster()));
   m.layers.push(
@@ -29,7 +29,6 @@ function oldMasterJson() {
     art("art2", "a2", { w: 40, scale: 1.5 }),
     art("art4", "a1", { w: 50, h: 20 }),
   );
-  m.layers.find((l: { id: string }) => l.id === "logo").scale = 3;
   const collab = m.variants.find((v: { id: string }) => v.id === "collab");
   collab.layers.art1 = { scale: 2 };
   collab.layers.collabLeft.scale = 0.8;
@@ -51,8 +50,7 @@ function oldLabelJson() {
 }
 
 const ASSETS: PlanAssets = {
-  logoSvg,
-  custom: { a1: { aspect: 2 }, a2: { aspect: 0.5 } },
+  custom: { ...laurelCustom, a1: { aspect: 2 }, a2: { aspect: 0.5 } },
 };
 const measure = (text: string, size: number) => text.length * size * 0.55;
 
@@ -68,15 +66,13 @@ function drawn(master: ReturnType<typeof openOld>["master"], label: ReturnType<t
   const out: Record<string, number[]> = {};
   for (const item of planLayers(layers, measure, ASSETS)) {
     if (item.kind === "image") out[item.id] = [item.x, item.y, item.w, item.h];
-    else if (item.kind === "paths" && item.id === "logo") out.logo = [item.x, item.y];
   }
   return out;
 }
 
 /** What planLayers drew for oldMasterJson + oldLabelJson before the fold,
- *  captured from the pre-change build (x, y, w, h; the laurel's x, y). */
+ *  captured from the pre-change build (x, y, w, h). */
 const BEFORE: Record<string, number[]> = {
-  logo: [275.81, 164.6796875],
   art1: [100, 100, 140, 70],
   art2: [100, 100, 60, 120],
   art4: [100, 100, 30, 15],
@@ -95,8 +91,6 @@ describe("image scale folds into w/h on read", () => {
     // No height: it still follows the asset's aspect, at the scaled width.
     expect(byId("art2").w).toBe(60);
     expect(byId("art2").h).toBeUndefined();
-    // The laurel never drew its scale (parseLogo reads w alone), so it stays.
-    expect(byId("logo").w).toBe((lolevMaster().layers.find((l) => l.id === "logo") as { w: number }).w);
     // A variant's scale alone pins the master's size times it.
     expect(master.variants[0].layers.art1).toEqual({ w: 140, h: 88 });
     expect(master.variants[0].layers.collabLeft).toMatchObject({ w: 56, h: expect.closeTo(35.2, 9) });
@@ -110,7 +104,9 @@ describe("image scale folds into w/h on read", () => {
     const { master, label } = openOld();
     const now = drawn(master, label);
     expect(Object.keys(now).sort()).toEqual(Object.keys(BEFORE).sort());
+    // collabCenter hangs below the laurel, which now plans from its SVG
+    // asset's ink box: 0.009pt taller than the old builtin:logo's viewBox box.
     for (const [id, box] of Object.entries(BEFORE))
-      box.forEach((v, i) => expect(now[id][i], `${id}[${i}]`).toBeCloseTo(v, 9));
+      box.forEach((v, i) => expect(now[id][i], `${id}[${i}]`).toBeCloseTo(v, id === "collabCenter" ? 1 : 9));
   });
 });

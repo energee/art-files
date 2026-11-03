@@ -2,7 +2,7 @@
 // A RESOLVER CACHE ONLY — .master files on disk are the source of truth
 // (spec: Library index). resolveMasterById always consults a trusted hint
 // (the exact file a label names), then the index, so a .master on disk wins
-// even when its id is the shipped id; the built-in Lolev fixture is used only
+// even when its id is the shipped id; the built-in Starter master is used only
 // as a last-resort fallback when nothing on disk resolves, guaranteeing a
 // fresh install with an empty index still works. localStorage (per-operator
 // app state, like the view toggles and settings.ts): the index describes this
@@ -16,14 +16,14 @@
 // still read, and the next write splits it into rows.
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
-import { lolevMaster } from "@/model/lolevLayers";
+import { starterMaster } from "@/model/starterLayers";
 import { isRecord, unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
 import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
 import { readJson } from "@/settings";
 import { errMsg } from "@/lib/utils";
 
-export const SHIPPED_MASTER_ID = lolevMaster().id;
+export const SHIPPED_MASTER_ID = starterMaster().id;
 const ROW_PREFIX = "labellab.master:";
 const LEGACY_KEY = "labellab.masters";
 const LAST_KEY = "labellab.lastMaster";
@@ -115,7 +115,7 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   const applied = opts?.applied !== false;
   // Bytes first: LAST_KEY / lastSeen must not claim this master until a
   // reload can actually resolve it (void cacheMaster used to return while
-  // IndexedDB was still empty, and the next launch fell back to Lolev).
+  // IndexedDB was still empty, and the next launch fell back to the shipped master).
   if (bytes) await cacheMaster(m.id, bytes);
   // A failed migration leaves the blob in place, so masterIndex still lists
   // it; this master's own row is still attempted below.
@@ -170,8 +170,8 @@ function lastMasterId(): string {
 }
 
 /** A resolved master with its template assets — what unpackMaster returns
- *  (a legacy JSON master resolves with empty assets; a v1 file is converted
- *  on the way in, see model/files.ts). `path` is the native file it was read
+ *  (a legacy JSON master resolves with empty assets; a v1 file is refused,
+ *  see model/files.ts). `path` is the native file it was read
  *  from, when it was read from one: the tab binds Save Master and the saved
  *  label's masterHint to that file, not to the index row for the id (#405). */
 export type ResolvedMaster = { master: Master; assets: MasterAssets; path?: string };
@@ -377,10 +377,10 @@ async function resolveMaster(
       if (r.master.id === id) return r;
     } catch { /* a stale or truncated entry falls through to the fixture */ }
   }
-  // Fall back to the built-in fixture only when nothing on disk resolved —
+  // Fall back to the built-in Starter master only when nothing on disk resolved —
   // guarantees a fresh install with an empty index still works, without
   // letting the shipped id short-circuit a registered .master on disk.
-  if (id === SHIPPED_MASTER_ID) return { master: lolevMaster(), assets: {} };
+  if (id === SHIPPED_MASTER_ID) return { master: starterMaster(), assets: {} };
   return null;
 }
 
@@ -398,8 +398,8 @@ export function resolveLabelMaster(id: string, hint?: string, labelPath?: string
 /** The last-applied master an untitled tab starts from, before
  *  structureOnlyMaster drops fill values and raster art. Follows the file when
  *  it was saved again under a new id, so a restart shows the master on disk.
- *  Falls back to the shipped fixture when the last-applied id cannot be
- *  resolved. */
+ *  Falls back to the shipped Starter master when the last-applied id cannot
+ *  be resolved. */
 export async function resolveDefaultMaster(): Promise<ResolvedMaster> {
-  return (await resolveLabelMaster(lastMasterId())) ?? { master: lolevMaster(), assets: {} };
+  return (await resolveLabelMaster(lastMasterId())) ?? { master: starterMaster(), assets: {} };
 }

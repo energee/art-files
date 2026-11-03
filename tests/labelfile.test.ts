@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { serializeMaster, unpackLabel, unpackMaster } from "../src/model/files";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { zipSync, strToU8, type Zippable } from "fflate";
 import { packAssets } from "../src/labelfile";
 const png = () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);

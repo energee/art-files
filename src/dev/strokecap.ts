@@ -11,14 +11,13 @@ import { loadFonts } from "../pdf/fonts";
 import { planLayers } from "../planLayers";
 import { convertConfigV1 } from "../model/convert";
 import { resolveLayers } from "../model/resolveLayers";
-import { lolevMaster } from "../model/lolevLayers";
+import { starterMaster } from "../model/starterLayers";
 import { drawPlate } from "../canvas/draw";
 import { labelFontCss, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
 import { hitBoxesFromLayout } from "../hittestLayers";
 import { layerBoxes } from "../planLayers";
 import { PAGE, previewRasterScale } from "../layout";
-import logoSvg from "../assets/logo2025.svg?raw";
 
 const SCALE = 8; // raster px per pt
 /** What the shipped 2D preview actually paints at, unzoomed on a retina
@@ -58,9 +57,9 @@ async function run() {
   const [fonts, mf] = await Promise.all([loadFonts(), loadLabelFaces()]);
   const cfg = defaultConfig();
   cfg.abv = "8.5";
-  const { label } = convertConfigV1(cfg, false);
-  const { layers } = resolveLayers(lolevMaster(), label.enabledVariants, label.values, label.overrides);
-  const plan = planLayers(layers, mf, { logoSvg });
+  const { label } = convertConfigV1(cfg, false, starterMaster());
+  const { layers } = resolveLayers(starterMaster(), label.enabledVariants, label.values, label.overrides);
+  const plan = planLayers(layers, mf, {});
 
   // One spelling of "the art plate at density s", so the magnified capture
   // and the preview-density one can only differ by their density.
@@ -75,12 +74,12 @@ async function run() {
   // One crop per element, from the hit-test boxes — already the union of an
   // element's drawn lines (description, warning and the Info line each place
   // many runs under one id) and already padded by the font's real ascent and
-  // descent, so this page has no box maths of its own to drift. Vector items
-  // like the laurel come along for free: their strokes go through the same
-  // stroker, so the same cavity question applies to their leaf tips.
+  // descent, so this page has no box maths of its own to drift. The page
+  // draws the shipped Starter master, so it has no vector art of its own; an
+  // SVG image layer's strokes go through the same stroker.
   const ids = new Set(plan.map((r) => r.id));
   const crops: Record<string, Crop> = {};
-  for (const b of hitBoxesFromLayout(layers, layerBoxes(layers, mf, { logoSvg }))) {
+  for (const b of hitBoxesFromLayout(layers, layerBoxes(layers, mf, {}))) {
     if (!ids.has(b.id)) continue;
     crops[b.id] = {
       x: b.x - PAD, y: b.y - PAD,

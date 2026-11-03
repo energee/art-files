@@ -1,6 +1,6 @@
 // model-files.test.ts — the v3 .master / .label containers (model/files.ts):
 // the same ZIP layout as before (master.json / label.json + role dirs), a
-// v1 master.json converted on open, a v2 label.json handed back as `v2`
+// v1 master.json refused on open, a v2 label.json handed back as `v2`
 // (it needs the master to convert), a v1 config.json handed back raw, and
 // saves that always write v3.
 import { describe, expect, it } from "vitest";
@@ -8,8 +8,7 @@ import { strToU8, zipSync } from "fflate";
 import {
   masterNameFromFile, packLabel, packMaster, parseLabel, serializeLabel, serializeMaster, unpackLabel, unpackMaster,
 } from "../src/model/files";
-import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
-import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
+import { lolevMaster as lolevV3 } from "./fixtures/lolevMaster";
 import { defaultConfig } from "../src/defaults";
 import type { LabelFile } from "../src/model/layers";
 
@@ -22,9 +21,8 @@ describe(".master v3 container", () => {
       texture: { name: "rock.png", bytes: png(1) }, mask: { name: "metal.png", bytes: png(2) },
       customImages: { art1: { name: "badge.svg", bytes: strToU8("<svg/>") } },
     };
-    const { master, assets: a, warnings } = unpackMaster(packMaster(m, assets));
+    const { master, assets: a } = unpackMaster(packMaster(m, assets));
     expect(master).toEqual(m);
-    expect(warnings).toEqual([]);
     expect(a).toEqual(assets);
   });
 
@@ -41,31 +39,22 @@ describe(".master v3 container", () => {
   });
 
   it("opens a legacy JSON-only master behind a UTF-8 BOM or leading whitespace (#101)", () => {
-    const json = JSON.stringify(lolevV1());
+    const json = serializeMaster(lolevV3());
     const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...strToU8(json)]);
     for (const bytes of [bom, strToU8(`\n  ${json}`), strToU8(`\r\n\t${json}`)]) {
       const { master, assets } = unpackMaster(bytes);
-      expect(master.formatVersion).toBe(3);
+      expect(master).toEqual(lolevV3());
       expect(assets).toEqual({});
     }
   });
 
-  it("opens a legacy JSON-only v1 master converted to v3, with no assets", () => {
-    const { master, assets, warnings } = unpackMaster(strToU8(JSON.stringify(lolevV1())));
-    expect(master.formatVersion).toBe(3);
-    expect(master.layers.map((l) => l.id)).toEqual(lolevV3().layers.map((l) => l.id));
-    expect(assets).toEqual({});
-    expect(warnings).toEqual([]);
-  });
-
-  it("opens a v1 ZIP master converted, keeping its assets", () => {
-    const bytes = zipSync({
-      "master.json": strToU8(JSON.stringify(lolevV1())),
-      "texture/rock.png": [png(3), { level: 0 }],
-    });
-    const { master, assets } = unpackMaster(bytes);
-    expect(master.formatVersion).toBe(3);
-    expect(assets.texture).toEqual({ name: "rock.png", bytes: png(3) });
+  // v1 masters are refused, not converted: the converter only lives on in
+  // Label Lab 0.1.116, which opens one and saves it as v3.
+  it("refuses a v1 master, JSON-only or zipped, naming the version that updates it", () => {
+    const v1 = strToU8(JSON.stringify({ formatVersion: 1, id: "old", name: "Old" }));
+    const message = "This master is from Label Lab 0.1.36 or earlier. Open it in Label Lab 0.1.116 and save it to update it.";
+    expect(() => unpackMaster(v1)).toThrow(message);
+    expect(() => unpackMaster(zipSync({ "master.json": v1 }))).toThrow(message);
   });
 
   it("saves always write v3", () => {

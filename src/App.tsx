@@ -62,7 +62,7 @@ import {
   MASTER_EXT, masterNameFromFile, packLabel, packMaster, unpackLabel, unpackMaster,
   type MasterAssets,
 } from "@/model/files";
-import { lolevMaster } from "@/model/lolevLayers";
+import { starterMaster } from "@/model/starterLayers";
 import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes } from "@/planLayers";
 import type { Box } from "@/model/place";
@@ -118,7 +118,6 @@ import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
 import { createBitmapCache } from "@/canvas/bitmapCache";
-import logoSvg from "@/assets/logo2025.svg?raw";
 
 // three.js is the largest thing in the bundle and most sessions never leave
 // the 2D view, so the 3D can view (and three.js with it) loads on first use —
@@ -199,6 +198,7 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
  *  written by an earlier build sheds its extras on the next write instead of
  *  leaking them in. Reads and writes are both guarded: storage can be missing
  *  or full, and a view preference is never worth an error. */
+// The key predates the app's name; renaming it would reset every saved view.
 const VIEW_KEY = "lolev-view";
 type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit };
 function loadViewPrefs(): ViewPrefs {
@@ -222,7 +222,7 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
 
 /** The toast sources (toastId) that report on an editor's own content and go
  *  with its tab: its warnings, and the Switched notice whose Undo acts on it. */
-const TAB_TOASTS = ["label-warning", "master-warning", "restore-warning", "image-warning", "switched"] as const;
+const TAB_TOASTS = ["label-warning", "restore-warning", "image-warning", "switched"] as const;
 
 /** Focuses a layer's value field in the inspector (`<id>-content`, see
  *  contentFor). The inspector mounts a frame or two after a selection, so this
@@ -381,7 +381,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
   const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
-    useHistory<Doc>(() => { const m = lolevMaster(); return { master: m, label: newLabel(m) }; });
+    useHistory<Doc>(() => { const m = starterMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -1099,7 +1099,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  SVG source's ink too, so it plans as paths), plus the page art under
    *  PAGE_ART_ID while the slots hold it. */
   const planAssetsOf = (): PlanAssets => ({
-    logoSvg, guides,
+    guides,
     custom: {
       ...Object.fromEntries(Object.entries(liveImages).map(([id, c]) => [
         id,
@@ -1658,11 +1658,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { assets, missing } = masterAssetBundle(forked);
     const suggested = machineName(forked.name) || "master";
     /** A fork takes its display name from the file it was saved as — without
-     *  this the library would list two masters called "Lolev" and no way to
+     *  this the library would list two masters called "Starter" and no way to
      *  tell them apart (there is no master-name field anywhere in the UI).
      *
      *  Only a name the user actually TYPED counts: accepting the suggested
-     *  filename must not rename "Lolev" to its own slug, and that is also the
+     *  filename must not rename "Starter" to its own slug, and that is also the
      *  common case, which keeps the original display name. */
     const titled = (file: string): Master => {
       const base = masterNameFromFile(file);
@@ -1722,15 +1722,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
 
-  /** Parse a candidate .master file (ZIP, legacy JSON, or a v1 file, which
-   *  converts), reporting a clear error and leaving the document untouched
+  /** Parse a candidate .master file (ZIP or legacy JSON; a v1 file is
+   *  refused), reporting a clear error and leaving the document untouched
    *  on a bad file. */
-  function tryParseMaster(bytes: Uint8Array, name: string): { master: Master; assets: MasterAssets } | null {
+  function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
-      const r = unpackMaster(bytes);
-      if (r.warnings.length) notify.warning(t("Opened {{file}} with changes", { file: baseName(name) }),
-        { id: toastId("master-warning"), description: r.warnings.join(" · ") });
-      return r;
+      return unpackMaster(bytes);
     } catch (err) {
       reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
@@ -1801,7 +1798,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
-    const r = tryParseMaster(bytes, name);
+    const r = tryParseMaster(bytes);
     if (!r) return;
     await rememberMaster(r.master, name, bytes);
     refreshLibrary();
@@ -1836,7 +1833,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const idx = masterIndex();
     const entries: Record<string, LibraryEntry> = {
       // Always listed; the loop below replaces it when the index has a row.
-      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, builtIn: true },
+      [SHIPPED_MASTER_ID]: { name: starterMaster().name, builtIn: true },
     };
     for (const [id, e] of Object.entries(idx)) entries[id] = { ...entries[id], ...e, inLibrary: true };
     return entries;
@@ -1961,22 +1958,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
     // one on a quiet attempt and ask again with no explanation.
-    let bytes: Uint8Array, path: string, name: string;
+    let bytes: Uint8Array, path: string;
     try {
       const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
       if (target === undefined) { reportLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
       if ("path" in target) {
-        [bytes, path, name] = [await readNativeFile(target.path), target.path, target.path];
+        [bytes, path] = [await readNativeFile(target.path), target.path];
       } else {
         const file = await target.handle.getFile();
-        [bytes, path, name] = [new Uint8Array(await file.arrayBuffer()), "", file.name];
+        [bytes, path] = [new Uint8Array(await file.arrayBuffer()), ""];
       }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
-    const r = tryParseMaster(bytes, name);
+    const r = tryParseMaster(bytes);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
     return r && { ...r, path: path || undefined };
   }
@@ -2027,12 +2024,16 @@ export const DocumentEditor = memo(function DocumentEditor({
       };
       let next: Doc;
       if (unpacked.legacy !== undefined) {
-        // A v1 config.json has no master concept: it converts against the
-        // shipped Lolev master, its Collab checkbox becoming the variant.
+        // A v1 config.json has no master concept: it converts onto this
+        // tab's master, its Collab checkbox becoming the variant where that
+        // master has one. The master keeps its own images and Save target.
+        const current = docRef.current.master;
         const cfg = parseConfigFile(unpacked.legacy);
-        const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy));
+        const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy), current);
         notes = r.warnings;
-        next = { master: lolevMaster(), label: adoptLegacyCollab(r.label) };
+        masterAssets = { customImages: imageBundle(customImages, masterAssetIds(current)) };
+        masterPath = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
+        next = { master: current, label: adoptLegacyCollab(r.label) };
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
         const hint = ref.masterHint;
@@ -2335,7 +2336,6 @@ export const DocumentEditor = memo(function DocumentEditor({
           fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
       }
-      if (layer.asset === "builtin:logo") return null;
       const file = customImages[layer.asset];
       return <FileDrop label={t("Image")} accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}
@@ -2382,7 +2382,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         <div className="space-y-1">
           <Label htmlFor={id} className="text-xs text-muted-foreground">{t("Link")}</Label>
           <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
-            placeholder="https://lolev.beer/beer/"
+            placeholder="https://example.com/beer/"
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
@@ -2413,11 +2413,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         {layer.choices?.length ? (
           <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
             choices={layer.choices} invalid={!!errors[layer.id]}
-            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : t("digits")}
+            placeholder={layer.kind === "qr" ? "https://example.com/beer/{name|slug}" : t("digits")}
             onCommit={(v) => setContent(layer, v, id)} />
         ) : (
           <Input id={id} className="h-7 font-mono text-xs" value={template}
-            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : t("digits")}
+            placeholder={layer.kind === "qr" ? "https://example.com/beer/{name|slug}" : t("digits")}
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => setContent(layer, e.target.value, id)} />
         )}

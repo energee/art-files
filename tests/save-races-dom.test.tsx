@@ -27,6 +27,19 @@ const menu = vi.hoisted(() => ({
   /** When set, a new tab's boot restore (resolveDefaultMaster) fails with this. */
   restoreError: "",
 }));
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here. Its laurel's
+// bytes are not loaded in these tests, so the logo layer starts unset; a set
+// asset with no bytes would make every Save Master warn it is missing.
+vi.mock("../src/model/starterLayers", async () => {
+  const { lolevMaster } = await import("./fixtures/lolevMaster");
+  return {
+    starterMaster: () => {
+      const m = lolevMaster();
+      return { ...m, layers: m.layers.map((l) => l.id === "logo" ? { ...l, asset: "" } : l) };
+    },
+  };
+});
 vi.mock("../src/components/PreviewCompare", () => ({
   PreviewCompare: (p: { onRenderError: (m: string) => void }) => { menu.renderError = p.onRenderError; return null; },
 }));
@@ -92,8 +105,7 @@ vi.mock("../src/files", async (importOriginal) => {
 });
 import { DocumentEditor, type FileToOpen } from "../src/App";
 import { buildPsd } from "../src/psd/build";
-import { lolevMaster } from "../src/model/lolevLayers";
-import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { packLabel, packMaster, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";
 
@@ -880,42 +892,6 @@ function stubMasterBytes(bytes: Uint8Array) {
   vi.stubGlobal("showOpenFilePicker", async () => [{ name: "other.master", getFile }]);
   return getFile;
 }
-/** Stubs the open picker with a v1 master, which converts on the way in and
- *  warns about its unknown "mystery" layer. */
-function stubConvertedMaster() {
-  const old = lolevV1();
-  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
-  old.defaults = { mystery: 1 } as never;
-  return stubMasterBytes(new TextEncoder().encode(JSON.stringify(old)));
-}
-
-// A v1 master converts on the way in, with the converter's warnings: one toast
-// for the open, the warnings joined, with no "Note:" lead-in.
-it("Open Master shows a converted master's warnings in one toast, without Note:", async () => {
-  stubConvertedMaster();
-  await mount();
-  await run("master-open");
-  await shown("mystery");
-  await settle();
-  // The title names the file; the converter's warnings are the description.
-  expect(toastTitles()).toEqual(["Opened other.master with changes"]);
-  expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("mystery");
-  expect(document.body.textContent).not.toContain("Note:");
-  expect(document.querySelector("[data-sonner-toast]")!.getAttribute("data-type")).toBe("warning");
-}, 30_000);
-
-it("opening a converted master twice shows its warnings once", async () => {
-  const getFile = stubConvertedMaster();
-  await mount();
-  await run("master-open");
-  await shown("mystery");
-  await run("master-open");
-  // The second open has read its file; its warning would land a tick later.
-  await vi.waitFor(() => expect(getFile).toHaveBeenCalledTimes(2), { timeout: 5_000 });
-  await settle();
-  expect(toastTitles()).toHaveLength(1);
-}, 30_000);
-
 it("opening a second label with benched values replaces the first one's warning", async () => {
   const benched = (layer: string) => new File([packLabel(
     { formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { [layer]: "stale" } }, {}) as unknown as BlobPart], `${layer}.label`);
@@ -1155,16 +1131,7 @@ async function dropBrokenArt() {
 const bothArtErrors = [MASK_FAILED, TEXTURE_FAILED];
 
 // The open warnings of a label and of a restore are covered where they arise
-// (stale-label-ids-dom, recovery-open-dom); these are the master's and the image's.
-it("closing the tab dismisses its converted-master warning", async () => {
-  stubConvertedMaster();
-  await mount();
-  await run("master-open");
-  await shown("mystery");
-  await act(async () => root.unmount());
-  await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
-}, 30_000);
-
+// (stale-label-ids-dom, recovery-open-dom); this is the image's.
 it("closing the tab dismisses its missing-image warning", async () => {
   const warning = "1 image in Lolev.master has no file to save";
   let written: Uint8Array | undefined;

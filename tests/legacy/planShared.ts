@@ -6,6 +6,9 @@ import type { StyledLine } from "../../src/types";
 import { parseRuns } from "../../src/description";
 import * as L from "./layout";
 export interface PlanAssets extends LivePlanAssets {
+  /** Raw contents of logo2025.svg: the historical layout drew the laurel
+   *  from it (the live planner has no built-in logo). */
+  logoSvg: string;
   collabLeft?: PlanArt | null;
   collabCenter?: PlanArt | null;
 }

@@ -11,10 +11,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import type { LabelAssets } from "../src/labelfile";
 import type { Command } from "../src/components/CommandMenu";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type { MasterAssets } from "../src/model/files";
 import { mountToaster, toastTitles, unmountToaster } from "./real-timer-toaster";
 
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here.
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
   cachedMaster: async () => null,

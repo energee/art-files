@@ -18,7 +18,7 @@ import { pointToUnit } from "../src/rulers";
 import {
   BLEED_STEP_IN, DEFAULT_RENDER, commitBleedIn, displayBleedIn,
 } from "../src/settings";
-import { assets, boxOfLayer, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, logoSvg, pageRectPath } from "./fixtures";
+import { assets, boxOfLayer, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, planAssets, pageRectPath } from "./fixtures";
 
 /** A press-standard 1/8" bleed — nearly double the shipped one, so anything
  *  that quietly ignores the knob shows up as a large, obvious error rather
@@ -66,7 +66,7 @@ describe("bleed — the shipped default", () => {
     // it was relative to the TRIM — the edge the label is actually cut on.
     const at = (bleedIn: number) => {
       L.setBleed(bleedIn);
-      const b = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg })!;
+      const b = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), planAssets)!;
       return { left: b.x - L.ART.x, top: b.y - L.ART.y };
     };
     const measured = at(L.SHIPPED_BLEED_IN);
@@ -159,7 +159,7 @@ describe("bleed — the shift mechanism", () => {
   // to end. Measured through hittest — a genuine output boundary, not a
   // recomputation of BLEED_SHIFT, so this cannot pass by restating the bug.
   const distancesFromTrim = (id: "barcode" | "wordmark" | "qr") => {
-    const box = boxOfLayer(id, lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg });
+    const box = boxOfLayer(id, lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), planAssets);
     if (!box) throw new Error(`no box for ${id}`);
     return { left: box.x - L.ART.x, top: box.y - L.ART.y };
   };
@@ -181,9 +181,9 @@ describe("bleed — the shift mechanism", () => {
   it("does move the elements relative to the PAGE, which is the point", () => {
     // Guards the inverse mistake: a boundary that ignored the knob entirely
     // would also keep trim distances equal — by never moving anything at all.
-    const before = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg })!;
+    const before = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), planAssets)!;
     L.setBleed(WIDE_IN);
-    const after = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg })!;
+    const after = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), planAssets)!;
     expect(after.x - before.x).toBeCloseTo(4.44, 10);
     expect(after.y - before.y).toBeCloseTo(4.44, 10);
   });

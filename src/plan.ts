@@ -122,8 +122,6 @@ export type PlanArt =
 
 export interface PlanAssets {
   guides?: Pick<GuideLines, "top" | "bottom"> & Partial<Pick<GuideLines, "left" | "right">>;
-  /** Raw contents of logo2025.svg. */
-  logoSvg: string;
   /** Custom image layers' loaded state, keyed by CustomImageLayer's `asset`.
    *  A layer whose key is absent here emits nothing (collab-art contract) —
    *  the asset hasn't loaded/isn't supplied. `aspect` is the intrinsic w/h,

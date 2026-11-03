@@ -15,7 +15,7 @@ import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
 import { linesProblem, PAGE_ART_ID, patchProblem, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { starterMaster } from "../src/model/starterLayers";
 import { applyDiff, exportBase, foldLabelScale, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
@@ -29,7 +29,7 @@ export const USAGE =
   "[--variant id] [--asset layerId=path] [--set id=value] [--format pdf|psd|all] [--two-file] [--label file.label]\n" +
   "       npm run generate -- [master.master] [values.json|-] --check [same flags; writes nothing]\n" +
   "       npm run generate -- [master.master] --inspect\n" +
-  "       npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
+  "       npm run generate -- --master <file> <texture|none> <mask.png|none> <outDir> [config.json] " +
   "[--collab-left=file] [--collab-center=file] [--two-file]";
 
 /** Which plates to write. A closed union, so "nothing" is unrepresentable
@@ -41,6 +41,8 @@ const wantsPsd = (f: FormatSet) => f !== "pdf";
 export type GenerateArgs =
   | {
       mode: "legacy";
+      /** Required: the legacy argv fills the old Lolev layer ids. */
+      masterPath: string;
       texturePath: string;
       maskPath: string;
       outDir: string;
@@ -135,11 +137,11 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     return { mode: "inspect", ...(masterPath ? { masterPath } : {}) };
   }
 
-  // Fewer than three positionals can only be the new form (`[values|-] <out>`
-  // on the shipped master): the legacy argv needs texture, mask and out (#105).
-  const newForm = !!(check || singles.master || singles.values || singles.label || masterPath
+  // Fewer than three positionals besides the master can only be the new form
+  // (`[values|-] <out>`): the legacy argv needs texture, mask and out (#105).
+  const newForm = !!(check || singles.values || singles.label
     || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
-    || positional.length < 3);
+    || rest.length < 3);
   if (newForm) {
     if (singles["collab-left"] || singles["collab-center"])
       throw new Error("use --asset collabLeft=file --variant collab\n" + USAGE);
@@ -175,12 +177,15 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     };
   }
 
-  // Not the new form, so three or more positionals: the legacy argv.
-  const [texturePath, maskPath, outDir, configPath] = positional;
-  if (positional.length > 4) throw new Error(USAGE);
+  // Not the new form, so three or more positionals: the legacy argv. It fills
+  // the old Lolev layer ids (background, mask, the collab slots), which the
+  // shipped Starter master partly lacks, so it must name its master.
+  if (!masterPath) throw new Error(`the texture/mask/config form needs --master <file>\n${USAGE}`);
+  const [texturePath, maskPath, outDir, configPath] = rest;
+  if (rest.length > 4) throw new Error(USAGE);
   return {
     mode: "legacy",
-    texturePath, maskPath, outDir,
+    masterPath, texturePath, maskPath, outDir,
     ...(configPath ? { configPath } : {}),
     ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
     ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
@@ -503,7 +508,6 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   for (const l of resolved.layers)
     if (l.kind === "text" && l.fontFamily) needed.add(l.fontFamily);
 
-  const logoSvg = readAsset(input.assetRoot, "logo2025.svg").toString("utf8");
   const fonts = fontPack(input.assetRoot, defaultFamily);
   // The default family is listed too, as the SAME pack: a text layer may
   // name it explicitly (plan runs are then tagged with it), and newDoc
@@ -549,7 +553,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   }
 
   for (const l of resolved.layers) {
-    if (l.kind !== "image" || !l.asset || l.asset.startsWith("builtin:")) continue;
+    if (l.kind !== "image" || !l.asset) continue;
     if (!images[l.asset]) throw new Error(`${l.id}: missing image asset "${l.asset}"`);
   }
 
@@ -570,7 +574,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   const measure = await pdfMeasureFace(fontFamilies, defaultFamily);
 
   const plan = planLayers(resolved.layers, measure, {
-    logoSvg, guides: guideLines(input.master), custom: planCustom,
+    guides: guideLines(input.master), custom: planCustom,
   });
   const pdfAssets: Assets = { fonts, fontFamilies, title, images };
   const maskPng = decoded[PAGE_ART_ID.mask];
@@ -632,8 +636,8 @@ function outputNames(stem: string, format: FormatSet, twoFile: boolean): string[
   return names;
 }
 
-function loadMaster(io: GenerateIo, path: string | undefined): { master: Master; assets: MasterAssets; warnings: string[] } {
-  if (!path) return { master: lolevMaster(), assets: {}, warnings: [] };
+function loadMaster(io: GenerateIo, path: string | undefined): { master: Master; assets: MasterAssets } {
+  if (!path) return { master: starterMaster(), assets: {} };
   return unpackMaster(io.readFile(resolve(io.cwd, path)));
 }
 
@@ -679,8 +683,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   };
 
   if (args.mode === "inspect") {
-    const { master, warnings } = loadMaster(io, args.masterPath);
-    for (const w of warnings) warn(w);
+    const { master } = loadMaster(io, args.masterPath);
     io.stdout(`${JSON.stringify(inspectMaster(master), null, 2)}\n`);
     return 0;
   }
@@ -694,14 +697,14 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     if (args.maskPath !== "none") extraImages.mask = readImage(io, args.maskPath);
     if (args.collabLeft) extraImages.collabLeft = readImage(io, args.collabLeft);
     if (args.collabCenter) extraImages.collabCenter = readImage(io, args.collabCenter);
-    const converted = convertConfigV1(cfg, !!(args.collabLeft || args.collabCenter));
+    const { master, assets: masterAssets } = loadMaster(io, args.masterPath);
+    const converted = convertConfigV1(cfg, !!(args.collabLeft || args.collabCenter), master);
     for (const w of converted.warnings) warn(w);
-    const master = lolevMaster();
     const coerced = coerceValues(master, converted.label.values, converted.label.enabledVariants);
     if (Object.keys(coerced.errors).length) throw new Error(errorText(coerced.errors));
     const result = await buildLabel({
       master,
-      masterAssets: {},
+      masterAssets,
       values: coerced.values,
       enabledVariants: converted.label.enabledVariants,
       overrides: converted.label.overrides,
@@ -716,8 +719,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     return 0;
   }
 
-  const { master, assets: masterAssets, warnings } = loadMaster(io, args.masterPath);
-  for (const w of warnings) warn(w);
+  const { master, assets: masterAssets } = loadMaster(io, args.masterPath);
 
   let jobs: JobInput[];
   const labelExtras: GenerateInput["extraImages"] = {};

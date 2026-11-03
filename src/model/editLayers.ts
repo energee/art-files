@@ -33,7 +33,7 @@ const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;
 const KEYLINED = { ...GOLD_METAL, ...KEYLINE } as const;
 
 /** A sensible starting layer per kind, dropped at the center guide 100pt
- *  down. Styles mirror lolevLayers' defaults so a new layer looks like it
+ *  down. Styles mirror starterLayers' defaults so a new layer looks like it
  *  belongs. */
 function defaultLayer(kind: LayerKind, id: string): Layer {
   const base = { id, enabled: true, x: CENTER_X, anchor: "center" as const, y: 100 };
@@ -406,10 +406,10 @@ export function adoptMaster(label: LabelFile, master: Master): LabelFile {
   return label.masterId === master.id ? label : { ...label, masterId: master.id };
 }
 
-/** Does an image `asset` value carry bytes of its own? Empty is unset and
- *  `builtin:` art ships with the app, so neither has anything to bundle. */
+/** Does an image `asset` value carry bytes of its own? Empty is unset, so
+ *  it has nothing to bundle. */
 export const ownsBytes = (asset: unknown): asset is string =>
-  typeof asset === "string" && !!asset && !asset.startsWith("builtin:");
+  typeof asset === "string" && !!asset;
 
 /** Every custom image id the master names — a layer's `asset`, or any
  *  variant's entry — whose bytes a .master must carry. No `kind` check: a
