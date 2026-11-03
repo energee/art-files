@@ -70,6 +70,25 @@ describe("property patches route to the label", () => {
     expect(JSON.parse(JSON.stringify(d.label)).overrides.description).toEqual({ width: null });
   });
 
+  it("drops an override that returns to the master's value (#624)", () => {
+    const masterName = lolevMaster().layers.find((l) => l.id === "name") as TextLayer;
+    let d = patchLayers(doc(), [["name", { x: 300, y: 12, style: { fill: "#FF0000" } }]]);
+    d = patchLayers(d, [["name", { x: masterName.x, style: { fill: masterName.style.fill } }]]);
+    expect(d.label.overrides?.name).toEqual({ y: 12 });
+    d = patchLayers(d, [["name", { y: masterName.y }]]);
+    expect(d.label.overrides).toBeUndefined();
+    // Unsetting a key the master never set is no override either.
+    expect(patchLayers(doc(), [["name", { width: undefined }]]).label.overrides).toBeUndefined();
+  });
+
+  it("compares against the enabled variants' value, not the bare master's (#624)", () => {
+    const m = setLayerIn(lolevMaster(), "collab", "name", { x: 222 });
+    const on: Doc = { master: m, label: { ...newLabel(m), enabledVariants: ["collab"] } };
+    expect(patchLayers(on, [["name", { x: 222 }]]).label.overrides).toBeUndefined();
+    const masterX = (lolevMaster().layers.find((l) => l.id === "name") as TextLayer).x;
+    expect(patchLayers(on, [["name", { x: masterX }]]).label.overrides?.name).toEqual({ x: masterX });
+  });
+
   it("enabling a variant-owned layer switches its variant on, in the label", () => {
     const d = patchLayers(doc(), [["collabLeft", { enabled: true }]]);
     expect(d.label.enabledVariants).toContain("collab");

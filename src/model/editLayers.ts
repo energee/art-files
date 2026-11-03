@@ -31,10 +31,14 @@ export function mintLayerId(kind: string, taken: Set<string>): string {
 
 const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;
 const KEYLINED = { ...GOLD_METAL, ...KEYLINE } as const;
+/** A code starts black on white ink inside a white halo — the colour the
+ *  Stroke switch picks for a code — since gold metallic bars may not scan
+ *  (#608). */
+const CODE = { ...KEYLINE, fill: "#000000", layer: "white", stroke: "#FFFFFF" } as const;
 
 /** A sensible starting layer per kind, dropped at the center guide 100pt
- *  down. Styles mirror starterLayers' defaults so a new layer looks like it
- *  belongs. */
+ *  down. Text and image styles mirror starterLayers' defaults so a new layer
+ *  looks like it belongs; codes take CODE. */
 function defaultLayer(kind: LayerKind, id: string): Layer {
   const base = { id, enabled: true, x: CENTER_X, anchor: "center" as const, y: 100 };
   switch (kind) {
@@ -50,12 +54,12 @@ function defaultLayer(kind: LayerKind, id: string): Layer {
     }
     case "barcode": {
       const l: BarcodeLayer = { ...base, kind, name: "Barcode", symbology: "upc-a", value: "",
-        moduleW: 1, h: 15, style: KEYLINED };
+        moduleW: 1, h: 15, style: CODE };
       return l;
     }
     case "qr": {
       const l: QrLayer = { ...base, kind, name: "QR", value: "", size: 40, qrStyle: "square",
-        style: KEYLINED };
+        style: CODE };
       return l;
     }
   }

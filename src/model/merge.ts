@@ -1,6 +1,7 @@
 // Variant-override merge: plain recursive object merge, patch wins, arrays
 // and scalars replace wholesale. Stacked variants get last-enabled-wins by
-// simply merging in enable order (spec: Resolution step 2).
+// simply merging in enable order (spec: Resolution step 2). Also the
+// dot-path read and structural equality the edit model compares diffs with.
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
 export const isPlain = (v: unknown): v is Record<string, unknown> =>
@@ -14,4 +15,27 @@ export function deepMerge<T>(base: T, patch: DeepPartial<T>): T {
     out[k] = isPlain(v) && isPlain(base[k]) ? deepMerge(base[k], v) : structuredClone(v);
   }
   return out as T;
+}
+
+/** Dot-path read; undefined when the path doesn't resolve. */
+export function getPath(obj: unknown, path: string): unknown {
+  let at: unknown = obj;
+  for (const k of path.split(".")) {
+    if (!at || typeof at !== "object") return undefined;
+    at = (at as Record<string, unknown>)[k];
+  }
+  return at;
+}
+
+/** Structural equality; a key holding `undefined` counts as absent. */
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && a.every((x, i) => deepEqual(x, b[i]));
+  }
+  if (!isPlain(a) || !isPlain(b)) return false;
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => deepEqual(a[k], b[k]));
 }

@@ -3,21 +3,11 @@
 // review's itemised changes (masterChanges) and folding its ticked promote
 // rows back in (applyPromotions).
 import type { LabelFile, Layer, Master, Variant } from "./layers";
-import { isPlain, deepMerge } from "./merge";
+import { isPlain, deepEqual, deepMerge, getPath } from "./merge";
 import { valueOf, valuePath, widenValue } from "./resolveLayers";
 import { variantOf, withEntries, type Entry, type LayerPatch } from "./editRecords";
 import { labelOverriddenPaths, leafPaths, ownsBytes, patchLayer, patchLayerIn } from "./editLayers";
-import { clearLabelOverride, clearValue } from "./editLabel";
-
-/** Dot-path read; undefined when the path doesn't resolve. */
-function getPath(obj: unknown, path: string): unknown {
-  let at: unknown = obj;
-  for (const k of path.split(".")) {
-    if (!at || typeof at !== "object") return undefined;
-    at = (at as Record<string, unknown>)[k];
-  }
-  return at;
-}
+import { clearLabelOverride, clearValue, setLabelOverride } from "./editLabel";
 
 /** Dot-path write, creating intermediate objects on the way down. */
 function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
@@ -28,18 +18,6 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown): vo
 }
 
 // --- Dirty check ------------------------------------------------------------
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
-      && a.every((x, i) => deepEqual(x, b[i]));
-  }
-  if (!isPlain(a) || !isPlain(b)) return false;
-  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
-  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
-  return ka.length === kb.length && ka.every((k) => deepEqual(a[k], b[k]));
-}
 
 /** Is `edited` different from `base` — the cheap half of the master's dirty
  *  flag, and all App needs on the edit path. masterChanges answers the same
@@ -278,6 +256,21 @@ export function masterChanges(
     out.push({ kind: "promote", layerId: id, layerName: l.name, path: valuePath(l), from, to, source: "value" });
   }
   return out;
+}
+
+/** The label edited DURING a Save Master write, made safe to keep beside the
+ *  promoted master: a promoted override it no longer holds was put back to
+ *  the old master's value (patchLayers drops an override equal to the master,
+ *  #624) or reset, so it is pinned at that old value (`from`), the value on
+ *  screen. Without the pin the promotion would flip it (#263). */
+export function pinPromoted(label: LabelFile, promote: readonly MasterChange[]): LabelFile {
+  return promote.reduce((acc, c) => {
+    if (c.kind !== "promote" || c.source === "value" || c.path === undefined
+      || getPath(acc.overrides?.[c.layerId], c.path) !== undefined) return acc;
+    const patch: Record<string, unknown> = {};
+    setPath(patch, c.path, c.from);
+    return setLabelOverride(acc, c.layerId, patch as LayerPatch);
+  }, label);
 }
 
 /** Folds the reviewer's ticked `promote` rows into the master and drops them
