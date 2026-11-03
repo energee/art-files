@@ -19,7 +19,7 @@ tauri-plugin-dialog = "2.7.2"
 tauri-plugin-fs = "2.5.1"
 # Reveals an exported file in Finder / File Explorer (src/reveal.ts).
 tauri-plugin-opener = "2"
-tauri-plugin-updater = "2.10.1"
+tauri-plugin-updater = "2.14.1"
 
 # Windows/Linux receive file-association opens as argv on a NEW process;
 # single-instance forwards that argv to the running app instead (macOS gets

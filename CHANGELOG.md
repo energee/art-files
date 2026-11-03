@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Security
+- **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
+
 ## [0.1.116] - 2026-10-30
 
 ### Changed
