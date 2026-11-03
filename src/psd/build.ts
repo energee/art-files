@@ -140,7 +140,7 @@ const pos = (n: number) => px(n + L.BLEED_SHIFT);
 const PSD_DOC = L.PSD_DOC;
 
 const color255 = (fill: Fill) => {
-  const c = L.parseHexFill(fill);
+  const c = L.parseFill(fill).rgb;
   return { r: Math.round(c.r * 255), g: Math.round(c.g * 255), b: Math.round(c.b * 255) };
 };
 

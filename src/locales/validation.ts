@@ -1,6 +1,6 @@
 const en = {
   "is missing fill": "is missing fill",
-  "has {{key}} {{value}}, which is not a hex colour": "has {{key}} {{value}}, which is not a hex colour",
+  "has {{key}} {{value}}, which is not a hex or CMYK colour": "has {{key}} {{value}}, which is not a hex or CMYK colour",
   "is missing layer": "is missing layer",
   "has {{key}} {{value}}, which is not white or metallic": "has {{key}} {{value}}, which is not white or metallic",
   "has a style that is not an object": "has a style that is not an object",
@@ -70,7 +70,7 @@ const en = {
 
 const es: Record<keyof typeof en, string> = {
   "is missing fill": "no tiene relleno",
-  "has {{key}} {{value}}, which is not a hex colour": "tiene {{key}} {{value}}, que no es un color hexadecimal",
+  "has {{key}} {{value}}, which is not a hex or CMYK colour": "tiene {{key}} {{value}}, que no es un color hexadecimal ni CMYK",
   "is missing layer": "no tiene capa",
   "has {{key}} {{value}}, which is not white or metallic": "tiene {{key}} {{value}}, que no es blanco ni metálico",
   "has a style that is not an object": "tiene un estilo que no es un objeto",
@@ -140,7 +140,7 @@ const es: Record<keyof typeof en, string> = {
 
 const fr: Record<keyof typeof en, string> = {
   "is missing fill": "n’a pas de remplissage",
-  "has {{key}} {{value}}, which is not a hex colour": "a {{key}} {{value}}, qui n’est pas une couleur hexadécimale",
+  "has {{key}} {{value}}, which is not a hex or CMYK colour": "a {{key}} {{value}}, qui n’est pas une couleur hexadécimale ou CMYK",
   "is missing layer": "n’a pas de couche",
   "has {{key}} {{value}}, which is not white or metallic": "a {{key}} {{value}}, qui n’est ni blanc ni métallique",
   "has a style that is not an object": "a un style qui n’est pas un objet",
@@ -210,7 +210,7 @@ const fr: Record<keyof typeof en, string> = {
 
 const de: Record<keyof typeof en, string> = {
   "is missing fill": "hat keine Füllung",
-  "has {{key}} {{value}}, which is not a hex colour": "hat {{key}} {{value}}, was keine Hex-Farbe ist",
+  "has {{key}} {{value}}, which is not a hex or CMYK colour": "hat {{key}} {{value}}, was keine Hex- oder CMYK-Farbe ist",
   "is missing layer": "hat keine Ebene",
   "has {{key}} {{value}}, which is not white or metallic": "hat {{key}} {{value}}, was weder weiß noch metallisch ist",
   "has a style that is not an object": "hat einen Stil, der kein Objekt ist",
@@ -280,7 +280,7 @@ const de: Record<keyof typeof en, string> = {
 
 const pt: Record<keyof typeof en, string> = {
   "is missing fill": "não tem preenchimento",
-  "has {{key}} {{value}}, which is not a hex colour": "tem {{key}} {{value}}, que não é uma cor hexadecimal",
+  "has {{key}} {{value}}, which is not a hex or CMYK colour": "tem {{key}} {{value}}, que não é uma cor hexadecimal nem CMYK",
   "is missing layer": "não tem camada",
   "has {{key}} {{value}}, which is not white or metallic": "tem {{key}} {{value}}, que não é branco nem metálico",
   "has a style that is not an object": "tem um estilo que não é um objeto",
