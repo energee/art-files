@@ -249,8 +249,8 @@ export function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: bool
         items={fits} value={layer.fit ?? "contain"} onChange={(v) => set({ fit: v as ImageLayer["fit"] })} />
   );
   // The page art (texture, metallic mask) always covers the whole page, so it
-  // has no geometry to edit — not even Fit; the note says so instead.
-  if (page) return <p className="text-xs text-muted-foreground">{t("Page art always covers the full page.")}</p>;
+  // has no geometry to edit — not even Fit.
+  if (page) return null;
   return (
     <div className="space-y-1.5">
       <Heading>{t("Image")}</Heading>

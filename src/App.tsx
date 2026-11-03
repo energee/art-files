@@ -2399,11 +2399,6 @@ export const DocumentEditor = memo(function DocumentEditor({
               </SelectContent>
             </Select>
           </div>
-          {src && (
-            <p className="text-[11px] text-muted-foreground">
-              {t("Made safe for a link: lowercased, spaces and punctuation become dashes.")}
-            </p>
-          )}
           {foot}
         </div>
       );

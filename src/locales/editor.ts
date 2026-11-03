@@ -65,7 +65,6 @@ const en = {
   "Discard All": "Discard All",
   "Review Changes…": "Review Changes…",
   "followed by": "followed by",
-  "Made safe for a link: lowercased, spaces and punctuation become dashes.": "Made safe for a link: lowercased, spaces and punctuation become dashes.",
   "Image": "Image",
   "nothing": "nothing"
 };
@@ -137,7 +136,6 @@ const es: Record<keyof typeof en, string> = {
   "Discard All": "Descartar todo",
   "Review Changes…": "Revisar cambios…",
   "followed by": "seguido de",
-  "Made safe for a link: lowercased, spaces and punctuation become dashes.": "Preparado para un enlace: en minúsculas; los espacios y la puntuación se convierten en guiones.",
   "Image": "Imagen",
   "nothing": "nada"
 };
@@ -209,7 +207,6 @@ const fr: Record<keyof typeof en, string> = {
   "Discard All": "Tout ignorer",
   "Review Changes…": "Examiner les modifications…",
   "followed by": "suivi de",
-  "Made safe for a link: lowercased, spaces and punctuation become dashes.": "Préparé pour un lien : en minuscules, les espaces et la ponctuation deviennent des tirets.",
   "Image": "Image",
   "nothing": "aucun"
 };
@@ -281,7 +278,6 @@ const de: Record<keyof typeof en, string> = {
   "Discard All": "Alle verwerfen",
   "Review Changes…": "Änderungen prüfen…",
   "followed by": "gefolgt von",
-  "Made safe for a link: lowercased, spaces and punctuation become dashes.": "Für einen Link aufbereitet: Kleinschreibung; Leerzeichen und Satzzeichen werden zu Bindestrichen.",
   "Image": "Bild",
   "nothing": "nichts"
 };
@@ -353,7 +349,6 @@ const pt: Record<keyof typeof en, string> = {
   "Discard All": "Descartar tudo",
   "Review Changes…": "Revisar alterações…",
   "followed by": "seguido de",
-  "Made safe for a link: lowercased, spaces and punctuation become dashes.": "Adaptado para link: em minúsculas, e espaços e pontuação viram hifens.",
   "Image": "Imagem",
   "nothing": "nada"
 };

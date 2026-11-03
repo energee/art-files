@@ -132,16 +132,15 @@ export function AssetDropOverlay(props: {
 
   if (!active) return null;
 
-  const half = (kind: DropKind, label: string, hint: string, side: string) => (
+  const half = (kind: DropKind, label: string, side: string) => (
     <div className={cn("absolute inset-y-0 overflow-hidden", side)}>
       <div
         className={cn(
-          "absolute inset-3 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border text-center transition-colors",
+          "absolute inset-3 flex items-center justify-center rounded-lg border-2 border-dashed border-border text-center transition-colors",
           over === kind && "border-primary bg-accent",
         )}
       >
         <span className="text-sm font-medium">{label}</span>
-        <span className="text-xs text-muted-foreground">{hint}</span>
       </div>
     </div>
   );
@@ -154,8 +153,8 @@ export function AssetDropOverlay(props: {
         if (el) measureSplit(el);
       }}
       className="pointer-events-none absolute inset-0 z-50 bg-background/85 backdrop-blur-sm">
-      {half("texture", t("Background texture"), t("PNG, JPG or WebP"), "left-0 w-[var(--split)]")}
-      {half("mask", t("Metallic mask"), t("PNG or WebP"), "right-0 left-[var(--split)]")}
+      {half("texture", t("Background texture"), "left-0 w-[var(--split)]")}
+      {half("mask", t("Metallic mask"), "right-0 left-[var(--split)]")}
     </div>
   );
 }

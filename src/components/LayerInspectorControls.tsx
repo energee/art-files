@@ -350,7 +350,7 @@ export function useRequiredText(value: string, commit: (v: string) => void) {
  *  own row (a placeholder or suffix needs the width a right-hand control has
  *  not got). */
 export function InputRow(props: {
-  id: string; label: string; value: string; hint?: string;
+  id: string; label: string; value: string;
   onChange: (v: string) => void;
 }) {
   return (
@@ -358,10 +358,8 @@ export function InputRow(props: {
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
       <Input
         id={props.id} className="h-6 text-xs" value={props.value}
-        aria-describedby={props.hint ? `${props.id}-hint` : undefined}
         onChange={(e) => props.onChange(e.target.value)}
       />
-      {props.hint && <p id={`${props.id}-hint`} className="text-[11px] text-muted-foreground">{props.hint}</p>}
     </div>
   );
 }
