@@ -6,6 +6,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **CMYK colours.** Type `cmyk(15,25,70,5)` into any colour field to print exactly those CMYK percentages in the PDF. The preview and PSD show an RGB approximation, and saved swatches keep CMYK colours as CMYK.
+- **Print-ready PDF/X-4.** The print PDF now declares PDF/X-4 with an embedded sRGB output intent, the RGB-with-profile file the printer accepts. Acrobat opens it with overprint preview on, so White Ink shows correctly. The two-file art and mask PDFs are unchanged.
+
 ### Security
 - **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
 

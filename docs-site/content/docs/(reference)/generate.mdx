@@ -19,7 +19,7 @@ npm run -s generate -- beer.master --inspect
 
 ## Batches
 
-A JSON array is a batch, one output set per job. A job can also be `{values, variants, files, overrides}`. `overrides` patches layer fields and is type-checked against the layer before anything builds. Colours there, and in styled lines, take 3- or 6-digit hex (`#fff` reads as `#ffffff`) or `none`; a named colour such as `gold` is an error. A batch is validated, read, and built whole before the first file is written. A bad job anywhere leaves nothing on disk.
+A JSON array is a batch, one output set per job. A job can also be `{values, variants, files, overrides}`. `overrides` patches layer fields and is type-checked against the layer before anything builds. Colours there, and in styled lines, take 3- or 6-digit hex (`#fff` reads as `#ffffff`), `cmyk(c,m,y,k)` percentages, or `none`; a named colour such as `gold` is an error. A batch is validated, read, and built whole before the first file is written. A bad job anywhere leaves nothing on disk.
 
 A spreadsheet becomes a batch with any CSV-to-JSON tool. Name the columns after layer ids, export CSV, then, for example:
 

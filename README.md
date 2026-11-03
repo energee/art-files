@@ -66,12 +66,10 @@ texture/mask/config argv, kept for golden re-baselines, is in
 
 ## CMYK for the printer
 
-The app outputs RGB. Before sending to the printer:
-
-```bash
-brew install ghostscript   # once
-tools/to-cmyk.sh LUPULA.pdf
-```
+The print PDF is PDF/X-4 with an sRGB output intent, which the printer
+accepts as is. A fill typed as `cmyk(c,m,y,k)` prints exactly those inks.
+For a CMYK-only printer, `tools/to-cmyk.sh LUPULA.pdf` (Ghostscript)
+still converts an export.
 
 ## Layout
 

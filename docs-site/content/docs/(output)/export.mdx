@@ -20,7 +20,7 @@ The single PDF contains the artwork, followed by a top layer named exactly **Whi
 
 In **Adobe Acrobat → Print Production → Output Preview**, enable **Overprint Preview** and inspect **Separations**. Check that **White Ink** is listed, and toggle it to inspect the underlay against the artwork. The magenta preview represents white ink; it is not magenta process ink.
 
-**Viewer caveat:** macOS Preview and other viewers without overprint preview may show opaque magenta and white shapes over the artwork. Do not judge the final print from that composite. This export is not yet PDF/X or ICC-profiled; Acrobat may require you to enable overprint preview manually. Obtain a proof accepted by the printer before production.
+**Viewer caveat:** macOS Preview and other viewers without overprint preview may show opaque magenta and white shapes over the artwork. Do not judge the final print from that composite. Acrobat turns overprint preview on for PDF/X files by default, so the print PDF opens with it on. Obtain a proof accepted by the printer before production.
 
 An uploaded mask becomes a single-channel spot image: blue (`R=0`) is full white ink, white (`R=255`) is knockout, and intermediate red values retain partial ink coverage. PNG transparency is preserved: fully transparent pixels leave earlier white ink untouched, and partial alpha blends with it. No mask uploaded? The white separation floods the page. Metallic elements still knock out to bare stock on top of that flood.
 
@@ -78,13 +78,8 @@ With two-file export on, the mask PSD carries the white ink instead. It mirrors 
 
 ## CMYK
 
-Artwork is still RGB (neutral vectors use DeviceGray); **White Ink** is a separate spot colour. The current conversion step is:
+The print PDF is PDF/X-4 with an embedded sRGB output intent: the printer accepts RGB with an embedded profile and converts to its inks. Hex colours print as RGB (neutral greys and black as gray, so they stay on the black plate). A fill typed as `cmyk(c,m,y,k)` (see [Colour](/docs/inspector#colour)) prints exactly those CMYK percentages. Images and textures stay RGB. **White Ink** is a separate spot colour.
 
-```bash
-brew install ghostscript   # once
-tools/to-cmyk.sh LUPULA.pdf
-```
-
-The script writes `LUPULA-cmyk.pdf`, preserves page orientation and retains the White Ink separation and fill/stroke overprint. It uses Ghostscript's generic profile, not a printer-approved output condition. Confirm the printer's RGB/CMYK and ICC requirements before production.
+The two-file art and mask PDFs are not PDF/X. `tools/to-cmyk.sh` still converts an export to CMYK with Ghostscript's generic profile, for a printer that takes CMYK only.
 
 Conversion is not scan certification: verify exact QR and barcode payloads on the converted artwork and on the printer's proof/stock. The Lolev master's dots QR uses error correction Q; changing approved QR artwork still requires printed-label scan approval.

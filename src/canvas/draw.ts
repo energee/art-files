@@ -106,16 +106,14 @@ function pageLayer(bmp: CanvasImageSource, r: PlacedPage, w: number, h: number):
   return hit.canvas;
 }
 
-/** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
- *  rule as pdf/build.ts's fillColor via parseHexFill. */
-const cssFill = (fill: Fill) => (fill === "none" ? L.WHITE_HEX : fill);
 /** Mask-mode paint: knockout (white) or white-ink (blue). */
 const cssMask = (layer: Style["layer"]) =>
   layer === "metallic" ? L.WHITE_HEX : L.MASK_BLUE_HEX;
 /** An element's paint for the plate — psd/build.ts's paint() and
- *  pdf/build.ts's ink(), in CSS. */
+ *  pdf/build.ts's ink(), in CSS. Art-mode "none" is white, CMYK its RGB
+ *  approximation (layout.ts's cssFill). */
 const ink = (mode: Mode, fill: Fill, layer: Style["layer"]) =>
-  mode === "art" ? cssFill(fill) : cssMask(layer);
+  mode === "art" ? L.cssFill(fill) : cssMask(layer);
 
 /** A bitmap repainted in `fill`, keeping its alpha — tintRgba's color
  *  overlay done by the compositor (source-in) instead of a pixel loop, so a
@@ -131,7 +129,7 @@ function tinted(bmp: ImageBitmap, fill: Fill): HTMLCanvasElement {
   const c = canvas.getContext("2d")!;
   c.drawImage(bmp, 0, 0);
   c.globalCompositeOperation = "source-in";
-  c.fillStyle = cssFill(fill);
+  c.fillStyle = L.cssFill(fill);
   c.fillRect(0, 0, canvas.width, canvas.height);
   tintCache.set(bmp, { fill, canvas });
   return canvas;
