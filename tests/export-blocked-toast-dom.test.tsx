@@ -31,8 +31,8 @@ vi.mock("../src/fonts", () => ({
   loadLabelFaces: () => new Promise<never>(() => {}),
   labelFontCss: () => "sans-serif",
   FONT_URLS: { poppins: {} },
+  loadFonts: build.loadFonts,
 }));
-vi.mock("../src/pdf/fonts", () => ({ loadFonts: build.loadFonts }));
 // Loaded once up front so an export that does start finds the module ready.
 await import("../src/pdf/build");
 const { DocumentEditor } = await import("../src/App");

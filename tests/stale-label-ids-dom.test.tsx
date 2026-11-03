@@ -33,7 +33,7 @@ vi.mock("../src/fonts", () => ({
 
 const { DocumentEditor } = await import("../src/App");
 
-afterEach(() => { setLanguage("system"); localStorage.clear(); document.body.innerHTML = ""; });
+afterEach(async () => { await setLanguage("system"); localStorage.clear(); document.body.innerHTML = ""; });
 
 type Ctx = {
   save: () => Promise<void>; writes: Uint8Array[];
@@ -112,7 +112,7 @@ it("open warnings show once, without Note:", async () => {
     formatVersion: 3, masterId: "lolev", enabledVariants: ["gone-variant"], values: { "gone-layer": "stale" },
   }, async () => {
     await shown("gone-layer");
-    await act(async () => { setLanguage("de"); });
+    await act(() => setLanguage("de"));
     await settle();
     // The title names the file; what was benched is the description.
     expect(toastTitles()).toHaveLength(1);

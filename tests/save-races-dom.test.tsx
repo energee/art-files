@@ -56,11 +56,8 @@ vi.mock("../src/fonts", () => ({
     return (t: string, s: number) => t.length * s * 0.55;
   },
   labelFontCss: () => "sans-serif", FONT_URLS: { poppins: {} },
+  loadFonts: async () => (await import("./fixtures")).assets.fonts,
 }));
-vi.mock("../src/pdf/fonts", async () => {
-  const { assets } = await import("./fixtures");
-  return { loadFonts: async () => assets.fonts };
-});
 // No promotion a user can tick fails parseMaster's validation, so the throw
 // stands in for it (and for a boot restore that cannot read the library).
 vi.mock("../src/model/editSave", async (importOriginal) => {

@@ -20,6 +20,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Generic link placeholders.** The QR link and value boxes now show `https://example.com/beer/` as their example instead of a brewery's own address.
 - **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
 - **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
+- **Faster start-up.** Label Lab now loads only the translations for the language you use, instead of all five, and opens straight in that language. A PDF or PSD export no longer loads every translation in the background either.
+- **Label fonts load once.** Each label font file is now read once and shared by the preview, the export and the character-height checks, instead of being read separately for each.
 - **Faster typing in the inspector.** Typing in a layer's Text field no longer redraws the Layers list, the rulers or the menu bar on every key, so about 30% fewer components redraw per key.
 - **The 3D can looks like bare aluminium.** The can's top and bottom are now bright brushed silver, matching a printed can, instead of a dark mirror that turned the shoulder near-black.
 - **New barcodes and QR codes start black with a white halo.** A newly added Barcode or QR layer is now black on white ink inside the white outline the Stroke switch already uses for codes, instead of metallic gold with a black outline. Scan a proof before printing.

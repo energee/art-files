@@ -17,11 +17,10 @@ import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
 import type { RenderSettings } from "@/settings";
-import { FONT_URLS, labelFontCss, loadLabelFaces } from "@/fonts";
+import { FONT_URLS, labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
 import { drawPlate } from "@/canvas/draw";
 import { PSD_DOC } from "@/layout";
 import type { FontFamilyId } from "@/fontCatalog";
-import { loadFonts } from "@/pdf/fonts";
 // The builders are imported dynamically at export time (buildFull, exportPsd,
 // which runs buildPsd in a worker) so they stay out of the initial bundle;
 // only their types are needed up front.

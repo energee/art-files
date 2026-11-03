@@ -24,7 +24,7 @@ export function RenderSettings({ value, onChange }: { value: Settings; onChange:
   return <div className="flex flex-col gap-4">
     <Group title={t("Language")}>
       <Select items={languageItems} value={preference}
-        onValueChange={(language) => { if (language) setLanguage(language as LanguagePreference); }}>
+        onValueChange={(language) => { if (language) void setLanguage(language as LanguagePreference); }}>
         <SelectTrigger aria-label={t("Language")} className="w-full">
           <SelectValue />
         </SelectTrigger>

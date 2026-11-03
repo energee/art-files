@@ -27,6 +27,9 @@
    full screen (no traffic lights there); src/titlebar.ts sets the attributes. */
 @custom-variant titlebar (:root[data-titlebar="overlay"]:not([data-fullscreen]) &);
 
+/* The app chrome's heading face (h1-h3 via --font-heading), fetched only when
+   a heading renders. Label text never uses it: label families load through
+   src/fonts.ts under their own LabelFont-* names. */
 @font-face {
   font-family: "Poppins";
   src: url("./assets/fonts/Poppins-SemiBold.ttf") format("truetype");

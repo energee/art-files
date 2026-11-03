@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { shortDate } from "../src/lib/utils";
 import { getLanguage, languages, resolveLanguage, setLanguage, t, useLanguage } from "../src/i18n";
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  setLanguage("en");
+  await setLanguage("en");
   localStorage.clear();
 });
 
@@ -30,10 +30,10 @@ describe("language selection", () => {
     expect(resolveLanguage("de", ["es-ES"])).toBe("de");
   });
 
-  it("switches translations and document language immediately and remembers an explicit choice", () => {
+  it("switches translations and document language and remembers an explicit choice", async () => {
     const output: string[] = [];
     for (const language of ["en", "es", "fr", "de", "pt"] as const) {
-      setLanguage(language);
+      await setLanguage(language);
       expect(getLanguage()).toBe(language);
       expect(document.documentElement.lang).toBe(language);
       expect(localStorage.getItem("labellab.language")).toBe(language);
@@ -42,29 +42,29 @@ describe("language selection", () => {
     expect(output).toEqual(["Language", "Idioma", "Langue", "Sprache", "Idioma"]);
   });
 
-  it("selects locale-specific plural forms, including French zero, and interpolates counts", () => {
-    setLanguage("en");
+  it("selects locale-specific plural forms, including French zero, and interpolates counts", async () => {
+    await setLanguage("en");
     expect(t("{{count}} layer", { count: 0 })).toBe("0 layers");
     expect(t("{{count}} layer", { count: 1 })).toBe("1 layer");
     expect(t("{{count}} layer", { count: 2 })).toBe("2 layers");
-    setLanguage("fr");
+    await setLanguage("fr");
     expect(t("{{count}} layer", { count: 0 })).toBe("0 calque");
     expect(t("{{count}} layer", { count: 1 })).toBe("1 calque");
     expect(t("{{count}} layer", { count: 2 })).toBe("2 calques");
-    setLanguage("de");
+    await setLanguage("de");
     expect(t("{{count}} layer", { count: 1 })).toBe("1 Ebene");
     expect(t("{{count}} layer", { count: 2 })).toBe("2 Ebenen");
-    setLanguage("pt");
+    await setLanguage("pt");
     expect(t("{{count}} layer", { count: 1 })).toBe("1 camada");
     expect(t("{{count}} layer", { count: 2 })).toBe("2 camadas");
   });
 
-  it("uses English for an unknown resource key without losing interpolated user content", () => {
-    setLanguage("fr");
+  it("uses English for an unknown resource key without losing interpolated user content", async () => {
+    await setLanguage("fr");
     expect(t("Unsupported message for {{name}}", { name: "Lupula <2026>" })).toBe("Unsupported message for Lupula <2026>");
   });
 
-  it("re-renders useLanguage when only the preference changes", () => {
+  it("re-renders useLanguage when only the preference changes", async () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["pt-BR"]);
     function Probe() {
       const { preference, language } = useLanguage();
@@ -72,16 +72,16 @@ describe("language selection", () => {
     }
     const host = document.createElement("div");
     const root = createRoot(host);
-    act(() => { setLanguage("pt"); root.render(createElement(Probe)); });
+    await act(async () => { await setLanguage("pt"); root.render(createElement(Probe)); });
     expect(host.textContent).toBe("pt:pt");
-    act(() => setLanguage("system"));
+    await act(() => setLanguage("system"));
     expect(host.textContent).toBe("system:pt");
     act(() => root.unmount());
   });
 
-  it("keeps language switching available when browser storage is blocked", () => {
+  it("keeps language switching available when browser storage is blocked", async () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
-    setLanguage("es");
+    await setLanguage("es");
     expect(getLanguage()).toBe("es");
     expect(t("Language")).toBe("Idioma");
   });
@@ -90,19 +90,41 @@ describe("language selection", () => {
     localStorage.setItem("labellab.language", "not-a-language");
     vi.resetModules();
     const fresh = await import("../src/i18n");
+    await fresh.languageReady;
     expect(fresh.getLanguage()).toBe(resolveLanguage("system", navigator.languages));
     expect(document.documentElement.lang).toBe(fresh.getLanguage());
-    fresh.setLanguage("system");
+    await fresh.setLanguage("system");
     expect(localStorage.getItem("labellab.language")).toBeNull();
   });
 });
 
+describe("catalog loading", () => {
+  it("loads only the active language's catalog at startup, before the first render", async () => {
+    localStorage.setItem("labellab.language", "de");
+    vi.resetModules();
+    const fresh = await import("../src/i18n");
+    await fresh.languageReady;
+    expect(fresh.getLanguage()).toBe("de");
+    expect(fresh.t("Language")).toBe("Sprache");
+    expect(document.documentElement.lang).toBe("de");
+    expect(fresh.default.hasResourceBundle("fr", "translation")).toBe(false);
+  });
+
+  it("lets the last language picked win when an earlier catalog arrives later", async () => {
+    vi.resetModules();
+    const fresh = await import("../src/i18n");
+    await Promise.all([fresh.setLanguage("es"), fresh.setLanguage("fr"), fresh.setLanguage("es")]);
+    expect(fresh.getLanguage()).toBe("es");
+    expect(fresh.t("Language")).toBe("Idioma");
+  });
+});
+
 describe("dates", () => {
-  it("formats in the UI language, in the operator's region of it", () => {
+  it("formats in the UI language, in the operator's region of it", async () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-GB", "de-AT"]);
-    setLanguage("en");
+    await setLanguage("en");
     expect(shortDate("2026-10-11T12:00:00Z")).toBe("11 Oct 2026");
-    setLanguage("es");
+    await setLanguage("es");
     expect(shortDate("2026-10-11T12:00:00Z")).toBe(new Intl.DateTimeFormat("es", { month: "short", day: "numeric", year: "numeric" }).format(new Date("2026-10-11T12:00:00Z")));
     expect(shortDate("not a date")).toBe("");
   });
