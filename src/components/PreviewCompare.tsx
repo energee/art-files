@@ -495,7 +495,7 @@ export const PreviewCompare = forwardRef<
       // The pasteboard around this sheet belongs to the pane, not to us: the
       // pane's own click handler deselects when a click misses this box.
       data-slot="label-sheet"
-      className="relative m-auto w-full overflow-hidden border border-border bg-input"
+      className="relative m-auto w-full overflow-hidden border border-plate-edge bg-input"
       style={{
         // Width cap in the style object, not the class list, so the 3D scene
         // can import the same number and frame its label to this sheet.

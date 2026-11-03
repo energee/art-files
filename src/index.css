@@ -47,6 +47,10 @@
   /* Structural rules (separators, panel edges): deliberately quiet, warm-grey
      bias (cool in dark) to match the neutrals above. */
   --border: light-dark(#ddd8cc, #383a46);
+  /* The label sheet's edge. In light the white plate sits on a near-white
+     workspace, so --border (1.4:1) all but loses the die edge; this mix holds
+     3:1 against both. Dark already separates by fill and keeps --border. */
+  --plate-edge: light-dark(color-mix(in oklab, var(--muted-foreground) 65%, var(--border)), var(--border));
   /* Field edges — barely there. The border does not carry the affordance at
      all: the fill rule below separates a field from the panel, so the
      outline only has to close its shape. */
@@ -134,6 +138,7 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-plate-edge: var(--plate-edge);
   --color-input: var(--input);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);

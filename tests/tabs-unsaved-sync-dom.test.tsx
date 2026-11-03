@@ -62,17 +62,17 @@ it("reports unsaved work to the Rust side as it comes and goes", async () => {
   expect(mocks.reported).toEqual([false, true, false]);
 });
 
-it("names unsaved work on the tab's close button (#403)", async () => {
+it("names unsaved work on the tab itself (#403, #615)", async () => {
   const host = document.createElement("div");
   root = createRoot(host);
   await act(async () => { root.render(createElement(TabsShell)); });
-  const closeLabel = () =>
-    host.querySelector('[aria-label^="Close "]')?.getAttribute("aria-label");
+  const tab = () => host.querySelector('[role="tab"]')!;
   const editor = mocks.editors[mocks.editors.length - 1];
 
   await act(async () => { editor.onMeta(meta(true)); });
-  expect(closeLabel()).toBe("Close Labradorite (unsaved changes)");
+  expect(tab().getAttribute("aria-label")).toBe("Labradorite (unsaved changes)");
 
   await act(async () => { editor.onMeta(meta(false)); });
-  expect(closeLabel()).toBe("Close Labradorite");
+  expect(tab().getAttribute("aria-label")).toBeNull();
+  expect(tab().textContent).toBe("Labradorite");
 });

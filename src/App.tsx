@@ -98,7 +98,7 @@ import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, typ
 import { Rulers } from "@/components/Rulers";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, LENGTH_UNITS,
+  DEFAULT_MARGIN_PT, LENGTH_UNITS, RULER_SIZE,
   type GuideAxis, type LengthUnit, type ManualGuide,
 } from "@/rulers";
 import {
@@ -2578,12 +2578,15 @@ export const DocumentEditor = memo(function DocumentEditor({
                 exporting && "blur-sm opacity-70")}>
             {/* PreviewCompare stays mounted but hidden in 3D modes. The
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
-                their own camera. */}
+                their own camera. Padded, not offset, by the rulers so Fit
+                keeps the label clear of them while the transform's origin
+                stays the pane's top-left. */}
             <div
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
                 transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
+                ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}
               canvasRender={viewMode === "2d" ? canvasSource : null}

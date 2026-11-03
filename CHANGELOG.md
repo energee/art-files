@@ -16,6 +16,12 @@ that section to the new version (see .agents/release-steward.md).
 - **Generic link placeholders.** The QR link and value boxes now show `https://example.com/beer/` as their example instead of a brewery's own address.
 - **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
 - **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
+- **Tabs close from the keyboard with Delete.** With a tab focused in the tab strip, Delete or Backspace closes it (File → Close Tab and `⌘W` still work). The × is now a mouse target only, with a larger hit area, and a screen reader hears "(unsaved changes)" on the tab itself.
+- **Save Master… sits beside the Master picker.** It appears at the end of the picker's row instead of on a new line, so the Layers list no longer jumps down on the first master edit. The picker's menu no longer shows a "Current master" heading over the master at its top.
+
+### Fixed
+- **Rulers no longer cover the label.** With the inspector open, the vertical ruler hid the label's left edge and the White Ink comparison handle. Fit now places the label inside the rulers, so the handle can be dragged.
+- **The label's edge is visible in the light theme.** The white label now has a darker outline against the light workspace. The dark theme is unchanged.
 
 ### Fixed
 - **Inspector fields stay in one column.** A field no longer jumps left when its reset dot appears, and every value, switch and button in the inspector now lines up on the same right edge, Minimum height and the Stroke switch included.
