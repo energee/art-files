@@ -23,6 +23,11 @@ that section to the new version (see .agents/release-steward.md).
 - **Rulers no longer cover the label.** With the inspector open, the vertical ruler hid the label's left edge and the White Ink comparison handle. Fit now places the label inside the rulers, so the handle can be dragged.
 - **The label's edge is visible in the light theme.** The white label now has a darker outline against the light workspace. The dark theme is unchanged.
 
+### Fixed
+- **Inspector fields stay in one column.** A field no longer jumps left when its reset dot appears, and every value, switch and button in the inspector now lines up on the same right edge, Minimum height and the Stroke switch included.
+- **Tidier Typography and Stroke sections.** The Stroke heading has the same full-width divider as the other sections, with its switch level with the heading. Characters per inch now looks like Tallest character above it, and Line spacing, Heading scale and Letter spacing lose the icons no other row had.
+- **Screen readers name the inspector and the text field.** The inspector is announced with the layer's name, and the rich text field is named by its visible caption.
+
 ## [0.1.116] - 2026-10-30
 
 ### Changed
