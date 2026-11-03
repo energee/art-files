@@ -562,21 +562,30 @@ export default function TabsShell() {
   const tabStrip = useMemo(() => (
     <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
       {/* A tablist (#404) so assistive tech announces the active document;
-          each chip's title button is the tab. Its close button stays a plain
-          button inside the list: ARIA has no slot for a per-tab close, and
-          hiding it would drop the unsaved-changes label (#403). The + and the
-          pick error sit outside. No aria-controls: the editor isn't modelled
-          as a panel. keys.ts gives a tablist the arrow keys, so Left/Right
-          move focus between tabs here (Enter switches) instead of nudging. */}
+          each chip's title button is the tab, and names unsaved work (#403).
+          ARIA lets a tablist own tabs only (#615), so each × is a mouse
+          target hidden from assistive tech and the Tab order; Delete on a
+          focused tab closes it, per the WAI-ARIA tabs pattern, as does File
+          → Close Tab. The + and the pick error sit outside. No
+          aria-controls: the editor isn't modelled as a panel. keys.ts gives
+          a tablist the arrow keys, so Left/Right move focus between tabs
+          here (Enter switches) instead of nudging. */}
       <div role="tablist" aria-label={t("Open documents")} className="flex shrink-0 items-center gap-1.5"
         onKeyDown={(e) => {
-          // Bare arrows only: ⌘/Ctrl/Alt/Shift+arrow keep their own meanings.
-          const bare = !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey);
-          const step = !bare ? 0 : e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          // Bare keys only: ⌘/Ctrl/Alt/Shift+arrow keep their own meanings.
+          if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
           const tabs = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
-          // From a tab or its × alike: both sit in that tab's chip.
-          const i = tabs.findIndex((t) => t.parentElement?.contains(e.target as Node));
-          if (!step || i < 0) return;
+          const i = tabs.indexOf(e.target as HTMLElement);
+          if (i < 0) return;
+          if (e.key === "Delete" || e.key === "Backspace") {
+            // Taken here, so the editor's Delete (remove layer) skips it.
+            e.preventDefault();
+            refocusTab.current = i;
+            closeReq(state.tabs[i].id);
+            return;
+          }
+          const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          if (!step) return;
           e.preventDefault();
           tabs[(i + step + tabs.length) % tabs.length].focus();
         }}>
@@ -601,23 +610,21 @@ export default function TabsShell() {
                 activate(t.id);
               }}
               title={t.filePath ?? t.title}
+              aria-label={unsaved(t) ? translate("{{name}} (unsaved changes)", { name: t.title }) : undefined}
               className="min-w-0 flex-1 truncate rounded-sm text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t.title}
             </button>
+            {/* Mouse only (see the tablist above). An unsaved tab opens
+                the close dialog first. The after: box widens the hit area
+                to 26 px without growing the drawn button. */}
             <button
-              onClick={(e) => {
-                // An unsaved tab opens the close dialog first; the refocus
-                // waits for it to close (Cancel keeps this tab at index i).
-                refocusTab.current = e.detail === 0 ? i : null;
-                closeReq(t.id);
-              }}
-              // The button's own label replaces its children's, so the unsaved
-              // state has to be named here, not on the • inside it (#403).
-              aria-label={unsaved(t) ? translate("Close {{name}} (unsaved changes)", { name: t.title }) : translate("Close {{name}}", { name: t.title })}
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={() => closeReq(t.id)}
               className={cn(
                 // fraction-of-foreground, not bg-muted: it has to read on
                 // both chip fills (active bg-background, hovered bg-muted)
-                "rounded p-0.5 outline-none hover:bg-foreground/10 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
+                "relative rounded p-0.5 outline-none hover:bg-foreground/10 after:absolute after:-inset-2 after:content-['']",
                 // A saved tab's × waits for hover, except on the active tab,
                 // where it rests dimmed (opacity-40, like the selected layer
                 // row's menu in LayerList): touch has no hover, and a fully

@@ -71,6 +71,9 @@ const summary = () => openDialogs().find((d) => d.textContent?.includes("Discard
 const button = (text: string, scope = prompt()) =>
   Array.from(scope!.querySelectorAll("button")).find((b) => b.textContent === text)!;
 const tabCount = () => document.querySelectorAll('[role="tab"]').length;
+/** The × beside the tab titled `title`. */
+const closeButton = (title: string) => Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]'))
+  .find((t) => t.textContent === title)!.nextElementSibling as HTMLElement;
 const destroyed = () => mocks.calls.includes("plugin:window|destroy");
 
 /** Two tabs: A with only master edits (its .label saved), B with label edits. */
@@ -109,7 +112,7 @@ it("words the prompt for quitting during a window close, and for the tab otherwi
   const title = () => prompt()!.querySelector('[data-slot="dialog-title"]')!.textContent;
   expect(title()).toBe("Save changes to “A” before quitting?");
   await act(async () => { button("Cancel").click(); });
-  await act(async () => { (document.querySelector('[aria-label^="Close B"]') as HTMLElement).click(); });
+  await act(async () => { closeButton("B").click(); });
   await vi.waitFor(() => expect(prompt()?.textContent).toContain("“B”"));
   expect(title()).toBe("Close “B”?");
 });
@@ -122,7 +125,7 @@ it("a cancelled review aborts the window close and keeps every tab", async () =>
   expect(destroyed()).toBe(false);
   // The sweep is over: closing clean tab A now shows nothing further.
   await act(async () => { mocks.editors[0].onMeta(meta("A", false, false)); });
-  await act(async () => { (document.querySelector('[aria-label^="Close A"]') as HTMLElement).click(); });
+  await act(async () => { closeButton("A").click(); });
   expect(prompt()).toBeNull();
   expect(destroyed()).toBe(false);
 });
