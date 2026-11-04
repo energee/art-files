@@ -156,7 +156,9 @@ Ghostscript `tiffsep` shows the expected Black, Cyan and White Ink plates.
   TrimBox (8x5in) or the MediaBox? Does it set Document Setup bleed? If it
   uses the MediaBox, should the AI build set CropBox = TrimBox? That would
   differ from the print PDF.
-- **D4, a transparent raster's White Ink.** Today the print PDF floods a
+- **D4, a transparent raster's White Ink. Resolved by #672 (2026-11-03):**
+  the print PDF's White Ink now follows the image's alpha, and the proof
+  inherits it. Original question, kept for the record: today the print PDF floods a
   raster's whole rect with White Ink, ignoring alpha (seen in the proof's
   White Ink plate). The issue says "no unintended white rectangle". Should the
   footprint follow alpha in both the PDF and the AI? That changes the print
@@ -366,7 +368,8 @@ and OS for each check.
      - knockouts where the gold metallic text, the laurel, the barcode and
        the QR modules sit;
      - the "WHITE INK 0O8" run as ink;
-     - the transparent raster's full square footprint (D4).
+     - the transparent raster's footprint following its alpha disc, not a
+       square (#672, D4).
 7. **Overprint.** Overprint Preview on: the process artwork is not knocked out
    by White Ink. Attributes panel: White Ink objects have Overprint Fill
    checked.

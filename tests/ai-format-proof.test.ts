@@ -51,12 +51,15 @@ it("embeds the transparent raster at full resolution with its alpha", async () =
   expect(art[0].dict.has(PDFName.of("SMask"))).toBe(true);
 });
 
-it("embeds the uploaded mask as a White Ink image with its alpha", async () => {
+// The uploaded mask (160x101) and, since #672, the transparent raster's
+// White Ink footprint (256x256) are both Separation images with an SMask.
+it("embeds the uploaded mask and the raster's footprint as White Ink images with their alpha", async () => {
   const doc = await PDFDocument.load(await buildAiFormatProof());
   const spot = doc.context.enumerateIndirectObjects()
     .map(([, o]) => o)
     .filter((o): o is PDFRawStream => o instanceof PDFRawStream
       && String(o.dict.lookup(PDFName.of("ColorSpace"))).startsWith("[ /Separation /White#20Ink"));
-  expect(spot).toHaveLength(1);
-  expect(spot[0].dict.has(PDFName.of("SMask"))).toBe(true);
+  const size = (o: PDFRawStream) => `${o.dict.get(PDFName.of("Width"))}x${o.dict.get(PDFName.of("Height"))}`;
+  expect(spot.map(size).sort()).toEqual(["160x101", "256x256"]);
+  for (const o of spot) expect(o.dict.has(PDFName.of("SMask"))).toBe(true);
 });
