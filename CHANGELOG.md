@@ -9,7 +9,7 @@ that section to the new version (see .agents/release-steward.md).
 ### Added
 - **Turn the can's lighting.** A Lighting slider in the Can view's status bar turns the lights and reflections around the can, from -180° to 180°, so you can move the highlight to match a photo or proof. 0° is the old look, and the angle is remembered.
 - **CMYK colours.** Type `cmyk(15,25,70,5)` into any colour field to print exactly those CMYK percentages in the PDF. The preview and PSD show an RGB approximation, and saved swatches keep CMYK colours as CMYK.
-- **Print-ready PDF/X-4.** The print PDF now declares PDF/X-4 with an embedded sRGB output intent, the RGB-with-profile file the printer accepts. Acrobat opens it with overprint preview on, so White Ink shows correctly. The two-file art and mask PDFs are unchanged.
+- **PDF/X-4 metadata, not yet compliant.** The print PDF now declares PDF/X-4, but its sRGB output intent is monitor-class and does not satisfy PDF/X. Publication is blocked until a printer-approved output profile is embedded and independent preflight passes. The two-file art and mask PDFs are unchanged.
 
 ### Security
 - **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
@@ -30,6 +30,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The editor's view preferences, zoom and pan, and preview asset assembly moved out of the main editor file into three hooks; the app behaves exactly as before.
 
 ### Fixed
+- **The 3D camera stays put after a gesture.** Changing artwork, lighting or the preview size no longer nudges the camera after you orbit or pan. Camera motion settles completely before the preview goes idle.
 - **No white box around transparent images.** A PNG with transparency (a partner logo, say) now gets White Ink only under its visible pixels in the print PDF, the print PSD and the two-file mask files, instead of under its whole rectangle. Semi-transparent edges get partial ink. JPEGs and fully opaque PNGs still print on white ink edge to edge.
 - **Translated labels for the new edge warning, colour hints and tab names.** Spanish, French, German and Portuguese showed some newly added messages in English, and an invalid colour in a `.master` showed an untranslated message.
 - **Empty fields no longer print their placeholder.** An empty fillable field (such as ABV, Style or Description) still shows its placeholder on screen, but exported PDFs and PSDs, and `npm run generate`, now leave it blank instead of printing "#% alc by vol" or "Style". Everything else stays where the preview puts it.

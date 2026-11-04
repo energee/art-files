@@ -66,8 +66,11 @@ texture/mask/config argv, kept for golden re-baselines, is in
 
 ## CMYK for the printer
 
-The print PDF is PDF/X-4 with an sRGB output intent, which the printer
-accepts as is. A fill typed as `cmyk(c,m,y,k)` prints exactly those inks.
+The current development print PDF declares PDF/X-4 but is not compliant:
+its sRGB output intent is monitor-class, which PDF/X forbids. Publication
+is blocked by [#675](https://github.com/energee/art-files/issues/675)
+until the printer approves an output profile and independent preflight
+passes. A fill typed as `cmyk(c,m,y,k)` writes those exact CMYK percentages.
 For a CMYK-only printer, `tools/to-cmyk.sh LUPULA.pdf` (Ghostscript)
 still converts an export.
 
