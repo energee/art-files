@@ -151,6 +151,8 @@ export class CanScene {
   /** The Rendered view's bend, 0 (flat) to 1 (the can's own curvature). */
   private curve = 0;
   private ambient!: THREE.AmbientLight;
+  /** Key, fill and rim, turned together by setLight. */
+  private rig = new THREE.Group();
   private packGroup: THREE.Group | null = null;
 
   private canRadius = 0.033;
@@ -260,7 +262,17 @@ export class CanScene {
     fill.position.set(-1.6, 0.8, -1.2);
     const rim = new THREE.DirectionalLight(0xffffff, 2.0);
     rim.position.set(0.4, 1.0, -1.7);
-    this.scene.add(key, fill, rim);
+    this.rig.add(key, fill, rim);
+    this.scene.add(this.rig);
+  }
+
+  /** Turn the light rig and the HDRI's reflections about the can's axis,
+   *  in degrees; 0 is the original rig. */
+  setLight(deg: number) {
+    const rad = THREE.MathUtils.degToRad(deg);
+    this.rig.rotation.y = rad;
+    this.scene.environmentRotation.y = rad;
+    this.requestRender();
   }
 
   /** studio.hdr as scene.environment only — background stays the flat theme

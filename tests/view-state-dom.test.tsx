@@ -15,13 +15,14 @@ type PreviewProps = import("react").ComponentProps<typeof import("../src/compone
 const probe = vi.hoisted(() => ({
   actions: [] as Command[], checked: {} as Partial<Record<string, boolean>>,
   preview: null as PreviewProps | null, canMode: null as string | null, curvePct: null as number | null,
+  lightDeg: null as number | null,
 }));
 vi.mock("../src/components/PreviewCompare", () => ({
   SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { probe.preview = props; return null; },
 }));
 vi.mock("../src/components/CanView", () => ({
-  CanView: (props: { mode: string; curvePct: number }) => {
-    probe.canMode = props.mode; probe.curvePct = props.curvePct; return null;
+  CanView: (props: { mode: string; curvePct: number; lightDeg: number }) => {
+    probe.canMode = props.mode; probe.curvePct = props.curvePct; probe.lightDeg = props.lightDeg; return null;
   },
 }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
@@ -146,6 +147,37 @@ it("the zoom readout's % sits inside its bordered control", async () => {
     expect(control.className).toContain("border");
     expect(control.textContent).toBe("%");
   } finally { await unmount(); }
+});
+
+// The Can view's Lighting slider turns the light rig; the angle is a
+// per-operator view preference, so it rides in the lolev-view entry.
+it("the Lighting angle survives a reload, and a bad stored value falls back to 0", async () => {
+  const slider = (c: HTMLElement) => c.querySelector<HTMLInputElement>('input[type="range"][aria-label="Lighting"]');
+  localStorage.setItem("lolev-view", JSON.stringify({ lightDeg: -60 }));
+  let { container, unmount } = await mountEditor();
+  try {
+    expect(slider(container)).toBeNull(); // Can view only
+    await press("4");
+    await vi.waitFor(() => expect(probe.canMode).toBe("can"));
+    expect(slider(container)!.value).toBe("-60");
+    expect(probe.lightDeg).toBe(-60);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(slider(container), "30");
+      slider(container)!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(probe.lightDeg).toBe(30);
+    expect(container.textContent).toContain("30°");
+  } finally { await unmount(); }
+  expect(JSON.parse(localStorage.getItem("lolev-view")!).lightDeg).toBe(30);
+
+  localStorage.setItem("lolev-view", JSON.stringify({ lightDeg: "east" }));
+  ({ container, unmount } = await mountEditor());
+  try {
+    await press("4");
+    await vi.waitFor(() => expect(probe.canMode).toBe("can"));
+    expect(slider(container)!.value).toBe("0");
+    expect(probe.lightDeg).toBe(0);
+  } finally { await unmount(); localStorage.removeItem("lolev-view"); }
 });
 
 // The DPI setting only shapes PSD export and the pixel ruler, so it lives in

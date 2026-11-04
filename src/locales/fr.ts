@@ -502,6 +502,8 @@ const fr: Record<keyof typeof en, string> = {
   "One can": "Une canette",
   "Four-pack": "Pack de quatre",
   "Bend the label like it's on a can: 0% flat, 100% the can's curve": "Courbez l’étiquette comme sur une canette : 0 % plat, 100 % courbe de la canette",
+  "Lighting": "Éclairage",
+  "Turn the lights around the can": "Tournez les lumières autour de la canette",
   "Curve": "Courbure",
   "{{name}} (unsaved changes)": "{{name}} (modifications non enregistrées)",
   "New tab ({{shortcut}})": "Nouvel onglet ({{shortcut}})",

@@ -502,6 +502,8 @@ const pt: Record<keyof typeof en, string> = {
   "One can": "Uma lata",
   "Four-pack": "Pack com 4",
   "Bend the label like it's on a can: 0% flat, 100% the can's curve": "Curve o rótulo como se estivesse numa lata: 0% plano, 100% a curva da lata",
+  "Lighting": "Iluminação",
+  "Turn the lights around the can": "Gire as luzes em volta da lata",
   "Curve": "Curva",
   "{{name}} (unsaved changes)": "{{name}} (alterações não salvas)",
   "New tab ({{shortcut}})": "Nova aba ({{shortcut}})",

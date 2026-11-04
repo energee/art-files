@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Added
+- **Turn the can's lighting.** A Lighting slider in the Can view's status bar turns the lights and reflections around the can, from -180° to 180°, so you can move the highlight to match a photo or proof. 0° is the old look, and the angle is remembered.
 - **CMYK colours.** Type `cmyk(15,25,70,5)` into any colour field to print exactly those CMYK percentages in the PDF. The preview and PSD show an RGB approximation, and saved swatches keep CMYK colours as CMYK.
 - **Print-ready PDF/X-4.** The print PDF now declares PDF/X-4 with an embedded sRGB output intent, the RGB-with-profile file the printer accepts. Acrobat opens it with overprint preview on, so White Ink shows correctly. The two-file art and mask PDFs are unchanged.
 
