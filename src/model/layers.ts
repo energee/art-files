@@ -303,7 +303,7 @@ function styleProblem(s: Record<string, unknown>, complete: boolean): string | u
     }
     if (v === "none") continue;
     const fill = typeof v === "string" ? normalizeFill(v) : undefined;
-    if (!fill) return t("has {{key}} {{value}}, which is not a hex colour", { key, value: JSON.stringify(v) });
+    if (!fill) return t("has {{key}} {{value}}, which is not a hex or CMYK colour", { key, value: JSON.stringify(v) });
     if (!/^#[0-9a-f]{6}$/i.test(v as string)) s[key] = fill;
   }
   for (const key of ["layer", "strokeLayer"]) {
