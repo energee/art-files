@@ -5,7 +5,7 @@ description: Label and master files, and dropping texture and mask images.
 
 ## Labels (`.label`)
 
-File → **Save Label** (`⌘S`) / **Save Label As…** (`⇧⌘S`) writes a zip named from the beer. `<slug>.label`: lowercase, punctuation to dashes, same slug rule as the QR. Inside: the label JSON plus embedded art (texture, mask, image-layer files).
+File → **Save Label** (`⌘S`) / **Save Label As…** (`⇧⌘S`) writes a zip named from the beer. `<slug>.label`: lowercase, punctuation to dashes, cut at the last word break within 40 characters (`label` when the name is empty). Exports use the same name. Inside: the label JSON plus embedded art (texture, mask, image-layer files).
 
 On Chromium and in the desktop app, Save is a real dialog and later Save rewrites that file in place. Everywhere else it falls back to a download.
 

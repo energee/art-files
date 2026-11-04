@@ -60,7 +60,8 @@ export const assets: Assets = {
 export const psdAssets: PsdAssets = { fonts: assets.fonts };
 
 /** A minimal embeddable 1x1 PNG — for any test that needs raster bytes to
- *  exist without caring what they depict. */
+ *  exist without caring what they depict. Its one pixel is fully
+ *  transparent, so it lays no White Ink (#668). */
 export const onePxPng = new Uint8Array(Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",

@@ -183,21 +183,27 @@ describe("drawPlate", () => {
     expect(rot!.args[0]).toBeCloseTo(-Math.PI / 2);
   });
 
-  it("paints a raster image rect blue in mask mode, the bitmap in art mode", () => {
+  it("paints a raster image's alpha blue in mask mode, the bitmap in art mode (#668)", () => {
+    const scratch = fakeCtx();
+    const scratchCanvas = { width: 0, height: 0, getContext: () => scratch.ctx };
+    vi.stubGlobal("document", { createElement: () => scratchCanvas });
+    const bmp = { width: 100, height: 100 } as unknown as CanvasImageSource;
     const p = plan({
       variants: ["collab"], overrides: { collabCenter: { asset: "c" } }, custom: { c: { aspect: 1 } },
     }).filter((r) => r.id === "collabCenter");
     expect(p).toHaveLength(1);
     const art = fakeCtx();
-    drawPlate(art.ctx, p, { images: { c: bitmap } }, "art", FONT);
+    drawPlate(art.ctx, p, { images: { c: bmp } }, "art", FONT);
     expect(art.log.filter((x) => x.op === "drawImage")).toHaveLength(1);
     const mask = fakeCtx();
-    drawPlate(mask.ctx, p, { images: { c: bitmap } }, "mask", FONT);
-    // Mask never draws the image itself: one blue footprint rect.
-    expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
+    drawPlate(mask.ctx, p, { images: { c: bmp } }, "mask", FONT);
+    // Mask draws the bitmap recolored mask blue (source-in keeps its alpha),
+    // so transparent pixels get no ink; never a solid footprint rect.
+    expect(scratch.log.find((x) => x.op === "set:globalCompositeOperation")!.args[0]).toBe("source-in");
+    expect(scratch.log.find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
     const items = afterTranslate(mask.log);
-    expect(items.filter((x) => x.op === "fillRect")).toHaveLength(1);
-    expect(items.find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
+    expect(items.some((x) => x.op === "fillRect")).toBe(false);
+    expect(items.filter((x) => x.op === "drawImage").map((x) => x.args[0])).toEqual([scratchCanvas]);
   });
 
   it("a tinted image is recolored at draw time: source-in on a scratch canvas, then drawn (#414)", () => {
@@ -222,11 +228,11 @@ describe("drawPlate", () => {
     const drawn = art.log.filter((x) => x.op === "drawImage");
     expect(drawn).toHaveLength(1);
     expect(drawn[0].args).toEqual([scratchCanvas, 10, 10, 20, 10]);
-    // Mask plate is unaffected: the same blue footprint as an untinted image.
+    // Mask plate ignores the tint: the same alpha in mask blue as an untinted image.
     const mask = fakeCtx();
     drawPlate(mask.ctx, [item], { images: { c: bmp } }, "mask", FONT);
-    expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
-    expect(afterTranslate(mask.log).find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
+    expect(scratch.log.filter((x) => x.op === "set:fillStyle").at(-1)!.args[0]).toBe(MASK_BLUE_HEX);
+    expect(afterTranslate(mask.log).filter((x) => x.op === "drawImage").map((x) => x.args[0])).toEqual([scratchCanvas]);
   });
 
   it("a tinted bitmap recolors once per fill: a repaint reuses the scratch, a new fill redraws it (#414)", () => {

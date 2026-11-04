@@ -29,6 +29,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Shorter export file names.** The suggested PDF, PSD and project file name is cut at a word boundary within 40 characters of the beer name, instead of the whole name.
 
 ### Fixed
+- **No white box around transparent images.** A PNG with transparency (a partner logo, say) now gets White Ink only under its visible pixels in the print PDF, the print PSD and the two-file mask files, instead of under its whole rectangle. Semi-transparent edges get partial ink. JPEGs and fully opaque PNGs still print on white ink edge to edge.
+- **Translated labels for the new edge warning, colour hints and tab names.** Spanish, French, German and Portuguese showed some newly added messages in English, and an invalid colour in a `.master` showed an untranslated message.
 - **Empty fields no longer print their placeholder.** An empty fillable field (such as ABV, Style or Description) still shows its placeholder on screen, but exported PDFs and PSDs, and `npm run generate`, now leave it blank instead of printing "#% alc by vol" or "Style". Everything else stays where the preview puts it.
 - **Text that runs off the label is flagged.** A layer that runs past the label edge now gets a red dot in Layers and "Runs past the label edge" in its inspector. Export still works.
 - **Values put back to the master's lose their override mark.** Dragging a layer back where it started, or setting a field back to the master's value, now clears the "This label sets" mark and its reset dot.
