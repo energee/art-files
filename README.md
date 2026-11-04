@@ -66,11 +66,11 @@ texture/mask/config argv, kept for golden re-baselines, is in
 
 ## CMYK for the printer
 
-The current development print PDF declares PDF/X-4 but is not compliant:
-its sRGB output intent is monitor-class, which PDF/X forbids. Publication
-is blocked by [#675](https://github.com/energee/art-files/issues/675)
-until the printer approves an output profile and independent preflight
-passes. A fill typed as `cmyk(c,m,y,k)` writes those exact CMYK percentages.
+PDF exports do not embed an output ICC profile or claim PDF/X compliance.
+Colour-profile embedding is deferred under
+[#675](https://github.com/energee/art-files/issues/675); the sRGB source
+profile is retained in `color-profiles/sRGB-v2-magic.icc` for later use.
+A fill typed as `cmyk(c,m,y,k)` writes those exact CMYK percentages.
 For a CMYK-only printer, `tools/to-cmyk.sh LUPULA.pdf` (Ghostscript)
 still converts an export.
 

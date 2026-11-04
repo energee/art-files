@@ -20,7 +20,7 @@ The single PDF contains the artwork, followed by a top layer named exactly **Whi
 
 In **Adobe Acrobat → Print Production → Output Preview**, enable **Overprint Preview** and inspect **Separations**. Check that **White Ink** is listed, and toggle it to inspect the underlay against the artwork. The magenta preview represents white ink; it is not magenta process ink.
 
-**Viewer caveat:** macOS Preview and other viewers without overprint preview may show opaque magenta and white shapes over the artwork. Do not judge the final print from that composite. Acrobat turns overprint preview on for PDF/X files by default, so the print PDF opens with it on. Obtain a proof accepted by the printer before production.
+**Viewer caveat:** macOS Preview and other viewers without overprint preview may show opaque magenta and white shapes over the artwork. Do not judge the final print from that composite. Enable Overprint Preview manually in Acrobat. Obtain a proof accepted by the printer before production.
 
 An uploaded mask becomes a single-channel spot image: blue (`R=0`) is full white ink, white (`R=255`) is knockout, and intermediate red values retain partial ink coverage. PNG transparency is preserved: fully transparent pixels leave earlier white ink untouched, and partial alpha blends with it. No mask uploaded? The white separation floods the page. Metallic elements still knock out to bare stock on top of that flood.
 
@@ -78,10 +78,10 @@ With two-file export on, the mask PSD carries the white ink instead. It mirrors 
 
 ## CMYK
 
-**Development release blocked:** the combined print PDF currently declares PDF/X-4 but embeds a monitor-class sRGB output intent, which PDF/X forbids. It is not PDF/X-4 compliant. [Issue #675](https://github.com/energee/art-files/issues/675) requires a printer-approved output profile and an independent preflight pass before publication. Accepting RGB artwork with an embedded profile does not make sRGB a valid PDF/X output intent.
+PDF exports do not embed an output ICC profile or claim PDF/X compliance. Colour-profile embedding is deferred under [issue #675](https://github.com/energee/art-files/issues/675); CMYK fills and the White Ink spot separation remain available.
 
 Hex colours print as RGB (neutral greys and black as gray, so they stay on the black plate). A fill typed as `cmyk(c,m,y,k)` (see [Colour](/docs/inspector#colour)) writes those exact CMYK percentages. Images and textures stay RGB. **White Ink** is a separate spot colour.
 
-The two-file art and mask PDFs are not PDF/X. `tools/to-cmyk.sh` still converts an export to CMYK with Ghostscript's generic profile, for a printer that takes CMYK only.
+`tools/to-cmyk.sh` still converts an export to CMYK with Ghostscript's generic profile, for a printer that takes CMYK only.
 
 Conversion is not scan certification: verify exact QR and barcode payloads on the converted artwork and on the printer's proof/stock. The Lolev master's dots QR uses error correction Q; changing approved QR artwork still requires printed-label scan approval.
