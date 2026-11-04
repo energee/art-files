@@ -98,6 +98,21 @@ describe("language selection", () => {
   });
 });
 
+describe("catalog coverage", () => {
+  it("has an English entry for every literal t()/translate() key in src", async () => {
+    const { default: en } = await import("../src/locales/en");
+    const { globSync } = await import("node:fs");
+    const used = new Set<string>();
+    for (const file of globSync("src/**/*.{ts,tsx}")) {
+      for (const m of readFileSync(file, "utf8").matchAll(/\b(?:t|translate)\("((?:[^"\\]|\\.)+)"/g)) {
+        used.add(JSON.parse(`"${m[1]}"`));
+      }
+    }
+    // Plural keys live under their i18next `_one` / `_other` suffixes.
+    expect([...used].filter((k) => !(k in en) && !(`${k}_one` in en))).toEqual([]);
+  });
+});
+
 describe("catalog loading", () => {
   it("loads only the active language's catalog at startup, before the first render", async () => {
     localStorage.setItem("labellab.language", "de");
