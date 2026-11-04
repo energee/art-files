@@ -73,6 +73,9 @@ import {
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
+import { useViewPrefs } from "@/useViewPrefs";
+import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
+import { useRenderSource } from "@/useRenderSource";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
 import { useProjectSave } from "@/useProjectSave";
@@ -80,7 +83,7 @@ import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
+  BLEED_SHIFT, PAGE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { useStableCallback } from "@/useStableCallback";
@@ -99,8 +102,8 @@ import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, typ
 import { Rulers } from "@/components/Rulers";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, LENGTH_UNITS, RULER_SIZE,
-  type GuideAxis, type LengthUnit, type ManualGuide,
+  DEFAULT_MARGIN_PT, RULER_SIZE,
+  type GuideAxis, type ManualGuide,
 } from "@/rulers";
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
@@ -114,11 +117,9 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { baseName, cn, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
-import { loadLabelFaces, labelFontCss } from "@/fonts";
+import { loadLabelFaces } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
-import type { MeasureFace, PlanAssets } from "@/plan";
-import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
-import { createBitmapCache } from "@/canvas/bitmapCache";
+import type { PlanAssets } from "@/plan";
 
 // three.js is the largest thing in the bundle and most sessions never leave
 // the 2D view, so the 3D can view (and three.js with it) loads on first use —
@@ -193,29 +194,6 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
   });
 }
 
-/** Where the view preferences (the rulers/guides toggles, the length
- *  unit and the 3D lighting angle) persist — localStorage, like every other
- *  per-operator setting (settings.ts, masters.ts). Only the known keys are read, so an entry
- *  written by an earlier build sheds its extras on the next write instead of
- *  leaking them in. Reads and writes are both guarded: storage can be missing
- *  or full, and a view preference is never worth an error. */
-// The key predates the app's name; renaming it would reset every saved view.
-const VIEW_KEY = "lolev-view";
-type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit; lightDeg: number };
-function loadViewPrefs(): ViewPrefs {
-  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in", lightDeg: 0 };
-  try {
-    const stored = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
-    if (typeof stored.showRulers === "boolean") prefs.showRulers = stored.showRulers;
-    if (typeof stored.showGuides === "boolean") prefs.showGuides = stored.showGuides;
-    if (LENGTH_UNITS.includes(stored.unit as LengthUnit)) prefs.unit = stored.unit as LengthUnit;
-    if (typeof stored.lightDeg === "number" && Math.abs(stored.lightDeg) <= 180) prefs.lightDeg = stored.lightDeg;
-  } catch {
-    // a hand-mangled entry falls back to the defaults rather than crashing boot
-  }
-  return prefs;
-}
-
 /** The "N value(s) benched" notes a rebind reports for what didn't fit. */
 const benchedNotes = (dropped: { values: string[]; variants: string[] }): string[] => [
   ...(dropped.values.length ? [translate("{{count}} value benched: {{names}}", { count: dropped.values.length, names: dropped.values.join(", ") })] : []),
@@ -258,33 +236,6 @@ function focusContentField(layerId: string, stillActive: () => boolean) {
 type LabelSource = { name: string; bytes: Uint8Array; path?: string };
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
-
-/** Largest wheel delta any single event is allowed to contribute: a mouse
- *  notch reports 100 at once, which unclamped overshoots the zoom range. */
-const ZOOM_STEP_CAP = 50;
-
-/** Keep the scaled content covering the pane `r`, so neither a pan nor a
- *  zoom-out can strand the label against a band of empty background. */
-const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
-  z,
-  x: Math.min(0, Math.max(r.width * (1 - z), x)),
-  y: Math.min(0, Math.max(r.height * (1 - z), y)),
-});
-
-/** One Zoom In / Zoom Out step (⌘= / ⌘-). */
-const ZOOM_FACTOR = 1.25;
-
-/** The pane's zoom range: 1 (fitted) through the 3D dolly's ceiling. */
-const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
-
-/** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
- *  point where it is. Shared by the wheel and the typed field. */
-const zoomAbout = (
-  r: DOMRect, v: { z: number; x: number; y: number }, z: number, ax: number, ay: number,
-) => {
-  const k = z / v.z;
-  return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
-};
 
 /** "rendered" is the flat label in the 3D scene (CanSceneMode "flat"). */
 type ViewMode = "2d" | "can" | "rendered";
@@ -506,10 +457,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // raised it (useOwnedToast): its clear() dismisses only its own, so one
   // source's success never wipes another's error (#473, #511), and it shows
   // only while this tab is in front. renderError is the renderers' message
-  // (every good frame clears it); assetsFailed only hides the "rendering
-  // label…" spinner while asset assembly is failing.
+  // (every good frame clears it).
   const [renderError, setRenderError] = useState("");
-  const [assetsFailed, setAssetsFailed] = useState(false);
   // Each one-off error, and each open, save or load message that stays until
   // closed, owns one toast id in this editor, so a repeat replaces it instead of
   // stacking another (notify.ts). A Saved toast fades on its own and needs no
@@ -556,14 +505,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The Rendered view's bend, % of the can's curvature. A subtle default.
   // ponytail: per-tab and unsaved; move to Settings if it should persist.
   const [curvePct, setCurvePct] = useState(15);
-  // Preview pane zoom: scale `z` about the pane's top-left, then offset by
-  // (x, y) screen px. z === 1 is the fitted view.
   const previewPane = useRef<HTMLDivElement>(null);
   usePreviewToastAnchor(previewPane, active);
-  const [zoom, setZoom] = useState({ z: 1, x: 0, y: 0 });
   const canView = useRef<CanViewHandle>(null);
-  // Whole percent, so the camera's per-frame emissions bail out of React.
-  const [camZoomPct, setCamZoomPct] = useState(100);
+  const {
+    zoom, camZoomPct, carried, onCameraChange, zoomDraft, setZoomDraft, zoomTo, applyTypedZoom,
+    panning, onPanStart, onPanMove, onPanEnd,
+  } = useZoomPan(viewMode === "2d", previewPane, canView);
   // The 3D scene's mode: Rendered shows the flat label, Can its count.
   let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
   if (viewMode === "rendered") canSceneMode = "flat";
@@ -572,51 +520,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The status bar's "Compare" note, which the view group points at so a
   // screen reader hears the state too. useId: each open tab has its own.
   const compareId = useId();
-  // Zoom level follows you across views (see CanView's initialView). A ref:
-  // only a view change hands it over.
-  const carried = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
-  const carriedMode = useRef(viewMode);
-  // Captured on the single render that leaves 2D — `zoom` still holds the
-  // 2D value there and the pane still has its rect. Render-time, not an
-  // effect: CanView reads it as a prop while mounting.
-  if (viewMode !== "2d" && carriedMode.current === "2d") {
-    const r = previewPane.current?.getBoundingClientRect();
-    if (r?.width) carried.current = {
-      zoom: zoom.z,
-      pan: {
-        x: (r.width * (1 - zoom.z) / 2 - zoom.x) / r.width,
-        y: (r.height * (1 - zoom.z) / 2 - zoom.y) / r.height,
-      },
-    };
-  }
-  useEffect(() => {
-    carriedMode.current = viewMode;
-    if (viewMode !== "2d") return; // CanView takes it as a prop — see initialView
-    const { zoom: z, pan } = carried.current;
-    const r = previewPane.current?.getBoundingClientRect();
-    if (!r?.width) return setZoom({ z, x: 0, y: 0 });
-    setZoom(clampView(r, z,
-      r.width * (1 - z) / 2 - pan.x * r.width,
-      r.height * (1 - z) / 2 - pan.y * r.height));
-  }, [viewMode]);
-  const [zoomDraft, setZoomDraft] = useState<string | null>(null);
-  /** Zoom to `next(current)`, clamped, about the pane's centre — the 3D
-   *  views dolly their camera instead. Shared by the typed field and the
-   *  Zoom In / Out / to Fit commands. */
-  const zoomTo = (next: (z: number) => number) => {
-    if (viewMode === "2d") {
-      const r = previewPane.current?.getBoundingClientRect();
-      setZoom((v) => {
-        const z = clampZoom(next(v.z));
-        return r?.width ? zoomAbout(r, v, z, r.width / 2, r.height / 2) : { z, x: 0, y: 0 };
-      });
-    } else canView.current?.setZoom(clampZoom(next(camZoomPct / 100)));
-  };
-  const applyTypedZoom = () => {
-    const pct = parseFloat(zoomDraft ?? "");
-    setZoomDraft(null);
-    if (isFinite(pct)) zoomTo(() => pct / 100);
-  };
   // Published to layout.ts during render, not from an effect: the rulers
   // and the px length unit read PAGE and OUTPUT_DPI while rendering.
   // ACTIVE editor only: a hidden editor's memo bail freezes its `render`.
@@ -625,52 +528,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     setOutputDpi(render.dpi);
   }
 
-  // Wheel-to-zoom, scoped to the preview pane (2D only; the 3D views run
-  // this through OrbitControls). Attached by hand: React's synthetic wheel
-  // handler is passive at the root. setZoom's functional form is
-  // load-bearing: a pinch delivers events faster than React re-renders.
-  useEffect(() => {
-    const el = previewPane.current;
-    if (!el || viewMode !== "2d") return;
-    function onWheel(e: WheelEvent) {
-      const r = el!.getBoundingClientRect();
-      if (!r.width || !r.height) return; // not laid out yet
-      e.preventDefault();
-      setZoom((v) => {
-        const step = Math.max(-ZOOM_STEP_CAP, Math.min(ZOOM_STEP_CAP, e.deltaY));
-        const z = clampZoom(v.z * Math.exp(-step / 150));
-        return zoomAbout(r, v, z, e.clientX - r.left, e.clientY - r.top);
-      });
-    }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [viewMode]);
-
-  // Drag-to-pan on the right button — the same button OrbitControls pans
-  // with in the 3D views.
-  const panFrom = useRef<{ x: number; y: number; r: DOMRect } | null>(null);
-  const [panning, setPanning] = useState(false);
-  function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.button !== 2 || viewMode !== "2d") return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    panFrom.current = {
-      x: e.clientX, y: e.clientY, r: e.currentTarget.getBoundingClientRect(),
-    };
-    setPanning(true);
-  }
-  function onPanMove(e: React.PointerEvent<HTMLDivElement>) {
-    const from = panFrom.current;
-    if (!from) return;
-    const dx = e.clientX - from.x, dy = e.clientY - from.y;
-    from.x = e.clientX;
-    from.y = e.clientY;
-    setZoom((v) => clampView(from.r, v.z, v.x + dx, v.y + dy));
-  }
-  function onPanEnd() {
-    if (!panFrom.current) return;
-    panFrom.current = null;
-    setPanning(false);
-  }
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
    *  with zero width. */
@@ -684,14 +541,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const previewRef = useRef<PreviewCompareHandle>(null);
   // Rulers, guides and the length unit are view state: they assist the
   // operator but are not label content, so none enters history/exports. All
-  // persist per operator. The one unit drives the rulers, the inspector's
+  // persist per operator (useViewPrefs.ts). The one unit drives the rulers, the inspector's
   // length fields, the canvas drag readout and the margin inset.
-  const [showRulers, setShowRulers] = useState(() => loadViewPrefs().showRulers);
-  const [unit, setUnit] = useState(() => loadViewPrefs().unit);
-  const [showGuides, setShowGuides] = useState(() => loadViewPrefs().showGuides);
-  // The 3D light rig's angle, in degrees (0 = the default rig). Set in the
-  // Can view; it lights the Rendered view too.
-  const [lightDeg, setLightDeg] = useState(() => loadViewPrefs().lightDeg);
+  const { showRulers, setShowRulers, unit, setUnit, showGuides, setShowGuides, lightDeg, setLightDeg } = useViewPrefs();
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -704,13 +556,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
-  useEffect(() => {
-    try {
-      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit, lightDeg }));
-    } catch {
-      // full or missing storage: the preference lasts this session only
-    }
-  }, [showRulers, showGuides, unit, lightDeg]);
 
   /** Whether the document differs from the last saved/opened project —
    *  File → Save Label disables while clean. Clear it ONLY after a completed open
@@ -1150,98 +995,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   });
   const exportBusy = exporting !== null;
 
-  // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
-  // assembled off the asset inputs alone (debounced). Layer edits, a raster's
-  // tint included, deliberately DON'T re-run this: the layers flow into the
-  // views as a prop and repaint with these same bitmaps (drawPlate tints,
-  // #414). The one layer edit that does is a font pick that adds a family to
-  // fontOverrides, so its faces load (#411). Bitmaps come from a per-editor
-  // cache keyed by source bytes, so a re-assembly decodes only new or changed
-  // assets (#413); `sources` lists the bytes this generation draws from.
-  const [bitmaps] = useState(createBitmapCache);
-  const [decodedAssets, setDecodedAssets] = useState<{
-    m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
-    sources: Uint8Array[];
-  } | null>(null);
-  // Guide movement changes placement immediately, without decoding image bytes again.
-  const canvasAssets = useMemo(() => decodedAssets ? {
-    ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
-  } : null, [decodedAssets, guides]);
-  const bgOn = pageOn("background"), maskOn = pageOn("mask");
-  // Asset assembly's next success clears only the error it set, so an image
-  // or master error survives a plate toggle (#511).
-  useEffect(() => {
-    // Not gated on `blocked`: this only decodes fonts and art, and a rejected
-    // value already falls back to the master's, so the preview keeps drawing (#127).
-    if (!active) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      (async () => {
-        const m = await loadLabelFaces(family, fontOverrides);
-        // The cache owns every bitmap: a throw or a cancelled run leaves its
-        // decodes there for the next committed generation (or unmount) to
-        // keep or close. A cancelled run asks for nothing more, so it can't
-        // add bitmaps after that settling already ran (#413).
-        const sources: Uint8Array[] = [];
-        const bitmap = (bytes: Uint8Array | undefined) => {
-          if (!bytes || cancelled) return null;
-          sources.push(bytes);
-          return bitmaps.get(bytes);
-        };
-        const art = pageArt(true);
-        // Raster bytes become a bitmap for the canvas to draw; an SVG
-        // source stays undecoded (it plans as paths) and is absent here.
-        const [customBitmaps, textureBmp, maskBmp] = await Promise.all([
-          Promise.all(Object.entries(liveImages).map(async ([id, { image: img }]) =>
-            [id, img.kind === "svg" ? null : await bitmap(img.bytes)] as const))
-            .then((entries): Record<string, ImageBitmap | null> => Object.fromEntries(entries)),
-          bitmap(art.texture?.bytes), bitmap(art.maskPng),
-        ]);
-        // The page art rides under its PAGE_ART_ID keys too, so a backend
-        // that draws the `page` items by asset id finds the same bitmaps.
-        if (textureBmp) customBitmaps[PAGE_ART_ID.background] = textureBmp;
-        if (maskBmp) customBitmaps[PAGE_ART_ID.mask] = maskBmp;
-        // Superseded: a newer run, a background tab or unmount settles the cache.
-        if (cancelled) return;
-        setDecodedAssets({
-          m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
-        });
-        assetError.clear();
-        setAssetsFailed(false);
-      })().catch((err) => {
-        if (cancelled) return;
-        assetError.set(errMsg(err));
-        setAssetsFailed(true);
-      });
-    }, 150);
-    return () => { cancelled = true; clearTimeout(timer); };
-    // Asset inputs only — the layers reach this effect through the two
-    // page-art switches (see the comment above); fontOverrides is the set of
-    // layer font families, so picking a new one reloads its faces.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, liveImages, family, fontOverrides, bgOn, maskOn, active]);
-  // Once a generation is live, close the cached bitmaps it no longer draws
-  // (bitmaps aren't GC'd on their own); unchanged assets keep theirs. No
-  // generation (a background tab) or unmount closes them all.
-  useEffect(() => { bitmaps.retain(decodedAssets?.sources ?? []); }, [bitmaps, decodedAssets]);
-  useEffect(() => () => bitmaps.retain([]), [bitmaps]);
-
-  // What the preview omits: the in-place edit session's layer — hidden
-  // while its live editor floats over it. Preview-only: meaningless for a
-  // print file. Disabled layers are already gone from drawLayers.
-  const skip = useMemo<{ has(id: string): boolean }>(
-    () => ({ has: (id: string) => id === editSession }), [editSession]);
-  const canvasSource = useMemo<CanvasRenderSource | null>(
-    () => (canvasAssets ? { ...canvasAssets, skip } : null),
-    [canvasAssets, skip],
-  );
-  const previewReady = !!canvasAssets;
-
-  // Background tabs keep their state and asset bytes but not their decoded
-  // render source: the ImageBitmaps are the heavy, cheaply-rebuildable part.
-  useEffect(() => {
-    if (!active) setDecodedAssets(null);
-  }, [active]);
+  // The render source for BOTH views, assembled off the asset inputs alone
+  // (useRenderSource.ts): what the preview draws with, and the font metrics
+  // and plan assets the hit boxes and the die check measure with.
+  const { canvasAssets, canvasSource, previewReady, assetsFailed } = useRenderSource({
+    active, family, fontOverrides, liveImages, texture, mask,
+    bgOn: pageOn("background"), maskOn: pageOn("mask"), guides, editSession,
+    pageArt, planAssets: planAssetsOf, assetError,
+  });
 
   /** The doc before the in-flight canvas drag or resize opened its undo
    *  step; null until a move actually patches something (a first move that
@@ -2662,10 +2423,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               <Suspense fallback={null}>
               <CanView ref={canView}
                 initialView={carried.current}
-                onZoom={(z, pan) => {
-                  if (carriedMode.current !== "2d") carried.current = { zoom: z, pan };
-                  setCamZoomPct(Math.round(z * 100));
-                }}
+                onZoom={onCameraChange}
                 layers={drawLayers} source={canvasSource} bleedIn={render.bleedIn}
                 mode={canSceneMode} cornerRadiusPct={render.cornerRadius}
                 edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} lightDeg={lightDeg} exporting={!!exporting}
