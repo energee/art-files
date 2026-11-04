@@ -1,8 +1,6 @@
-// fill-cmyk.test.ts — CMYK fills (`cmyk(c,m,y,k)`, percentages): parsing and
-// canonical form, the PDF's exact DeviceCMYK operator, and the print PDF's
-// PDF/X-4 output intent.
+// fill-cmyk.test.ts — CMYK fills (`cmyk(c,m,y,k)`, percentages):
+// canonical form and the PDF's exact DeviceCMYK operator.
 import { describe, expect, it } from "vitest";
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, PDFString, decodePDFRawStream } from "pdf-lib";
 import { buildArtPdf, buildPrintPdf } from "../src/pdf/build";
 import { cssFill, normalizeFill, parseFill } from "../src/layout";
 import { patchProblem } from "../src/model/layers";
@@ -54,36 +52,5 @@ describe("CMYK in the PDF", () => {
 
   it("leaves hex fills on DeviceRGB and DeviceGray", async () => {
     expect(await contentStreamText(await buildArtPdf(square("#D0B070"), assets))).not.toMatch(/ k\b/);
-  });
-});
-
-describe("PDF/X-4 output intent", () => {
-  it("marks the print PDF as PDF/X-4 with an embedded sRGB output profile", async () => {
-    const bytes = await buildPrintPdf(square("#D0B070"), assets);
-    expect(new TextDecoder().decode(bytes.slice(0, 8))).toBe("%PDF-1.6");
-    const doc = await PDFDocument.load(bytes);
-    const { catalog, context } = doc;
-
-    const intent = catalog.lookup(PDFName.of("OutputIntents"), PDFArray).lookup(0, PDFDict);
-    expect(intent.get(PDFName.of("S"))).toBe(PDFName.of("GTS_PDFX"));
-    expect(intent.lookup(PDFName.of("OutputConditionIdentifier"), PDFString).asString()).toBe("sRGB IEC61966-2.1");
-    const profile = intent.lookup(PDFName.of("DestOutputProfile"), PDFStream);
-    expect(profile.dict.get(PDFName.of("N"))?.toString()).toBe("3");
-    const icc = decodePDFRawStream(profile as never).decode();
-    expect(new TextDecoder().decode(icc.slice(36, 40))).toBe("acsp");
-
-    const info = context.lookup(context.trailerInfo.Info, PDFDict);
-    expect(info.lookup(PDFName.of("GTS_PDFXVersion"), PDFString).asString()).toBe("PDF/X-4");
-    expect(info.get(PDFName.of("Trapped"))).toBe(PDFName.of("False"));
-    expect(context.trailerInfo.ID).toBeDefined();
-
-    const xmp = new TextDecoder().decode(catalog.lookup(PDFName.of("Metadata"), PDFStream).getContents());
-    expect(xmp).toContain("<pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>");
-    expect(xmp).toContain("<rdf:li xml:lang=\"x-default\">Label label</rdf:li>");
-  });
-
-  it("leaves the two-file art PDF unmarked", async () => {
-    const doc = await PDFDocument.load(await buildArtPdf(square("#D0B070"), assets));
-    expect(doc.catalog.get(PDFName.of("OutputIntents"))).toBeUndefined();
   });
 });

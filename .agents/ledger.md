@@ -895,7 +895,7 @@ no status, no attempts, no delta.
 
 ## 2026-11-04 release-readiness
 - finding: user asked whether another release can be cut.
-- status: parked(proof)
+- status: done
 - attempts: 1/3
 - evidence: live main ec939b9faefef65b8cc608b8c1d23d1943fece46 has successful test, Rust, Linux/Windows cross-check and dependency-audit jobs in https://github.com/energee/art-files/actions/runs/41778585928. Latest published release is label-lab-v0.1.116 (2026-10-30), with all four platform artifact sets; latest release workflow succeeded.
 - evidence: local main c2f2454a (one commit behind live main) passes `node scripts/check-release.mjs label-lab-v0.1.116`; metadata remains synchronized at 0.1.116 and binary changes have Unreleased notes. This is a queued-change check, not a passing release-mode check for a new version.
@@ -905,7 +905,7 @@ no status, no attempts, no delta.
 
 ## 2026-11-04 pdfx-release-blocker
 - finding: [correctness/high] #675 src/pdf/pdfx.ts:49-57 — combined PDFs declare PDF/X-4 but embed a monitor-class sRGB output intent; PDF/X permits printer-class output intents only.
-- status: parked(context)
+- status: done
 - attempts: 1/3
 - attempted-in: .agents/worktrees/release-0.1.117 @ release/0.1.117, based on ec939b9f
 - evidence: actual CLI Starter and Lolev exports succeeded. Decoding the Lolev PDF's OutputIntents/DestOutputProfile yields 736 bytes, class mntr, RGB colour space and acsp signature. A synthetic CMYK + White Ink master generated /tmp/label-lab-release-0117-cmyk-master/cmyk-preflight-proof.pdf (151453 bytes, SHA-256 dd808c6d8b13d39cf39a24985b3089a3eba6072b8f053580400f8fd5892d4be0); the drawing contains 0.1 0.2 0.3 0.4 k and the White Ink separation/DeviceCMYK alternate, with the same invalid mntr output intent.
@@ -914,6 +914,7 @@ no status, no attempts, no delta.
 - ruling: obtain Blue Label Digital's approved CMYK printer-class (prtr) output ICC or explicitly approved output condition, including embedding/distribution permission, and a genuine independent PDF/X-4 preflight pass. Retain sRGB source characterization for RGB artwork separately when replacing the intent; preserve exact CMYK fills and White Ink overprint. Local generic ColorSync/Adobe profiles do not establish this printer's silver-film condition. Do not change ICC class bytes, substitute an arbitrary profile, remove the PDF/X claim as a workaround, or publish this candidate.
 - delta: docs/plans/cmyk-export.md now records the confirmed defect and prerequisites instead of calling it a speculative preflight risk. Tracked at https://github.com/energee/art-files/issues/675. Version remains 0.1.116; Unreleased notes remain queued.
 - release: investigation/plan/ledger changes are non-binary-impacting. User authorized eventual publication, but the PDF compliance gate is not satisfied; no version bump, merge, workflow dispatch, tag or release performed.
+- resolution (2026-11-04): user explicitly deferred colour-profile embedding and PDF/X output, retaining the original sRGB profile as an unembedded repository asset. The invalid embedding/declaration path is removed for 0.1.117; this supersedes the earlier release-hold ruling without claiming compliance. #675 now tracks the deferred enhancement and its printer-profile/preflight prerequisites.
 
 ## 2026-11-04 camera-damping-settled
 - finding: [correctness/med] #673 src/three/canScene.ts — residual OrbitControls damping moved the camera on later unrelated preview renders.
@@ -925,3 +926,13 @@ no status, no attempts, no delta.
 - evidence: real Chromium/WebGL2 class smoke: orbit, tilt, right-button pan, wheel zoom and keyboard pan move the camera; after settling, 20 unrelated render/lighting cycles produce exactly zero position/quaternion/target change. Same-size resize drift is at most 1.11e-16; actual resize preserves quaternion and leaves no later drift. Twelve idle frames cause zero extra scene renders; disposal cancels queued frames and detaches canvas. Tiny keyboard gestures also consume their tail.
 - evidence: parent visually exercised actual editor Can view at localhost:5395 with orbit drag and Lighting keyboard changes; Starter label and can render, and no browser errors were recorded. Full-app internal-state instrumentation did not capture the scene, so exact zero-drift measurements above are from the direct real-WebGL CanScene smoke, not the parent UI check. Both smoke browsers/services closed; no runtime scaffolds retained.
 - release: binary-impacting; camera fix queued under Unreleased. README, operator export guide, changelog and CMYK plan now distinguish the confirmed #675 defect from certification. All version fields intentionally remain 0.1.116; publication remains blocked on the approved output profile and independent preflight.
+
+## 2026-11-04 release-0117-profile-deferral
+- finding: user authorized 0.1.117 publication with colour-profile embedding deferred and the existing profile retained.
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/defer-icc-release117 @ release/0.1.117, based on 1108d54a
+- delta: combined print PDFs serialize normally without an output ICC, PDF/X Info/XMP declaration or version-header patch. Removed the obsolete pdfx.ts implementation and two metadata-only tests; retained exact CMYK-fill and White Ink coverage. The original 736-byte CC0 sRGB-v2-magic.icc is preserved unchanged in color-profiles/ (SHA-256 af4efe28f6d311799865f325ba39184a2e978b113ca74124d60af7de22b105f4), not bundled or embedded. Docs and #675 now describe embedding/PDF/X as deferred, not a release blocker; Acrobat Overprint Preview must be enabled manually.
+- evidence: actual 0.1.117 CLI exports succeeded for a CMYK/White Ink synthetic master and the Lolev master. Read-only PDF inspection confirms producer Label Lab 0.1.117, no OutputIntents, no PDF/X declaration/XMP, exact 0.1 0.2 0.3 0.4 k, named White Ink separation and fill/stroke overprint. Ghostscript tiffsep emits Cyan, Magenta, Yellow, Black and White Ink plates. pdfinfo reports PDF 1.7, one 585.12 x 369.12pt page and no metadata stream. This is functional output proof, not PDF/X certification.
+- evidence: on release/0.1.117, all 1940 tests across 186 files pass (--maxWorkers=4), zero-warning lint, TypeScript/production app build, Knip 6.38.0, both release metadata gates (origin/main and --release label-lab-v0.1.116), runtime npm audit (0 vulnerabilities), and docs production build pass. Existing happy-dom fetch-abort diagnostics, Vite chunk-size advisory and docs CSS warnings remain.
+- release: binary-impacting; all five version files synchronized at 0.1.117 and Unreleased renamed to the dated 0.1.117 section. Release candidate validated for the user-authorized merge/publication after CI. Colour-profile embedding remains explicitly out of this release; CMYK fills and White Ink are retained.

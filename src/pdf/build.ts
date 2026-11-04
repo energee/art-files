@@ -52,7 +52,6 @@ import { version } from "../../package.json";
 import { openFont } from "../fontkit";
 import { outlineText } from "./outline";
 import { embedWhiteInkMask, registerWhiteInk, whiteFill, whiteInkColorSpace, whiteStroke } from "./whiteInk";
-import { savePdfX4 } from "./pdfx";
 
 /** An image asset's source: vector text (already planned as `paths` items by
  *  planLayers, so this backend never draws it) or raster bytes, embedded
@@ -574,8 +573,7 @@ function drawWhiteInk(
 }
 
 /** One print file: unchanged art followed by an outlined, overprinting White
- *  Ink OCG, marked PDF/X-4 (pdfx.ts). The two-file art and mask PDFs stay
- *  unmarked: the mask's blue is a white-ink convention, not a colour. */
+ *  Ink OCG. Colour-profile embedding and PDF/X certification are deferred. */
 export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
   const embedded = await embedRasters(doc, items, assets, "art");
@@ -594,5 +592,5 @@ export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Asset
   drawWhiteInk(page, items, assets, embedded, mask, footprints);
   page.pushOperators(...white.end);
   doc.setTitle(`${assets.title ?? "Label"} label`);
-  return savePdfX4(doc);
+  return doc.save({ objectsPerTick: Infinity });
 }

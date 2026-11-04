@@ -4,17 +4,17 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.117] - 2026-11-04
 
 ### Added
 - **Turn the can's lighting.** A Lighting slider in the Can view's status bar turns the lights and reflections around the can, from -180° to 180°, so you can move the highlight to match a photo or proof. 0° is the old look, and the angle is remembered.
 - **CMYK colours.** Type `cmyk(15,25,70,5)` into any colour field to print exactly those CMYK percentages in the PDF. The preview and PSD show an RGB approximation, and saved swatches keep CMYK colours as CMYK.
-- **PDF/X-4 metadata, not yet compliant.** The print PDF now declares PDF/X-4, but its sRGB output intent is monitor-class and does not satisfy PDF/X. Publication is blocked until a printer-approved output profile is embedded and independent preflight passes. The two-file art and mask PDFs are unchanged.
 
 ### Security
 - **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
 
 ### Changed
+- **Colour-profile embedding is deferred.** PDF exports keep CMYK fills and White Ink but do not embed an output ICC profile or claim PDF/X-4 compliance. In Acrobat, enable Overprint Preview manually before reviewing the White Ink separation.
 - **Less explanatory text.** Removed helper lines that only repeated what the control next to them already shows: the notes under Language and Two-file export in Settings, under Margin inset, the template-field hints (Field label, Placeholder, Suffix), the link-slug note under a QR link (the preview line below it already shows the result), the "Page art always covers the full page" note, and the file-type hints in the drop zones. The Two-file export label now matches the other settings.
 - **Simpler prompts and panels.** The save prompts when closing a tab or quitting now say one line: "Your changes will be lost if you don't save them." The Master menu shows a file name and last-used date only when two masters share a name. The Characters per inch info button and the Measurement caption above the units picker are gone. On raster image art the Metallic button now stays visible but greyed out, and its tooltip says why, instead of a note below it.
 - **Masters from Label Lab 0.1.36 or earlier no longer open.** Opening one now says so and asks you to open it in Label Lab 0.1.116 and save it, which updates it to the current format. Labels from those versions still open.
