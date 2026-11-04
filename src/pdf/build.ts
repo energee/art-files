@@ -15,7 +15,9 @@ import {
   LineJoinStyle,
   PDFDocument,
   PDFFont,
+  PDFName,
   PDFPage,
+  PDFStream,
   degrees,
   drawImage,
   drawRectangle,
@@ -33,6 +35,7 @@ import {
   TextRenderingMode,
   translate,
   type Color,
+  type PDFObject,
   type PDFOperator,
   type PDFRef,
   type Rotation,
@@ -48,7 +51,7 @@ import { describeCodepoints, VARIATION_SELECTOR } from "../textheight";
 import { version } from "../../package.json";
 import { openFont } from "../fontkit";
 import { outlineText } from "./outline";
-import { embedWhiteInkMask, registerWhiteInk, whiteFill, whiteStroke } from "./whiteInk";
+import { embedWhiteInkMask, registerWhiteInk, whiteFill, whiteInkColorSpace, whiteStroke } from "./whiteInk";
 import { savePdfX4 } from "./pdfx";
 
 /** An image asset's source: vector text (already planned as `paths` items by
@@ -263,12 +266,50 @@ async function embedRasters(doc: PDFDocument, items: readonly PlacedLayer[], ass
   return embedded;
 }
 
+/** White Ink footprint image XObjects by asset id, for every `image`
+ *  item's raster that carries alpha: `sample` (one pixel of the plate's ink
+ *  in `colorSpace`) over the whole image, cut by the soft mask pdf-lib
+ *  embedded for the art, so transparent pixels get no ink and partial alpha
+ *  partial coverage, as an uploaded mask's alpha does (embedWhiteInkMask).
+ *  Art without alpha (a JPEG, an opaque PNG) gets no entry: its footprint
+ *  is its placed rectangle (#668). */
+type Footprints = Map<string, PDFRef>;
+
+async function alphaFootprints(
+  doc: PDFDocument, items: readonly PlacedLayer[], embedded: Embedded, colorSpace: PDFObject, sample: number[],
+): Promise<Footprints> {
+  const out: Footprints = new Map();
+  for (const r of items) {
+    if (r.kind !== "image" || !r.asset || out.has(r.asset)) continue;
+    const image = embedded.get(r.asset);
+    if (!image) continue;
+    await image.embed(); // the SMask exists only once embedded
+    const smask = doc.context.lookup(image.ref, PDFStream).dict.get(PDFName.of("SMask"));
+    if (!smask) continue;
+    const samples = new Uint8Array(image.width * image.height * sample.length);
+    for (let i = 0; i < samples.length; i++) samples[i] = sample[i % sample.length];
+    out.set(r.asset, doc.context.register(doc.context.flateStream(samples, {
+      Type: "XObject", Subtype: "Image", Width: image.width, Height: image.height,
+      ColorSpace: colorSpace, BitsPerComponent: 8, SMask: smask,
+    })));
+  }
+  return out;
+}
+
+/** Paint an image XObject into a page-space rectangle. */
+function placeXObject(page: PDFPage, tag: string, ref: PDFRef, x: number, y: number, width: number, height: number) {
+  page.pushOperators(...drawImage(page.node.newXObject(tag, ref), {
+    x, y, width, height, rotate: degrees(0), xSkew: degrees(0), ySkew: degrees(0),
+  }));
+}
+
 function drawItems(
   page: PDFPage,
   fonts: Fonts,
   items: readonly PlacedLayer[],
   embedded: Embedded,
   mode: Mode,
+  footprints: Footprints = new Map(),
 ) {
   const faceFont = (f: Face, family?: FontFamilyId) => {
     const selected = family ? fonts.families?.[family] : fonts;
@@ -316,8 +357,11 @@ function drawItems(
       const emb = r.asset ? embedded.get(r.asset) : undefined;
       if (!emb) continue;
       const rect = { x: r.x, y: y(r.y + r.h), width: r.w, height: r.h };
-      if (mode === "art") page.drawImage(emb, rect);
-      // Raster art prints on white ink: the mask paints its footprint blue.
+      if (mode === "art") { page.drawImage(emb, rect); continue; }
+      // Raster art prints on white ink: the mask paints its footprint blue,
+      // following the art's alpha when it has one.
+      const footprint = footprints.get(r.asset!);
+      if (footprint) placeXObject(page, "MaskImage", footprint, rect.x, rect.y, rect.width, rect.height);
       else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
     } else drawBarcode(page, fonts, r, mode);
   }
@@ -448,8 +492,10 @@ export async function buildMaskPdf(items: readonly PlacedLayer[], assets: Assets
   page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: rgb(1, 1, 1) });
   if (!hasPage(items, embedded, "mask"))
     page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
+  const blue = [L.COLORS.maskBlue.r, L.COLORS.maskBlue.g, L.COLORS.maskBlue.b].map((c) => Math.round(c * 255));
+  const footprints = await alphaFootprints(doc, items, embedded, PDFName.of("DeviceRGB"), blue);
   shiftForBleed(page);
-  drawItems(page, fonts, items, embedded, "mask");
+  drawItems(page, fonts, items, embedded, "mask", footprints);
   doc.setTitle(`${assets.title ?? "Label"} white-ink layer`);
   return doc.save();
 }
@@ -459,7 +505,7 @@ export async function buildMaskPdf(items: readonly PlacedLayer[], assets: Assets
  *  operators before pushing them, never rewriting a serialized content stream. */
 function drawWhiteInk(
   page: PDFPage, items: readonly PlacedLayer[], assets: Assets, embedded: Embedded,
-  mask: PDFRef | undefined,
+  mask: PDFRef | undefined, footprints: Footprints,
 ) {
   const placeholder = grayscale(0);
   const paint = (ops: PDFOperator[], tint: 0 | 1) => {
@@ -503,13 +549,11 @@ function drawWhiteInk(
       paths(r.paths, r.x, y(r.y), maskTint(r.layer));
     } else if (r.kind === "page") {
       if (!pageDrawsOn(r, "mask") || !mask) continue;
-      const name = page.node.newXObject("WhiteMask", mask);
-      withoutBleedShift(page, () => page.pushOperators(...drawImage(name, {
-        x: r.x, y: y(r.y + r.h), width: r.w, height: r.h,
-        rotate: degrees(0), xSkew: degrees(0), ySkew: degrees(0),
-      })));
+      withoutBleedShift(page, () => placeXObject(page, "WhiteMask", mask, r.x, y(r.y + r.h), r.w, r.h));
     } else if (r.kind === "image") {
-      if (r.asset && embedded.has(r.asset)) rect(r.x, y(r.y + r.h), r.w, r.h, 1);
+      const footprint = r.asset ? footprints.get(r.asset) : undefined;
+      if (footprint) placeXObject(page, "WhiteImage", footprint, r.x, y(r.y + r.h), r.w, r.h);
+      else if (r.asset && embedded.has(r.asset)) rect(r.x, y(r.y + r.h), r.w, r.h, 1);
     } else {
       const digits = r.digits.map((d) => outlineText(font("regular"), {
         kind: "text", id: r.id, text: d.text, face: "regular", size: r.textSize,
@@ -545,8 +589,9 @@ export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Asset
     const { data, width, height } = assets.maskPixels;
     mask = embedWhiteInkMask(doc, data, width, height);
   }
+  const footprints = await alphaFootprints(doc, items, embedded, whiteInkColorSpace(doc), [255]);
   page.pushOperators(...white.begin);
-  drawWhiteInk(page, items, assets, embedded, mask);
+  drawWhiteInk(page, items, assets, embedded, mask, footprints);
   page.pushOperators(...white.end);
   doc.setTitle(`${assets.title ?? "Label"} label`);
   return savePdfX4(doc);
