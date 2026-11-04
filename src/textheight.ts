@@ -116,7 +116,7 @@ const cached = new Map<FontFamilyId, Promise<TextChecks>>();
 export function loadTextChecks(family: FontFamilyId): Promise<TextChecks> {
   let result = cached.get(family);
   if (!result) {
-    result = import("./pdf/fonts").then(({ loadFonts }) => loadFonts(family))
+    result = import("./fonts").then(({ loadFonts }) => loadFonts(family))
       .then((bytes) => ({ measure: createHeightMeasure(bytes), missingGlyphs: createMissingGlyphCheck(bytes) })).catch((error) => {
       cached.delete(family);
       throw error;

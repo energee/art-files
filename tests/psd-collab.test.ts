@@ -6,7 +6,7 @@
 // the lead-in type layer, the left slot's vector art, the center slot's
 // raster art — on the art plate and, as white-ink footprints, on the mask.
 import { describe, expect, it } from "vitest";
-import { readPsd } from "ag-psd";
+import { initializeCanvas, readPsd } from "ag-psd";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { flatLayers, lolevLayers, lolevPlan, logoSvg, psdAssets, type LolevOpts } from "./fixtures";
 
@@ -58,8 +58,25 @@ describe("PSD collab art", () => {
     const psd = await build(both, "mask");
     // Raster art prints on white ink: the mask carries the slot's footprint
     // (same rule as every raster image and the PDF mask plate).
-    expect(layer(psd.children as any[], "Graphic logo").vectorFill.color).toEqual({ r: 0, g: 156, b: 215 });
+    expect(layer(psd.children as any[], "Graphic logo").vectorFill).toBeUndefined();
     expect(layer(psd.children as any[], "Text logo")).toBeDefined();
+  });
+
+  it("mask plate: a raster's footprint follows its alpha, mask blue where opaque (#668)", async () => {
+    // 2x1: opaque red, then fully transparent.
+    const half = { data: new Uint8Array([255, 0, 0, 255, 0, 0, 0, 0]), width: 2, height: 1 };
+    const bytes = await buildPsd(await lolevPlan(both), { ...psdAssets, images: { center: half } }, "mask", { layers: lolevLayers(both) });
+    // Reading layer pixels needs an ImageData factory; Node has none.
+    const none = () => { throw new Error("Canvas not initialized"); };
+    initializeCanvas(none, (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }) as ImageData);
+    try {
+      const psd = readPsd(Buffer.from(bytes).buffer as ArrayBuffer, { skipCompositeImageData: true, skipThumbnail: true, useImageData: true });
+      const { data, width } = layer(psd.children as any[], "Graphic logo").imageData;
+      expect([...data.subarray(0, 4)]).toEqual([0, 156, 215, 255]);
+      expect(data[(width - 1) * 4 + 3]).toBe(0);
+    } finally {
+      initializeCanvas(none, none); // back to ag-psd's uninitialised state
+    }
   });
 
   it("variant off: none of the three groups exist", async () => {

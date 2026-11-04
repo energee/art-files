@@ -9,6 +9,7 @@
 //     paints before the bars.
 // Reads fill-colour operators from the real content stream pdf-lib emits.
 import { describe, expect, it } from "vitest";
+import { PNG } from "pngjs";
 import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
 import * as L from "../src/layout";
 import type { PlacedImage } from "../src/plan";
@@ -68,12 +69,24 @@ describe("mask plate polarity", () => {
   // A text stroke taking its own plate is pinned in pdf-build.test.ts ("the
   // rotated column's stroke pass"), in both polarities and in draw order.
 
-  it("raster art never knocks out: its footprint paints white ink", async () => {
+  it("raster art never knocks out: an opaque image's footprint paints white ink", async () => {
     const image: PlacedImage = { kind: "image", id: "art", asset: "art", x: 10, y: 10, w: 20, h: 20 };
-    const bytes = await buildMaskPdf([image], { ...assets, images: { art: { kind: "png", bytes: onePxPng } } });
+    const opaque = new PNG({ width: 1, height: 1 });
+    opaque.data.set([200, 30, 30, 255]);
+    const bytes = await buildMaskPdf([image], { ...assets, images: { art: { kind: "png", bytes: PNG.sync.write(opaque) } } });
     const ops = fillOps(await contentStreamText(bytes));
     // White base, the no-mask flood, then the image's blue footprint.
     expect(ops).toEqual([WHITE, BLUE, BLUE]);
+  });
+
+  it("an image with alpha paints its alpha, not its rectangle (#668)", async () => {
+    const image: PlacedImage = { kind: "image", id: "art", asset: "art", x: 10, y: 10, w: 20, h: 20 };
+    const bytes = await buildMaskPdf([image], { ...assets, images: { art: { kind: "png", bytes: onePxPng } } });
+    const stream = await contentStreamText(bytes);
+    // No blue rectangle: the footprint is an image XObject cut by the alpha
+    // (print-pdf-separations.test.ts rasterizes it).
+    expect(fillOps(stream)).toEqual([WHITE, BLUE]);
+    expect(stream).toMatch(/\/MaskImage-\d+ Do/);
   });
 });
 

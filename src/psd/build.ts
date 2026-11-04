@@ -48,6 +48,7 @@ import { PAGE_ART_ID, type Layer as AppLayer, type TextLayer } from "../model/la
 import { qrShapes, type QrShapes } from "../qr";
 import { strokeLayerOf } from "../strokes";
 import { addWhiteInkChannel } from "./spotChannel";
+import { tintRgba } from "../collab";
 
 /** Decoded RGBA pixels at their natural size. */
 export interface Rgba { data: Uint8Array; width: number; height: number }
@@ -140,7 +141,7 @@ const pos = (n: number) => px(n + L.BLEED_SHIFT);
 const PSD_DOC = L.PSD_DOC;
 
 const color255 = (fill: Fill) => {
-  const c = L.parseHexFill(fill);
+  const c = L.parseFill(fill).rgb;
   return { r: Math.round(c.r * 255), g: Math.round(c.g * 255), b: Math.round(c.b * 255) };
 };
 
@@ -650,22 +651,22 @@ function barcodeLayer(name: string, bc: PlacedBarcode, fk: Font, mode: PsdMode):
 }
 
 /** A planned raster image as one PSD layer — the ONE spelling of the
- *  raster-art rules: mask mode paints the fitted rect white-ink blue
- *  regardless of the layer's own fill/layer assignment (raster art prints
- *  on white ink — the same rule pdf/build.ts's drawItems applies), art mode
- *  resamples the natural-size pixels to the placed box. */
+ *  raster-art rules: the natural-size pixels resampled to the placed box;
+ *  mask mode recolors them white-ink blue, keeping their alpha, regardless
+ *  of the layer's own fill/layer assignment (raster art prints on white ink
+ *  under its opaque pixels only — the same rule pdf/build.ts applies, #668). */
 function rasterItemLayer(
   name: string, item: { x: number; y: number; w: number; h: number }, pixels: Rgba, mode: PsdMode,
 ): Layer {
-  if (mode === "mask")
-    return shapeLayer(name, [rectPath(item.x, item.y, item.w, item.h)], MASK_BLUE);
   const left = Math.round(pos(item.x));
   const top = Math.round(pos(item.y));
   const w = Math.max(1, Math.round(px(item.w)));
   const h = Math.max(1, Math.round(px(item.h)));
+  const data = resizeRGBA(pixels, w, h);
+  if (mode === "mask") tintRgba(data, MASK_BLUE);
   return {
     name, left, top, right: left + w, bottom: top + h,
-    imageData: { data: resizeRGBA(pixels, w, h), width: w, height: h },
+    imageData: { data, width: w, height: h },
   };
 }
 

@@ -7,12 +7,12 @@
 // session view state; the settings popover's margin inset is the exception —
 // it writes the master's guides, so it sits locked under a "Master" heading.
 import {
-  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
+  memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
 } from "react";
 import { useTranslation } from "@/i18n";
 import { ART, PAGE } from "@/layout";
 import {
-  clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
+  clampMargin, layoutGuides, pointToScreen, pointToUnit, RULER_SIZE, rulerTicks, screenToPoint,
   unitToPoint, VERTICAL_LABEL_GAP, withCornerClear,
   type GuideAxis, type ManualGuide, type LengthUnit,
 } from "@/rulers";
@@ -27,7 +27,6 @@ import {
 import { RulerUnitPicker } from "@/components/RulerUnitPicker";
 import { Lock, LockOpen } from "lucide-react";
 
-const RULER_SIZE = 20;
 /** The manual-guide × (px) — sits centred in the ruler's thickness. */
 const REMOVE_SIZE = 14;
 const MARGIN_STROKE = "stroke-cyan-500/70";
@@ -99,7 +98,9 @@ function RulerSettings(props: {
   );
 }
 
-export function Rulers(props: {
+/** Memoized, so typing in the inspector skips it (#605); App passes stable
+ *  callbacks. */
+export const Rulers = memo(function Rulers(props: {
   paneRef: RefObject<HTMLDivElement | null>;
   previewRef: RefObject<PreviewCompareHandle | null>;
   transform: { z: number; x: number; y: number };
@@ -120,6 +121,11 @@ export function Rulers(props: {
    *  the master's guides and the other manual guides. Identity when nothing
    *  is in range. */
   onSnapGuide?: (axis: GuideAxis, point: number, id?: number) => number;
+  /** Not read here: the ticks read PAGE, ART and OUTPUT_DPI, module state App
+   *  sets from these two settings while rendering. Props so the memo
+   *  re-renders when either changes. */
+  bleedIn: number;
+  dpi: number;
 }) {
   const { t } = useTranslation();
   const {
@@ -441,4 +447,4 @@ export function Rulers(props: {
       )}
     </div>
   );
-}
+});

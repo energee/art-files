@@ -400,14 +400,15 @@ describe("MasterPicker", () => {
     expect(itemStarting("Duplicate as new master")).toBeUndefined();
   });
 
-  it("labels the current master and the others, each row with its file and last use", () => {
+  it("heads only the other masters, each row with its file and last use (#625)", () => {
     renderPicker({ library: {
       lolev: { name: "Lolev", builtIn: true },
       other: { name: "Lolev", inLibrary: true, path: "/Users/x/Labels/collab.master", lastSeen: "2026-10-01T12:00:00Z" },
     } });
     openMenu();
     const text = document.body.textContent ?? "";
-    expect(text).toContain("Current master");
+    // The current master heads the menu on its own: no heading over it.
+    expect(text).not.toContain("Current master");
     expect(text).toContain("Other masters");
     // Two masters named "Lolev" are told apart by file.
     expect(text).toContain("collab.master · Used");

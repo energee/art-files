@@ -18,14 +18,17 @@ describe("loadLabelFaces", () => {
   async function fresh() {
     vi.resetModules();
     const loaded: string[] = [];
+    const sources: unknown[] = [];
+    const fetched: string[] = [];
     vi.stubGlobal("FontFace", class {
-      constructor(family: string) { loaded.push(family); }
+      constructor(family: string, source: unknown) { loaded.push(family); sources.push(source); }
       load() { return Promise.resolve(this); }
     });
+    vi.stubGlobal("fetch", async (url: string) => { fetched.push(url); return new Response(new Uint8Array([fetched.length])); });
     const ctx = { font: "", fontKerning: "auto", measureText: () => ({ width: 1 }) };
     vi.stubGlobal("document", { fonts: { add() {} }, createElement: () => ({ getContext: () => ctx }) });
     const fonts = await import("../src/fonts");
-    return { loaded, fonts };
+    return { loaded, sources, fetched, fonts };
   }
 
   it("registers only the master family when no layer overrides it", async () => {
@@ -38,5 +41,13 @@ describe("loadLabelFaces", () => {
     const { loaded, fonts } = await fresh();
     await fonts.loadLabelFaces("poppins", ["barlow-condensed"]);
     expect(new Set(loaded)).toEqual(new Set([fonts.labelFontCss("poppins"), fonts.labelFontCss("barlow-condensed")]));
+  });
+
+  it("fetches each face file once, for the preview faces and the export bytes alike (#611)", async () => {
+    const { sources, fetched, fonts } = await fresh();
+    await fonts.loadLabelFaces("poppins");
+    const bytes = await fonts.loadFonts("poppins");
+    expect(fetched).toHaveLength(3);
+    expect(sources).toEqual([bytes.regular, bytes.semibold, bytes.bold]);
   });
 });

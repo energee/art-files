@@ -48,7 +48,7 @@ vi.mock("../src/App", async () => {
 
 const { default: TabsShell } = await import("../src/TabsShell");
 
-afterEach(() => { ipc.applied.length = 0; setLanguage("system"); });
+afterEach(async () => { ipc.applied.length = 0; await setLanguage("system"); });
 afterAll(() => { clearMocks(); delete (globalThis as { isTauri?: boolean }).isTauri; });
 
 /** Mount the shell and wait until `title` has been applied and nothing is
@@ -73,7 +73,7 @@ it("applies window titles in the order the tab's title changed", async () => {
 });
 
 it("titles a fresh tab in the UI language from the start", async () => {
-  setLanguage("pt");
+  await setLanguage("pt");
   ipc.reported = "Sem título";
   await boot("Sem título");
   expect(ipc.applied).toEqual(["Sem título"]);

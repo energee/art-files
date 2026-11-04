@@ -17,11 +17,10 @@ import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
 import type { RenderSettings } from "@/settings";
-import { FONT_URLS, labelFontCss, loadLabelFaces } from "@/fonts";
+import { FONT_URLS, labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
 import { drawPlate } from "@/canvas/draw";
 import { PSD_DOC } from "@/layout";
 import type { FontFamilyId } from "@/fontCatalog";
-import { loadFonts } from "@/pdf/fonts";
 // The builders are imported dynamically at export time (buildFull, exportPsd,
 // which runs buildPsd in a worker) so they stay out of the initial bundle;
 // only their types are needed up front.
@@ -227,14 +226,15 @@ export function useExport({
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the pdf-lib widths the PDF draws with
    *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
-   *  Every bundled family is loaded so a layer's own font measures true. */
+   *  Every bundled family is loaded so a layer's own font measures true.
+   *  An output plan: an empty field's placeholder is left out (#604). */
   async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
     const [{ pdfMeasureFace }, loaded] = await Promise.all([
       import("@/pdf/build"),
       Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
     ]);
     const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
-    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssets());
+    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssets(), { output: true });
     const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
     const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
     return { plan, images: await imageAssets(), fontFamilies };

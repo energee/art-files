@@ -29,6 +29,8 @@ export const CanView = forwardRef<CanViewHandle, {
   edgeSoftnessPct: number;
   /** The Rendered view's bend, % of the can's own curvature (0 = flat). */
   curvePct: number;
+  /** The light rig's turn about the can, in degrees (0 = the default rig). */
+  lightDeg: number;
   /** The resolved layers that draw, in draw order (the same list the 2D
    *  preview plans from). */
   layers: Layer[];
@@ -57,7 +59,7 @@ export const CanView = forwardRef<CanViewHandle, {
   exporting?: boolean;
 }>(function CanView({
   layers, source, bleedIn, mode, cornerRadiusPct,
-  edgeSoftnessPct, curvePct, onZoom, initialView, onRenderError, exporting,
+  edgeSoftnessPct, curvePct, lightDeg, onZoom, initialView, onRenderError, exporting,
 }, ref) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -141,6 +143,10 @@ export const CanView = forwardRef<CanViewHandle, {
   useEffect(() => {
     sceneRef.current?.setCurve(curvePct / 100);
   }, [curvePct]);
+
+  useEffect(() => {
+    sceneRef.current?.setLight(lightDeg);
+  }, [lightDeg]);
 
   useEffect(() => {
     sceneRef.current?.setLabelOptions({

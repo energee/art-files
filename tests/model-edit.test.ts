@@ -59,6 +59,13 @@ describe("addLayer", () => {
       .toMatchObject({ symbology: "upc-a", moduleW: 1, h: 15 });
     expect(m.layers.find((l) => l.id.startsWith("qr-"))).toMatchObject({ size: 40, qrStyle: "square" });
   });
+  it("starts a code black on white ink inside a white halo, not metallic (#608)", () => {
+    for (const kind of ["barcode", "qr"] as const) {
+      const { master, id } = addLayer(lolevMaster(), kind);
+      expect(master.layers.find((l) => l.id === id)!.style)
+        .toMatchObject({ fill: "#000000", layer: "white", stroke: "#FFFFFF" });
+    }
+  });
   it("inserts after a named layer", () => {
     const { master, id } = addLayer(lolevMaster(), "qr", { after: "logo" });
     const ids = master.layers.map((l) => l.id);

@@ -193,18 +193,54 @@ export const WHITE_INK = "White Ink";
  *  6-digit hex. parseHexFill reads exactly six digits, so a "#fff" that
  *  skipped this would print blue in the PDF while the canvas shows white —
  *  the hex box and every file parser widen through here (model/layers.ts). */
-export function normalizeHex(value: string): Fill | undefined {
+function normalizeHex(value: string): Fill | undefined {
   const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
   if (!match) return undefined;
   const hex = match[1].toLowerCase();
   return `#${hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex}` as Fill;
 }
 
-/** Parse a Fill to rgb 0-1. "none" = no ink = white in the art PDF. */
+/** Parse a hex Fill to rgb 0-1. "none" = no ink = white in the art PDF. */
 export function parseHexFill(fill: `#${string}` | "none"): { r: number; g: number; b: number } {
   if (fill === "none") return COLORS.white;
   const n = parseInt(fill.slice(1), 16);
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
+}
+
+const PCT = String.raw`\s*(\d{1,3}(?:\.\d+)?)\s*`;
+const CMYK = new RegExp(`^cmyk\\(${PCT},${PCT},${PCT},${PCT}\\)$`, "i");
+
+/** A typed or stored colour in its canonical form: "#rrggbb" (see
+ *  normalizeHex) or "cmyk(c,m,y,k)" with each ink a 0-100 percentage and no
+ *  spaces; undefined when it is neither. */
+export function normalizeFill(value: string): Fill | undefined {
+  const m = CMYK.exec(value.trim());
+  if (!m) return normalizeHex(value);
+  const inks = m.slice(1).map(Number);
+  return inks.every((v) => v <= 100) ? `cmyk(${inks.join(",")})` : undefined;
+}
+
+/** Parse any Fill. `rgb` (0-1) is what the screen, the PSD and tinted
+ *  rasters use; a CMYK fill also carries its exact `cmyk` percentages, which
+ *  only the PDF writes (as DeviceCMYK). Its `rgb` is the naive conversion,
+ *  a display approximation with no colour profile. */
+export function parseFill(fill: Fill): { rgb: { r: number; g: number; b: number }; cmyk?: [number, number, number, number] } {
+  const m = CMYK.exec(fill);
+  if (!m) return { rgb: parseHexFill(fill as `#${string}` | "none") };
+  const [c, mg, y, k] = m.slice(1).map(Number);
+  const w = 1 - k / 100;
+  return {
+    rgb: { r: (1 - c / 100) * w, g: (1 - mg / 100) * w, b: (1 - y / 100) * w },
+    cmyk: [c, mg, y, k],
+  };
+}
+
+/** A Fill as a CSS "#rrggbb" for the canvas, picker and swatches: "none"
+ *  shows as white, CMYK as its RGB approximation. */
+export function cssFill(fill: Fill): string {
+  if (!fill.startsWith("cmyk")) return fill === "none" ? WHITE_HEX : fill;
+  const { r, g, b } = parseFill(fill).rgb;
+  return `#${[r, g, b].map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** Poppins' font box, measured with `pdftotext -bbox` off the reference PDF:

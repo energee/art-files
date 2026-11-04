@@ -5,6 +5,12 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// Collab ON mask PDF re-baselined 2026-11-03 (#668): a raster image's White
+// Ink footprint follows its alpha instead of its whole rectangle. The 1x1
+// slot fixture (onePxPng) is fully transparent, so each slot now draws an
+// alpha-cut image XObject instead of a blue rect. 0 px changed at 600 DPI
+// (both slots sit on the no-mask flood, blue either way):
+// tests/goldens/collab-on-mask-alpha.diff.png. Art PDF, PSD and Collab OFF unchanged.
 // PSD hashes re-baselined 2026-10-29 (#583): the dots QR finders carry
 // Photoshop path operations (ring, subtract, dot) so Photoshop stops drawing
 // them as solid discs. Same length; only the operation fields differ. PDFs
@@ -131,7 +137,7 @@ describe("collab byte-identity goldens — Collab variant ON, both slots loaded"
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
       art: "2800cc460d4a758b7f69c8a665b1a2fde8748d5e770a780eb869d92e9ba98590", artLen: 73132,
-      mask: "624427e03792aaaad0cede876f196796c9c6c2b4c070ebf124ca6d67b3cdc291", maskLen: 73159,
+      mask: "34bf0aba9b20ed20598f15e6c6109be3a452c28029a8a72b97f863163c342429", maskLen: 73616,
       psd: "8fa9894c061bd463496d54edbfb8b936e65b3071bf5827afdb7c3aba60821aaa", psdLen: 1179336,
     });
   });

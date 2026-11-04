@@ -15,7 +15,7 @@ import type { Style, StyledLine } from "../types";
 import type { Anchor } from "./position";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import { deepMerge, type DeepPartial } from "./merge";
-import { normalizeHex } from "../layout";
+import { normalizeFill } from "../layout";
 import { t } from "@/i18n";
 
 /** Asset ids the page-art slots (texture / mask) ride under in every image
@@ -290,8 +290,10 @@ const PLATES = new Set(["white", "metallic"]);
  *  or undefined. A 3-digit hex is widened to "#rrggbb" IN PLACE, because the
  *  PDF and PSD read exactly six digits (layout.ts's parseHexFill) while the
  *  canvas reads any CSS colour — left alone, "#fff" printed blue and "gold"
- *  black. `complete` = fill and layer must be there (a whole style or run);
- *  a label override's partial style may omit them, or null them to unset. */
+ *  black. A CMYK fill is rewritten to its canonical "cmyk(c,m,y,k)" the same
+ *  way (layout.ts's normalizeFill). `complete` = fill and layer must be there
+ *  (a whole style or run); a label override's partial style may omit them,
+ *  or null them to unset. */
 function styleProblem(s: Record<string, unknown>, complete: boolean): string | undefined {
   for (const key of ["fill", "stroke"]) {
     const v = s[key];
@@ -300,9 +302,9 @@ function styleProblem(s: Record<string, unknown>, complete: boolean): string | u
       continue;
     }
     if (v === "none") continue;
-    const hex = typeof v === "string" ? normalizeHex(v) : undefined;
-    if (!hex) return t("has {{key}} {{value}}, which is not a hex colour", { key, value: JSON.stringify(v) });
-    if (!/^#[0-9a-f]{6}$/i.test(v as string)) s[key] = hex;
+    const fill = typeof v === "string" ? normalizeFill(v) : undefined;
+    if (!fill) return t("has {{key}} {{value}}, which is not a hex or CMYK colour", { key, value: JSON.stringify(v) });
+    if (!/^#[0-9a-f]{6}$/i.test(v as string)) s[key] = fill;
   }
   for (const key of ["layer", "strokeLayer"]) {
     const v = s[key];

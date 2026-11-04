@@ -137,6 +137,7 @@ export function LayerInspector(props: {
       <div className="flex items-center gap-2">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <Input
+          // Also names the inspector dialog (App.tsx, #616).
           id={`${layer.id}-name`}
           aria-label={t("Layer name")}
           aria-describedby={multi ? `${layer.id}-selection-note` : undefined}

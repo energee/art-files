@@ -10,6 +10,9 @@ import { ART, OUTPUT_DPI } from "@/layout";
 export type LengthUnit = "in" | "mm" | "pt" | "px";
 export const LENGTH_UNITS: readonly LengthUnit[] = ["in", "mm", "pt", "px"];
 export type GuideAxis = "x" | "y";
+/** The rulers' thickness (CSS px). App insets the 2D preview by it while the
+ *  rulers show, so Fit places the label clear of them. */
+export const RULER_SIZE = 20;
 
 export interface ManualGuide {
   id: number;

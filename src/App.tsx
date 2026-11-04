@@ -52,7 +52,7 @@ import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } 
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
+  applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -64,7 +64,7 @@ import {
 } from "@/model/files";
 import { starterMaster } from "@/model/starterLayers";
 import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
-import { layerBoxes } from "@/planLayers";
+import { layerBoxes, outsideGuides } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
@@ -83,6 +83,7 @@ import {
   BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
+import { useStableCallback } from "@/useStableCallback";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
@@ -98,7 +99,7 @@ import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, typ
 import { Rulers } from "@/components/Rulers";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, LENGTH_UNITS,
+  DEFAULT_MARGIN_PT, LENGTH_UNITS, RULER_SIZE,
   type GuideAxis, type LengthUnit, type ManualGuide,
 } from "@/rulers";
 import {
@@ -192,22 +193,23 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
   });
 }
 
-/** Where the view preferences (the rulers/guides toggles and the length
- *  unit) persist — localStorage, like every other per-operator setting
- *  (settings.ts, masters.ts). Only the known keys are read, so an entry
+/** Where the view preferences (the rulers/guides toggles, the length
+ *  unit and the 3D lighting angle) persist — localStorage, like every other
+ *  per-operator setting (settings.ts, masters.ts). Only the known keys are read, so an entry
  *  written by an earlier build sheds its extras on the next write instead of
  *  leaking them in. Reads and writes are both guarded: storage can be missing
  *  or full, and a view preference is never worth an error. */
 // The key predates the app's name; renaming it would reset every saved view.
 const VIEW_KEY = "lolev-view";
-type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit };
+type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit; lightDeg: number };
 function loadViewPrefs(): ViewPrefs {
-  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in" };
+  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in", lightDeg: 0 };
   try {
     const stored = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
     if (typeof stored.showRulers === "boolean") prefs.showRulers = stored.showRulers;
     if (typeof stored.showGuides === "boolean") prefs.showGuides = stored.showGuides;
     if (LENGTH_UNITS.includes(stored.unit as LengthUnit)) prefs.unit = stored.unit as LengthUnit;
+    if (typeof stored.lightDeg === "number" && Math.abs(stored.lightDeg) <= 180) prefs.lightDeg = stored.lightDeg;
   } catch {
     // a hand-mangled entry falls back to the defaults rather than crashing boot
   }
@@ -687,6 +689,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [showRulers, setShowRulers] = useState(() => loadViewPrefs().showRulers);
   const [unit, setUnit] = useState(() => loadViewPrefs().unit);
   const [showGuides, setShowGuides] = useState(() => loadViewPrefs().showGuides);
+  // The 3D light rig's angle, in degrees (0 = the default rig). Set in the
+  // Can view; it lights the Rendered view too.
+  const [lightDeg, setLightDeg] = useState(() => loadViewPrefs().lightDeg);
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -701,11 +706,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
   useEffect(() => {
     try {
-      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit }));
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit, lightDeg }));
     } catch {
       // full or missing storage: the preference lasts this session only
     }
-  }, [showRulers, showGuides, unit]);
+  }, [showRulers, showGuides, unit, lightDeg]);
 
   /** Whether the document differs from the last saved/opened project —
    *  File → Save Label disables while clean. Clear it ONLY after a completed open
@@ -1270,6 +1275,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
+  /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
+   *  with a line in the inspector, but they do NOT block export. */
+  const pastDie = useMemo(() => canvasAssets
+    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+      guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
+    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+  // Keyed on the ids, not the Set: pastDie is rebuilt on every keystroke, and a
+  // new Map each time would re-render the memoized LayerList per key (#605).
+  const pastDieKey = [...pastDie].join("\0");
+  const flaggedLayers = useMemo(() => pastDieKey
+    ? new Map([...pastDieKey.split("\0").map((id) => [id, t("Runs past the label edge")] as const), ...invalidLayers])
+    : invalidLayers, [pastDieKey, invalidLayers, t]);
   /** Every line a gesture can snap to on each axis: the master's guides, plus
    *  the edges and middles of the layers NOT taking part (`skip`) — the
    *  Photoshop/Sketch rule that objects line up with each other, not only with
@@ -1688,7 +1705,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
-        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
+        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
       });
       await rememberMaster(m, where, bytes);
       refreshLibrary();
@@ -2426,6 +2443,34 @@ export const DocumentEditor = memo(function DocumentEditor({
     );
   }
 
+  // Stable identities for the memoized panels, so a keystroke re-renders only
+  // the inspector and the canvas (#605).
+  const listSelect = useStableCallback(pick);
+  const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) =>
+    patch(id, { [prop]: value }));
+  const listRename = useStableCallback((id: string, name: string) => patch(id, { name }));
+  const listReorder = useStableCallback((id: string, delta: number) =>
+    editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta)));
+  const listAdd = useStableCallback(onAddLayer);
+  const listRemove = useStableCallback(onRemoveLayer);
+  const rulerMargin = useStableCallback((margin: number) =>
+    editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } })));
+  const rulerAdd = useStableCallback(addManualGuide);
+  const rulerMove = useStableCallback(moveManualGuide);
+  const rulerRemove = useStableCallback(removeManualGuide);
+  const rulerSnap = useStableCallback(snapGuidePoint);
+  const menuError = useStableCallback((text: string, source?: "quit") =>
+    notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") }));
+  // The menubar's commands and check states change only when a row would:
+  // JSON drops `run`, and each copy's run calls this render's command.
+  const menuSignature = JSON.stringify([commands, checked]);
+  const menuCommands = useMemo(() => commands.map((c) => ({
+    ...c, run: () => commandsRef.current.find((latest) => latest.id === c.id)!.run(),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- menuSignature is commands minus run
+  })), [menuSignature]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- menuSignature includes checked
+  const menuChecked = useMemo(() => checked, [menuSignature]);
+
   return (
     <TooltipProvider>
       {/* Suspense around the Dialog, not inside it: the first open then
@@ -2495,11 +2540,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               onForget={forgetLibraryMaster}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
-              onSelect={pick}
-              onToggle={(id, prop, value) => patch(id, { [prop]: value })}
-              onRename={(id, name) => patch(id, { name })}
-              onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
-              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={invalidLayers}
+              onSelect={listSelect}
+              onToggle={listToggle}
+              onRename={listRename}
+              onReorder={listReorder}
+              onAdd={listAdd} onRemove={listRemove} invalid={flaggedLayers}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
@@ -2520,9 +2565,9 @@ export const DocumentEditor = memo(function DocumentEditor({
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={commands}
-            onNativeError={(text, source) => notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") })}
-            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
+          {active && <AppMenu actions={menuCommands}
+            onNativeError={menuError}
+            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={menuChecked} />}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible
               explanation is the toast an export attempt shows. */}
@@ -2578,12 +2623,15 @@ export const DocumentEditor = memo(function DocumentEditor({
                 exporting && "blur-sm opacity-70")}>
             {/* PreviewCompare stays mounted but hidden in 3D modes. The
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
-                their own camera. */}
+                their own camera. Padded, not offset, by the rulers so Fit
+                keeps the label clear of them while the transform's origin
+                stays the pane's top-left. */}
             <div
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
                 transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
+                ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}
               canvasRender={viewMode === "2d" ? canvasSource : null}
@@ -2620,7 +2668,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 }}
                 layers={drawLayers} source={canvasSource} bleedIn={render.bleedIn}
                 mode={canSceneMode} cornerRadiusPct={render.cornerRadius}
-                edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} exporting={!!exporting}
+                edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} lightDeg={lightDeg} exporting={!!exporting}
                 onRenderError={setRenderError} />
               </Suspense>
             )}
@@ -2629,9 +2677,9 @@ export const DocumentEditor = memo(function DocumentEditor({
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
                 showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
-                onMarginChange={(margin) => editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } }))} manual={manualGuides}
-                onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
-                onRemoveManual={removeManualGuide} />
+                onMarginChange={rulerMargin} manual={manualGuides}
+                onAddManual={rulerAdd} onMoveManual={rulerMove} onSnapGuide={rulerSnap}
+                onRemoveManual={rulerRemove} bleedIn={render.bleedIn} dpi={render.dpi} />
             )}
             {/* Always mounted, so a screen reader announces the note when
                 an export fills it: a live region that mounts already holding
@@ -2708,6 +2756,16 @@ export const DocumentEditor = memo(function DocumentEditor({
                 ))}
               </div>
             )}
+            {viewMode === "can" && (
+              <label title={t("Turn the lights around the can")}
+                className="ml-2 flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                {t("Lighting")}
+                <input type="range" aria-label={t("Lighting")} min={-180} max={180} step={5}
+                  value={lightDeg} onChange={(e) => setLightDeg(Number(e.target.value))}
+                  className="w-24 accent-primary" />
+                <span className="w-10 tabular-nums">{lightDeg}°</span>
+              </label>
+            )}
             {viewMode === "rendered" && (
               <label title={t("Bend the label like it's on a can: 0% flat, 100% the can's curve")}
                 className="ml-2 flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -2749,6 +2807,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             // turn Backspace/arrows into text edits instead of delete/nudge.
             initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
+            // The dialog's name is the layer's, from LayerInspector's name box (#616).
+            aria-labelledby={inspected ? `${inspected.layer.id}-name` : undefined}
             // Sized on the base's own `data-[side=right]:` variant so
             // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
             // at the 13px root); an unprefixed w-[300px] lost to both on
@@ -2766,7 +2826,10 @@ export const DocumentEditor = memo(function DocumentEditor({
                   const box = rowBoxes()?.get(inspected.layer.id);
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
                 }}
-                content={contentFor(inspected.layer)}
+                content={<>
+                  {contentFor(inspected.layer)}
+                  {pastDie.has(inspected.layer.id) && <p className="pt-1 text-xs text-destructive-text">{t("Runs past the label edge")}</p>}
+                </>}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
                 fontFamily={family}
