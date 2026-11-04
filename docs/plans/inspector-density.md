@@ -18,7 +18,7 @@ Branch `feat/inspector-density`, worktree `.agents/worktrees/inspector-density`.
 | 6 | Text box 8.5rem for one word | Starts one line tall and grows with its content |
 | 7 | Full-width "Bind to layer…" | Becomes an icon button (Link2) in the Position heading. The bound state keeps its rows |
 | 8 | Building blocks | One new primitive, `FieldPair`, in `LayerInspectorControls.tsx`, next to `Row`/`Field`. `ScrubField` gets a `compact` flag (the input fills its cell instead of the fixed `w-24`/`w-28`) |
-| 9 | App.tsx is 2,848 lines | Pull out three hooks with no behavior change: `useViewPrefs`, `useZoomPan` and `usePageAssets`. Target ≈2,000 lines. App.tsx is not added to the 750-line test |
+| 9 | App.tsx is 2,848 lines | Pull out three hooks with no behavior change: `useViewPrefs`, `useZoomPan` and `useRenderSource` (see task 3). Target was ≈2,000 lines; landed at 2,606. App.tsx is not added to the 750-line test |
 
 ## Phases (one stacked PR each; checkpoint with the user after each)
 
@@ -48,12 +48,16 @@ a missing English key, and knip fails on a dead one.
    Types: `{ z, x, y }`, `ViewMode`. Test first: `tests/zoom-pan.test.ts`
    (step clamp `ZOOM_STEP_CAP`, factor 1.25, fit). Accepted when the existing
    zoom tests pass unchanged. Deps: 1.
-3. **`usePageAssets`**: new `src/usePageAssets.ts`, holding texture, mask,
-   customImages, decodedAssets, bitmaps and assetsFailed with their load
-   effects. Test first: `tests/page-assets-dom.test.tsx` (a texture load
-   failure sets assetsFailed, clearing restores the previous state). Accepted
-   when `asset-*`, `image-asset-undo-dom` and the full suite pass unchanged.
-   Deps: 2.
+3. **`useRenderSource`** (done as this, not `usePageAssets`): new
+   `src/useRenderSource.ts`, holding decodedAssets, bitmaps, assetsFailed and
+   the debounced assembly, passed `pageArt`/`planAssets` as callbacks the way
+   `useExport` already is. texture, mask and customImages stay in App.tsx:
+   history, saves and the unmount guard write them, so moving them would mean
+   passing their setters back out. Test first: `tests/render-source-dom.test.tsx`
+   (ready after the debounce, a failure sets assetsFailed and the owned toast,
+   a background tab drops its source). Accepted when `asset-*`,
+   `image-asset-undo-dom` and the full suite pass unchanged. Deps: 2.
+   Result: App.tsx 2,848 → 2,606 lines, not the ≈2,000 estimated.
 
 ### Phase B
 

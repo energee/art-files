@@ -27,6 +27,7 @@ that section to the new version (see .agents/release-steward.md).
 - **The 3D can looks like bare aluminium.** The can's top and bottom are now bright brushed silver, matching a printed can, instead of a dark mirror that turned the shoulder near-black.
 - **New barcodes and QR codes start black with a white halo.** A newly added Barcode or QR layer is now black on white ink inside the white outline the Stroke switch already uses for codes, instead of metallic gold with a black outline. Scan a proof before printing.
 - **Shorter export file names.** The suggested PDF, PSD and project file name is cut at a word boundary within 40 characters of the beer name, instead of the whole name.
+- **Internal cleanup, no visible change.** The editor's view preferences, zoom and pan, and preview asset assembly moved out of the main editor file into three hooks; the app behaves exactly as before.
 
 ### Fixed
 - **No white box around transparent images.** A PNG with transparency (a partner logo, say) now gets White Ink only under its visible pixels in the print PDF, the print PSD and the two-file mask files, instead of under its whole rectangle. Semi-transparent edges get partial ink. JPEGs and fully opaque PNGs still print on white ink edge to edge.
