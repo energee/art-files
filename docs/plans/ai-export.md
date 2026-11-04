@@ -73,7 +73,7 @@ colour, then the original fill goes on top.
 - A rect union (barcode bars) dilates exactly to rounded rects. The engine
   handles it anyway, so there is one code path.
 
-**Proposed engine: Skia PathOps via `canvaskit-wasm` (Google, BSD-3).**
+**Engine: Skia PathOps via `canvaskit-wasm` (Google, BSD-3), accepted (D1).**
 Evaluated in a scratch install, 0.42.0:
 
 - Barlow Condensed Bold "B8office" at 72 pt with a 3 pt keyline:
@@ -96,9 +96,9 @@ Alternatives rejected:
   self-overlapping glyph outlines is known to be weak.
 - A hand-written per-point offset. The issue forbids it.
 
-**Deployment consequence:** the Tauri CSP (`src-tauri/tauri.conf.json`) is
-`script-src 'self'` with no `'wasm-unsafe-eval'`. WebAssembly cannot compile
-in the desktop app until that is added. That is decision D1 below.
+**Deployment consequence:** WebAssembly cannot compile under the Tauri CSP's
+`script-src 'self'`. Task 9 added `'wasm-unsafe-eval'` (D1), which allows wasm
+compilation only, not JavaScript eval.
 
 ## The format proof (done on this branch)
 
@@ -144,10 +144,9 @@ Ghostscript `tiffsep` shows the expected Black, Cyan and White Ink plates.
 
 ## Open decisions (user)
 
-- **D1, stroke engine and CSP.** Accept `canvaskit-wasm/full` (7.9 MB wasm,
-  lazy-loaded only by the AI export) and add `'wasm-unsafe-eval'` to the
-  Tauri `script-src`? The alternative is an engine that flattens curves.
-  Blocks Tasks 2 and 9.
+- **D1, stroke engine and CSP. Decided 2026-11-03: accepted.**
+  `canvaskit-wasm/full` (7.9 MB wasm, lazy-loaded only by the AI export), and
+  `'wasm-unsafe-eval'` in the Tauri `script-src`. Unblocked Tasks 2 and 9.
 - **D2, layer separation.** Illustrator's PDF import is expected to put
   everything on one layer; PDF OCGs do not become AI layers. The issue asks
   only for "useful layer/group separation", so a top-level group per pass
@@ -162,8 +161,9 @@ Ghostscript `tiffsep` shows the expected Black, Cyan and White Ink plates.
   White Ink plate). The issue says "no unintended white rectangle". Should the
   footprint follow alpha in both the PDF and the AI? That changes the print
   PDF, so it is a separate decision and ticket.
-- **D5, MIME type and save filter.** Use `application/illustrator` for the
-  browser download, with a `.ai` filter in the native dialog.
+- **D5, MIME type and save filter. Decided 2026-11-03: the default.**
+  `application/illustrator` for the browser download, with a `.ai` filter in
+  the native dialog.
 
 ## Tasks
 
@@ -179,7 +179,7 @@ task's gate is `npx tsc --noEmit` plus `npx vitest run <its test>`.
    Test: none (manual). Acceptance: a written pass/fail per item, per
    version. Depends on: none. **Blocks 5 to 18.** If it fails, stop and
    re-plan the format.
-2. **Stroke expansion engine.** Create `src/ai/expand.ts` with
+2. **Done. Stroke expansion engine.** Create `src/ai/expand.ts` with
    `dilate(paths: readonly string[], w: number): Promise<string[]>`. It
    lazy-loads `canvaskit-wasm/full`, computes `stroke(2w, round) ∪ fill`, and
    outputs cubic-only SVG path data.
@@ -190,6 +190,13 @@ task's gate is `npx tsc --noEmit` plus `npx vitest run <its test>`.
    - Open centre-lines, overlaps and w ≤ 0 return [].
    - The output has no `Q`.
    Types: none new. Depends on: D1. Parallel with 3.
+
+   As built: all inputs union into one nonzero outline (`[]` or `[d]`), each
+   input string filled on its own as `drawSvgPath` draws it. Deviation: an
+   open centre-line returns its round-capped band, not `[]`, because the
+   print PDF's live stroke draws that band; overlaps union into one contour.
+   Only w ≤ 0 (or NaN) and no paths return `[]`. Skia's round joins come out
+   as conics; each becomes one cubic (under 0.03% of the radius off).
 3. **Outline pass.** Create `src/ai/outline.ts` with
    `outlineItems(items: readonly PlacedLayer[], font: FaceFont, dilate): Promise<PlacedLayer[]>`.
    It promotes the proof's pass. It is an exhaustive switch over
@@ -250,10 +257,17 @@ task's gate is `npx tsc --noEmit` plus `npx vitest run <its test>`.
    - Mask tints and alpha.
    - Collab OFF/ON on `masters/lolev.master`, and disabled layers.
    Test: `tests/ai-matrix.test.ts`. Depends on: 4. Feeds 5 and 6.
-9. **CSP and wasm loading in the desktop app.** Add `'wasm-unsafe-eval'` to
+9. **Done. CSP and wasm loading in the desktop app.** Add `'wasm-unsafe-eval'` to
    `script-src`. Serve the wasm through Vite `?url` and load it lazily.
    Test: `tests/tauri-capabilities.test.ts`, which checks the CSP string and
    that it allows nothing broader. Depends on: D1. Parallel with 3 to 8.
+
+   As built: `src/ai/expand.ts` imports the module and the `?url` wasm
+   lazily; Node (tests, `scripts/`) lets CanvasKit read the wasm beside its
+   module. Checked in headless Chrome under the shipped CSP with a probe
+   build: the wasm compiles and `dilate` returns; without
+   `'wasm-unsafe-eval'` it fails with a CSP CompileError. In that build the
+   wasm (8.2 MB) and CanvasKit's JS (121 kB) are their own lazy files.
 10. **Export lifecycle.** In `src/useExport.ts`:
     - widen `exportSingle`'s format to `"pdf" | "psd" | "ai"`;
     - add `printAi` to the destination memory, independent of PDF and PSD;
