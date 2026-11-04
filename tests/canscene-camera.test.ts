@@ -1,0 +1,163 @@
+// @vitest-environment happy-dom
+// Exercise the installed OrbitControls: its change threshold is deliberately
+// coarser than its remaining damping motion. Only WebGL and asset loading are
+// faked; the camera, gestures, damping and render scheduler are real.
+import * as THREE from "three";
+import type { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+vi.mock("three", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("three")>();
+  class WebGLRenderer {
+    domElement = document.createElement("canvas");
+    capabilities = { getMaxAnisotropy: () => 1 };
+    toneMapping = 0; toneMappingExposure = 1;
+    setPixelRatio() {}
+    setSize(w: number, h: number) {
+      Object.defineProperties(this.domElement, {
+        clientWidth: { configurable: true, value: w },
+        clientHeight: { configurable: true, value: h },
+      });
+    }
+    render() {} forceContextLoss() {} dispose() {}
+  }
+  return { ...actual, WebGLRenderer };
+});
+vi.mock("three/addons/loaders/GLTFLoader.js", () => ({ GLTFLoader: class { load() {} } }));
+vi.mock("three/addons/loaders/HDRLoader.js", () => ({ HDRLoader: class { load() {} } }));
+import { CanScene } from "../src/three/canScene";
+
+type CameraScene = {
+  camera: THREE.PerspectiveCamera;
+  controls: OrbitControls;
+  renderer: THREE.WebGLRenderer;
+  requestRender(): void;
+};
+let scene: CanScene;
+let internals: CameraScene;
+let host: HTMLDivElement;
+let frames: Map<number, FrameRequestCallback>;
+
+function drainFrames() {
+  let count = 0;
+  while (frames.size) {
+    if (++count > 100) throw new Error("Camera failed to settle within 100 frames");
+    const pending = [...frames.values()];
+    frames.clear();
+    pending.forEach((callback) => callback(count * 16));
+  }
+  return count;
+}
+
+function cameraState() {
+  return [
+    ...internals.camera.position.toArray(),
+    ...internals.camera.quaternion.toArray(),
+    ...internals.controls.target.toArray(),
+  ];
+}
+
+function expectCameraNear(expected: number[]) {
+  cameraState().forEach((value, index) => expect(value).toBeCloseTo(expected[index], 12));
+}
+
+beforeEach(() => {
+  frames = new Map();
+  let nextFrame = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    const id = ++nextFrame;
+    frames.set(id, callback);
+    return id;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  host = document.createElement("div");
+  Object.defineProperties(host, {
+    clientWidth: { value: 640 }, clientHeight: { value: 640 },
+  });
+  document.body.appendChild(host);
+  scene = new CanScene(host);
+  internals = scene as unknown as CameraScene;
+  scene.resize();
+  drainFrames();
+});
+
+afterEach(() => {
+  scene.dispose();
+  host.remove();
+  vi.unstubAllGlobals();
+});
+
+it.each([
+  ["orbit", (controls: OrbitControls) => controls.rotateLeft(0.4)],
+  ["tilt", (controls: OrbitControls) => controls.rotateUp(0.2)],
+  ["pan", (controls: OrbitControls) => controls.pan(80, 35)],
+  ["zoom", (controls: OrbitControls) => controls.dollyIn(0.8)],
+] as const)("settles %s completely before unrelated renders", (_name, gesture) => {
+  const before = cameraState();
+  gesture(internals.controls);
+  expect(drainFrames()).toBeGreaterThan(0);
+  const settled = cameraState();
+  expect(settled).not.toEqual(before);
+  expect(internals.controls.enableDamping).toBe(true);
+
+  // No tolerance here: an idle paint must not even update the controls.
+  for (let index = 0; index < 20; index++) {
+    internals.requestRender();
+    scene.setLight(index * 13);
+    expect(frames.size).toBe(1);
+    expect(drainFrames()).toBe(1);
+    expect(cameraState()).toEqual(settled);
+  }
+  // A same-size resize intentionally synchronizes controls and pan/zoom. It
+  // must not release any leftover inertia or restore an earlier damped pan.
+  for (let index = 0; index < 10; index++) {
+    scene.resize();
+    drainFrames();
+    expectCameraNear(settled);
+  }
+  internals.controls.update();
+  expectCameraNear(settled);
+  expect(frames.size).toBe(0);
+});
+
+it("settles a keyboard pan even when the first movement emits no change", () => {
+  internals.controls.keyPanSpeed = 0.1;
+  const changed = vi.fn();
+  internals.controls.addEventListener("change", changed);
+  const before = cameraState();
+  const event = new KeyboardEvent("keydown", { code: "ArrowRight", cancelable: true });
+  host.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(changed).not.toHaveBeenCalled();
+  expect(drainFrames()).toBeGreaterThan(0);
+  const settled = cameraState();
+  expect(settled).not.toEqual(before);
+  internals.controls.update();
+  expectCameraNear(settled);
+  expect(frames.size).toBe(0);
+});
+
+it("wakes sub-threshold pointer gestures on start/end and still stops", () => {
+  const before = cameraState();
+  internals.controls.dispatchEvent({ type: "start" });
+  internals.controls.rotateLeft(0.0001);
+  internals.controls.dispatchEvent({ type: "end" });
+  expect(drainFrames()).toBeGreaterThan(0);
+  const settled = cameraState();
+  expect(settled).not.toEqual(before);
+  internals.controls.update();
+  expectCameraNear(settled);
+  expect(frames.size).toBe(0);
+});
+
+it("cancels settling and ignores subsequent input after disposal", () => {
+  internals.controls.rotateLeft(0.4);
+  expect(frames.size).toBe(1);
+  scene.dispose();
+  expect(frames.size).toBe(0);
+  const render = vi.spyOn(internals.renderer, "render");
+  host.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowRight" }));
+  internals.requestRender();
+  expect(frames.size).toBe(0);
+  expect(render).not.toHaveBeenCalled();
+});

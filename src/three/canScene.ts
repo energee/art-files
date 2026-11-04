@@ -202,6 +202,11 @@ export class CanScene {
 
   private renderRequested = false;
   private raf: number | null = null;
+  private controlsSettling = false;
+  private settleControls = () => {
+    this.controlsSettling = true;
+    this.requestRender();
+  };
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -232,11 +237,14 @@ export class CanScene {
     // the distance it frames at (see setCameraSpherical), and the constructor
     // ends with one — anything put here would be overwritten before first
     // paint, leaving two zoom-range regimes in the file and only one live.
-    // On-demand rendering: damping means one input event needs several frames
-    // to settle, so each rendered frame re-requests while controls report
-    // movement — the chain dies out once update() stops emitting 'change'.
+    // 'change' uses a coarse movement threshold, not an empty damping tail.
+    // Start/end and keys also wake the controls so even sub-threshold gestures
+    // get painted and settled.
+    this.controls.addEventListener("start", this.settleControls);
+    this.controls.addEventListener("end", this.settleControls);
+    container.addEventListener("keydown", this.settleControls);
     this.controls.addEventListener("change", () => {
-      this.requestRender();
+      this.settleControls();
       this.emitZoom();
     });
 
@@ -920,7 +928,17 @@ export class CanScene {
     this.raf = requestAnimationFrame(() => {
       this.renderRequested = false;
       this.raf = null;
-      this.controls.update();
+      if (this.controlsSettling && !this.controls.update()) {
+        // update() can stop reporting changes while retaining angular/pan
+        // inertia. One undamped update consumes and clears that remainder via
+        // OrbitControls' public API before we stop. Idle renders must not run
+        // controls again and turn unrelated edits into camera movement.
+        this.controls.enableDamping = false;
+        this.controls.update();
+        this.controls.enableDamping = true;
+        this.controlsSettling = false;
+        this.emitZoom();
+      }
       this.renderer.render(this.scene, this.camera);
     });
   }
@@ -945,6 +963,7 @@ export class CanScene {
     });
     this.canMaterial?.dispose();
     this.scene.environment?.dispose();
+    this.container.removeEventListener("keydown", this.settleControls);
     this.controls.dispose();
     // Detach the canvas so a scene recreated against the same container
     // (React StrictMode double-invoke, HMR) doesn't stack behind this one.

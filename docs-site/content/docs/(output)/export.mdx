@@ -78,7 +78,9 @@ With two-file export on, the mask PSD carries the white ink instead. It mirrors 
 
 ## CMYK
 
-The print PDF is PDF/X-4 with an embedded sRGB output intent: the printer accepts RGB with an embedded profile and converts to its inks. Hex colours print as RGB (neutral greys and black as gray, so they stay on the black plate). A fill typed as `cmyk(c,m,y,k)` (see [Colour](/docs/inspector#colour)) prints exactly those CMYK percentages. Images and textures stay RGB. **White Ink** is a separate spot colour.
+**Development release blocked:** the combined print PDF currently declares PDF/X-4 but embeds a monitor-class sRGB output intent, which PDF/X forbids. It is not PDF/X-4 compliant. [Issue #675](https://github.com/energee/art-files/issues/675) requires a printer-approved output profile and an independent preflight pass before publication. Accepting RGB artwork with an embedded profile does not make sRGB a valid PDF/X output intent.
+
+Hex colours print as RGB (neutral greys and black as gray, so they stay on the black plate). A fill typed as `cmyk(c,m,y,k)` (see [Colour](/docs/inspector#colour)) writes those exact CMYK percentages. Images and textures stay RGB. **White Ink** is a separate spot colour.
 
 The two-file art and mask PDFs are not PDF/X. `tools/to-cmyk.sh` still converts an export to CMYK with Ghostscript's generic profile, for a printer that takes CMYK only.
 

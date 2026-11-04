@@ -1,10 +1,13 @@
 # Print-ready CMYK export
 
-Status: tasks 1, 2 and 5 done on `feat/cmyk-export` (#571). Task 0 answered:
-the printer accepts RGB with an embedded ICC (PDF/X-4) and named no profile,
-so the output intent is sRGB. Task 3 skipped (not CMYK-only). Task 4 open:
-`tools/to-cmyk.sh` kept, pending the user's decision. The Acrobat Preflight
-pass in task 2 is still to do by hand.
+Status: tasks 1 and 5 implemented on `feat/cmyk-export` (#571). Task 2 is
+release-blocked by [#675](https://github.com/energee/art-files/issues/675):
+the embedded sRGB output intent is monitor-class, which PDF/X forbids.
+The printer accepts RGB artwork with an embedded ICC, but has not supplied
+an approved printer-class output profile or named printing condition.
+Task 3 skipped (not CMYK-only). Task 4 open: `tools/to-cmyk.sh` kept,
+pending the user's decision. Correct the output intent and pass an
+independent PDF/X-4 preflight before publishing.
 
 ## Why
 
@@ -97,7 +100,16 @@ kept only for legacy files. Decide with the user.
   two-file art/mask PDFs and their goldens are unchanged). Adds the sRGB ICC
   (CC0 compact profile), Info `GTS_PDFXVersion` + `Trapped`, XMP, a trailer
   ID derived from the display list, and a `%PDF-1.6` header.
-- Preflight risk to check in Acrobat: sRGB is a monitor-class profile, and
-  strict PDF/X-4 checks want an output-device profile and may flag
-  DeviceCMYK (CMYK fills, the White Ink alternate) under an RGB intent. If
-  Acrobat objects, the fix is the printer's CMYK ICC as the intent.
+- Confirmed release blocker (2026-11-04): decoding the actual CLI-generated
+  print PDF's output profile yields device class `mntr`, not `prtr`.
+  [PDFlib](https://www.pdflib.com/pdf-knowledge-base/pdfx-output-intents/)
+  and [Antenna House](https://www.antenna.co.jp/AHF/help/en/ahf-pdf.html#pdfx)
+  document that PDF/X output intents must use printer-class profiles.
+  Obtain the printer-approved output ICC or explicitly approved printing
+  condition; RGB artwork acceptance is not approval of a monitor output
+  intent. Preserve RGB source colour management separately when replacing
+  the intent, plus exact CMYK fills and White Ink overprint. Validate mixed
+  RGB/CMYK/transparency output with a genuine PDF/X-4 preflight tool.
+  `pdfinfo` subtype identification and Ghostscript rendering are not
+  compliance checks. Do not relabel the profile's class or substitute an
+  arbitrary coated-paper profile for the printer's silver-film process.
