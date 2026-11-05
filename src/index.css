@@ -195,6 +195,15 @@
    border-r) would paint in the text color instead of the theme border. */
 @layer base {
   * { @apply border-border; }
+  /* A desktop app: clicking or dragging over rows, buttons and labels never
+     highlights them as text. Only what you type into selects, plus toasts so
+     an error message or path can be copied. Inputs need the explicit `text`:
+     WebKit will not let you type into a field under user-select: none. */
+  body { -webkit-user-select: none; user-select: none; }
+  input, textarea, [contenteditable="true"], [data-sonner-toast] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 /* Every editable field gets the same fill (see --field). The components set
@@ -231,6 +240,33 @@ input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   appearance: none;
   margin: 0;
+}
+
+/* Liquid Glass, macOS desktop only (src/titlebar.ts sets data-glass). macOS
+   paints glass behind the transparent window (tauri.conf.json windowEffects;
+   sidebar vibrancy before macOS 26). The chrome (Layers sidebar, header, tab
+   strip, status bar, inspector) fills with --sidebar: clear in light, since
+   the glass carries its own tint, and 40% --card in dark, where glass over a
+   bright window stays too light for muted text. The glass takes on whatever
+   is behind it, so muted text and rules are translucent black (white in dark),
+   as macOS's own label colours are. The preview pane stays solid
+   (bg-background, App.tsx) so the glass never tints the artwork. Unlayered,
+   like the field rule above, to beat the bg utilities. */
+:root[data-glass] {
+  --sidebar: light-dark(transparent, color-mix(in oklab, var(--card) 40%, transparent));
+  --muted-foreground: light-dark(rgb(0 0 0 / 0.62), rgb(255 255 255 / 0.7));
+  --border: light-dark(rgb(0 0 0 / 0.16), rgb(255 255 255 / 0.18));
+}
+:root[data-glass] body,
+:root[data-glass] [data-slot="sidebar-inset"] {
+  background-color: transparent;
+}
+/* The inspector floats over the editor rather than beside it, so the tab
+   strip's and status bar's rules run on underneath it. Blurring what is
+   below the sheet hides them; the window's glass behind still shows. */
+:root[data-glass] [data-slot="sheet-content"] {
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
 }
 
 html { font-size: 13px; }

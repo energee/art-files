@@ -5,7 +5,8 @@
 // index stores a real path rather than a basename. The window also enforces
 // a content security policy that keeps it to its own bundled code. Its macOS
 // overlay title bar needs the window to start a drag and to zoom on a
-// double-click, and keeps naming the window after the document.
+// double-click, and keeps naming the window after the document. Its Liquid
+// Glass background needs a transparent window and the theme pinned on it.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -14,7 +15,11 @@ const caps = JSON.parse(readFileSync("src-tauri/capabilities/default.json", "utf
 };
 const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8")) as {
   plugins?: { fs?: { requireLiteralLeadingDot?: boolean } };
-  app: { security: { csp: string | null }; windows: Array<{ label: string; titleBarStyle?: string; hiddenTitle?: boolean }> };
+  app: {
+    security: { csp: string | null };
+    macOSPrivateApi?: boolean;
+    windows: Array<{ label: string; titleBarStyle?: string; hiddenTitle?: boolean; transparent?: boolean; windowEffects?: { effects: string[] } }>;
+  };
 };
 
 /** Glob paths a scoped fs permission allows, across every entry for it;
@@ -114,6 +119,7 @@ describe("desktop overlay title bar", () => {
       "core:window:allow-close",
       "core:window:allow-destroy",
       "core:window:allow-internal-toggle-maximize",
+      "core:window:allow-set-theme",
       "core:window:allow-set-title",
       "core:window:allow-start-dragging",
     ]);
@@ -123,6 +129,18 @@ describe("desktop overlay title bar", () => {
     const main = tauriConf.app.windows.find((w) => w.label === "main");
     expect(main?.titleBarStyle).toBe("Overlay");
     expect(main?.hiddenTitle).toBe(true);
+  });
+
+  // macOS paints the glass behind a transparent window, which needs the
+  // private API flag; before macOS 26 it falls back to sidebar vibrancy. The
+  // theme is pinned on the window so the glass tints with the text
+  // (src/titlebar.ts).
+  it("puts Liquid Glass behind a transparent main window", () => {
+    const main = tauriConf.app.windows.find((w) => w.label === "main");
+    expect(tauriConf.app.macOSPrivateApi).toBe(true);
+    expect(main?.transparent).toBe(true);
+    expect(main?.windowEffects?.effects).toEqual(["liquidGlassRegular", "sidebar"]);
+    expect(ids).toContain("core:window:allow-set-theme");
   });
 });
 
