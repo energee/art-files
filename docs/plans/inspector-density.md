@@ -19,11 +19,15 @@ Branch `feat/inspector-density`, worktree `.agents/worktrees/inspector-density`.
 | 7 | Full-width "Bind to layer…" | Becomes an icon button (Link2) in the Position heading. The bound state keeps its rows |
 | 8 | Building blocks | One new primitive, `FieldPair`, in `LayerInspectorControls.tsx`, next to `Row`/`Field`. `ScrubField` gets a `compact` flag (the input fills its cell instead of the fixed `w-24`/`w-28`) |
 | 9 | App.tsx is 2,848 lines | Pull out three hooks with no behavior change: `useViewPrefs`, `useZoomPan` and `useRenderSource` (see task 3). Target was ≈2,000 lines; landed at 2,606. App.tsx is not added to the 750-line test |
+| 10 | Hide rarely changed fields (user, 2026-11-04) | Behind a per-section More: Minimum height (with its readouts), Wrap width, Line spacing, Heading scale, Letter spacing, both guide rows, Bind to layer and Rotation. Visible by default: Text, Font, Size, Align, Uppercase, X, Y, Color, Stroke |
+| 11 | Where they live | A chevron button at the right of the Typography and Position headings (`aria-expanded`, label "More Typography options" / "More Position options") expands that section's extra rows. The open/closed state is saved per section in view prefs, not per layer |
+| 12 | A hidden field that is overridden | Shows anyway, with its reset badge, while the section is collapsed. "Overridden" means the existing variant/label override set the badges read. A bound layer's Bound to/Side/Gap/Unbind rows always show |
+| 13 | Supersedes | Decision 7's Bind icon and decision 5's Rotation in the Position heading: the heading's control slot now holds the chevron, so Bind (icon button) and Rotation share one row inside Position's More. Decision 5's pairs still apply inside More (Wrap width/Heading scale, Line/Letter spacing, H guide/V guide); Size pairs with Align instead of Min height |
 
 ## Phases (one stacked PR each; checkpoint with the user after each)
 
 - **A — refactor, no behavior change:** tasks 1–3. PR on `main`.
-- **B — inspector density:** tasks 4–9. Stacked on A.
+- **B — inspector density:** tasks 4–9 and 16–18. On `main` (A merged as #674), branch `feat/inspector-simplify` in `.agents/worktrees/inspector-density`.
 - **C — shell:** tasks 10–13. Stacked on B.
 - **D — docs and final validation:** tasks 14–15. In C's PR.
 
@@ -92,6 +96,30 @@ a missing English key, and knip fails on a dead one.
    Test first in `tests/text-editor-dom.test.ts`: the editor has no fixed
    8.5rem minimum. Check the render in a screenshot. Deps: none.
 
+16. **More disclosure**: `Heading` in `LayerInspectorControls.tsx` gains
+    `more?: { open: boolean; onToggle: () => void; label: string }`, rendering
+    a ChevronDown button with `aria-expanded`. `Ctx` gains
+    `more: { typography: boolean; position: boolean }`, `onMore(section)` and
+    `overridden(paths): boolean` (the same set `badge` reads, so a section
+    shows a hidden row when `open || overridden([...])`). `useViewPrefs.ts`
+    persists `moreTypography`/`morePosition` (default false). New locale keys
+    in every `src/locales/*`. Test first: `tests/view-prefs.test.ts` (both
+    flags default false and round-trip) and `tests/inspector-more-dom.test.tsx`
+    (collapsed hides Wrap width and Horizontal guide; the chevron shows them
+    and reports `aria-expanded`; an overridden Letter spacing shows while
+    collapsed, with its badge). Deps: 4.
+17. **Typography and Position use More**: `LayerInspectorSections.tsx`.
+    Typography: Font; Size/Align pair; Uppercase; then under More Min height,
+    Wrap width/Heading scale, Line/Letter spacing. Position: X/Y pair; under
+    More the guide pair and one row with Rotation 90° and the Bind icon
+    button (aria-label "Bind to layer…"). Test first: extend
+    `tests/inspector-more-dom.test.tsx` (a rotated layer's toggle is under
+    More; a bound layer's Unbind shows collapsed). Existing
+    `tests/layerinspector-dom.test.tsx` cases that reach hidden fields expand
+    first. Deps: 5, 6, 16.
+18. **Docs**: `docs-site/content/docs/(authoring)/inspector.mdx` describes
+    More and which fields sit there; `CHANGELOG.md` `[Unreleased]`. Deps: 17.
+
 ### Phase C
 
 10. **Row icons, exceptions only**: `src/components/LayerList.tsx:338-370`.
@@ -140,6 +168,9 @@ a missing English key, and knip fails on a dead one.
 A runs sequentially (1→2→3). Tasks 4, 9 and 10 have no dependencies and
 can run alongside A. 5→6→7→8 run sequentially (same files). 11→12→13 run
 sequentially after 3.
+
+16 can run alongside 5–6 (different files apart from its test); 17 runs after
+6 and 16, then 7→8 continue; 18 closes Phase B.
 
 ## Risks
 
