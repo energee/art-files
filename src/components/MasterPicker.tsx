@@ -250,7 +250,9 @@ export function MasterPicker(props: {
   };
 
   return (
-    <div className="px-2 py-2">
+    // Overlay title bar: top padding 4px so the select centres on the tab
+    // strip beside it (36px tall; this row is a 28px select + padding).
+    <div className="px-2 py-2 titlebar:pt-1">
       <div className="flex items-center gap-1.5">
       <Select
         value={props.version === null ? props.master.id : VERSION + props.version}

@@ -4,6 +4,12 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
+- **Add layer is no longer pink.** The button matches the Changed filter next to it; the layer kinds in its menu stay pink, since adding one changes the master.
+
 ## [0.1.118] - 2026-11-04
 
 ### Changed
