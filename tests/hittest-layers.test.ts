@@ -19,8 +19,7 @@ const text = (l: Partial<TextLayer> & Pick<Layer, "id" | "x" | "y">): TextLayer 
 const image = (l: Partial<ImageLayer> & Pick<Layer, "id" | "x" | "y"> & Pick<ImageLayer, "asset" | "w">): ImageLayer => ({
   kind: "image", name: l.id, enabled: true, anchor: "left", style: GOLD_METAL, ...l,
 });
-const LOGO_SVG = '<svg viewBox="0 0 480 525"><path d="M0 0 L480 0 L240 525 Z"/></svg>';
-const assets = { logoSvg: LOGO_SVG, custom: { tex: { aspect: 2 } } };
+const assets = { custom: { tex: { aspect: 2 } } };
 
 const layers: Layer[] = [
   image({ id: "background", role: "background", asset: "tex", fit: "cover", w: L.PAGE.w, h: L.PAGE.h, x: 0, y: 0, locked: true }),

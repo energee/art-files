@@ -10,7 +10,7 @@ import { PreviewCompare } from "../src/components/PreviewCompare";
 import type { CanvasRenderSource } from "../src/canvas/draw";
 import { PAGE } from "../src/layout";
 import type { Layer, TextLine } from "../src/model/layers";
-import { boxOfLayer, lolevLayers, logoSvg, measure } from "./fixtures";
+import { boxOfLayer, lolevLayers, measure, planAssets } from "./fixtures";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -40,7 +40,6 @@ function openEditor(id: string, opts: {
   onEditCommit?: (id: string) => void;
 } = {}) {
   const layers = opts.layers ?? lolevLayers();
-  const planAssets = { logoSvg };
   const source: CanvasRenderSource = {
     m: measure, planAssets, drawAssets: {} as CanvasRenderSource["drawAssets"], skip: new Set<string>(), fontCss: "Test",
   };

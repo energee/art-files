@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { parseLabel, serializeLabel } from "../src/model/files";
 import { rebindLabel } from "../src/model/rebindLayers";
 import { referencedAssetIds } from "../src/model/edit";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type { LabelFile, Master, TextLine } from "../src/model/layers";
 import { GOLD } from "../src/layout";
 

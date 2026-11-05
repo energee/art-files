@@ -7,10 +7,10 @@
 // wrappers over it.
 import { describe, expect, it, vi } from "vitest";
 import {
-  adoptMaster, addVariant, removeLayerIn, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
+  adoptMaster, addVariant, applyPromotions, pinPromoted, removeLayerIn, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
   setLayerIn, showVersion, type Doc,
 } from "../src/model/edit";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { resolveLayers } from "../src/model/resolveLayers";
 
 // Pass-through spy on resolveLayers, so a test can prove checkLabelBindings
@@ -68,6 +68,25 @@ describe("property patches route to the label", () => {
     expect(d.label.overrides?.description).toEqual({ width: null });
     expect(byId<TextLayer>(d, "description").width).toBeUndefined();
     expect(JSON.parse(JSON.stringify(d.label)).overrides.description).toEqual({ width: null });
+  });
+
+  it("drops an override that returns to the master's value (#624)", () => {
+    const masterName = lolevMaster().layers.find((l) => l.id === "name") as TextLayer;
+    let d = patchLayers(doc(), [["name", { x: 300, y: 12, style: { fill: "#FF0000" } }]]);
+    d = patchLayers(d, [["name", { x: masterName.x, style: { fill: masterName.style.fill } }]]);
+    expect(d.label.overrides?.name).toEqual({ y: 12 });
+    d = patchLayers(d, [["name", { y: masterName.y }]]);
+    expect(d.label.overrides).toBeUndefined();
+    // Unsetting a key the master never set is no override either.
+    expect(patchLayers(doc(), [["name", { width: undefined }]]).label.overrides).toBeUndefined();
+  });
+
+  it("compares against the enabled variants' value, not the bare master's (#624)", () => {
+    const m = setLayerIn(lolevMaster(), "collab", "name", { x: 222 });
+    const on: Doc = { master: m, label: { ...newLabel(m), enabledVariants: ["collab"] } };
+    expect(patchLayers(on, [["name", { x: 222 }]]).label.overrides).toBeUndefined();
+    const masterX = (lolevMaster().layers.find((l) => l.id === "name") as TextLayer).x;
+    expect(patchLayers(on, [["name", { x: masterX }]]).label.overrides?.name).toEqual({ x: masterX });
   });
 
   it("enabling a variant-owned layer switches its variant on, in the label", () => {
@@ -300,4 +319,23 @@ it("inspects, moves, edits and removes label-only legacy layers (#264)", () => {
   const removed = removeLayerIn(moved, "legacy");
   expect(byId(removed, "legacy")).toBeUndefined();
   expect(removed.master).toBe(d.master);
+});
+
+// Override paths come from parsed .label/.master JSON, where JSON.parse keeps
+// "__proto__" as an own key: no path walk may reach Object.prototype.
+it("a __proto__ override path never writes Object.prototype", () => {
+  const m = lolevMaster();
+  const label: LabelFile = { ...newLabel(m), overrides: JSON.parse('{"name":{"__proto__":{"polluted":1}}}') };
+  const promote = [{ kind: "promote", layerId: "name", layerName: "Name", path: "__proto__.polluted", from: undefined, to: 1 } as const];
+  const clean = () => expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  try { applyPromotions(m, label, promote); } catch { /* a refusal is fine; a write is not */ }
+  clean();
+  pinPromoted(newLabel(m), promote);
+  clean();
+  // A walk that DELETES through __proto__ would strip Object.prototype.
+  (Object.prototype as Record<string, unknown>).polluted = "builtin";
+  try {
+    patchLayers({ master: m, label }, [["name", { x: 1 }]]);
+    expect(({} as Record<string, unknown>).polluted).toBe("builtin");
+  } finally { delete (Object.prototype as Record<string, unknown>).polluted; }
 });

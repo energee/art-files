@@ -20,7 +20,10 @@ vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, exists }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir }));
 // Real Poppins: the real builders run (vitest mocks of a module imported
 // in parallel by Promise.all can resolve to the unmocked copy).
-vi.mock("@/pdf/fonts", async () => ({ loadFonts: async () => (await import("./fixtures")).assets.fonts }));
+vi.mock("@/fonts", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/fonts")>(),
+  loadFonts: async () => (await import("./fixtures")).assets.fonts,
+}));
 vi.mock("@/planLayers", () => ({ planLayers: () => [] }));
 
 await import("@/pdf/build"); // before any test fakes the clock (tests/toast-harness.ts)

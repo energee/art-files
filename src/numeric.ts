@@ -18,7 +18,7 @@ export const decimalsOf = (step: number) => (String(step).split(".")[1] ?? "").l
 export const roundToStep = (value: number, step: number) =>
   Number(value.toFixed(decimalsOf(step)));
 
-/** The model's precision for positions and sizes, in PDF points: the Lolev
- *  master authors to hundredths (24.12, 15.83). The inspector types on it and
+/** The model's precision for positions and sizes, in PDF points: the shipped
+ *  masters author to hundredths (24.12, 15.83). The inspector types on it and
  *  a canvas drag lands on it, so both write the same numbers. */
 export const PT_STEP = 0.01;

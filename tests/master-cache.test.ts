@@ -4,7 +4,8 @@
 // and silently swap the operator's own template for it on every reload.
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
+import { starterMaster } from "../src/model/starterLayers";
 import { packMaster } from "../src/model/files";
 
 const cache = new Map<string, Uint8Array>();
@@ -37,9 +38,9 @@ describe("resolveMasterById in a browser", () => {
 
   // The bug: an edited SHIPPED master resolved to the fixture, not the file.
   it("prefers the cached bytes over the shipped fixture", async () => {
-    const m = { ...lolevMaster(), name: "Lolev (edited)" };
-    await rememberMaster(m, "lolev.master", packMaster(m, {}));
-    expect((await resolveMasterById(SHIPPED_MASTER_ID))?.master.name).toBe("Lolev (edited)");
+    const m = { ...starterMaster(), name: "Starter (edited)" };
+    await rememberMaster(m, "starter.master", packMaster(m, {}));
+    expect((await resolveMasterById(SHIPPED_MASTER_ID))?.master.name).toBe("Starter (edited)");
   });
 
   it("still falls back to the fixture with nothing cached", async () => {
@@ -52,7 +53,7 @@ describe("resolveDefaultMaster", () => {
   it("is the shipped fixture on a fresh install", async () => {
     const r = await resolveDefaultMaster();
     expect(r.master.id).toBe(SHIPPED_MASTER_ID);
-    expect(r.master.name).toBe("Lolev");
+    expect(r.master.name).toBe("Starter");
   });
 
   it("reloads the last master that was applied, not the shipped fixture", async () => {

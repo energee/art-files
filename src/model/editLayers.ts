@@ -9,7 +9,7 @@ import type {
 } from "./layers";
 import type { Box } from "./place";
 import { parseMaster } from "./layers";
-import { isPlain, deepMerge, type DeepPartial } from "./merge";
+import { isPlain, deepMerge, unsafePath, type DeepPartial } from "./merge";
 import { resolveLayers } from "./resolveLayers";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
@@ -31,10 +31,14 @@ export function mintLayerId(kind: string, taken: Set<string>): string {
 
 const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;
 const KEYLINED = { ...GOLD_METAL, ...KEYLINE } as const;
+/** A code starts black on white ink inside a white halo — the colour the
+ *  Stroke switch picks for a code — since gold metallic bars may not scan
+ *  (#608). */
+const CODE = { ...KEYLINE, fill: "#000000", layer: "white", stroke: "#FFFFFF" } as const;
 
 /** A sensible starting layer per kind, dropped at the center guide 100pt
- *  down. Styles mirror lolevLayers' defaults so a new layer looks like it
- *  belongs. */
+ *  down. Text and image styles mirror starterLayers' defaults so a new layer
+ *  looks like it belongs; codes take CODE. */
 function defaultLayer(kind: LayerKind, id: string): Layer {
   const base = { id, enabled: true, x: CENTER_X, anchor: "center" as const, y: 100 };
   switch (kind) {
@@ -50,12 +54,12 @@ function defaultLayer(kind: LayerKind, id: string): Layer {
     }
     case "barcode": {
       const l: BarcodeLayer = { ...base, kind, name: "Barcode", symbology: "upc-a", value: "",
-        moduleW: 1, h: 15, style: KEYLINED };
+        moduleW: 1, h: 15, style: CODE };
       return l;
     }
     case "qr": {
       const l: QrLayer = { ...base, kind, name: "QR", value: "", size: 40, qrStyle: "square",
-        style: KEYLINED };
+        style: CODE };
       return l;
     }
   }
@@ -299,8 +303,9 @@ export function patchLayerIn(master: Master, variant: string, id: string, patch:
 }
 
 /** Deletes one dot-path in place, pruning any object left empty above it.
- *  No-op when the path doesn't resolve. */
+ *  No-op when the path doesn't resolve or is unsafe (unsafePath). */
 function deletePath(obj: Record<string, unknown>, path: string): void {
+  if (unsafePath(path)) return;
   const keys = path.split(".");
   const chain: Record<string, unknown>[] = [obj];
   for (let i = 0; i < keys.length - 1; i++) {
@@ -406,10 +411,10 @@ export function adoptMaster(label: LabelFile, master: Master): LabelFile {
   return label.masterId === master.id ? label : { ...label, masterId: master.id };
 }
 
-/** Does an image `asset` value carry bytes of its own? Empty is unset and
- *  `builtin:` art ships with the app, so neither has anything to bundle. */
+/** Does an image `asset` value carry bytes of its own? Empty is unset, so
+ *  it has nothing to bundle. */
 export const ownsBytes = (asset: unknown): asset is string =>
-  typeof asset === "string" && !!asset && !asset.startsWith("builtin:");
+  typeof asset === "string" && !!asset;
 
 /** Every custom image id the master names — a layer's `asset`, or any
  *  variant's entry — whose bytes a .master must carry. No `kind` check: a

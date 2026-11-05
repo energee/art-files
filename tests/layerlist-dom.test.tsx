@@ -1,7 +1,7 @@
 // layerlist-dom.test.tsx — DOM behavior of LayerList (src/components/
 // LayerList.tsx): the one flat Layers list of the master-as-layers redesign.
 // Props-only component, so the rows are built straight from the Lolev v3
-// master data (model/lolevLayers.ts) with the collab variant's three layers
+// master data (tests/fixtures/lolevMaster.ts) with the collab variant's three layers
 // appended as variant-added rows — no resolver in the loop. Scoped to a DOM
 // environment per-file, matching tests/layerspanel-dom.test.tsx's setup — no
 // @testing-library/react in this repo, so this drives real DOM nodes through
@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LayerList, type LayerListProps } from "../src/components/LayerList";
 import type { LayerRow, VariantChip } from "../src/model/rows";
 import { SidebarProvider } from "../src/components/ui/sidebar";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type { Layer } from "../src/model/layers";
 
 let container: HTMLDivElement;

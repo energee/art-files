@@ -4,7 +4,7 @@
 // provenance marks (a variant changed it / this label changed it).
 import { describe, expect, it } from "vitest";
 import { layerRows, variantChips } from "../src/model/rows";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type { LabelFile } from "../src/model/layers";
 
 const label = (over: Partial<LabelFile> = {}): LabelFile =>

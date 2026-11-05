@@ -5,8 +5,8 @@
 // variants that diff them; a label is a master reference, the variants it
 // turned on, and the values filled into its layers. There is no
 // separate field list, no defaults bag, no Document group: background and
-// mask are the two bottom image layers, and every built-in Lolev element is
-// an ordinary layer in model/lolevLayers.ts.
+// mask are the two bottom image layers, and every element of the shipped
+// Starter master is an ordinary layer in model/starterLayers.ts.
 //
 // This file replaces model/types.ts's Master/Variant/MasterLayer/FieldDecl/
 // LabelFileV2 and LabelConfig's per-element fields. Pure types + parser; no
@@ -15,7 +15,7 @@ import type { Style, StyledLine } from "../types";
 import type { Anchor } from "./position";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import { deepMerge, type DeepPartial } from "./merge";
-import { normalizeHex } from "../layout";
+import { normalizeFill } from "../layout";
 import { t } from "@/i18n";
 
 /** Asset ids the page-art slots (texture / mask) ride under in every image
@@ -101,7 +101,7 @@ export interface LayerBase {
    *  rotated box's top. */
   y: number | RelativeY;
   /** Which edge `y` (a number) places: the box's top (absent) or its
-   *  bottom — a bottom-anchored layer grows upward, which is how the Lolev
+   *  bottom — a bottom-anchored layer grows upward, which is how a
    *  right-hand column hangs from the bottom margin. Ignored when `y` is a
    *  binding (a bound layer's top follows the layer above). */
   vAnchor?: "top" | "bottom";
@@ -110,7 +110,7 @@ export interface LayerBase {
   guideX?: "none" | "left" | "center" | "right";
   /** Numeric y is an offset from this margin guide; none keeps absolute y. */
   guideY?: "none" | "top" | "middle" | "bottom";
-  /** 90 = rotated counter-clockwise, reading bottom-to-top (the Lolev
+  /** 90 = rotated counter-clockwise, reading bottom-to-top (a
    *  right-hand column). Absent = 0. */
   rotation?: 0 | 90;
 }
@@ -172,9 +172,10 @@ export interface TextLayer extends LayerBase {
 
 export interface ImageLayer extends LayerBase {
   kind: "image";
-  /** Asset id into the master's or label's image store, or the bundled
-   *  "builtin:logo" (the Lolev laurel SVG). "" = nothing loaded, draws
-   *  nothing. An image layer's .label value is this string. */
+  /** Asset id into the master's or label's image store. "" = nothing
+   *  loaded, draws nothing; so does an id with no bytes behind it (an old
+   *  file's "builtin:logo", from when the app bundled the Lolev laurel).
+   *  An image layer's .label value is this string. */
   asset: string;
   /** Box width in points. */
   w: number;
@@ -218,7 +219,7 @@ export interface BarcodeLayer extends LayerBase {
 export interface QrLayer extends LayerBase {
   kind: "qr";
   /** Payload; format string over text-layer ids with format.ts transforms
-   *  ("https://lolev.beer/beer/{name|slug}"). */
+   *  ("https://example.com/beer/{name|slug}"). */
   value: string;
   /** Resolve-time only: the unexpanded `value` template — see BarcodeLayer. */
   format?: string;
@@ -234,7 +235,7 @@ export type Layer = TextLayer | ImageLayer | BarcodeLayer | QrLayer;
  *  code value. */
 export type LayerValue = TextLine[] | string;
 
-/** Master guide positions; v1 masters (model/types.ts) share this shape. */
+/** Master guide positions. */
 export interface Guides {
   left: number | null; center: "auto" | null; right: number | null;
   top: number | null; bottom: number | null;   // null = guide removed
@@ -289,8 +290,10 @@ const PLATES = new Set(["white", "metallic"]);
  *  or undefined. A 3-digit hex is widened to "#rrggbb" IN PLACE, because the
  *  PDF and PSD read exactly six digits (layout.ts's parseHexFill) while the
  *  canvas reads any CSS colour — left alone, "#fff" printed blue and "gold"
- *  black. `complete` = fill and layer must be there (a whole style or run);
- *  a label override's partial style may omit them, or null them to unset. */
+ *  black. A CMYK fill is rewritten to its canonical "cmyk(c,m,y,k)" the same
+ *  way (layout.ts's normalizeFill). `complete` = fill and layer must be there
+ *  (a whole style or run); a label override's partial style may omit them,
+ *  or null them to unset. */
 function styleProblem(s: Record<string, unknown>, complete: boolean): string | undefined {
   for (const key of ["fill", "stroke"]) {
     const v = s[key];
@@ -299,9 +302,9 @@ function styleProblem(s: Record<string, unknown>, complete: boolean): string | u
       continue;
     }
     if (v === "none") continue;
-    const hex = typeof v === "string" ? normalizeHex(v) : undefined;
-    if (!hex) return t("has {{key}} {{value}}, which is not a hex colour", { key, value: JSON.stringify(v) });
-    if (!/^#[0-9a-f]{6}$/i.test(v as string)) s[key] = hex;
+    const fill = typeof v === "string" ? normalizeFill(v) : undefined;
+    if (!fill) return t("has {{key}} {{value}}, which is not a hex or CMYK colour", { key, value: JSON.stringify(v) });
+    if (!/^#[0-9a-f]{6}$/i.test(v as string)) s[key] = fill;
   }
   for (const key of ["layer", "strokeLayer"]) {
     const v = s[key];
@@ -425,19 +428,17 @@ export function validateBindings(layers: Layer[], ctx: string, report: (msg: str
 
 /** The size keys of an image layer or diff, plus the `scale` older files
  *  carry: until it was removed, the drawn box was w × scale by h × scale. */
-type ScaledSize = { w?: unknown; h?: unknown; scale?: unknown; asset?: unknown };
+type ScaledSize = { w?: unknown; h?: unknown; scale?: unknown };
 
 /** Fold an old image `scale` into w and h, in place, and drop the key, so the
  *  drawn size does not move and the Width you type is the width drawn.
  *  `base` is the UNFOLDED layer a diff lands on (absent for a whole layer):
  *  a diff that sets a different scale but no size takes the base's size
  *  times it, and a diff that sets a size but no scale inherits the base's.
- *  The laurel (builtin:logo) never drew its scale — parseLogo reads w alone —
- *  so there the key is only dropped. A no-op on anything without a scale. */
+ *  A no-op on anything without a scale. */
 export function foldScale(p: ScaledSize, base?: ScaledSize): void {
   const own = p.scale;
   delete p.scale;
-  if ((p.asset ?? base?.asset) === "builtin:logo") return;
   const under = typeof base?.scale === "number" ? base.scale : 1;
   // No scale of its own inherits; null (a label override clearing the key)
   // is back to the default, 1.

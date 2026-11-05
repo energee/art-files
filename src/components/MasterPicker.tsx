@@ -8,9 +8,11 @@
 // template with File → Save Master As…, which mints a new master id, rebinds
 // this document onto it and actually writes the file (the old "Duplicate as
 // new master…" did all of that except the writing). The ONE exception is
-// "Save Master…/Save Variant…" button below, shown only while there is
-// something to save: a save writes into whichever version this Select names,
-// so the picker is where you can see the target while choosing to write it.
+// "Save Master…/Save Variant…" button at the end of the Select's row (not a
+// row of its own, which pushed the Layers list down), shown only while there
+// is something to save: a save writes into whichever version this Select
+// names, so the picker is where you can see the target while choosing to
+// write it.
 // It runs the File menu's own Save Master (App's requestMasterSave) — the
 // same direct write or review, same dirty gate, no second path.
 //
@@ -28,7 +30,8 @@
 //   * actions at the foot: New Variant, plus Rename Variant… and Delete
 //     Variant while a variant is the version (they were permanent buttons
 //     under the Select; a red Delete always in reach was the wrong default).
-// The first two sit under "Current master" / "Other masters" headings, and
+// The current master heads the menu with no heading of its own; the others
+// sit under an "Other masters" heading, and
 // every master row carries a second line — its file name and the day it was
 // last opened, saved or picked here (the index's lastSeen) — because two
 // masters can share a name (a fork keeps it until renamed).
@@ -70,15 +73,19 @@ export type LibraryEntry = { name: string; inLibrary?: boolean; builtIn?: boolea
   // marks the shipped master, which may have no file behind it.
   & Partial<Pick<MasterIndexEntry, "path" | "lastSeen">>;
 
-/** Each row's second line, by id: "lolev.master · Used Oct 11, 2026". The
- *  file name gains its folder when two rows share one (recentTitles), so
- *  same-named masters stay apart. No path reads "Built in" for the shipped
- *  master and "No file" for any other. */
+/** Each row's second line, by id: "brewery.master · Used Oct 11, 2026", only
+ *  for masters whose name another row shares — a unique name needs no
+ *  second line (""). The file name gains its folder when two rows share one
+ *  (recentTitles). No path reads "Built in" for the shipped master and
+ *  "No file" for any other. */
 export function entryDetails(entries: [string, LibraryEntry][]): Record<string, string> {
   const withPath = entries.filter(([, e]) => e.path);
   const titles = recentTitles(withPath.map(([, e]) => e.path!));
   const file = new Map(withPath.map(([id], i) => [id, titles[i]]));
+  const named = new Map<string, number>();
+  for (const [, e] of entries) named.set(e.name, (named.get(e.name) ?? 0) + 1);
   return Object.fromEntries(entries.map(([id, e]) => {
+    if (named.get(e.name) === 1) return [id, ""];
     const name = file.get(id) ?? (e.builtIn ? t("Built in") : t("No file"));
     const used = e.lastSeen ? shortDate(e.lastSeen) : "";
     return [id, used ? `${name} · ${t("Used {{date}}", { date: used })}` : name];
@@ -90,8 +97,8 @@ export function entryDetails(entries: [string, LibraryEntry][]): Record<string, 
 function MasterRow({ name, detail }: { name: string; detail: string }) {
   return (
     <span className="flex min-w-0 flex-col">
-      <span className="truncate">{name}<span className="sr-only">, </span></span>
-      <span className="truncate text-[11px] text-muted-foreground">{detail}</span>
+      <span className="truncate">{name}{detail && <span className="sr-only">, </span>}</span>
+      {detail && <span className="truncate text-[11px] text-muted-foreground">{detail}</span>}
     </span>
   );
 }
@@ -131,7 +138,7 @@ export function MasterPicker(props: {
   onRenameVersion: (id: string, name: string) => void;
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
-  /** File → Save Master…, the button under the Select while `templateMoved`:
+  /** File → Save Master…, the button beside the Select while `templateMoved`:
    *  writes into whichever version the Select names, through the review
    *  when the label has something to promote. */
   onSaveMaster: () => void;
@@ -223,7 +230,7 @@ export function MasterPicker(props: {
   /** The working version, narrowed once so the variant verbs below need no
    *  non-null assertion in their handlers. */
   const version = props.version;
-  /** "Lolev" on the base version, "Lolev / Collab" while editing one. */
+  /** "Brewery" on the base version, "Brewery / Collab" while editing one. */
   const versionName = props.master.variants.find((v) => v.id === version)?.name;
   const editing = versionName ? `${props.master.name} / ${versionName}` : props.master.name;
   /** Every OTHER master in the library — this one already heads the menu. */
@@ -243,7 +250,10 @@ export function MasterPicker(props: {
   };
 
   return (
-    <div className="px-2 py-2">
+    // Overlay title bar: top padding 4px so the select centres on the tab
+    // strip beside it (36px tall; this row is a 28px select + padding).
+    <div className="px-2 py-2 titlebar:pt-1">
+      <div className="flex items-center gap-1.5">
       <Select
         value={props.version === null ? props.master.id : VERSION + props.version}
         // Also while a switch commits: a second pick would rebind twice.
@@ -267,13 +277,12 @@ export function MasterPicker(props: {
           if (id === props.master.id) { props.onVersion(null); return; }
           void pickEntry(id);
         }}>
-        <SelectTrigger ref={triggerRef} id="master-picker" aria-label={translate("Master")} size="sm" className="w-full">
+        <SelectTrigger ref={triggerRef} id="master-picker" aria-label={translate("Master")} size="sm" className="min-w-0 flex-1">
           <span className="text-muted-foreground">{translate("Master:")}</span>
           <SelectValue>{editing}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectLabel>{translate("Current master")}</SelectLabel>
             <SelectItem value={props.master.id} label={props.master.name}>
               <MasterRow name={props.master.name} detail={details[props.master.id]} />
             </SelectItem>
@@ -323,7 +332,14 @@ export function MasterPicker(props: {
           </>)}
         </SelectContent>
       </Select>
-      {naming !== null ? (
+      {naming === null && props.templateMoved && (
+        <Button type="button" id="variant-save" size="xs" variant="attention"
+          className="shrink-0" onClick={props.onSaveMaster}>
+          {props.saveLabel}
+        </Button>
+      )}
+      </div>
+      {naming !== null && (
         <input
           autoFocus
           aria-label={translate("Variant name")}
@@ -338,11 +354,6 @@ export function MasterPicker(props: {
             if (e.key === "Escape") setNaming(null);
           }}
         />
-      ) : props.templateMoved && (
-        <Button type="button" id="variant-save" size="xs" variant="attention"
-          className="mt-1" onClick={props.onSaveMaster}>
-          {props.saveLabel}
-        </Button>
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">{translate("Opening master…")}</p>}
       {/* Always mounted: screen readers announce a change inside a live

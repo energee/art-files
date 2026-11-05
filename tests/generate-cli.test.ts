@@ -16,7 +16,7 @@ describe("npm run generate working directory (#104)", () => {
   it("resolves relative --values and --out against INIT_CWD", () => {
     const caller = mkdtempSync(join(tmpdir(), "generate-cwd-"));
     try {
-      writeFileSync(join(caller, "probe-values.json"), JSON.stringify({ name: "Probe", barcode: "850051366224" }));
+      writeFileSync(join(caller, "probe-values.json"), JSON.stringify({ name: "Probe" }));
       const p = spawnSync(tsx, [script, "--values", "probe-values.json", "--out", "out", "--format", "pdf"], {
         cwd: repo, env: { ...process.env, INIT_CWD: caller }, encoding: "utf8",
       });
@@ -33,7 +33,7 @@ describe("npm run generate working directory (#104)", () => {
   it("--two-file keeps the art and mask PDF pair", () => {
     const caller = mkdtempSync(join(tmpdir(), "generate-two-file-"));
     try {
-      writeFileSync(join(caller, "probe-values.json"), JSON.stringify({ name: "Probe", barcode: "850051366224" }));
+      writeFileSync(join(caller, "probe-values.json"), JSON.stringify({ name: "Probe" }));
       const p = spawnSync(tsx, [script, "--values", "probe-values.json", "--out", "out", "--format", "pdf", "--two-file"], {
         cwd: repo, env: { ...process.env, INIT_CWD: caller }, encoding: "utf8",
       });

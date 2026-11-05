@@ -11,7 +11,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MasterPicker, entryDetails } from "../src/components/MasterPicker";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type { Master } from "../src/model/layers";
 
 let container: HTMLDivElement;
@@ -400,38 +400,47 @@ describe("MasterPicker", () => {
     expect(itemStarting("Duplicate as new master")).toBeUndefined();
   });
 
-  it("labels the current master and the others, each row with its file and last use", () => {
+  it("heads only the other masters, each row with its file and last use (#625)", () => {
     renderPicker({ library: {
       lolev: { name: "Lolev", builtIn: true },
       other: { name: "Lolev", inLibrary: true, path: "/Users/x/Labels/collab.master", lastSeen: "2026-10-01T12:00:00Z" },
     } });
     openMenu();
     const text = document.body.textContent ?? "";
-    expect(text).toContain("Current master");
+    // The current master heads the menu on its own: no heading over it.
+    expect(text).not.toContain("Current master");
     expect(text).toContain("Other masters");
     // Two masters named "Lolev" are told apart by file.
     expect(text).toContain("collab.master · Used");
     expect(text).toContain("Built in");
   });
 
+  it("gives a uniquely named master no detail line", () => {
+    renderPicker({ library: { lolev: { name: "Lolev", builtIn: true }, other: { name: "Other", path: "/x/o.master" } } });
+    openMenu();
+    expect(document.body.textContent).not.toContain("o.master");
+  });
+
   it("entryDetails: Built in only for the shipped master, folder on a shared file name", () => {
     const d = entryDetails([
       ["lolev", { name: "Lolev", builtIn: true }],
-      ["fork", { name: "Fork", path: "", lastSeen: "nope" }],
+      ["fork", { name: "Lolev", path: "", lastSeen: "nope" }],
+      ["solo", { name: "Solo", path: "/x/solo.master" }],
       ["a", { name: "Lolev", path: "/Users/x/Labels/lolev.master" }],
       ["b", { name: "Lolev", path: "C:\\Shared\\lolev.master", lastSeen: "2026-10-01T12:00:00Z" }],
     ]);
     expect(d.lolev).toBe("Built in");
     expect(d.fork).toBe("No file");
+    expect(d.solo).toBe("");
     expect(d.a).toBe("lolev.master — Labels");
     expect(d.b).toMatch(/^lolev\.master — Shared · Used /);
   });
 
   it("gives each master row its name as the option label, apart from the detail", () => {
-    renderPicker({ library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", path: "/x/o.master" } } });
+    renderPicker({ library: { lolev: { name: "Lolev" }, other: { name: "Lolev", path: "/x/o.master" } } });
     openMenu();
     const row = [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent?.includes("o.master"))!;
-    expect(row.textContent).toContain("Other Brewery, o.master");
+    expect(row.textContent).toContain("Lolev, o.master");
   });
 
 });

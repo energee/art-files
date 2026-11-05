@@ -2,7 +2,7 @@
 // app and the Node harness share it: both decode the file themselves
 // (canvas / pngjs), call in here, then re-encode.
 import type { Fill } from "./types";
-import { parseHexFill } from "./layout";
+import { parseFill } from "./layout";
 
 /** Which raster kind a filename holds, by extension — the one classification
  *  rule shared by the app's file drops and the Node harness's CLI paths. */
@@ -34,7 +34,7 @@ export const mimeFor = (name: string): string =>
  *  (CollabSlot.tintRaster) rather than applied to every raster automatically.
  *  Mutates in place, like prepareMaskForPdf. */
 export function tintRgba(rgba: Uint8Array | Uint8ClampedArray, fill: Fill): void {
-  const { r, g, b } = parseHexFill(fill);
+  const { r, g, b } = parseFill(fill).rgb;
   const R = Math.round(r * 255);
   const G = Math.round(g * 255);
   const B = Math.round(b * 255);

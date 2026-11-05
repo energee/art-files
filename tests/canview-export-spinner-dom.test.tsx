@@ -12,7 +12,7 @@ import { measure } from "./fixtures";
 vi.mock("../src/three/canScene", () => ({
   CanScene: class {
     onZoomChange?: unknown;
-    setZoom() {} setPan() {} resize() {} dispose() {} setMode() {} setCurve() {} setLabelOptions() {} applyTextures() {}
+    setZoom() {} setPan() {} resize() {} dispose() {} setMode() {} setCurve() {} setLight() {} setLabelOptions() {} applyTextures() {}
   },
 }));
 // Never settles, so the view stays "loading" for the whole test.
@@ -22,7 +22,7 @@ vi.mock("../src/three/labelTextures", () => ({
 import { CanView } from "../src/components/CanView";
 
 const source: CanvasRenderSource = {
-  m: measure, planAssets: { logoSvg: "" }, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
+  m: measure, planAssets: {}, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
 };
 
 it("hides the can's rendering spinner while an export runs", async () => {
@@ -32,7 +32,7 @@ it("hides the can's rendering spinner while an export runs", async () => {
   const root = createRoot(container);
   const show = (exporting: boolean) => act(async () => {
     root.render(createElement(CanView, {
-      layers: [], source, bleedIn: 0.125, mode: "can", cornerRadiusPct: 0, edgeSoftnessPct: 0, curvePct: 0,
+      layers: [], source, bleedIn: 0.125, mode: "can", cornerRadiusPct: 0, edgeSoftnessPct: 0, curvePct: 0, lightDeg: 0,
       onRenderError: () => undefined, exporting,
     }));
   });

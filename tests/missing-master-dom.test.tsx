@@ -5,14 +5,14 @@
 // re-asking. Only a Cancel is reported to the shell as cancelled (#553),
 // which closes a tab made just for the open; a failed Locate keeps its
 // error on screen (an error toast), and so does a browser with no picker to
-// Locate with. A located master's own warnings name the located file.
+// Locate with. A located v1 master is refused, naming the release that
+// updates it.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
-import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import { mountToaster, settle, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 vi.mock("../src/masterCache", () => ({
@@ -115,18 +115,17 @@ it("Locate without a file picker says so instead of quietly asking again", async
   expect(r.cancelled).toBe(false);
 }, 30_000);
 
-// The located master is parsed like any Open Master: a v1 file converts, with
-// warnings, and the toast names that file, not the label being opened.
-it("a located master's warnings name the located file", async () => {
-  const old = lolevV1();
-  old.layers = [...old.layers, { id: "mystery", name: "?", enabled: true }];
-  old.defaults = { mystery: 1 } as never;
+// The located master is parsed like any Open Master: a v1 file is refused,
+// and the toast says which Label Lab release can still update it.
+it("a located v1 master is refused with the release that updates it", async () => {
+  const old = { formatVersion: 1, id: "master-gone", name: "Old" };
   const located = { getFile: async () => new File([JSON.stringify(old)], "located.master") };
   (window as unknown as { showOpenFilePicker: () => Promise<unknown[]> }).showOpenFilePicker = async () => [located];
   try {
     const r = await openOrphan("Locate");
-    expect(r.title).toBe("Orphan");
-    expect(r.toasts).toEqual(["Opened located.master with changes"]);
+    expect(r.title).not.toBe("Orphan");
+    expect(r.toasts).toEqual(["Could not open master: This master is from Label Lab 0.1.36 or earlier. Open it in Label Lab 0.1.116 and save it to update it."]);
+    expect(r.cancelled).toBe(false);
   } finally {
     delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
   }

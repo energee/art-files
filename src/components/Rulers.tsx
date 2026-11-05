@@ -7,12 +7,12 @@
 // session view state; the settings popover's margin inset is the exception —
 // it writes the master's guides, so it sits locked under a "Master" heading.
 import {
-  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
+  memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
 } from "react";
 import { useTranslation } from "@/i18n";
 import { ART, PAGE } from "@/layout";
 import {
-  clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
+  clampMargin, layoutGuides, pointToScreen, pointToUnit, RULER_SIZE, rulerTicks, screenToPoint,
   unitToPoint, VERTICAL_LABEL_GAP, withCornerClear,
   type GuideAxis, type ManualGuide, type LengthUnit,
 } from "@/rulers";
@@ -27,7 +27,6 @@ import {
 import { RulerUnitPicker } from "@/components/RulerUnitPicker";
 import { Lock, LockOpen } from "lucide-react";
 
-const RULER_SIZE = 20;
 /** The manual-guide × (px) — sits centred in the ruler's thickness. */
 const REMOVE_SIZE = 14;
 const MARGIN_STROKE = "stroke-cyan-500/70";
@@ -78,7 +77,6 @@ function RulerSettings(props: {
     <div className="flex flex-col gap-2.5">
       <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("x", PAGE.w / 2)}>{t("Add vertical guide")}</button>
       <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("y", PAGE.h / 2)}>{t("Add horizontal guide")}</button>
-      <Label className="text-xs text-muted-foreground">{t("Measurement")}</Label>
       <RulerUnitPicker unit={unit} onUnitChange={onUnitChange} />
       <div className="flex items-center justify-between">
         <Label className="text-xs text-muted-foreground">{t("Master")}</Label>
@@ -96,12 +94,13 @@ function RulerSettings(props: {
         value={Number(marginValue.toFixed(decimalsOf(MARGIN_STEP[unit])))}
         min={0} max={marginMax} step={MARGIN_STEP[unit]} disabled={marginLocked}
         onChange={(value) => onMarginChange(clampMargin(unitToPoint(value, 0, unit)))} />
-      <p className="text-[11px] text-muted-foreground">{t("Sets all four margins in the master. Use Save Master to keep it.")}</p>
     </div>
   );
 }
 
-export function Rulers(props: {
+/** Memoized, so typing in the inspector skips it (#605); App passes stable
+ *  callbacks. */
+export const Rulers = memo(function Rulers(props: {
   paneRef: RefObject<HTMLDivElement | null>;
   previewRef: RefObject<PreviewCompareHandle | null>;
   transform: { z: number; x: number; y: number };
@@ -122,6 +121,11 @@ export function Rulers(props: {
    *  the master's guides and the other manual guides. Identity when nothing
    *  is in range. */
   onSnapGuide?: (axis: GuideAxis, point: number, id?: number) => number;
+  /** Not read here: the ticks read PAGE, ART and OUTPUT_DPI, module state App
+   *  sets from these two settings while rendering. Props so the memo
+   *  re-renders when either changes. */
+  bleedIn: number;
+  dpi: number;
 }) {
   const { t } = useTranslation();
   const {
@@ -443,4 +447,4 @@ export function Rulers(props: {
       )}
     </div>
   );
-}
+});

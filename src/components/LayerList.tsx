@@ -22,7 +22,7 @@ import {
   Barcode, Eye, EyeOff, Image, Wallpaper, ListFilter, Lock, LockOpen, Plus,
   QrCode, Scan, Trash2, Type, type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
@@ -391,7 +391,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   );
 }
 
-export function LayerList(props: LayerListProps): React.JSX.Element {
+function LayerListView(props: LayerListProps): React.JSX.Element {
   const { t } = useTranslation();
   const { rows, selected, onReorder } = props;
   const [announcement, setAnnouncement] = useState("");
@@ -519,7 +519,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               <button
                 type="button"
                 data-add-layer aria-label={t("Add layer")}
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-attention-text hover:text-attention-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
                 <Plus className="size-3" /> {t("Add layer")}
               </button>
@@ -565,3 +565,23 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
     </SidebarGroup>
   );
 }
+
+/** The rows as the list draws them: everything but content (a text layer's
+ *  lines, a code's value). layerRows re-resolves every layer on each
+ *  keystroke, so typing hands the list all-new row objects whose only change
+ *  is content it never shows. */
+const shownRows = (rows: LayerRow[]) =>
+  JSON.stringify(rows, (key, value) => (key === "lines" || key === "value" ? undefined : value));
+const shownInvalid = (invalid?: ReadonlyMap<string, string>) => JSON.stringify(invalid ? [...invalid] : null);
+
+/** Re-renders only when something it draws changes, so typing in the
+ *  inspector skips it (#605). Callers pass stable callbacks: one that is new
+ *  every render re-renders the list as before. */
+export const LayerList = memo(LayerListView, (a, b) => {
+  const keys = Object.keys(a) as (keyof LayerListProps)[];
+  return keys.length === Object.keys(b).length && keys.every((k) => {
+    if (k === "rows") return shownRows(a.rows) === shownRows(b.rows);
+    if (k === "invalid") return shownInvalid(a.invalid) === shownInvalid(b.invalid);
+    return a[k] === b[k];
+  });
+});

@@ -10,7 +10,7 @@ import { parseDescription } from "../src/description";
 import { isDefaultStyle } from "./legacy/elements";
 import { defaultConfig } from "../src/defaults";
 import * as L from "./legacy/layout";
-import { assets, boxOfLayer, contentStreamText, measure, configPlan, configLayers, logoSvg } from "./fixtures";
+import { assets, boxOfLayer, contentStreamText, measure, configPlan, configLayers, planAssets } from "./fixtures";
 
 /** Show-text operators in a content stream. A stroked line draws bridge
  *  copies plus its Tr-2 stroke pass under the fill copy, so it emits more of
@@ -55,9 +55,9 @@ describe("hit boxes follow the tracked width", () => {
     // The default name is blank (the renderer draws a placeholder), so give
     // the box real text to measure — gaps below count ITS glyphs.
     cfg.beerName = "LABRADORITE";
-    const plain = boxOfLayer("name", configLayers(cfg), measure, { logoSvg })!;
+    const plain = boxOfLayer("name", configLayers(cfg), measure, planAssets)!;
     cfg.nameStyle.letterSpacing = 1.5;
-    const tracked = boxOfLayer("name", configLayers(cfg), measure, { logoSvg })!;
+    const tracked = boxOfLayer("name", configLayers(cfg), measure, planAssets)!;
     const gaps = cfg.beerName.length - 1;
     expect(tracked.w).toBeCloseTo(plain.w + 1.5 * gaps, 5);
     expect(tracked.x + tracked.w / 2).toBeCloseTo(L.NAME.cx, 5);

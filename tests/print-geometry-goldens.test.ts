@@ -22,13 +22,13 @@ import { layerBoxes, planLayers } from "../src/planLayers";
 import type { MeasureFace, PlacedBarcode } from "../src/plan";
 import type { BarcodeLayer, Layer, Symbology } from "../src/model/layers";
 import { buildPsd } from "../src/psd/build";
-import { flatLayers, lolevLayers, lolevPlan, logoSvg, psdAssets } from "./fixtures";
+import { flatLayers, lolevLayers, lolevPlan, planAssets, psdAssets } from "./fixtures";
 
 // Same deterministic fake metrics the other plan tests use: 0.5pt per char
 // per size unit, bold 10% wider.
 const m: MeasureFace = (text, size, face) =>
   text.length * size * 0.5 * (face === "regular" ? 1 : 1.1);
-const assets = { logoSvg };
+const assets = planAssets;
 
 const layerFor = (symbology: Symbology, value: string): BarcodeLayer => ({
   id: "bc1", name: "BC", kind: "barcode", enabled: true, x: 28.68, y: 28.68, anchor: "left",

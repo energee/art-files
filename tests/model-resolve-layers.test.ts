@@ -4,9 +4,9 @@
 // here (that needs measured heights); format refs in barcode/qr values
 // expand over the text layers' plain text.
 import { describe, expect, it } from "vitest";
-import { resolveLayers, valueOf, withStoredValue } from "../src/model/resolveLayers";
+import { exportBase, resolveLayers, valueOf, withStoredValue } from "../src/model/resolveLayers";
 import { uppercaseOf } from "../src/model/layers";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "../src/model/layers";
@@ -233,5 +233,24 @@ describe("withStoredValue", () => {
   it("leaves the layer alone for a value of the wrong shape", () => {
     const barcode = byId(lolevMaster().layers, "barcode");
     expect(withStoredValue(barcode, [line("x")])).toBe(barcode);
+  });
+});
+
+describe("exportBase (#618)", () => {
+  const named = (text: string): Layer[] => [{
+    kind: "text", id: "name", name: "Name", enabled: true, x: 0, y: 0, anchor: "left",
+    lines: [{ text, fill: "#000000", layer: "white" }], size: 10, align: "left",
+    style: { fill: "#000000", layer: "white" },
+  }];
+
+  it("cuts a long title's slug at the last word boundary within 40 characters", () => {
+    const long = "Labradorite Haze Double IPA with Citra and Mosaic Hops Brewed for the Long Winter Nights";
+    expect(exportBase(named(long))).toBe("labradorite-haze-double-ipa-with-citra");
+  });
+
+  it("keeps a short slug whole, hard-cuts one unbroken word, and falls back to label", () => {
+    expect(exportBase(named("Hop Drop"))).toBe("hop-drop");
+    expect(exportBase(named("x".repeat(60)))).toBe("x".repeat(40));
+    expect(exportBase(named(""))).toBe("label");
   });
 });

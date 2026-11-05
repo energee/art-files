@@ -4,6 +4,61 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
+- **Add layer is no longer pink.** The button matches the Changed filter next to it; the layer kinds in its menu stay pink, since adding one changes the master.
+
+## [0.1.118] - 2026-11-04
+
+### Changed
+- **Liquid Glass on macOS.** The Layers sidebar, tab strip, header, status bar and inspector now show the desktop through macOS glass (Liquid Glass on macOS 26 and later, the frosted sidebar look before). The preview stays solid, so the glass never tints your artwork. A theme picked under View → Appearance now sets the glass too.
+- **Rows and buttons no longer highlight as text.** Dragging across the Layers list, buttons or labels no longer selects their text. Text fields still select as before, and toast messages can still be copied.
+- **No divider lines in the inspector.** Sections (Typography, Position, Color, Stroke, Template field settings) are now grouped by their headings and spacing alone.
+
+## [0.1.117] - 2026-11-04
+
+### Added
+- **Turn the can's lighting.** A Lighting slider in the Can view's status bar turns the lights and reflections around the can, from -180° to 180°, so you can move the highlight to match a photo or proof. 0° is the old look, and the angle is remembered.
+- **CMYK colours.** Type `cmyk(15,25,70,5)` into any colour field to print exactly those CMYK percentages in the PDF. The preview and PSD show an RGB approximation, and saved swatches keep CMYK colours as CMYK.
+
+### Security
+- **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
+
+### Changed
+- **Colour-profile embedding is deferred.** PDF exports keep CMYK fills and White Ink but do not embed an output ICC profile or claim PDF/X-4 compliance. In Acrobat, enable Overprint Preview manually before reviewing the White Ink separation.
+- **Less explanatory text.** Removed helper lines that only repeated what the control next to them already shows: the notes under Language and Two-file export in Settings, under Margin inset, the template-field hints (Field label, Placeholder, Suffix), the link-slug note under a QR link (the preview line below it already shows the result), the "Page art always covers the full page" note, and the file-type hints in the drop zones. The Two-file export label now matches the other settings.
+- **Simpler prompts and panels.** The save prompts when closing a tab or quitting now say one line: "Your changes will be lost if you don't save them." The Master menu shows a file name and last-used date only when two masters share a name. The Characters per inch info button and the Measurement caption above the units picker are gone. On raster image art the Metallic button now stays visible but greyed out, and its tooltip says why, instead of a note below it.
+- **Masters from Label Lab 0.1.36 or earlier no longer open.** Opening one now says so and asks you to open it in Label Lab 0.1.116 and save it, which updates it to the current format. Labels from those versions still open.
+- **Generic link placeholders.** The QR link and value boxes now show `https://example.com/beer/` as their example instead of a brewery's own address.
+- **New tabs open on a neutral Starter master.** Label Lab no longer ships the Lolev design. A new tab or fresh install opens on **Starter**: name, style, ABV, volume, description and the government warning, with no logo or brand. Lolev is now an ordinary file, `masters/lolev.master`. Open it once (File → Open Master…) and the library remembers it; a Lolev label opened before that asks you to locate it.
+- **`npm run generate`:** the old texture/mask/config form now needs `--master <file>`.
+- **Faster start-up.** Label Lab now loads only the translations for the language you use, instead of all five, and opens straight in that language. A PDF or PSD export no longer loads every translation in the background either.
+- **Label fonts load once.** Each label font file is now read once and shared by the preview, the export and the character-height checks, instead of being read separately for each.
+- **Faster typing in the inspector.** Typing in a layer's Text field no longer redraws the Layers list, the rulers or the menu bar on every key, so about 30% fewer components redraw per key.
+- **The 3D can looks like bare aluminium.** The can's top and bottom are now bright brushed silver, matching a printed can, instead of a dark mirror that turned the shoulder near-black.
+- **New barcodes and QR codes start black with a white halo.** A newly added Barcode or QR layer is now black on white ink inside the white outline the Stroke switch already uses for codes, instead of metallic gold with a black outline. Scan a proof before printing.
+- **Shorter export file names.** The suggested PDF, PSD and project file name is cut at a word boundary within 40 characters of the beer name, instead of the whole name.
+- **Internal cleanup, no visible change.** The editor's view preferences, zoom and pan, and preview asset assembly moved out of the main editor file into three hooks; the app behaves exactly as before.
+
+### Fixed
+- **The 3D camera stays put after a gesture.** Changing artwork, lighting or the preview size no longer nudges the camera after you orbit or pan. Camera motion settles completely before the preview goes idle.
+- **No white box around transparent images.** A PNG with transparency (a partner logo, say) now gets White Ink only under its visible pixels in the print PDF, the print PSD and the two-file mask files, instead of under its whole rectangle. Semi-transparent edges get partial ink. JPEGs and fully opaque PNGs still print on white ink edge to edge.
+- **Translated labels for the new edge warning, colour hints and tab names.** Spanish, French, German and Portuguese showed some newly added messages in English, and an invalid colour in a `.master` showed an untranslated message.
+- **Empty fields no longer print their placeholder.** An empty fillable field (such as ABV, Style or Description) still shows its placeholder on screen, but exported PDFs and PSDs, and `npm run generate`, now leave it blank instead of printing "#% alc by vol" or "Style". Everything else stays where the preview puts it.
+- **Text that runs off the label is flagged.** A layer that runs past the label edge now gets a red dot in Layers and "Runs past the label edge" in its inspector. Export still works.
+- **Values put back to the master's lose their override mark.** Dragging a layer back where it started, or setting a field back to the master's value, now clears the "This label sets" mark and its reset dot.
+- **Tabs close from the keyboard with Delete.** With a tab focused in the tab strip, Delete or Backspace closes it (File → Close Tab and `⌘W` still work). The × is now a mouse target only, with a larger hit area, and a screen reader hears "(unsaved changes)" on the tab itself.
+- **Save Master… sits beside the Master picker.** It appears at the end of the picker's row instead of on a new line, so the Layers list no longer jumps down on the first master edit. The picker's menu no longer shows a "Current master" heading over the master at its top.
+
+- **Rulers no longer cover the label.** With the inspector open, the vertical ruler hid the label's left edge and the White Ink comparison handle. Fit now places the label inside the rulers, so the handle can be dragged.
+- **The label's edge is visible in the light theme.** The white label now has a darker outline against the light workspace. The dark theme is unchanged.
+
+- **Inspector fields stay in one column.** A field no longer jumps left when its reset dot appears, and every value, switch and button in the inspector now lines up on the same right edge, Minimum height and the Stroke switch included.
+- **Tidier Typography and Stroke sections.** The Stroke heading has the same full-width divider as the other sections, with its switch level with the heading. Characters per inch now looks like Tallest character above it, and Line spacing, Heading scale and Letter spacing lose the icons no other row had.
+- **Screen readers name the inspector and the text field.** The inspector is announced with the layer's name, and the rich text field is named by its visible caption.
+
 ## [0.1.116] - 2026-10-30
 
 ### Changed

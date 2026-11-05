@@ -17,7 +17,7 @@ const layer: TextLayer = {
   x: 100, y: 50, size: 10, style: GOLD, lines: [{ text: "AB", ...GOLD }],
 };
 const source: CanvasRenderSource = {
-  m: measure, planAssets: { logoSvg: "" }, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
+  m: measure, planAssets: {}, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
 };
 
 let container: HTMLDivElement;

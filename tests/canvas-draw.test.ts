@@ -10,7 +10,7 @@ import type { MeasureFace, PlacedBarcode } from "./legacy/planShared";
 import type { BarcodeLayer } from "../src/model/layers";
 import { MASK_BLUE_HEX, PAGE } from "./legacy/layout";
 import { labelFontCss } from "../src/fonts";
-import { logoSvg, lolevLayers, type LolevOpts } from "./fixtures";
+import { laurelCustom, lolevLayers, planAssets, type LolevOpts } from "./fixtures";
 
 // drawPlate requires the font family explicitly (no poppins default).
 const FONT = labelFontCss("poppins");
@@ -53,7 +53,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const plan = (opts: LolevOpts = {}): PlacedLayer[] =>
-  planLayers(lolevLayers(opts), m, { logoSvg, custom: opts.custom });
+  planLayers(lolevLayers(opts), m, { custom: { ...laurelCustom, ...opts.custom } });
 /** Both page layers bound to assets "tex" / "msk". */
 const withPages: LolevOpts = {
   overrides: { background: { asset: "tex" }, mask: { asset: "msk" } },
@@ -183,21 +183,27 @@ describe("drawPlate", () => {
     expect(rot!.args[0]).toBeCloseTo(-Math.PI / 2);
   });
 
-  it("paints a raster image rect blue in mask mode, the bitmap in art mode", () => {
+  it("paints a raster image's alpha blue in mask mode, the bitmap in art mode (#668)", () => {
+    const scratch = fakeCtx();
+    const scratchCanvas = { width: 0, height: 0, getContext: () => scratch.ctx };
+    vi.stubGlobal("document", { createElement: () => scratchCanvas });
+    const bmp = { width: 100, height: 100 } as unknown as CanvasImageSource;
     const p = plan({
       variants: ["collab"], overrides: { collabCenter: { asset: "c" } }, custom: { c: { aspect: 1 } },
     }).filter((r) => r.id === "collabCenter");
     expect(p).toHaveLength(1);
     const art = fakeCtx();
-    drawPlate(art.ctx, p, { images: { c: bitmap } }, "art", FONT);
+    drawPlate(art.ctx, p, { images: { c: bmp } }, "art", FONT);
     expect(art.log.filter((x) => x.op === "drawImage")).toHaveLength(1);
     const mask = fakeCtx();
-    drawPlate(mask.ctx, p, { images: { c: bitmap } }, "mask", FONT);
-    // Mask never draws the image itself: one blue footprint rect.
-    expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
+    drawPlate(mask.ctx, p, { images: { c: bmp } }, "mask", FONT);
+    // Mask draws the bitmap recolored mask blue (source-in keeps its alpha),
+    // so transparent pixels get no ink; never a solid footprint rect.
+    expect(scratch.log.find((x) => x.op === "set:globalCompositeOperation")!.args[0]).toBe("source-in");
+    expect(scratch.log.find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
     const items = afterTranslate(mask.log);
-    expect(items.filter((x) => x.op === "fillRect")).toHaveLength(1);
-    expect(items.find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
+    expect(items.some((x) => x.op === "fillRect")).toBe(false);
+    expect(items.filter((x) => x.op === "drawImage").map((x) => x.args[0])).toEqual([scratchCanvas]);
   });
 
   it("a tinted image is recolored at draw time: source-in on a scratch canvas, then drawn (#414)", () => {
@@ -222,11 +228,11 @@ describe("drawPlate", () => {
     const drawn = art.log.filter((x) => x.op === "drawImage");
     expect(drawn).toHaveLength(1);
     expect(drawn[0].args).toEqual([scratchCanvas, 10, 10, 20, 10]);
-    // Mask plate is unaffected: the same blue footprint as an untinted image.
+    // Mask plate ignores the tint: the same alpha in mask blue as an untinted image.
     const mask = fakeCtx();
     drawPlate(mask.ctx, [item], { images: { c: bmp } }, "mask", FONT);
-    expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
-    expect(afterTranslate(mask.log).find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
+    expect(scratch.log.filter((x) => x.op === "set:fillStyle").at(-1)!.args[0]).toBe(MASK_BLUE_HEX);
+    expect(afterTranslate(mask.log).filter((x) => x.op === "drawImage").map((x) => x.args[0])).toEqual([scratchCanvas]);
   });
 
   it("a tinted bitmap recolors once per fill: a repaint reuses the scratch, a new fill redraws it (#414)", () => {
@@ -297,7 +303,7 @@ describe("drawPlate", () => {
     const runs = planLayers([{
       id: "s", name: "S", kind: "text", enabled: true, x: 100, y: 200, anchor: "left", size: 10, align: "left",
       lines: [{ text: "IPA", fill: GOLD, layer: "metallic" }], style: { fill: GOLD, layer: "metallic", letterSpacing: 4 },
-    }], m, { logoSvg });
+    }], m, planAssets);
     expect(runs[0].kind === "text" && runs[0].tracking).toBe(4); // the fallback only engages on tracked runs
     const { ctx, log } = fakeCtx();
     drawUnsupported(ctx, runs, {}, "art", FONT);
@@ -346,7 +352,7 @@ describe("drawPlate", () => {
       id: "bc1", name: "BC", kind: "barcode", enabled: true, x: 28.68, y: 28.68, anchor: "left",
       symbology: "code-128", value: "LOLEV-123", h: 30, moduleW: 1, style: { fill: "#000000", layer: "white" },
     };
-    const [item] = planLayers([layer], m, { logoSvg }) as PlacedBarcode[];
+    const [item] = planLayers([layer], m, planAssets) as PlacedBarcode[];
     expect(item.rotated).toBe(false);
     expect(item.digits.length).toBeGreaterThan(0);
     const { ctx, log } = fakeCtx();
@@ -394,6 +400,7 @@ describe("canvas text is unkerned, like the PDF (#86)", () => {
       measureText: () => { seen.push(String(measureCtx.fontKerning)); return { width: 1 }; },
     };
     vi.stubGlobal("FontFace", class { load() { return Promise.resolve(this); } });
+    vi.stubGlobal("fetch", async () => new Response(new Uint8Array(1)));
     vi.stubGlobal("document", { fonts: { add() {} }, createElement: () => ({ getContext: () => measureCtx }) });
     const { loadLabelFaces } = await import("../src/fonts");
     (await loadLabelFaces("barlow-condensed"))("AVATAR", 10, "regular");

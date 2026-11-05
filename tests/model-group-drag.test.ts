@@ -17,7 +17,7 @@ const text = (l: Partial<TextLayer> & Pick<Layer, "id" | "x" | "y">): TextLayer 
   kind: "text", name: l.id, enabled: true, anchor: "left", lines: [line("ABCD")], size: 10,
   align: "left", style: GOLD_METAL, ...l,
 });
-const assets = { logoSvg: "<svg viewBox='0 0 1 1'></svg>", custom: {} };
+const assets = { custom: {} };
 const guides = { left: 0, center: 100, right: 200, top: 0, bottom: 400 };
 
 /** The whole selection dragged by (dx, dy), the way App's onDrag does it:

@@ -2,7 +2,7 @@ import { isMacOS } from "@/keys";
 // AppMenu.tsx — one File/Edit/Layer/View menu layout, rendered as shadcn chrome in
 // the browser and installed as the native application menu under Tauri. The
 // desktop menu also carries File → Open Recent, rebuilt from src/recent.ts.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation, t as translate } from "@/i18n";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
@@ -811,7 +811,9 @@ function useNativeMenu(
   }, [installed, menuShape, signature, resync]);
 }
 
-export function AppMenu(props: {
+/** Memoized, so typing in the inspector skips it (#605): App hands it actions
+ *  and check states that change only when a menu row would. */
+export const AppMenu = memo(function AppMenu(props: {
   actions: Command[];
   checked: CheckedState;
   /** Reports a native menu failure. `source` is "quit" for a failed Quit, a
@@ -852,4 +854,4 @@ export function AppMenu(props: {
     if (!commands[entry.id]) throw new Error(`Unknown menu command: ${entry.id}`);
   }
   return desktop ? null : <WebMenu commands={commands} checked={props.checked} menus={menus} />;
-}
+});

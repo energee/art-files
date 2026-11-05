@@ -2,7 +2,7 @@
 // mask polarity rules, and config JSON round-trip.
 import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
-import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
+import { qrPath, qrShapes, machineName } from "../src/qr";
 import { tintRgba } from "../src/collab";
 import {
   defaultConfig, displayAbv, exportBaseName, legacyCollabEnabled, parseConfigFile,
@@ -350,9 +350,6 @@ describe("derived QR payload", () => {
     expect(machineName("Ultra Juice")).toBe("ultra-juice");
     expect(machineName("  Käse & Bier!  ")).toBe("k-se-bier");
     expect(machineName("LABRADORITE")).toBe("labradorite");
-  });
-  it("builds the beer URL", () => {
-    expect(qrUrl("Ultra Juice")).toBe("https://lolev.beer/beer/ultra-juice");
   });
   it("defaults descStyle on pre-descStyle configs", () => {
     const legacy = ({ version: 1, ...defaultConfig() }) as unknown as Record<string, unknown>;

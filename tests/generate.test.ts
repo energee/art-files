@@ -1,5 +1,6 @@
 // generate.test.ts — headless CLI: argv, value coercion, inspect, and
 // master+values builds. Pure against scripts/generate-lib.ts; no process spawn.
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
@@ -10,7 +11,8 @@ import {
 import { PNG } from "pngjs";
 import { defaultConfig } from "../src/defaults";
 import { packLabel, packMaster } from "../src/model/files";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
+import { lolevAssets } from "./fixtures";
 
 /** A tiny solid-white PNG, enough to embed and tint. */
 const whitePng = (): Uint8Array => {
@@ -62,9 +64,18 @@ describe("parseGenerateArgs", () => {
   });
 
   it("legacy positional accepts --two-file", () => {
-    expect(parseGenerateArgs(["none", "none", "out", "cfg.json", "--collab-left=a.svg", "--two-file"]))
-      .toMatchObject({ mode: "legacy", texturePath: "none", maskPath: "none",
+    expect(parseGenerateArgs(["--master", "m.master", "none", "none", "out", "cfg.json", "--collab-left=a.svg", "--two-file"]))
+      .toMatchObject({ mode: "legacy", masterPath: "m.master", texturePath: "none", maskPath: "none",
         outDir: "out", configPath: "cfg.json", collabLeft: "a.svg", twoFile: true });
+  });
+
+  // The legacy form fills the old Lolev layer ids (background, mask, the
+  // collab slots), which the shipped Starter master partly lacks.
+  it("legacy positional needs --master", () => {
+    expect(() => parseGenerateArgs(["none", "none", "out"]))
+      .toThrow(/texture\/mask\/config form needs --master <file>/);
+    expect(() => parseGenerateArgs(["tex.png", "mask.png", "out", "cfg.json", "--collab-left=a.svg"]))
+      .toThrow(/needs --master/);
   });
 
   it("--two-file is unavailable with --inspect", () => {
@@ -189,7 +200,7 @@ describe("buildLabel", () => {
   it("writes one print PDF by default", async () => {
     const result = await buildLabel({
       master: lolevMaster(),
-      masterAssets: {},
+      masterAssets: lolevAssets(),
       values: labradorite(),
       enabledVariants: [],
       extraImages: {},
@@ -204,7 +215,7 @@ describe("buildLabel", () => {
   it("two-file build keeps the art and mask pair", async () => {
     const result = await buildLabel({
       master: lolevMaster(),
-      masterAssets: {},
+      masterAssets: lolevAssets(),
       values: labradorite(),
       enabledVariants: [],
       extraImages: {},
@@ -219,7 +230,7 @@ describe("buildLabel", () => {
   it("invalid UPC fails loudly", async () => {
     await expect(buildLabel({
       master: lolevMaster(),
-      masterAssets: {},
+      masterAssets: lolevAssets(),
       values: coerceValues(lolevMaster(), { name: "X", barcode: "123" }, []).values,
       enabledVariants: [],
       extraImages: {},
@@ -229,8 +240,13 @@ describe("buildLabel", () => {
   });
 });
 
+const lolevFile = new Uint8Array(readFileSync(join(import.meta.dirname, "..", "masters", "lolev.master")));
+
+/** A virtual filesystem holding /lolev.master (the real masters/ file).
+ *  `runLolev` runs the CLI on it, for the cases written against the Lolev
+ *  layers; `run` passes argv through as typed (no --master: Starter). */
 function memIo() {
-  const files = new Map<string, Uint8Array>();
+  const files = new Map<string, Uint8Array>([["/lolev.master", lolevFile]]);
   const stdout: string[] = [];
   const stderr: string[] = [];
   const text = (p: string) => {
@@ -240,7 +256,11 @@ function memIo() {
   };
   return {
     files, stdout, stderr,
-    run: (argv: string[], stdin?: string) => runGenerate({
+    runLolev: (argv: string[], stdin?: string) => run(["--master", "/lolev.master", ...argv], stdin),
+    run,
+  };
+  function run(argv: string[], stdin?: string) {
+    return runGenerate({
       argv, cwd: "/", readStdin: () => stdin ?? "",
       readFile: (p) => {
         const b = files.get(p);
@@ -254,14 +274,14 @@ function memIo() {
       stdout: (s) => stdout.push(s),
       stderr: (s) => stderr.push(s),
       assetRoot,
-    }),
-  };
+    });
+  }
 }
 
 describe("runGenerate", () => {
   it("inspect prints layer ids as JSON", async () => {
     const io = memIo();
-    expect(await io.run(["--inspect"])).toBe(0);
+    expect(await io.runLolev(["--inspect"])).toBe(0);
     expect(JSON.parse(io.stdout.join(""))).toMatchObject({ id: "lolev" });
     expect(JSON.parse(io.stdout.join("")).layers.map((l: { id: string }) => l.id)).toContain("name");
   });
@@ -273,7 +293,7 @@ describe("runGenerate", () => {
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify({ name: "Labradorite", barcode: "850051366224" })));
     const old = new Uint8Array([1]);
     io.files.set("/out/labradorite-mask.pdf", old);
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
     expect(io.stderr.join("")).toContain(
       "/out/labradorite-mask.pdf is from an older --two-file run; labradorite.pdf already includes the white ink, so don't send both.");
     expect(io.files.get("/out/labradorite-mask.pdf")).toBe(old);
@@ -283,7 +303,7 @@ describe("runGenerate", () => {
     const io = memIo();
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify({ name: "Labradorite", barcode: "850051366224" })));
     io.files.set("/out/labradorite-mask.pdf", new Uint8Array([1]));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(0);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(0);
     expect(io.stderr.join("")).not.toContain("older --two-file run");
   });
 
@@ -292,7 +312,7 @@ describe("runGenerate", () => {
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify({
       name: "Labradorite", barcode: "850051366224",
     })));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
     expect(io.files.has("/out/labradorite.pdf")).toBe(true);
     expect(io.files.has("/out/labradorite-mask.pdf")).toBe(false);
   });
@@ -300,36 +320,43 @@ describe("runGenerate", () => {
   it("--two-file generates the old PDF pair", async () => {
     const io = memIo();
     io.files.set("/v.json", json({ name: "Labradorite", barcode: "850051366224" }));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(0);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(0);
     expect(io.files.has("/out/labradorite.pdf")).toBe(true);
     expect(io.files.has("/out/labradorite-mask.pdf")).toBe(true);
   });
 
   it("unknown variant returns 1", async () => {
     const io = memIo();
-    expect(await io.run(["--variant", "nope", "--out", "/out"])).toBe(1);
+    expect(await io.runLolev(["--variant", "nope", "--out", "/out"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/nope/);
   });
 
   it("legacy none none out writes a print PDF and PSD pair", async () => {
     const io = memIo();
-    expect(await io.run(["none", "none", "/out"])).toBe(0);
+    expect(await io.runLolev(["none", "none", "/out"])).toBe(0);
     expect(io.files.has("/out/label.pdf")).toBe(true);
     expect(io.files.has("/out/label-mask.pdf")).toBe(false);
     expect(io.files.has("/out/label.psd")).toBe(true);
     expect(io.files.has("/out/label-mask.psd")).toBe(true);
   });
 
+  it("legacy without --master exits 2 with the usage", async () => {
+    const io = memIo();
+    expect(await io.run(["none", "none", "/out"])).toBe(2);
+    expect(io.stderr.join("")).toMatch(/needs --master <file>[\s\S]*usage:/);
+    expect([...io.files.keys()]).toEqual(["/lolev.master"]);
+  });
+
   it("legacy --two-file writes the old PDF pair", async () => {
     const io = memIo();
-    expect(await io.run(["none", "none", "/out", "--two-file"])).toBe(0);
+    expect(await io.runLolev(["none", "none", "/out", "--two-file"])).toBe(0);
     expect(io.files.has("/out/label.pdf")).toBe(true);
     expect(io.files.has("/out/label-mask.pdf")).toBe(true);
   });
 
   it("reads values from stdin when --values=-", async () => {
     const io = memIo();
-    expect(await io.run(
+    expect(await io.runLolev(
       ["--values=-", "--out", "/out", "--format", "pdf"],
       JSON.stringify({ name: "Labradorite", barcode: "850051366224" }),
     )).toBe(0);
@@ -338,7 +365,7 @@ describe("runGenerate", () => {
 
   it("unknown --asset layer returns 1", async () => {
     const io = memIo();
-    expect(await io.run(["--asset", "nope=./a.svg", "--out", "/out"])).toBe(1);
+    expect(await io.runLolev(["--asset", "nope=./a.svg", "--out", "/out"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/nope/);
   });
 
@@ -347,7 +374,7 @@ describe("runGenerate", () => {
     io.files.set("/x.label", packLabel({
       formatVersion: 3, masterId: "other", enabledVariants: [], values: {},
     }, {}));
-    expect(await io.run(["--label", "/x.label", "--out", "/out"])).toBe(1);
+    expect(await io.runLolev(["--label", "/x.label", "--out", "/out"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/masterId/);
   });
 
@@ -360,7 +387,7 @@ describe("runGenerate", () => {
   it("--set overlays every job's values", async () => {
     const io = memIo();
     io.files.set("/v.json", json([{ name: "A" }, { name: "B", abv: "5" }]));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf",
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf",
       "--set", "name=Forced"])).toBe(1);
     // Both jobs collapse onto the same forced name: the overlay applied to each.
     expect(io.stderr.join("")).toMatch(/duplicate output file "forced\.pdf"/);
@@ -373,7 +400,7 @@ describe("runGenerate", () => {
     io.files.set("/x.label", packLabel({
       formatVersion: 3, masterId: lab.id, enabledVariants: [], values,
     }, { texture: { name: "t.png", bytes: whitePng() } }));
-    expect(await io.run(["--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect(await io.runLolev(["--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(0);
     expect(io.files.has("/out/saved-name.pdf")).toBe(true);
   });
 
@@ -385,7 +412,7 @@ describe("runGenerate", () => {
       formatVersion: 3, masterId: lab.id, enabledVariants: [], values,
     }, {}));
     io.files.set("/left.png", whitePng());
-    expect(await io.run([
+    expect(await io.runLolev([
       "--label", "/x.label", "--out", "/out", "--format", "pdf",
       "--variant", "collab", "--asset", "collabLeft=/left.png",
     ])).toBe(0);
@@ -397,12 +424,12 @@ describe("runGenerate", () => {
     io.files.set("/tex.png", whitePng());
     io.files.set("/mask.png", whitePng());
     io.files.set("/v.json", json({ name: "Art", barcode: "850051366224" }));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf",
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf",
       "--asset", "background=/tex.png", "--asset", "mask=/mask.png"])).toBe(0);
     const withArt = io.files.get("/out/art.pdf")!.length;
     const bare = memIo();
     bare.files.set("/v.json", json({ name: "Art", barcode: "850051366224" }));
-    await bare.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"]);
+    await bare.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf"]);
     expect(withArt).toBeGreaterThan(bare.files.get("/out/art.pdf")!.length);
   });
 
@@ -410,7 +437,7 @@ describe("runGenerate", () => {
     const io = memIo();
     const m = lolevMaster();
     const noRole = { ...m, id: "norole", layers: m.layers.filter((l) => l.kind !== "image" || !l.role) };
-    io.files.set("/norole.master", packMaster(noRole, {}));
+    io.files.set("/norole.master", packMaster(noRole, lolevAssets()));
     io.files.set("/tex.png", whitePng());
     expect(await io.run(["/norole.master", "--out", "/out", "--asset", "background=/tex.png"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/no background layer/);
@@ -422,7 +449,7 @@ describe("runGenerate", () => {
       { values: { name: "First", barcode: "850051366224" } },
       { values: { name: "Second" }, files: { collabLeft: "/missing.png" }, variants: ["collab"] },
     ]));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(1);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/missing\.png/);
     expect([...io.files.keys()].filter((k) => k.startsWith("/out/"))).toEqual([]);
   });
@@ -430,7 +457,7 @@ describe("runGenerate", () => {
   it("a mistyped override names the layer and field", async () => {
     const io = memIo();
     io.files.set("/v.json", json({ values: { name: "X" }, overrides: { name: { size: "big" } } }));
-    expect(await io.run(["--values", "/v.json", "--out", "/out"])).toBe(1);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/name\.size: expected number, got string/);
   });
 
@@ -438,28 +465,28 @@ describe("runGenerate", () => {
     const io = memIo();
     io.files.set("/cfg.json", json({ version: 1, ...defaultConfig(), beerName: "Old Way" }));
     io.files.set("/left.png", whitePng());
-    expect(await io.run(["none", "none", "/out", "/cfg.json", "--collab-left=/left.png"])).toBe(0);
+    expect(await io.runLolev(["none", "none", "/out", "/cfg.json", "--collab-left=/left.png"])).toBe(0);
     expect(io.files.has("/out/old-way.pdf")).toBe(true);
   });
 
   it("--check validates every job, prints problems, writes nothing", async () => {
     const io = memIo();
     io.files.set("/ok.json", json([{ name: "A", barcode: "850051366224" }, { name: "B" }]));
-    expect(await io.run(["--values", "/ok.json", "--out", "/out", "--check", "--two-file"])).toBe(0);
-    expect([...io.files.keys()]).toEqual(["/ok.json"]);
+    expect(await io.runLolev(["--values", "/ok.json", "--out", "/out", "--check", "--two-file"])).toBe(0);
+    expect([...io.files.keys()]).toEqual(["/lolev.master", "/ok.json"]);
     expect(io.stdout.join("")).toMatch(/2 jobs? OK/);
 
     io.files.set("/bad.json", json([{ name: "A", barcode: "123" }, { nope: "x" }]));
-    expect(await io.run(["--values", "/bad.json", "--out", "/out", "--check"])).toBe(1);
+    expect(await io.runLolev(["--values", "/bad.json", "--out", "/out", "--check"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/barcode/i);
     expect(io.stderr.join("")).toMatch(/nope/);
-    expect([...io.files.keys()]).toEqual(["/ok.json", "/bad.json"]);
+    expect([...io.files.keys()]).toEqual(["/lolev.master", "/ok.json", "/bad.json"]);
   });
 
   it("--format all writes one print PDF and the PSD pair", async () => {
     const io = memIo();
     io.files.set("/v.json", json({ name: "All", barcode: "850051366224" }));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "all"])).toBe(0);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "all"])).toBe(0);
     expect([...io.files.keys()].filter((p) => p.startsWith("/out/")).sort()).toEqual([
       "/out/all-mask.psd", "/out/all.pdf", "/out/all.psd",
     ]);
@@ -486,9 +513,9 @@ describe("runGenerate", () => {
   it("--check reports characters the label font cannot print", async () => {
     const io = memIo();
     io.files.set("/v.json", json({ name: "Ale → 🍺" }));
-    expect(await io.run(["--values", "/v.json", "--check"])).toBe(1);
+    expect(await io.runLolev(["--values", "/v.json", "--check"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/name: .*U\+2192.*U\+1F37A/);
-    expect(io.files.size).toBe(1);
+    expect(io.files.size).toBe(2); // /lolev.master and /v.json: nothing written
   });
 
   it("allows a batch whose old mask-derived names do not collide by default", async () => {
@@ -496,7 +523,7 @@ describe("runGenerate", () => {
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify([
       { name: "Night" }, { name: "Night Mask" },
     ])));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
   });
 
   it("rejects a two-file batch whose files would overwrite (night vs night-mask)", async () => {
@@ -504,7 +531,7 @@ describe("runGenerate", () => {
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify([
       { name: "Night" }, { name: "Night Mask" },
     ])));
-    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(1);
+    expect(await io.runLolev(["--values", "/v.json", "--out", "/out", "--format", "pdf", "--two-file"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/night-mask\.pdf/);
   });
 });
@@ -512,7 +539,7 @@ describe("runGenerate", () => {
 describe("buildLabel explicit default font (#90)", () => {
   const build = (overrides?: Record<string, { fontFamily: "poppins" }>) => buildLabel({
     master: lolevMaster(),
-    masterAssets: {},
+    masterAssets: lolevAssets(),
     values: labradorite(),
     enabledVariants: [],
     overrides,
@@ -537,7 +564,7 @@ describe("buildLabel SVG aspect (#91)", () => {
     if (h === undefined) delete slot.h; else slot.h = h;
     return buildLabel({
       master,
-      masterAssets: {},
+      masterAssets: lolevAssets(),
       values: coerceValues(master, { name: "T", barcode: "850051366224" }, ["collab"]).values,
       enabledVariants: ["collab"],
       extraImages: { collabLeft: { name: "tall.svg", bytes: tall } },
@@ -554,7 +581,7 @@ describe("buildLabel SVG aspect (#91)", () => {
 describe("buildLabel tint", () => {
   const build = (tint: boolean) => buildLabel({
     master: lolevMaster(),
-    masterAssets: {},
+    masterAssets: lolevAssets(),
     values: coerceValues(lolevMaster(), { name: "T", barcode: "850051366224" }, ["collab"]).values,
     enabledVariants: ["collab"],
     overrides: { collabLeft: { tintRaster: tint } },
@@ -573,7 +600,7 @@ describe("buildLabel missing art", () => {
   it("throws when an image value names an asset that was not loaded", async () => {
     await expect(buildLabel({
       master: lolevMaster(),
-      masterAssets: {},
+      masterAssets: lolevAssets(),
       values: coerceValues(lolevMaster(), { collabLeft: "missing" }, ["collab"]).values,
       enabledVariants: ["collab"],
       extraImages: {},
@@ -588,7 +615,7 @@ it("CLI accepts optional null clears and dormant saved values, but rejects requi
   const master = lolevMaster();
   const description = master.layers.find((l) => l.id === "description")!;
   Object.assign(description, { width: 100 });
-  io.files.set("/m.master", packMaster(master, {}));
+  io.files.set("/m.master", packMaster(master, lolevAssets()));
   const label = { formatVersion: 3 as const, masterId: master.id, enabledVariants: [],
     values: { collabLead: "Hidden" }, overrides: { description: { width: null }, collabLeft: { x: 50 } } };
   io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
@@ -602,20 +629,20 @@ it("CLI accepts optional null clears and dormant saved values, but rejects requi
 it("CLI names unsupported WebP assets instead of sending them to the PNG decoder (#272)", async () => {
   const io = memIo();
   io.files.set("/texture.webp", new Uint8Array([1, 2, 3]));
-  expect(await io.run(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.webp"])).toBe(1);
+  expect(await io.runLolev(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.webp"])).toBe(1);
   expect(io.stderr.join("")).toContain("texture.webp: WEBP is not supported");
 });
 // Every type the CLI can't embed is named as itself, not only WebP.
 it("CLI names any unsupported image type instead of sending it to the PNG decoder", async () => {
   const io = memIo();
   io.files.set("/texture.gif", new Uint8Array([1, 2, 3]));
-  expect(await io.run(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.gif"])).toBe(1);
+  expect(await io.runLolev(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.gif"])).toBe(1);
   expect(io.stderr.join("")).toContain("texture.gif: GIF is not supported by the CLI");
 });
 it("CLI prints a label's own legacy custom layer instead of skipping it as dormant", async () => {
   const io = memIo();
   const master = lolevMaster();
-  io.files.set("/m.master", packMaster(master, {}));
+  io.files.set("/m.master", packMaster(master, lolevAssets()));
   const stamp = { ...structuredClone(master.layers.find((l) => l.id === "name")!), id: "custom-z", name: "Stamp",
     lines: [{ text: "STAMPZ", fill: "#F3CD80", layer: "metallic" }], y: 100 };
   const label = { formatVersion: 3 as const, masterId: master.id, enabledVariants: [],
@@ -636,7 +663,7 @@ it("CLI validates a label override against the layer its enabled variants produc
   Object.assign(master.layers.find((l) => l.id === "styleLine")!, { guideY: "bottom" });
   master.variants.push({ id: "alt", name: "Alt",
     layers: { styleLine: { guideY: "none", binding: { to: "name", side: "bottom", gap: 4 } } } } as never);
-  io.files.set("/m.master", packMaster(master, {}));
+  io.files.set("/m.master", packMaster(master, lolevAssets()));
   const label = { formatVersion: 3 as const, masterId: master.id, enabledVariants: ["alt"],
     values: {}, overrides: { styleLine: { binding: { gap: 6 } } } };
   io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));

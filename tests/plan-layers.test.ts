@@ -14,7 +14,8 @@ import type {
 } from "../src/model/layers";
 import { qrPath, qrShapes } from "../src/qr";
 import { defaultConfig } from "../src/defaults";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
+import { packMaster, unpackMaster } from "../src/model/files";
 import { resolveLayers } from "../src/model/resolveLayers";
 import * as L from "./legacy/layout";
 
@@ -32,9 +33,10 @@ const text = (l: Partial<TextLayer> & Pick<Layer, "id" | "x" | "y">): TextLayer 
 const image = (l: Partial<ImageLayer> & Pick<Layer, "id" | "x" | "y"> & Pick<ImageLayer, "asset" | "w">): ImageLayer => ({
   kind: "image", name: l.id, enabled: true, anchor: "left", style: GOLD_METAL, ...l,
 });
-// A tiny valid logo SVG: one triangle, the laurel's viewBox aspect.
+// A tiny valid logo SVG: one triangle, the laurel's viewBox aspect, loaded
+// as an ordinary SVG image asset (there is no built-in logo any more).
 const LOGO_SVG = '<svg viewBox="0 0 480 525"><path d="M0 0 L480 0 L240 525 Z"/></svg>';
-const assets = { logoSvg: LOGO_SVG };
+const assets = { custom: { logo: { aspect: 480 / 525, art: { kind: "svg" as const, svg: LOGO_SVG } } } };
 const texts = (items: readonly unknown[], id: string) =>
   (items as PlacedText[]).filter((r) => r.kind === "text" && r.id === id);
 
@@ -116,6 +118,18 @@ describe("planLayers text", () => {
     expect(texts(planLayers([{ ...name, lines: [line("hazy")] }], m, assets), "name")[0].text).toBe("HAZY");
   });
 
+  it("an output plan leaves an empty fillable field blank but keeps its box (#604)", () => {
+    const abv = text({ id: "abv", x: 0, y: 0, lines: [line("")], placeholder: "#", suffix: "% alc by vol", input: "number" });
+    const below = text({ id: "b", x: 0, y: { below: "abv", gap: 2 }, lines: [line("B")] });
+    const preview = planLayerScene([abv, below], m, assets);
+    const output = planLayerScene([abv, below], m, assets, { output: true });
+    expect(texts(preview.items, "abv").map((r) => r.text).join("")).toBe("#% alc by vol");
+    expect(texts(output.items, "abv")).toEqual([]);
+    expect(output.boxes).toEqual(preview.boxes);
+    const filled = { ...abv, lines: [line("6.5")] };
+    expect(texts(planLayers([filled], m, assets, { output: true }), "abv").map((r) => r.text).join("")).toBe("6.5% alc by vol");
+  });
+
   it("wraps a line longer than width at spaces, greedy like wrapWarning", () => {
     const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 30, lines: [line("aa bb cc")] })], m, assets) as PlacedText[];
     expect(runs.map((r) => [r.text, r.y])).toEqual([["aa bb", ASC * 10], ["cc", ASC * 10 + 12]]);
@@ -189,11 +203,24 @@ describe("planLayers text: multi-word markup across wrap/justify", () => {
 });
 
 describe("planLayers image", () => {
-  it("draws builtin:logo as the laurel paths sized by w, centered on a center anchor", () => {
-    const [item] = planLayers([image({ id: "logo", asset: "builtin:logo", w: 33.5, x: 100, anchor: "center", y: 50, style: { ...GOLD_METAL, stroke: "#000000" } })], m, assets) as PlacedPaths[];
+  it("draws an SVG image asset as paths sized by w, centered on a center anchor", () => {
+    const [item] = planLayers([image({ id: "logo", asset: "logo", w: 33.5, x: 100, anchor: "center", y: 50, style: { ...GOLD_METAL, stroke: "#000000" } })], m, assets) as PlacedPaths[];
     expect(item).toMatchObject({ kind: "paths", id: "logo", x: 100 - 16.75, y: 50, fill: GOLD_METAL.fill });
     expect(item.stroke?.w).toBeCloseTo(15 * L.PX);
     expect(item.paths.length).toBeGreaterThan(0);
+  });
+
+  // The app used to bundle the Lolev laurel as `builtin:logo`. A .master or
+  // .label still naming it is an image whose asset is missing: it opens and
+  // draws nothing (an empty box), like any asset that has not loaded.
+  it("a leftover builtin:logo layer from an old .master draws nothing", () => {
+    const base = lolevMaster();
+    const old = { ...base, layers: base.layers.map((l) => l.id === "logo" ? { ...l, asset: "builtin:logo" } : l) };
+    const { master } = unpackMaster(packMaster(old, {}));
+    const logo = master.layers.find((l) => l.id === "logo") as ImageLayer;
+    expect(logo.asset).toBe("builtin:logo");
+    expect(planLayers([logo], m, { custom: {} })).toEqual([]);
+    expect(layerBoxes([logo], m, {}).get("logo")).toMatchObject({ w: 0, h: 0 });
   });
 
   it("contain-fits a raster asset into w x h, carrying the asset key", () => {
@@ -376,7 +403,7 @@ describe("planLayers order and binding", () => {
   it("emits items in array order and moves a bound layer when the layer above grows", () => {
     const desc = (n: number) => text({ id: "d", x: 0, y: 0, size: 9, lines: Array.from({ length: n }, (_, i) => line(`l${i}`)) });
     const lead = text({ id: "lead", x: 0, y: { below: "d", gap: 9 }, size: 9, lines: [line("A")] });
-    const logo = image({ id: "logo", asset: "builtin:logo", w: 33.5, x: 100, y: 50 });
+    const logo = image({ id: "logo", asset: "logo", w: 33.5, x: 100, y: 50 });
     const two = planLayers([logo, desc(2), lead], m, assets);
     expect(two.map((r) => r.id)).toEqual(["logo", "d", "d", "lead"]);
     const five = planLayers([logo, desc(5), lead], m, assets);

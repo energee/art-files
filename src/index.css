@@ -27,6 +27,9 @@
    full screen (no traffic lights there); src/titlebar.ts sets the attributes. */
 @custom-variant titlebar (:root[data-titlebar="overlay"]:not([data-fullscreen]) &);
 
+/* The app chrome's heading face (h1-h3 via --font-heading), fetched only when
+   a heading renders. Label text never uses it: label families load through
+   src/fonts.ts under their own LabelFont-* names. */
 @font-face {
   font-family: "Poppins";
   src: url("./assets/fonts/Poppins-SemiBold.ttf") format("truetype");
@@ -47,6 +50,10 @@
   /* Structural rules (separators, panel edges): deliberately quiet, warm-grey
      bias (cool in dark) to match the neutrals above. */
   --border: light-dark(#ddd8cc, #383a46);
+  /* The label sheet's edge. In light the white plate sits on a near-white
+     workspace, so --border (1.4:1) all but loses the die edge; this mix holds
+     3:1 against both. Dark already separates by fill and keeps --border. */
+  --plate-edge: light-dark(color-mix(in oklab, var(--muted-foreground) 65%, var(--border)), var(--border));
   /* Field edges — barely there. The border does not carry the affordance at
      all: the fill rule below separates a field from the panel, so the
      outline only has to close its shape. */
@@ -134,6 +141,7 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-plate-edge: var(--plate-edge);
   --color-input: var(--input);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
@@ -187,6 +195,15 @@
    border-r) would paint in the text color instead of the theme border. */
 @layer base {
   * { @apply border-border; }
+  /* A desktop app: clicking or dragging over rows, buttons and labels never
+     highlights them as text. Only what you type into selects, plus toasts so
+     an error message or path can be copied. Inputs need the explicit `text`:
+     WebKit will not let you type into a field under user-select: none. */
+  body { -webkit-user-select: none; user-select: none; }
+  input, textarea, [contenteditable="true"], [data-sonner-toast] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 /* Every editable field gets the same fill (see --field). The components set
@@ -223,6 +240,33 @@ input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   appearance: none;
   margin: 0;
+}
+
+/* Liquid Glass, macOS desktop only (src/titlebar.ts sets data-glass). macOS
+   paints glass behind the transparent window (tauri.conf.json windowEffects;
+   sidebar vibrancy before macOS 26). The chrome (Layers sidebar, header, tab
+   strip, status bar, inspector) fills with --sidebar: clear in light, since
+   the glass carries its own tint, and 40% --card in dark, where glass over a
+   bright window stays too light for muted text. The glass takes on whatever
+   is behind it, so muted text and rules are translucent black (white in dark),
+   as macOS's own label colours are. The preview pane stays solid
+   (bg-background, App.tsx) so the glass never tints the artwork. Unlayered,
+   like the field rule above, to beat the bg utilities. */
+:root[data-glass] {
+  --sidebar: light-dark(transparent, color-mix(in oklab, var(--card) 40%, transparent));
+  --muted-foreground: light-dark(rgb(0 0 0 / 0.62), rgb(255 255 255 / 0.7));
+  --border: light-dark(rgb(0 0 0 / 0.16), rgb(255 255 255 / 0.18));
+}
+:root[data-glass] body,
+:root[data-glass] [data-slot="sidebar-inset"] {
+  background-color: transparent;
+}
+/* The inspector floats over the editor rather than beside it, so the tab
+   strip's and status bar's rules run on underneath it. Blurring what is
+   below the sheet hides them; the window's glass behind still shows. */
+:root[data-glass] [data-slot="sheet-content"] {
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
 }
 
 html { font-size: 13px; }

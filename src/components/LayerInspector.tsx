@@ -137,6 +137,7 @@ export function LayerInspector(props: {
       <div className="flex items-center gap-2">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <Input
+          // Also names the inspector dialog (App.tsx, #616).
           id={`${layer.id}-name`}
           aria-label={t("Layer name")}
           aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
@@ -218,15 +219,12 @@ export function LayerInspector(props: {
           carries no Style stack. */}
       {!page && <StyleSection layer={layer} rasterArt={props.rasterArt} {...ctx} />}
       {(layer.kind === "text" || layer.kind === "barcode") && (
-        <details className="mt-4 border-t border-border pt-3">
+        <details className="mt-7">
           <summary className="cursor-pointer rounded py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {t("Template field settings")}
           </summary>
           <div className="space-y-3 pt-2">
-            {layer.kind === "text" ? <FillContract layer={layer} {...ctx} /> : <>
-              <p className="text-xs text-muted-foreground">{t("Set the field label and saved choices in the master.")}</p>
-              <Vocabulary layer={layer} {...ctx} />
-            </>}
+            {layer.kind === "text" ? <FillContract layer={layer} {...ctx} /> : <Vocabulary layer={layer} {...ctx} />}
           </div>
         </details>
       )}

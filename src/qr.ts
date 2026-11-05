@@ -9,10 +9,6 @@ export function machineName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-export function qrUrl(beerName: string): string {
-  return `https://lolev.beer/beer/${machineName(beerName)}`;
-}
-
 /** Error correction for a QR layer that doesn't set one: what qrShapes
  *  encodes at and what the inspector shows. The shipped dots master sets Q
  *  explicitly (#542); a new layer is square style, which scans at L. */

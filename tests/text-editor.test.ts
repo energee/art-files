@@ -12,7 +12,7 @@ import { GOLD } from "../src/layout";
 const base = { fill: GOLD, layer: "metallic" } as const;
 const whiteBase = { fill: "none", layer: "white" } as const;
 
-/** Lines shaped exactly as model/lolevLayers.ts authors them: the block's
+/** Lines shaped exactly as tests/fixtures/lolevMaster.ts authors them: the block's
  *  style spread onto each line, `bold`/`header` present only when true. */
 const block: TextLine[] = [
   { text: "HOPS", ...base, bold: true, header: true },

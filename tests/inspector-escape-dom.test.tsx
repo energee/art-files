@@ -2,13 +2,17 @@
 // Escape that an input already owns (cancel a draft, close suggestions, end an
 // on-canvas edit or drag) must not also close the inspector and clear the
 // selection; a bare Escape with nothing editable focused still closes it, and
-// so does the inspector's visible close button.
+// so does the inspector's visible close button. Also: the dialog is named by
+// the layer-name box (#616).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 
+// Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
+// so the shipped master is swapped for the Lolev fixture here.
+vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
 vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
@@ -164,4 +168,11 @@ it("closing from the close button by keyboard returns focus to where the layer w
   await act(async () => { await Promise.resolve(); });
   expect(field()).toBeNull();
   expect(document.activeElement).toBe(rowButton());
+});
+
+// #616: the inspector is a dialog, and it is named by the layer-name box.
+it("names the inspector dialog by the layer name", () => {
+  const dialog = document.querySelector('[role="dialog"]')!;
+  const by = document.getElementById(dialog.getAttribute("aria-labelledby") ?? "");
+  expect(by).toBe(document.querySelector("#barcode-name"));
 });

@@ -52,7 +52,6 @@ export function Vocabulary(props: Ctx & { layer: Layer }) {
       <Row badge={badge(["title"], t("Title"))}>
         <InputRow
           id={`${id}-title`} label={t("Field label")} value={layer.title ?? ""}
-          hint={t("Caption above the fill field")}
           onChange={(v) => set({ title: v || undefined })}
         />
       </Row>
@@ -116,10 +115,8 @@ export function FillContract(props: Ctx & { layer: TextLayer }) {
   const numeric = layer.input === "number";
   return (
     <div className="space-y-1.5">
-      <p className="text-xs text-muted-foreground">{t("Set up this field for labels that use this master.")}</p>
       <Row badge={badge(["placeholder"], t("Placeholder"))}>
-        <InputRow id={`${id}-placeholder`} label={t("Placeholder")} value={layer.placeholder ?? ""}
-          hint={t("Drawn while the layer is empty")} onChange={(v) => set({ placeholder: v || undefined })} />
+        <InputRow id={`${id}-placeholder`} label={t("Placeholder")} value={layer.placeholder ?? ""} onChange={(v) => set({ placeholder: v || undefined })} />
       </Row>
       <SelectField id={`${id}-input`} label={t("Input")} ariaLabel={t("Input")} badge={badge(["input"], t("Input"))}
         items={inputs} value={layer.input ?? "text"} onChange={(v) => set({ input: v === "text" ? undefined : v as TextLayer["input"] })} />
@@ -140,8 +137,7 @@ export function FillContract(props: Ctx & { layer: TextLayer }) {
       <Vocabulary layer={layer} set={set} badge={badge} unit={props.unit} />
       {layer.input !== undefined && (
         <Row badge={badge(["suffix"], t("Suffix"))}>
-          <InputRow id={`${id}-suffix`} label={t("Suffix")} value={layer.suffix ?? ""}
-            hint={t("Drawn after the filled value")} onChange={(v) => set({ suffix: v || undefined })} />
+          <InputRow id={`${id}-suffix`} label={t("Suffix")} value={layer.suffix ?? ""} onChange={(v) => set({ suffix: v || undefined })} />
         </Row>
       )}
     </div>

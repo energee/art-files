@@ -7,9 +7,11 @@
 import type { FontFamilyId } from "./fontCatalog";
 import type { LayerPosition } from "./model/position";
 
-/** Fill color drawn in the art PDF: a "#rrggbb" hex string, or "none"
- *  meaning no ink (draws white; stock/white ink shows through). */
-export type Fill = `#${string}` | "none";
+/** Fill color drawn in the art PDF: a "#rrggbb" hex string, a
+ *  "cmyk(c,m,y,k)" of 0-100 percentages written exactly as DeviceCMYK (the
+ *  screen and PSD show an RGB approximation; see layout.ts parseFill), or
+ *  "none" meaning no ink (draws white; stock/white ink shows through). */
+export type Fill = `#${string}` | `cmyk(${string})` | "none";
 
 /** White-ink layer assignment: "metallic" knocks the glyphs out of the white
  *  layer (silver stock shows through); "white" paints white ink under them. */
@@ -59,7 +61,7 @@ interface Positioned {
    *  collab-only one: it ships absent (= 0), it is whatever the master or the
    *  label has authored, and no variant overrides it (the Collab variant
    *  deliberately declares no `logo` override, so a master-level nudge is not
-   *  stomped when Collab is enabled — see model/lolevLayers.ts). */
+   *  stomped when Collab is enabled — see masters/lolev.master). */
   offsetY?: number;
   /** Freezes the element in place: dragTarget/dragTarget2 return null while
    *  set, same as a locked custom layer (see CustomLayerBase.locked).
@@ -112,7 +114,7 @@ export interface LabelConfig {
   /** 12-digit UPC-A. */
   upc: string;
   /** Collab labels. There is no master switch here any more: "Collab" is an
-   *  ordinary master VARIANT (see model/lolevLayers.ts), and with it off the
+   *  ordinary master VARIANT (see masters/lolev.master), and with it off the
    *  resolver puts `collabLead` / `collabLeft` / `collabCenter` in its
    *  disabled-layer set, which is what stops them drawing. With it on, each
    *  slot draws only once its art is supplied in Assets: `collabLeft` flows
@@ -139,8 +141,8 @@ export interface LabelConfig {
   barcodeStrokeWidth?: number;
   barcodeLayer: Layer;
   barcodeStrokeLayer: Layer;
-  /** QR payload is derived: https://lolev.beer/beer/<machineName(beerName)>.
-   *  Fill is free hex; qrStroke "none" = no stroke, else modules get an
+  /** QR payload is derived from the beer name (machineName) by the master's
+   *  QR layer. Fill is free hex; qrStroke "none" = no stroke, else modules get an
    *  outer stroke in that color, qrStrokeWidth px @600dpi wide. Its plate is
    *  independent of qrLayer and defaults to white/non-metallic. */
   qrFill: Fill;

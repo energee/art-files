@@ -36,23 +36,8 @@ it("edits the minimum through point size, updates the maximum and handles empty 
     // #12: the mm/pt toggle does not convert this field, and its addon says so.
     expect(input.closest("[data-slot=input-group]")!.querySelector("[title]")?.getAttribute("title"))
       .toBe("Character height is always millimetres");
-    // #23: the explanation sits behind an info button that describes itself,
-    // not as two always-visible paragraphs.
-    const info = container.querySelector('[aria-label="About character height"]')!;
-    const described = document.getElementById(info.getAttribute("aria-describedby")!)!;
-    expect(described.textContent).toContain("Highest line average, estimated.");
-    expect(described.textContent).toContain("Letters and numbers at print size, excluding outlines.");
-    expect(described.className).toContain("sr-only");
-    // One accessible source: the visible tooltip copy is hidden from AT.
-    await act(async () => {
-      for (const type of ["pointerenter", "mouseenter", "mousemove"]) info.dispatchEvent(new MouseEvent(type, { bubbles: type === "mousemove" }));
-      await new Promise((resolve) => setTimeout(resolve, 800));
-    });
-    const popups = document.querySelectorAll("[data-slot=tooltip-content]");
-    expect(popups.length).toBeGreaterThan(0);
-    for (const popup of popups) {
-      expect(popup.closest("[aria-hidden=true]")).not.toBeNull();
-    }
+    // No explanation to hunt for: the caption names the number.
+    expect(container.querySelector('[aria-label="About character height"]')).toBeNull();
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, "2"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     expect(onChange).toHaveBeenLastCalledWith(20);

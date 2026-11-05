@@ -161,3 +161,46 @@ it("preserves transparent mask pixels and partial alpha over earlier white ink",
     maskPixels: { data: new Uint8ClampedArray(mask.data), width: mask.width, height: mask.height },
   });
 }, 30_000);
+
+it("lays White Ink under a transparent image's opaque pixels only (#668)", async () => {
+  // 4x4 art: an opaque 2x2 centre inside a fully transparent ring.
+  const art = new PNG({ width: 4, height: 4 });
+  for (let i = 0; i < 16; i++) {
+    const x = i % 4, y = Math.floor(i / 4), opaque = x > 0 && x < 3 && y > 0 && y < 3;
+    art.data.set([200, 30, 30, opaque ? 255 : 0], i * 4);
+  }
+  // An all-knockout uploaded mask, so the only ink is the image's own.
+  const knockout = new PNG({ width: 1, height: 1 });
+  knockout.data.set([255, 255, 255, 255]);
+  const items: PlacedLayer[] = [
+    { kind: "page", id: "mask", role: "mask", asset: "mask", x: 0, y: 0, w: PAGE.w, h: PAGE.h },
+    { kind: "image", id: "art", asset: "art", x: 144, y: 144, w: 144, h: 144 },
+  ];
+  const input: Assets = {
+    ...assets,
+    images: { art: { kind: "png", bytes: PNG.sync.write(art) }, mask: { kind: "png", bytes: PNG.sync.write(knockout) } },
+    maskPixels: { data: new Uint8ClampedArray(knockout.data), width: 1, height: 1 },
+  };
+  const dir = mkdtempSync(join(tmpdir(), "white-ink-alpha-"));
+  try {
+    const white = separate(dir, "print", await buildPrintPdf(items, input)).get("White Ink")!;
+    writeFileSync(join(dir, "mask.pdf"), await buildMaskPdf(items, input));
+    run("pdftoppm", ["-png", "-singlefile", "-r", "150", join(dir, "mask.pdf"), join(dir, "mask")]);
+    const mask = PNG.sync.read(readFileSync(join(dir, "mask.png")));
+    // Page points to 150 DPI pixels; the image spans 144-288pt, one art
+    // pixel per 36pt: its transparent ring is 144-180pt, its centre 180-252pt.
+    const at = (pt: number) => Math.round((pt * 150) / 72);
+    const ink = (x: number, y: number) => white.data[at(y) * white.width + at(x)];
+    const blue = (x: number, y: number) => mask.data[(at(y) * mask.width + at(x)) * 4];
+    // Centre: full ink (0) on the White Ink plate, mask blue (R=0) on the mask PDF.
+    expect(ink(216, 216)).toBe(0);
+    expect(blue(216, 216)).toBe(0);
+    // Transparent ring: no ink, white on the mask PDF.
+    for (const [x, y] of [[160, 160], [216, 160], [270, 216], [160, 270]]) {
+      expect(ink(x, y), `White Ink at ${x},${y}`).toBe(255);
+      expect(blue(x, y), `mask PDF at ${x},${y}`).toBe(255);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 30_000);

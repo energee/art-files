@@ -9,7 +9,7 @@
 // NumberRoot and UnitInput.
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
-import { MoveHorizontal, type LucideIcon } from "lucide-react";
+import { MoveHorizontal } from "lucide-react";
 import { NumberField } from "@base-ui/react/number-field";
 import { Label } from "@/components/ui/label";
 import {
@@ -95,8 +95,6 @@ export function ScrubField(props: {
   /** Ties the Label to the Input; callers prefix it per element. */
   id: string;
   label: string;
-  /** Optional icon shown before the label text; part of the scrub handle. */
-  icon?: LucideIcon;
   /** Shown as the InputGroup's trailing addon, e.g. "pt" or "px". */
   unit: string;
   /** The addon's tooltip, for a field the app's length unit does not
@@ -128,7 +126,6 @@ export function ScrubField(props: {
         pixelSensitivity={1}
         className="cursor-ew-resize select-none gap-1 text-xs text-muted-foreground"
       >
-        {props.icon && <props.icon className="size-3.5" aria-hidden="true" />}
         {props.label}
         {/* Stands in for the OS cursor, which pointer lock hides during a
             scrub (Chromium and Firefox; WebKit skips pointer lock). */}

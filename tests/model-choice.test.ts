@@ -9,7 +9,7 @@
 // what stands between it and the .master file.
 import { describe, expect, it } from "vitest";
 import { learnChoice, learnValueIn, setContentIn, type Doc } from "../src/model/edit";
-import { lolevMaster } from "../src/model/lolevLayers";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import type { Choice, LabelFile, Master } from "../src/model/layers";
 import { GOLD } from "../src/layout";
 

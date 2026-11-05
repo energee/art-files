@@ -17,10 +17,10 @@ import { DEFAULT_RENDER } from "../src/settings";
 const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
 const WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const host = vi.hoisted(() => ({ tauri: false }));
-const win = vi.hoisted(() => ({ isFullscreen: vi.fn(), onResized: vi.fn() }));
+const win = vi.hoisted(() => ({ isFullscreen: vi.fn(), onResized: vi.fn(), setTheme: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => host.tauri }));
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ isFullscreen: win.isFullscreen, onResized: win.onResized }),
+  getCurrentWindow: () => ({ isFullscreen: win.isFullscreen, onResized: win.onResized, setTheme: win.setTheme }),
 }));
 // Under Tauri the menu is native (installed through IPC); it renders nothing.
 vi.mock("../src/components/AppMenu", () => ({ AppMenu: () => null }));
@@ -46,6 +46,7 @@ beforeEach(() => {
   setUserAgent(MAC);
   win.isFullscreen.mockReset().mockResolvedValue(false);
   win.onResized.mockReset().mockResolvedValue(() => {});
+  win.setTheme.mockReset().mockResolvedValue(undefined);
 });
 afterEach(async () => {
   await cleanup?.();
@@ -66,6 +67,7 @@ describe("the platform gate", () => {
       initTitlebar(root);
       expect(overlayTitlebar(), `tauri=${tauri} ua=${ua}`).toBe(marked);
       expect(root.dataset.titlebar, `tauri=${tauri} ua=${ua}`).toBe(marked ? "overlay" : undefined);
+      expect(root.hasAttribute("data-glass"), `tauri=${tauri} ua=${ua}`).toBe(marked);
     }
   });
 
@@ -75,6 +77,20 @@ describe("the platform gate", () => {
     initTitlebar(html());
     expect(win.onResized).not.toHaveBeenCalled();
     expect(win.isFullscreen).not.toHaveBeenCalled();
+    expect(win.setTheme).not.toHaveBeenCalled();
+  });
+
+  // The glass tints by the window's appearance, so a pinned theme pins the
+  // window and System hands it back to the OS.
+  it("keeps the window's appearance on the pinned theme", async () => {
+    const root = html();
+    root.dataset.theme = "dark";
+    initTitlebar(root);
+    await vi.waitFor(() => expect(win.setTheme).toHaveBeenLastCalledWith("dark"));
+    root.dataset.theme = "light";
+    await vi.waitFor(() => expect(win.setTheme).toHaveBeenLastCalledWith("light"));
+    delete root.dataset.theme;
+    await vi.waitFor(() => expect(win.setTheme).toHaveBeenLastCalledWith(null));
   });
 
   it("drops the room for the traffic lights in full screen and restores it after", async () => {
@@ -94,6 +110,14 @@ describe("the platform gate", () => {
   it("is the selector index.css's titlebar: variant keys on", () => {
     const css = readFileSync("src/index.css", "utf8");
     expect(css).toContain('@custom-variant titlebar (:root[data-titlebar="overlay"]:not([data-fullscreen]) &);');
+  });
+
+  // Liquid Glass shows through the chrome only where src/titlebar.ts marks
+  // data-glass, and it stays on in full screen: the window keeps its glass.
+  it("is the selector index.css's Liquid Glass rules key on", () => {
+    const css = readFileSync("src/index.css", "utf8");
+    expect(css).toContain(":root[data-glass] {");
+    expect(css).toContain(":root[data-glass] body,");
   });
 });
 

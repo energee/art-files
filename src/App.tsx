@@ -52,7 +52,7 @@ import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } 
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
+  applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -62,9 +62,9 @@ import {
   MASTER_EXT, masterNameFromFile, packLabel, packMaster, unpackLabel, unpackMaster,
   type MasterAssets,
 } from "@/model/files";
-import { lolevMaster } from "@/model/lolevLayers";
+import { starterMaster } from "@/model/starterLayers";
 import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
-import { layerBoxes } from "@/planLayers";
+import { layerBoxes, outsideGuides } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
@@ -73,6 +73,9 @@ import {
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
+import { useViewPrefs } from "@/useViewPrefs";
+import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
+import { useRenderSource } from "@/useRenderSource";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
 import { useProjectSave } from "@/useProjectSave";
@@ -80,9 +83,10 @@ import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
+  BLEED_SHIFT, PAGE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
+import { useStableCallback } from "@/useStableCallback";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
@@ -98,8 +102,8 @@ import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, typ
 import { Rulers } from "@/components/Rulers";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, LENGTH_UNITS,
-  type GuideAxis, type LengthUnit, type ManualGuide,
+  DEFAULT_MARGIN_PT, RULER_SIZE,
+  type GuideAxis, type ManualGuide,
 } from "@/rulers";
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
@@ -113,12 +117,9 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { baseName, cn, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
-import { loadLabelFaces, labelFontCss } from "@/fonts";
+import { loadLabelFaces } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
-import type { MeasureFace, PlanAssets } from "@/plan";
-import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
-import { createBitmapCache } from "@/canvas/bitmapCache";
-import logoSvg from "@/assets/logo2025.svg?raw";
+import type { PlanAssets } from "@/plan";
 
 // three.js is the largest thing in the bundle and most sessions never leave
 // the 2D view, so the 3D can view (and three.js with it) loads on first use —
@@ -193,27 +194,6 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
   });
 }
 
-/** Where the view preferences (the rulers/guides toggles and the length
- *  unit) persist — localStorage, like every other per-operator setting
- *  (settings.ts, masters.ts). Only the known keys are read, so an entry
- *  written by an earlier build sheds its extras on the next write instead of
- *  leaking them in. Reads and writes are both guarded: storage can be missing
- *  or full, and a view preference is never worth an error. */
-const VIEW_KEY = "lolev-view";
-type ViewPrefs = { showRulers: boolean; showGuides: boolean; unit: LengthUnit };
-function loadViewPrefs(): ViewPrefs {
-  const prefs: ViewPrefs = { showRulers: true, showGuides: true, unit: "in" };
-  try {
-    const stored = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
-    if (typeof stored.showRulers === "boolean") prefs.showRulers = stored.showRulers;
-    if (typeof stored.showGuides === "boolean") prefs.showGuides = stored.showGuides;
-    if (LENGTH_UNITS.includes(stored.unit as LengthUnit)) prefs.unit = stored.unit as LengthUnit;
-  } catch {
-    // a hand-mangled entry falls back to the defaults rather than crashing boot
-  }
-  return prefs;
-}
-
 /** The "N value(s) benched" notes a rebind reports for what didn't fit. */
 const benchedNotes = (dropped: { values: string[]; variants: string[] }): string[] => [
   ...(dropped.values.length ? [translate("{{count}} value benched: {{names}}", { count: dropped.values.length, names: dropped.values.join(", ") })] : []),
@@ -222,7 +202,7 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
 
 /** The toast sources (toastId) that report on an editor's own content and go
  *  with its tab: its warnings, and the Switched notice whose Undo acts on it. */
-const TAB_TOASTS = ["label-warning", "master-warning", "restore-warning", "image-warning", "switched"] as const;
+const TAB_TOASTS = ["label-warning", "restore-warning", "image-warning", "switched"] as const;
 
 /** Focuses a layer's value field in the inspector (`<id>-content`, see
  *  contentFor). The inspector mounts a frame or two after a selection, so this
@@ -256,33 +236,6 @@ function focusContentField(layerId: string, stillActive: () => boolean) {
 type LabelSource = { name: string; bytes: Uint8Array; path?: string };
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
-
-/** Largest wheel delta any single event is allowed to contribute: a mouse
- *  notch reports 100 at once, which unclamped overshoots the zoom range. */
-const ZOOM_STEP_CAP = 50;
-
-/** Keep the scaled content covering the pane `r`, so neither a pan nor a
- *  zoom-out can strand the label against a band of empty background. */
-const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
-  z,
-  x: Math.min(0, Math.max(r.width * (1 - z), x)),
-  y: Math.min(0, Math.max(r.height * (1 - z), y)),
-});
-
-/** One Zoom In / Zoom Out step (⌘= / ⌘-). */
-const ZOOM_FACTOR = 1.25;
-
-/** The pane's zoom range: 1 (fitted) through the 3D dolly's ceiling. */
-const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
-
-/** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
- *  point where it is. Shared by the wheel and the typed field. */
-const zoomAbout = (
-  r: DOMRect, v: { z: number; x: number; y: number }, z: number, ax: number, ay: number,
-) => {
-  const k = z / v.z;
-  return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
-};
 
 /** "rendered" is the flat label in the 3D scene (CanSceneMode "flat"). */
 type ViewMode = "2d" | "can" | "rendered";
@@ -381,7 +334,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
   const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
-    useHistory<Doc>(() => { const m = lolevMaster(); return { master: m, label: newLabel(m) }; });
+    useHistory<Doc>(() => { const m = starterMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -504,10 +457,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // raised it (useOwnedToast): its clear() dismisses only its own, so one
   // source's success never wipes another's error (#473, #511), and it shows
   // only while this tab is in front. renderError is the renderers' message
-  // (every good frame clears it); assetsFailed only hides the "rendering
-  // label…" spinner while asset assembly is failing.
+  // (every good frame clears it).
   const [renderError, setRenderError] = useState("");
-  const [assetsFailed, setAssetsFailed] = useState(false);
   // Each one-off error, and each open, save or load message that stays until
   // closed, owns one toast id in this editor, so a repeat replaces it instead of
   // stacking another (notify.ts). A Saved toast fades on its own and needs no
@@ -554,14 +505,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The Rendered view's bend, % of the can's curvature. A subtle default.
   // ponytail: per-tab and unsaved; move to Settings if it should persist.
   const [curvePct, setCurvePct] = useState(15);
-  // Preview pane zoom: scale `z` about the pane's top-left, then offset by
-  // (x, y) screen px. z === 1 is the fitted view.
   const previewPane = useRef<HTMLDivElement>(null);
   usePreviewToastAnchor(previewPane, active);
-  const [zoom, setZoom] = useState({ z: 1, x: 0, y: 0 });
   const canView = useRef<CanViewHandle>(null);
-  // Whole percent, so the camera's per-frame emissions bail out of React.
-  const [camZoomPct, setCamZoomPct] = useState(100);
+  const {
+    zoom, camZoomPct, carried, onCameraChange, zoomDraft, setZoomDraft, zoomTo, applyTypedZoom,
+    panning, onPanStart, onPanMove, onPanEnd,
+  } = useZoomPan(viewMode === "2d", previewPane, canView);
   // The 3D scene's mode: Rendered shows the flat label, Can its count.
   let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
   if (viewMode === "rendered") canSceneMode = "flat";
@@ -570,51 +520,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The status bar's "Compare" note, which the view group points at so a
   // screen reader hears the state too. useId: each open tab has its own.
   const compareId = useId();
-  // Zoom level follows you across views (see CanView's initialView). A ref:
-  // only a view change hands it over.
-  const carried = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
-  const carriedMode = useRef(viewMode);
-  // Captured on the single render that leaves 2D — `zoom` still holds the
-  // 2D value there and the pane still has its rect. Render-time, not an
-  // effect: CanView reads it as a prop while mounting.
-  if (viewMode !== "2d" && carriedMode.current === "2d") {
-    const r = previewPane.current?.getBoundingClientRect();
-    if (r?.width) carried.current = {
-      zoom: zoom.z,
-      pan: {
-        x: (r.width * (1 - zoom.z) / 2 - zoom.x) / r.width,
-        y: (r.height * (1 - zoom.z) / 2 - zoom.y) / r.height,
-      },
-    };
-  }
-  useEffect(() => {
-    carriedMode.current = viewMode;
-    if (viewMode !== "2d") return; // CanView takes it as a prop — see initialView
-    const { zoom: z, pan } = carried.current;
-    const r = previewPane.current?.getBoundingClientRect();
-    if (!r?.width) return setZoom({ z, x: 0, y: 0 });
-    setZoom(clampView(r, z,
-      r.width * (1 - z) / 2 - pan.x * r.width,
-      r.height * (1 - z) / 2 - pan.y * r.height));
-  }, [viewMode]);
-  const [zoomDraft, setZoomDraft] = useState<string | null>(null);
-  /** Zoom to `next(current)`, clamped, about the pane's centre — the 3D
-   *  views dolly their camera instead. Shared by the typed field and the
-   *  Zoom In / Out / to Fit commands. */
-  const zoomTo = (next: (z: number) => number) => {
-    if (viewMode === "2d") {
-      const r = previewPane.current?.getBoundingClientRect();
-      setZoom((v) => {
-        const z = clampZoom(next(v.z));
-        return r?.width ? zoomAbout(r, v, z, r.width / 2, r.height / 2) : { z, x: 0, y: 0 };
-      });
-    } else canView.current?.setZoom(clampZoom(next(camZoomPct / 100)));
-  };
-  const applyTypedZoom = () => {
-    const pct = parseFloat(zoomDraft ?? "");
-    setZoomDraft(null);
-    if (isFinite(pct)) zoomTo(() => pct / 100);
-  };
   // Published to layout.ts during render, not from an effect: the rulers
   // and the px length unit read PAGE and OUTPUT_DPI while rendering.
   // ACTIVE editor only: a hidden editor's memo bail freezes its `render`.
@@ -623,52 +528,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     setOutputDpi(render.dpi);
   }
 
-  // Wheel-to-zoom, scoped to the preview pane (2D only; the 3D views run
-  // this through OrbitControls). Attached by hand: React's synthetic wheel
-  // handler is passive at the root. setZoom's functional form is
-  // load-bearing: a pinch delivers events faster than React re-renders.
-  useEffect(() => {
-    const el = previewPane.current;
-    if (!el || viewMode !== "2d") return;
-    function onWheel(e: WheelEvent) {
-      const r = el!.getBoundingClientRect();
-      if (!r.width || !r.height) return; // not laid out yet
-      e.preventDefault();
-      setZoom((v) => {
-        const step = Math.max(-ZOOM_STEP_CAP, Math.min(ZOOM_STEP_CAP, e.deltaY));
-        const z = clampZoom(v.z * Math.exp(-step / 150));
-        return zoomAbout(r, v, z, e.clientX - r.left, e.clientY - r.top);
-      });
-    }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [viewMode]);
-
-  // Drag-to-pan on the right button — the same button OrbitControls pans
-  // with in the 3D views.
-  const panFrom = useRef<{ x: number; y: number; r: DOMRect } | null>(null);
-  const [panning, setPanning] = useState(false);
-  function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.button !== 2 || viewMode !== "2d") return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    panFrom.current = {
-      x: e.clientX, y: e.clientY, r: e.currentTarget.getBoundingClientRect(),
-    };
-    setPanning(true);
-  }
-  function onPanMove(e: React.PointerEvent<HTMLDivElement>) {
-    const from = panFrom.current;
-    if (!from) return;
-    const dx = e.clientX - from.x, dy = e.clientY - from.y;
-    from.x = e.clientX;
-    from.y = e.clientY;
-    setZoom((v) => clampView(from.r, v.z, v.x + dx, v.y + dy));
-  }
-  function onPanEnd() {
-    if (!panFrom.current) return;
-    panFrom.current = null;
-    setPanning(false);
-  }
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
    *  with zero width. */
@@ -682,11 +541,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const previewRef = useRef<PreviewCompareHandle>(null);
   // Rulers, guides and the length unit are view state: they assist the
   // operator but are not label content, so none enters history/exports. All
-  // persist per operator. The one unit drives the rulers, the inspector's
+  // persist per operator (useViewPrefs.ts). The one unit drives the rulers, the inspector's
   // length fields, the canvas drag readout and the margin inset.
-  const [showRulers, setShowRulers] = useState(() => loadViewPrefs().showRulers);
-  const [unit, setUnit] = useState(() => loadViewPrefs().unit);
-  const [showGuides, setShowGuides] = useState(() => loadViewPrefs().showGuides);
+  const { showRulers, setShowRulers, unit, setUnit, showGuides, setShowGuides, lightDeg, setLightDeg } = useViewPrefs();
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -699,13 +556,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
-  useEffect(() => {
-    try {
-      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit }));
-    } catch {
-      // full or missing storage: the preference lasts this session only
-    }
-  }, [showRulers, showGuides, unit]);
 
   /** Whether the document differs from the last saved/opened project —
    *  File → Save Label disables while clean. Clear it ONLY after a completed open
@@ -1099,7 +949,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  SVG source's ink too, so it plans as paths), plus the page art under
    *  PAGE_ART_ID while the slots hold it. */
   const planAssetsOf = (): PlanAssets => ({
-    logoSvg, guides,
+    guides,
     custom: {
       ...Object.fromEntries(Object.entries(liveImages).map(([id, c]) => [
         id,
@@ -1145,98 +995,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   });
   const exportBusy = exporting !== null;
 
-  // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
-  // assembled off the asset inputs alone (debounced). Layer edits, a raster's
-  // tint included, deliberately DON'T re-run this: the layers flow into the
-  // views as a prop and repaint with these same bitmaps (drawPlate tints,
-  // #414). The one layer edit that does is a font pick that adds a family to
-  // fontOverrides, so its faces load (#411). Bitmaps come from a per-editor
-  // cache keyed by source bytes, so a re-assembly decodes only new or changed
-  // assets (#413); `sources` lists the bytes this generation draws from.
-  const [bitmaps] = useState(createBitmapCache);
-  const [decodedAssets, setDecodedAssets] = useState<{
-    m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
-    sources: Uint8Array[];
-  } | null>(null);
-  // Guide movement changes placement immediately, without decoding image bytes again.
-  const canvasAssets = useMemo(() => decodedAssets ? {
-    ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
-  } : null, [decodedAssets, guides]);
-  const bgOn = pageOn("background"), maskOn = pageOn("mask");
-  // Asset assembly's next success clears only the error it set, so an image
-  // or master error survives a plate toggle (#511).
-  useEffect(() => {
-    // Not gated on `blocked`: this only decodes fonts and art, and a rejected
-    // value already falls back to the master's, so the preview keeps drawing (#127).
-    if (!active) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      (async () => {
-        const m = await loadLabelFaces(family, fontOverrides);
-        // The cache owns every bitmap: a throw or a cancelled run leaves its
-        // decodes there for the next committed generation (or unmount) to
-        // keep or close. A cancelled run asks for nothing more, so it can't
-        // add bitmaps after that settling already ran (#413).
-        const sources: Uint8Array[] = [];
-        const bitmap = (bytes: Uint8Array | undefined) => {
-          if (!bytes || cancelled) return null;
-          sources.push(bytes);
-          return bitmaps.get(bytes);
-        };
-        const art = pageArt(true);
-        // Raster bytes become a bitmap for the canvas to draw; an SVG
-        // source stays undecoded (it plans as paths) and is absent here.
-        const [customBitmaps, textureBmp, maskBmp] = await Promise.all([
-          Promise.all(Object.entries(liveImages).map(async ([id, { image: img }]) =>
-            [id, img.kind === "svg" ? null : await bitmap(img.bytes)] as const))
-            .then((entries): Record<string, ImageBitmap | null> => Object.fromEntries(entries)),
-          bitmap(art.texture?.bytes), bitmap(art.maskPng),
-        ]);
-        // The page art rides under its PAGE_ART_ID keys too, so a backend
-        // that draws the `page` items by asset id finds the same bitmaps.
-        if (textureBmp) customBitmaps[PAGE_ART_ID.background] = textureBmp;
-        if (maskBmp) customBitmaps[PAGE_ART_ID.mask] = maskBmp;
-        // Superseded: a newer run, a background tab or unmount settles the cache.
-        if (cancelled) return;
-        setDecodedAssets({
-          m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
-        });
-        assetError.clear();
-        setAssetsFailed(false);
-      })().catch((err) => {
-        if (cancelled) return;
-        assetError.set(errMsg(err));
-        setAssetsFailed(true);
-      });
-    }, 150);
-    return () => { cancelled = true; clearTimeout(timer); };
-    // Asset inputs only — the layers reach this effect through the two
-    // page-art switches (see the comment above); fontOverrides is the set of
-    // layer font families, so picking a new one reloads its faces.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, liveImages, family, fontOverrides, bgOn, maskOn, active]);
-  // Once a generation is live, close the cached bitmaps it no longer draws
-  // (bitmaps aren't GC'd on their own); unchanged assets keep theirs. No
-  // generation (a background tab) or unmount closes them all.
-  useEffect(() => { bitmaps.retain(decodedAssets?.sources ?? []); }, [bitmaps, decodedAssets]);
-  useEffect(() => () => bitmaps.retain([]), [bitmaps]);
-
-  // What the preview omits: the in-place edit session's layer — hidden
-  // while its live editor floats over it. Preview-only: meaningless for a
-  // print file. Disabled layers are already gone from drawLayers.
-  const skip = useMemo<{ has(id: string): boolean }>(
-    () => ({ has: (id: string) => id === editSession }), [editSession]);
-  const canvasSource = useMemo<CanvasRenderSource | null>(
-    () => (canvasAssets ? { ...canvasAssets, skip } : null),
-    [canvasAssets, skip],
-  );
-  const previewReady = !!canvasAssets;
-
-  // Background tabs keep their state and asset bytes but not their decoded
-  // render source: the ImageBitmaps are the heavy, cheaply-rebuildable part.
-  useEffect(() => {
-    if (!active) setDecodedAssets(null);
-  }, [active]);
+  // The render source for BOTH views, assembled off the asset inputs alone
+  // (useRenderSource.ts): what the preview draws with, and the font metrics
+  // and plan assets the hit boxes and the die check measure with.
+  const { canvasAssets, canvasSource, previewReady, assetsFailed } = useRenderSource({
+    active, family, fontOverrides, liveImages, texture, mask,
+    bgOn: pageOn("background"), maskOn: pageOn("mask"), guides, editSession,
+    pageArt, planAssets: planAssetsOf, assetError,
+  });
 
   /** The doc before the in-flight canvas drag or resize opened its undo
    *  step; null until a move actually patches something (a first move that
@@ -1270,6 +1036,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
+  /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
+   *  with a line in the inspector, but they do NOT block export. */
+  const pastDie = useMemo(() => canvasAssets
+    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+      guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
+    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+  // Keyed on the ids, not the Set: pastDie is rebuilt on every keystroke, and a
+  // new Map each time would re-render the memoized LayerList per key (#605).
+  const pastDieKey = [...pastDie].join("\0");
+  const flaggedLayers = useMemo(() => pastDieKey
+    ? new Map([...pastDieKey.split("\0").map((id) => [id, t("Runs past the label edge")] as const), ...invalidLayers])
+    : invalidLayers, [pastDieKey, invalidLayers, t]);
   /** Every line a gesture can snap to on each axis: the master's guides, plus
    *  the edges and middles of the layers NOT taking part (`skip`) — the
    *  Photoshop/Sketch rule that objects line up with each other, not only with
@@ -1658,11 +1436,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { assets, missing } = masterAssetBundle(forked);
     const suggested = machineName(forked.name) || "master";
     /** A fork takes its display name from the file it was saved as — without
-     *  this the library would list two masters called "Lolev" and no way to
+     *  this the library would list two masters called "Starter" and no way to
      *  tell them apart (there is no master-name field anywhere in the UI).
      *
      *  Only a name the user actually TYPED counts: accepting the suggested
-     *  filename must not rename "Lolev" to its own slug, and that is also the
+     *  filename must not rename "Starter" to its own slug, and that is also the
      *  common case, which keeps the original display name. */
     const titled = (file: string): Master => {
       const base = masterNameFromFile(file);
@@ -1688,7 +1466,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
-        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
+        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
       });
       await rememberMaster(m, where, bytes);
       refreshLibrary();
@@ -1722,15 +1500,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
 
-  /** Parse a candidate .master file (ZIP, legacy JSON, or a v1 file, which
-   *  converts), reporting a clear error and leaving the document untouched
+  /** Parse a candidate .master file (ZIP or legacy JSON; a v1 file is
+   *  refused), reporting a clear error and leaving the document untouched
    *  on a bad file. */
-  function tryParseMaster(bytes: Uint8Array, name: string): { master: Master; assets: MasterAssets } | null {
+  function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
-      const r = unpackMaster(bytes);
-      if (r.warnings.length) notify.warning(t("Opened {{file}} with changes", { file: baseName(name) }),
-        { id: toastId("master-warning"), description: r.warnings.join(" · ") });
-      return r;
+      return unpackMaster(bytes);
     } catch (err) {
       reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
@@ -1801,7 +1576,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
-    const r = tryParseMaster(bytes, name);
+    const r = tryParseMaster(bytes);
     if (!r) return;
     await rememberMaster(r.master, name, bytes);
     refreshLibrary();
@@ -1836,7 +1611,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const idx = masterIndex();
     const entries: Record<string, LibraryEntry> = {
       // Always listed; the loop below replaces it when the index has a row.
-      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, builtIn: true },
+      [SHIPPED_MASTER_ID]: { name: starterMaster().name, builtIn: true },
     };
     for (const [id, e] of Object.entries(idx)) entries[id] = { ...entries[id], ...e, inLibrary: true };
     return entries;
@@ -1961,22 +1736,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
     // one on a quiet attempt and ask again with no explanation.
-    let bytes: Uint8Array, path: string, name: string;
+    let bytes: Uint8Array, path: string;
     try {
       const target = await openThrough({ filter: masterFilter(), types: masterTypes() });
       if (target === undefined) { reportLoadError(t("Could not open master: this browser has no file picker. Use File → Open Master… first.")); return null; }
       if (target === null) { openCancelled.current = true; return null; }
       if ("path" in target) {
-        [bytes, path, name] = [await readNativeFile(target.path), target.path, target.path];
+        [bytes, path] = [await readNativeFile(target.path), target.path];
       } else {
         const file = await target.handle.getFile();
-        [bytes, path, name] = [new Uint8Array(await file.arrayBuffer()), "", file.name];
+        [bytes, path] = [new Uint8Array(await file.arrayBuffer()), ""];
       }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
       return null;
     }
-    const r = tryParseMaster(bytes, name);
+    const r = tryParseMaster(bytes);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
     return r && { ...r, path: path || undefined };
   }
@@ -2027,12 +1802,16 @@ export const DocumentEditor = memo(function DocumentEditor({
       };
       let next: Doc;
       if (unpacked.legacy !== undefined) {
-        // A v1 config.json has no master concept: it converts against the
-        // shipped Lolev master, its Collab checkbox becoming the variant.
+        // A v1 config.json has no master concept: it converts onto this
+        // tab's master, its Collab checkbox becoming the variant where that
+        // master has one. The master keeps its own images and Save target.
+        const current = docRef.current.master;
         const cfg = parseConfigFile(unpacked.legacy);
-        const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy));
+        const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy), current);
         notes = r.warnings;
-        next = { master: lolevMaster(), label: adoptLegacyCollab(r.label) };
+        masterAssets = { customImages: imageBundle(customImages, masterAssetIds(current)) };
+        masterPath = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
+        next = { master: current, label: adoptLegacyCollab(r.label) };
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
         const hint = ref.masterHint;
@@ -2335,7 +2114,6 @@ export const DocumentEditor = memo(function DocumentEditor({
           fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
       }
-      if (layer.asset === "builtin:logo") return null;
       const file = customImages[layer.asset];
       return <FileDrop label={t("Image")} accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}
@@ -2382,7 +2160,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         <div className="space-y-1">
           <Label htmlFor={id} className="text-xs text-muted-foreground">{t("Link")}</Label>
           <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
-            placeholder="https://lolev.beer/beer/"
+            placeholder="https://example.com/beer/"
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
@@ -2399,11 +2177,6 @@ export const DocumentEditor = memo(function DocumentEditor({
               </SelectContent>
             </Select>
           </div>
-          {src && (
-            <p className="text-[11px] text-muted-foreground">
-              {t("Made safe for a link: lowercased, spaces and punctuation become dashes.")}
-            </p>
-          )}
           {foot}
         </div>
       );
@@ -2418,11 +2191,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         {layer.choices?.length ? (
           <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
             choices={layer.choices} invalid={!!errors[layer.id]}
-            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : t("digits")}
+            placeholder={layer.kind === "qr" ? "https://example.com/beer/{name|slug}" : t("digits")}
             onCommit={(v) => setContent(layer, v, id)} />
         ) : (
           <Input id={id} className="h-7 font-mono text-xs" value={template}
-            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : t("digits")}
+            placeholder={layer.kind === "qr" ? "https://example.com/beer/{name|slug}" : t("digits")}
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => setContent(layer, e.target.value, id)} />
         )}
@@ -2430,6 +2203,34 @@ export const DocumentEditor = memo(function DocumentEditor({
       </div>
     );
   }
+
+  // Stable identities for the memoized panels, so a keystroke re-renders only
+  // the inspector and the canvas (#605).
+  const listSelect = useStableCallback(pick);
+  const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) =>
+    patch(id, { [prop]: value }));
+  const listRename = useStableCallback((id: string, name: string) => patch(id, { name }));
+  const listReorder = useStableCallback((id: string, delta: number) =>
+    editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta)));
+  const listAdd = useStableCallback(onAddLayer);
+  const listRemove = useStableCallback(onRemoveLayer);
+  const rulerMargin = useStableCallback((margin: number) =>
+    editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } })));
+  const rulerAdd = useStableCallback(addManualGuide);
+  const rulerMove = useStableCallback(moveManualGuide);
+  const rulerRemove = useStableCallback(removeManualGuide);
+  const rulerSnap = useStableCallback(snapGuidePoint);
+  const menuError = useStableCallback((text: string, source?: "quit") =>
+    notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") }));
+  // The menubar's commands and check states change only when a row would:
+  // JSON drops `run`, and each copy's run calls this render's command.
+  const menuSignature = JSON.stringify([commands, checked]);
+  const menuCommands = useMemo(() => commands.map((c) => ({
+    ...c, run: () => commandsRef.current.find((latest) => latest.id === c.id)!.run(),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- menuSignature is commands minus run
+  })), [menuSignature]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- menuSignature includes checked
+  const menuChecked = useMemo(() => checked, [menuSignature]);
 
   return (
     <TooltipProvider>
@@ -2500,11 +2301,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               onForget={forgetLibraryMaster}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
-              onSelect={pick}
-              onToggle={(id, prop, value) => patch(id, { [prop]: value })}
-              onRename={(id, name) => patch(id, { name })}
-              onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
-              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={invalidLayers}
+              onSelect={listSelect}
+              onToggle={listToggle}
+              onRename={listRename}
+              onReorder={listReorder}
+              onAdd={listAdd} onRemove={listRemove} invalid={flaggedLayers}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
@@ -2525,9 +2326,9 @@ export const DocumentEditor = memo(function DocumentEditor({
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={commands}
-            onNativeError={(text, source) => notify.error(text, { id: toastId(source === "quit" ? "native-quit" : "native-menu") })}
-            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
+          {active && <AppMenu actions={menuCommands}
+            onNativeError={menuError}
+            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={menuChecked} />}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible
               explanation is the toast an export attempt shows. */}
@@ -2557,7 +2358,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
             // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
-            className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border",
+            className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border bg-background",
               "transition-[margin] duration-200",
               active && inspected && "mr-[300px]",
               panning && "cursor-grabbing")}
@@ -2583,12 +2384,15 @@ export const DocumentEditor = memo(function DocumentEditor({
                 exporting && "blur-sm opacity-70")}>
             {/* PreviewCompare stays mounted but hidden in 3D modes. The
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
-                their own camera. */}
+                their own camera. Padded, not offset, by the rulers so Fit
+                keeps the label clear of them while the transform's origin
+                stays the pane's top-left. */}
             <div
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
                 transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
+                ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}
               canvasRender={viewMode === "2d" ? canvasSource : null}
@@ -2619,13 +2423,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               <Suspense fallback={null}>
               <CanView ref={canView}
                 initialView={carried.current}
-                onZoom={(z, pan) => {
-                  if (carriedMode.current !== "2d") carried.current = { zoom: z, pan };
-                  setCamZoomPct(Math.round(z * 100));
-                }}
+                onZoom={onCameraChange}
                 layers={drawLayers} source={canvasSource} bleedIn={render.bleedIn}
                 mode={canSceneMode} cornerRadiusPct={render.cornerRadius}
-                edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} exporting={!!exporting}
+                edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} lightDeg={lightDeg} exporting={!!exporting}
                 onRenderError={setRenderError} />
               </Suspense>
             )}
@@ -2634,9 +2435,9 @@ export const DocumentEditor = memo(function DocumentEditor({
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
                 showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
-                onMarginChange={(margin) => editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } }))} manual={manualGuides}
-                onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
-                onRemoveManual={removeManualGuide} />
+                onMarginChange={rulerMargin} manual={manualGuides}
+                onAddManual={rulerAdd} onMoveManual={rulerMove} onSnapGuide={rulerSnap}
+                onRemoveManual={rulerRemove} bleedIn={render.bleedIn} dpi={render.dpi} />
             )}
             {/* Always mounted, so a screen reader announces the note when
                 an export fills it: a live region that mounts already holding
@@ -2713,6 +2514,16 @@ export const DocumentEditor = memo(function DocumentEditor({
                 ))}
               </div>
             )}
+            {viewMode === "can" && (
+              <label title={t("Turn the lights around the can")}
+                className="ml-2 flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                {t("Lighting")}
+                <input type="range" aria-label={t("Lighting")} min={-180} max={180} step={5}
+                  value={lightDeg} onChange={(e) => setLightDeg(Number(e.target.value))}
+                  className="w-24 accent-primary" />
+                <span className="w-10 tabular-nums">{lightDeg}°</span>
+              </label>
+            )}
             {viewMode === "rendered" && (
               <label title={t("Bend the label like it's on a can: 0% flat, 100% the can's curve")}
                 className="ml-2 flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -2754,6 +2565,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             // turn Backspace/arrows into text edits instead of delete/nudge.
             initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
+            // The dialog's name is the layer's, from LayerInspector's name box (#616).
+            aria-labelledby={inspected ? `${inspected.layer.id}-name` : undefined}
             // Sized on the base's own `data-[side=right]:` variant so
             // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
             // at the 13px root); an unprefixed w-[300px] lost to both on
@@ -2771,7 +2584,10 @@ export const DocumentEditor = memo(function DocumentEditor({
                   const box = rowBoxes()?.get(inspected.layer.id);
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
                 }}
-                content={contentFor(inspected.layer)}
+                content={<>
+                  {contentFor(inspected.layer)}
+                  {pastDie.has(inspected.layer.id) && <p className="pt-1 text-xs text-destructive-text">{t("Runs past the label edge")}</p>}
+                </>}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
                 fontFamily={family}

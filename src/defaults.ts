@@ -1,5 +1,8 @@
 // defaults.ts — default LabelConfig mirroring the Labradorite reference label,
 // plus the fixed template strings (warning text, address) used by the layout.
+// defaultConfig() is what Label Lab's v1 builds wrote, Lolev values included:
+// convertConfigV1 diffs an old config.json against it, so a value changed here
+// would turn into a spurious override on every legacy label.
 import type { LabelConfig } from "./types";
 import { machineName } from "./qr";
 import { DEFAULT_STROKE_PX, GOLD, WARNING_TRACKING } from "./layout";
@@ -83,7 +86,7 @@ export function defaultConfig(): LabelConfig {
     qrLayer: "metallic",
     qrStrokeLayer: DEFAULT_STROKE_LAYER,
     // The collab block's styling ships on every label; whether it DRAWS is
-    // the Collab variant's business (model/lolevLayers.ts), not a flag here. Most
+    // the Collab variant's business (masters/lolev.master), not a flag here. Most
     // releases are not collabs, so the variant is off and the resolver
     // disables these three layers.
     collabLead: { fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER },
