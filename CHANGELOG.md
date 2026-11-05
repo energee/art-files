@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.118] - 2026-11-04
 
 ### Changed
 - **Liquid Glass on macOS.** The Layers sidebar, tab strip, header, status bar and inspector now show the desktop through macOS glass (Liquid Glass on macOS 26 and later, the frosted sidebar look before). The preview stays solid, so the glass never tints your artwork. A theme picked under View → Appearance now sets the glass too.
