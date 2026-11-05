@@ -341,6 +341,8 @@ const en = {
   "Rotate 90°": "Rotate 90°",
   "Rotate 90° counter-clockwise (reads bottom to top)": "Rotate 90° counter-clockwise (reads bottom to top)",
   "Typography": "Typography",
+  "More Typography options": "More Typography options",
+  "More Position options": "More Position options",
   "Font": "Font",
   "Default ({{font}})": "Default ({{font}})",
   "Size": "Size",

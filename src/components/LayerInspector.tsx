@@ -64,6 +64,9 @@ const STALE_POSITION = [
   [["guideY", "vAnchor"], "Vertical guide"], [["binding"], "Binding"],
 ] as const;
 
+/** Every section's More rows hidden: the default without view prefs. */
+const COLLAPSED: Ctx["more"] = { typography: false, position: false };
+
 export function LayerInspector(props: {
   /** The app's length unit (rulers.ts) for X, Y, gap, width, height, wrap
    *  width, module width and QR size; set from the ruler corner or View →
@@ -105,6 +108,11 @@ export function LayerInspector(props: {
    *  the header's power reads off — matching the Layers row — and turning
    *  it on enables the variant. */
   offVariant?: string;
+  /** Which sections show their More rows (view prefs, useViewPrefs.ts).
+   *  Absent = all collapsed. */
+  more?: Ctx["more"];
+  /** Toggles a section's More rows; the parent saves it. Absent = no-op. */
+  onMore?: Ctx["onMore"];
 }) {
   const { layer } = props;
   const { t } = useTranslation();
@@ -112,7 +120,12 @@ export function LayerInspector(props: {
   const badge = (paths: readonly string[], label: string) => (
     <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
   );
-  const ctx: Ctx = { set, badge, unit: props.unit ?? "pt" };
+  const overridden = (paths: readonly string[]) =>
+    paths.some((p) => props.overridden.variant.has(p) || props.overridden.label.has(p));
+  const ctx: Ctx = {
+    set, badge, unit: props.unit ?? "pt", overridden,
+    more: props.more ?? COLLAPSED, onMore: props.onMore ?? (() => {}),
+  };
   // The name box commits like the Layers row's rename (LayerList's
   // commitRename): on Enter or blur, trimmed, and only when non-empty and
   // changed — one patch, so one undo step. Escape puts the name back. A name
@@ -129,8 +142,7 @@ export function LayerInspector(props: {
   const enabled = layer.enabled && props.offVariant === undefined;
   const multi = (props.selectionCount ?? 1) > 1;
   // Page art hides Position, so a position override left on it needs its own reset.
-  const stalePosition = page && STALE_POSITION.some(([paths]) =>
-    paths.some((p) => props.overridden.variant.has(p) || props.overridden.label.has(p)));
+  const stalePosition = page && STALE_POSITION.some(([paths]) => overridden(paths));
 
   return (
     <div className="space-y-1 px-4 py-3">

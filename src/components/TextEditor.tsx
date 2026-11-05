@@ -750,8 +750,10 @@ function RichField(props: TextEditorProps) {
         onBlur={undefined}
         id={id}
         aria-labelledby={`${id}-label`}
+        // One input-row tall (h-8) when empty; a contenteditable div is
+        // height:auto, so it grows a line at a time and the panel scrolls.
         className={cn(
-          "min-h-[8.5rem]",
+          "min-h-8",
           "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
           "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         )}

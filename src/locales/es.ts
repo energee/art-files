@@ -342,6 +342,8 @@ const es: Record<keyof typeof en, string> = {
   "Rotate 90°": "Girar 90°",
   "Rotate 90° counter-clockwise (reads bottom to top)": "Girar 90° en sentido antihorario (se lee de abajo arriba)",
   "Typography": "Tipografía",
+  "More Typography options": "Más opciones de tipografía",
+  "More Position options": "Más opciones de posición",
   "Font": "Fuente",
   "Default ({{font}})": "Predeterminada ({{font}})",
   "Size": "Tamaño",

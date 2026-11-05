@@ -7,7 +7,6 @@ import type { FontFamilyId } from "@/fontCatalog";
 import type * as Heights from "@/textheight";
 import { errMsg } from "@/lib/utils";
 import { ScrubField } from "./ScrubField";
-import { Row } from "./LayerInspectorControls";
 import { useTranslation } from "@/i18n";
 
 
@@ -46,17 +45,15 @@ export function CharacterHeight({ layer, family, onChange }: {
   if (!range) return <>{glyphWarning}<p className="text-xs text-muted-foreground">{t("Add letters or numbers to measure their printed height.")}</p></>;
   return <div className="space-y-1">
     {glyphWarning}
-    {/* In a Row so it shares the inspector's badge column, though it has no
-        badge. Always mm, whatever the unit picker says: TTB's
-        character-height minimums are written in millimetres (#626). */}
-    <Row>
-      <ScrubField id={`${layer.id}-min-character-height`} label={t("Minimum height")} unit="mm"
+    {/* Always mm, whatever the unit picker says: TTB's character-height
+        minimums are written in millimetres (#626). ScrubField holds the
+        badge column open, so it lines up though it has no badge. */}
+    <ScrubField id={`${layer.id}-min-character-height`} label={t("Minimum height")} unit="mm"
         unitTitle={t("Character height is always millimetres")}
         value={Math.floor((range.min + 1e-9) * 100) / 100}
         min={0.01} max={Math.max(0.01, Math.floor(range.min / layer.size * 300 * 100) / 100)}
         step={0.01} dragStep={0.01}
         onChange={(mm) => onChange(loaded.sizeForMinimum(layer.size, range.min, mm))} />
-    </Row>
     <p className="text-[11px] text-muted-foreground">
       {t("Tallest character: {{height}} mm", { height: (Math.ceil((range.max - 1e-9) * 100) / 100).toFixed(2) })}
     </p>

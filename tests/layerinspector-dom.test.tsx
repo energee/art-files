@@ -13,6 +13,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LayerInspector } from "../src/components/LayerInspector";
+import { FieldPair, Row } from "../src/components/LayerInspectorControls";
+import { ScrubField } from "../src/components/ScrubField";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer,
 } from "../src/model/layers";
@@ -264,9 +266,7 @@ describe("LayerInspector position", () => {
 
   it.each(["top", "left", "right", "bottom"] as const)("binds to the %s of another layer", (side) => {
     const { onBind } = render(text());
-    const trigger = Array.from(container.querySelectorAll("button"))
-      .find((b) => b.textContent?.includes("Bind to layer"))!;
-    click(trigger);
+    click(byLabel("Bind to layer…")!);
     expect(byLabel("Bind to Name")).toBeNull();
     click(byLabel("Bind to Description")!);
     click(byLabel(`Bind to ${side} of Description`)!);
@@ -296,6 +296,50 @@ describe("LayerInspector position", () => {
     act(() => option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" })));
     click(option);
     expect(onBind).toHaveBeenCalledWith("description", "left");
+  });
+
+  // Compact Position (plan inspector-density, decisions 5/7/13): pairs, and
+  // Bind as an icon button on Rotation's row.
+  const pairOf = (el: Element | null) => el?.closest(".grid-cols-2") ?? null;
+
+  it("puts X and Y in one pair, and the two guides in another", () => {
+    render(text());
+    const xy = pairOf($("#name-x"));
+    expect(xy).not.toBeNull();
+    expect(xy!.contains($("#name-y"))).toBe(true);
+    const guides = pairOf(byLabel("Horizontal guide"));
+    expect(guides).not.toBeNull();
+    expect(guides).not.toBe(xy);
+    expect(guides!.contains(byLabel("Vertical guide"))).toBe(true);
+  });
+
+  it("renders the remaining axis alone when a binding hides the other", () => {
+    render(text({ binding: { to: "description", side: "left", gap: 4 } }));
+    expect($("#name-x")).toBeNull();
+    expect(pairOf($("#name-y"))).toBeNull();
+    render(text({ binding: { to: "description", side: "top", gap: 4 } }));
+    expect($("#name-y")).toBeNull();
+    expect(pairOf($("#name-x"))).toBeNull();
+  });
+
+  it("Bind is an icon button on the rotation row, named Bind to layer…", () => {
+    render(text());
+    const bind = byLabel("Bind to layer…")!;
+    expect(bind.tagName).toBe("BUTTON");
+    expect(bind.textContent?.trim()).toBe("");
+    expect(bind.parentElement!.contains(byLabel("Rotate 90°"))).toBe(true);
+    click(bind);
+    expect(byLabel("Bind to Description")).not.toBeNull();
+  });
+
+  it("a bound layer keeps Bound to, Side, Gap and Unbind, and no Bind button", () => {
+    render(text({ binding: { to: "description", side: "top", gap: 4 } }));
+    expect(container.textContent).toContain("Bound to");
+    expect(byLabel("Binding side")).not.toBeNull();
+    expect($("#name-gap")).not.toBeNull();
+    expect(Array.from(container.querySelectorAll("button")).some((b) => b.textContent?.trim() === "Unbind")).toBe(true);
+    expect(byLabel("Bind to layer…")).toBeNull();
+    expect(byLabel("Rotate 90°")).not.toBeNull();
   });
 
   it("a bound layer shows the bound name and gap, and Unbind calls onUnbind", () => {
@@ -958,5 +1002,34 @@ describe("LayerInspector numeric fields (NumberField)", () => {
     key($("#barcode-modulew")!, "ArrowUp");
     // 0.05pt is 0.018mm; 0.1mm would land at 1.28pt.
     expect(onChange).toHaveBeenLastCalledWith({ moduleW: 1.05 });
+  });
+});
+
+describe("FieldPair", () => {
+  /** The input a label's text names, as getByLabelText resolves it. */
+  const byLabelText = (text: string) => {
+    const label = [...container.querySelectorAll("label")].find((l) => l.textContent === text);
+    return label ? document.getElementById(label.htmlFor) : null;
+  };
+
+  it("puts two compact fields in one grid row, each label tied to its input", () => {
+    // Each cell is a Row (field + badge slot), as the inspector sections use it.
+    const field = (id: string, label: string) => createElement(Row, null, createElement(ScrubField, {
+      id, label, unit: "pt", value: 1, min: 0, max: 10, step: 1, compact: true, onChange: vi.fn(),
+    }));
+    act(() => {
+      root.render(createElement(FieldPair, null, field("pair-x", "X"), field("pair-y", "Y")));
+    });
+    const x = byLabelText("X")!;
+    const y = byLabelText("Y")!;
+    expect(x.id).toBe("pair-x");
+    expect(y.id).toBe("pair-y");
+    const row = container.firstElementChild!;
+    expect(row.className).toContain("grid-cols-2");
+    expect(row.children).toHaveLength(2);
+    expect(row.contains(x) && row.contains(y)).toBe(true);
+    // Compact: the input group fills its cell, not a fixed w-24/w-28.
+    const group = x.parentElement!;
+    expect(group.className).not.toMatch(/\bw-2[48]\b/);
   });
 });
