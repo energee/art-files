@@ -1,10 +1,11 @@
 # Print-ready CMYK export
 
-Status: tasks 1, 2 and 5 done on `feat/cmyk-export` (#571). Task 0 answered:
-the printer accepts RGB with an embedded ICC (PDF/X-4) and named no profile,
-so the output intent is sRGB. Task 3 skipped (not CMYK-only). Task 4 open:
-`tools/to-cmyk.sh` kept, pending the user's decision. The Acrobat Preflight
-pass in task 2 is still to do by hand.
+Status: CMYK fills are implemented. Colour-profile embedding and PDF/X-4
+output (task 2) are deferred by user decision on 2026-11-04 under
+[#675](https://github.com/energee/art-files/issues/675), not release blockers.
+Exports retain CMYK fills and White Ink without an output ICC profile or
+PDF/X declaration. The sRGB source profile is kept as a repository asset.
+Task 3 is skipped (not CMYK-only); task 4 remains open.
 
 ## Why
 
@@ -55,7 +56,9 @@ The answers pick the path:
   `cmyk(15,25,70,5)` has `0.15 0.25 0.7 0.05 k` in its content stream.
 
 ### 2. PDF/X-4 output intent — `src/pdf/build.ts`
-- Embed the profile from task 0 (or sRGB when RGB + ICC is accepted) as
+- Obtain a printer-approved printer-class output profile from task 0. Keep
+  sRGB source characterization separate; a monitor-class sRGB profile
+  cannot serve as a PDF/X output intent. Embed the approved output profile as
   `/OutputIntents [<< /S /GTS_PDFX /OutputConditionIdentifier … /DestOutputProfile … >>]`,
   plus `GTS_PDFXVersion (PDF/X-4)` in the Info dict and the XMP.
 - Side benefit: Acrobat enables Overprint Preview by default for PDF/X, so
@@ -93,11 +96,14 @@ kept only for legacy files. Decide with the user.
   `cmyk(${string})`. The CMYK entry mode is the existing colour field's text
   box: it takes a hex or a typed `cmyk(c,m,y,k)`; no new control. Swatches
   store the value as typed.
-- Output intent: `src/pdf/pdfx.ts`, on the combined print PDF only (the
-  two-file art/mask PDFs and their goldens are unchanged). Adds the sRGB ICC
-  (CC0 compact profile), Info `GTS_PDFXVersion` + `Trapped`, XMP, a trailer
-  ID derived from the display list, and a `%PDF-1.6` header.
-- Preflight risk to check in Acrobat: sRGB is a monitor-class profile, and
-  strict PDF/X-4 checks want an output-device profile and may flag
-  DeviceCMYK (CMYK fills, the White Ink alternate) under an RGB intent. If
-  Acrobat objects, the fix is the printer's CMYK ICC as the intent.
+- The original sRGB-v2-magic.icc (736 bytes, ICC v2, CC0) from
+  [Compact ICC Profiles](https://github.com/saucecontrol/Compact-ICC-Profiles)
+  is retained unchanged at `color-profiles/sRGB-v2-magic.icc`. Its SHA-256 is
+  `af4efe28f6d311799865f325ba39184a2e978b113ca74124d60af7de22b105f4`.
+  It is an RGB source/monitor profile, not an approved printer output intent,
+  and is not embedded in current exports.
+- Removed the output-intent embedding and PDF/X Info/XMP declarations.
+  Future PDF/X work requires a printer-approved output ICC/condition,
+  separate RGB source characterization and independent preflight on mixed
+  RGB/CMYK/transparency/White Ink artwork. The rejected monitor-class intent
+  and its evidence remain recorded in the ledger and #675.

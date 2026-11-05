@@ -134,7 +134,7 @@ export function FillContract(props: Ctx & { layer: TextLayer }) {
         <SelectField id={`${id}-fill-symbology`} label={t("Symbology")} ariaLabel={t("Symbology")} badge={badge(["symbology"], t("Symbology"))}
           items={symbologies} value={layer.symbology ?? "upc-a"} onChange={(v) => set({ symbology: v as Symbology })} />
       )}
-      <Vocabulary layer={layer} set={set} badge={badge} unit={props.unit} />
+      <Vocabulary {...props} />
       {layer.input !== undefined && (
         <Row badge={badge(["suffix"], t("Suffix"))}>
           <InputRow id={`${id}-suffix`} label={t("Suffix")} value={layer.suffix ?? ""} onChange={(v) => set({ suffix: v || undefined })} />

@@ -5,7 +5,9 @@
 // clear of them, and the header drags the window. initTitlebar() marks <html>
 // data-titlebar="overlay" (and data-fullscreen while the lights are gone);
 // index.css's `titlebar:` variant keys on those, so a browser, Windows and
-// Linux lay out exactly as before.
+// Linux lay out exactly as before. It also marks data-glass: the same window
+// carries macOS Liquid Glass (tauri.conf.json windowEffects), and index.css
+// lets the chrome show it.
 import { isTauri } from "@tauri-apps/api/core";
 import { isMacOS } from "@/keys";
 
@@ -16,12 +18,21 @@ export const overlayTitlebar = (): boolean => isTauri() && isMacOS();
 export function initTitlebar(root: HTMLElement = document.documentElement): void {
   if (!overlayTitlebar()) return;
   root.dataset.titlebar = "overlay";
-  // Full screen has no traffic lights, so the room kept for them goes away. A
+  root.dataset.glass = "";
+  // Full screen has no traffic lights, so the room kept for them goes away.
+  // The glass tints by the WINDOW's appearance, which follows the OS, so a
+  // pinned theme (data-theme, src/theme.ts) pins the window too, or dark text
+  // would sit on dark glass; no attribute hands it back to the OS (null). A
   // failure here reaches UncaughtErrors and leaves the lights' room in place.
   void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
     const win = getCurrentWindow();
+    const pin = () => {
+      const t = root.dataset.theme;
+      return win.setTheme(t === "light" || t === "dark" ? t : null);
+    };
+    new MutationObserver(() => void pin()).observe(root, { attributeFilter: ["data-theme"] });
     const sync = async () => root.toggleAttribute("data-fullscreen", await win.isFullscreen());
     await win.onResized(sync);
-    await sync();
+    await Promise.all([sync(), pin()]);
   });
 }

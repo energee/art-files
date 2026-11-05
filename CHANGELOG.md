@@ -6,16 +6,31 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+- **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
+- **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
+- **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
+- **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
+
+## [0.1.118] - 2026-11-04
+
+### Changed
+- **Liquid Glass on macOS.** The Layers sidebar, tab strip, header, status bar and inspector now show the desktop through macOS glass (Liquid Glass on macOS 26 and later, the frosted sidebar look before). The preview stays solid, so the glass never tints your artwork. A theme picked under View → Appearance now sets the glass too.
+- **Rows and buttons no longer highlight as text.** Dragging across the Layers list, buttons or labels no longer selects their text. Text fields still select as before, and toast messages can still be copied.
+- **No divider lines in the inspector.** Sections (Typography, Position, Color, Stroke, Template field settings) are now grouped by their headings and spacing alone.
+
+## [0.1.117] - 2026-11-04
+
 ### Added
 - **Turn the can's lighting.** A Lighting slider in the Can view's status bar turns the lights and reflections around the can, from -180° to 180°, so you can move the highlight to match a photo or proof. 0° is the old look, and the angle is remembered.
 - **CMYK colours.** Type `cmyk(15,25,70,5)` into any colour field to print exactly those CMYK percentages in the PDF. The preview and PSD show an RGB approximation, and saved swatches keep CMYK colours as CMYK.
-- **Print-ready PDF/X-4.** The print PDF now declares PDF/X-4 with an embedded sRGB output intent, the RGB-with-profile file the printer accepts. Acrobat opens it with overprint preview on, so White Ink shows correctly. The two-file art and mask PDFs are unchanged.
 
 ### Security
 - **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
 - **WebAssembly for the coming Illustrator export.** The desktop app's security policy now lets it compile the WebAssembly code it ships with, which the upcoming Illustrator (.ai) export uses to turn keylines into outlines. It still cannot run JavaScript from text or load code from the internet. Nothing loads this code until that export exists.
 
 ### Changed
+- **Colour-profile embedding is deferred.** PDF exports keep CMYK fills and White Ink but do not embed an output ICC profile or claim PDF/X-4 compliance. In Acrobat, enable Overprint Preview manually before reviewing the White Ink separation.
 - **Less explanatory text.** Removed helper lines that only repeated what the control next to them already shows: the notes under Language and Two-file export in Settings, under Margin inset, the template-field hints (Field label, Placeholder, Suffix), the link-slug note under a QR link (the preview line below it already shows the result), the "Page art always covers the full page" note, and the file-type hints in the drop zones. The Two-file export label now matches the other settings.
 - **Simpler prompts and panels.** The save prompts when closing a tab or quitting now say one line: "Your changes will be lost if you don't save them." The Master menu shows a file name and last-used date only when two masters share a name. The Characters per inch info button and the Measurement caption above the units picker are gone. On raster image art the Metallic button now stays visible but greyed out, and its tooltip says why, instead of a note below it.
 - **Masters from Label Lab 0.1.36 or earlier no longer open.** Opening one now says so and asks you to open it in Label Lab 0.1.116 and save it, which updates it to the current format. Labels from those versions still open.
@@ -28,8 +43,10 @@ that section to the new version (see .agents/release-steward.md).
 - **The 3D can looks like bare aluminium.** The can's top and bottom are now bright brushed silver, matching a printed can, instead of a dark mirror that turned the shoulder near-black.
 - **New barcodes and QR codes start black with a white halo.** A newly added Barcode or QR layer is now black on white ink inside the white outline the Stroke switch already uses for codes, instead of metallic gold with a black outline. Scan a proof before printing.
 - **Shorter export file names.** The suggested PDF, PSD and project file name is cut at a word boundary within 40 characters of the beer name, instead of the whole name.
+- **Internal cleanup, no visible change.** The editor's view preferences, zoom and pan, and preview asset assembly moved out of the main editor file into three hooks; the app behaves exactly as before.
 
 ### Fixed
+- **The 3D camera stays put after a gesture.** Changing artwork, lighting or the preview size no longer nudges the camera after you orbit or pan. Camera motion settles completely before the preview goes idle.
 - **No white box around transparent images.** A PNG with transparency (a partner logo, say) now gets White Ink only under its visible pixels in the print PDF, the print PSD and the two-file mask files, instead of under its whole rectangle. Semi-transparent edges get partial ink. JPEGs and fully opaque PNGs still print on white ink edge to edge.
 - **Translated labels for the new edge warning, colour hints and tab names.** Spanish, French, German and Portuguese showed some newly added messages in English, and an invalid colour in a `.master` showed an untranslated message.
 - **Empty fields no longer print their placeholder.** An empty fillable field (such as ABV, Style or Description) still shows its placeholder on screen, but exported PDFs and PSDs, and `npm run generate`, now leave it blank instead of printing "#% alc by vol" or "Style". Everything else stays where the preview puts it.

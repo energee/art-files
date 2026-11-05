@@ -8,7 +8,7 @@ import { useState, type ComponentProps, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical,
-  ArrowDownToLine, ArrowUpToLine, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart,
+  ArrowDownToLine, ArrowUpToLine, ChevronDown, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart,
   type LucideIcon,
 } from "lucide-react";
 import type { Layer, Symbology } from "@/model/layers";
@@ -16,6 +16,7 @@ import type { OverrideBadges as Overridden } from "@/model/edit";
 import type { DeepPartial } from "@/model/merge";
 import { cn } from "@/lib/utils";
 import type { Anchor } from "@/model/position";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { NumberRoot, ScrubField, UnitInput } from "./ScrubField";
+import { BadgeSlot, NumberRoot, ScrubField, UnitInput } from "./ScrubField";
 import { decimalsOf, PT_STEP, roundToStep } from "@/numeric";
 import { unitPt, type LengthUnit } from "@/rulers";
 
@@ -97,33 +98,53 @@ export function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "u
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
  *  panel reads in the app's established voice. `control` sits at the
- *  heading's right (Stroke's switch), inside the same full-width rule and
- *  centred on the heading text (#621). */
-export function Heading(props: { children?: ReactNode; control?: ReactNode }) {
+ *  heading's right (Stroke's switch), centred on the heading text (#621).
+ *  No rule above it: the heading and the gap group the section.
+ *
+ *  `more` adds the section's More chevron after `control`: a ghost icon
+ *  button that shows or hides the rarely changed rows. `label` is its
+ *  translated accessible name ("More Typography options"); `open` drives
+ *  `aria-expanded` and turns the chevron up. The section decides which rows
+ *  it hides (Ctx `more`/`overridden`). */
+export function Heading(props: {
+  children?: ReactNode; control?: ReactNode;
+  more?: { open: boolean; onToggle: () => void; label: string };
+}) {
+  const { more } = props;
   return (
-    <div className="mb-2 mt-4 flex items-center justify-between border-t border-border pt-3">
+    <div className="mb-2 mt-7 flex items-center justify-between">
       <h2 className="text-xs font-medium text-foreground">{props.children}</h2>
-      {props.control}
+      <span className="flex items-center gap-1.5">
+        {props.control}
+        {more && (
+          <Button variant="ghost" size="icon-xs" aria-label={more.label} title={more.label}
+            aria-expanded={more.open} onClick={more.onToggle}>
+            <ChevronDown aria-hidden="true" className={cn("transition-transform", more.open && "rotate-180")} />
+          </Button>
+        )}
+      </span>
     </div>
   );
 }
 
-/** The override badge's column, held open while no badge shows, so every
- *  control lines up and none shifts left when its reset dot appears (#619),
- *  like the Layers list's fixed control columns. */
-export function BadgeSlot(props: { badge?: ReactNode }) {
-  return <span className="flex min-w-6 shrink-0 justify-end">{props.badge}</span>;
-}
-
-/** A field with its (optional) override badge to the right, so the badge
- *  never widens the field's own row. */
+/** A stacked field (label over a full-width input: InputRow, Choices) with
+ *  its override badge at the right end of the label line, so the input
+ *  keeps the full width. Side-by-side fields take `badge`
+ *  directly (Field, ScrubField), which draws it left of the control. */
 export function Row(props: { badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="min-w-0 flex-1">{props.children}</div>
-      <BadgeSlot badge={props.badge} />
+    <div className="relative">
+      {props.children}
+      <span className="absolute right-0 top-0"><BadgeSlot badge={props.badge} /></span>
     </div>
   );
+}
+
+/** Two fields side by side in one row (X/Y, Line/Letter spacing), each in
+ *  an equal column and keeping its own label and badge. Pass the fields
+ *  `compact` so their inputs fit the half-width cell. */
+export function FieldPair(props: { children: [ReactNode, ReactNode] }) {
+  return <div className="grid grid-cols-2 gap-2">{props.children}</div>;
 }
 
 /** A label on the left, a compact control on the right — the layout every
@@ -133,8 +154,8 @@ export function Field(props: { id?: string; label: string; badge?: ReactNode; ch
     <div className="flex items-center justify-between gap-2">
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
       <span className="flex items-center gap-1.5">
-        {props.children}
         <BadgeSlot badge={props.badge} />
+        {props.children}
       </span>
     </div>
   );
@@ -326,12 +347,21 @@ export function SelectField<T extends string>(props: {
   </Field>;
 }
 
-/** What every section receives: the layer, the one write, and the badge
- *  factory bound to this layer's overridden set. */
+/** What every section receives: the layer, the one write, the badge
+ *  factory bound to this layer's overridden set, and the More state. */
 export interface Ctx {
   unit: LengthUnit;
   set: (patch: Patch) => void;
   badge: (paths: readonly string[], label: string) => ReactNode;
+  /** Which sections show their More rows: saved in view prefs, one setting
+   *  per section for every layer. */
+  more: { typography: boolean; position: boolean };
+  /** Toggles a section's More rows (the Heading chevron). */
+  onMore: (section: "typography" | "position") => void;
+  /** True when a variant or this label overrides any of `paths` — the same
+   *  sets `badge` reads. A section shows a row it hides behind More while
+   *  `more[section] || overridden(paths)`, so a reset badge is never hidden. */
+  overridden: (paths: readonly string[]) => boolean;
 }
 
 /** A REQUIRED text box: one parseMaster refuses to leave empty (a choice's

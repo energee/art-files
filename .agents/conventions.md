@@ -32,6 +32,10 @@ when changing it; historical plans describe their own implementation date.
   descriptions, and every language in `src/locales/*.ts` (keys and values). Split
   the sentence or use a colon or comma. A spaced en dash (–) is no substitute.
 
+- Nothing clickable is text-selectable. `body` is `user-select: none` in
+  `src/index.css`; only fields you type into (and toasts, for copying errors)
+  opt back in. Don't add `select-text` to rows, buttons or labels.
+
 ## Tests
 
 - Vitest tests live beside related suites under `tests/`. Pure model tests use
