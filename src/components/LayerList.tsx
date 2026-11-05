@@ -519,7 +519,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               <button
                 type="button"
                 data-add-layer aria-label={t("Add layer")}
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-attention-text hover:text-attention-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
                 <Plus className="size-3" /> {t("Add layer")}
               </button>
