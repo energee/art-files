@@ -9,6 +9,8 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
 - **Add layer is no longer pink.** The button matches the Changed filter next to it; the layer kinds in its menu stay pink, since adding one changes the master.
+- **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
+- **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
 
 ## [0.1.118] - 2026-11-04
 

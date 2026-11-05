@@ -543,7 +543,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // operator but are not label content, so none enters history/exports. All
   // persist per operator (useViewPrefs.ts). The one unit drives the rulers, the inspector's
   // length fields, the canvas drag readout and the margin inset.
-  const { showRulers, setShowRulers, unit, setUnit, showGuides, setShowGuides, lightDeg, setLightDeg } = useViewPrefs();
+  const {
+    showRulers, setShowRulers, unit, setUnit, showGuides, setShowGuides, lightDeg, setLightDeg,
+    moreTypography, setMoreTypography, morePosition, setMorePosition,
+  } = useViewPrefs();
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -2575,6 +2578,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
                 unit={unit}
+                more={{ typography: moreTypography, position: morePosition }}
+                onMore={(section) => (section === "typography" ? setMoreTypography : setMorePosition)((open) => !open)}
                 layerNames={rows.map((r) => ({ id: r.layer.id, name: r.layer.name }))}
                 overridden={overridden}
                 onChange={(p) => patch(inspected.layer.id, p)}

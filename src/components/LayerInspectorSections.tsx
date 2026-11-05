@@ -3,6 +3,7 @@
 // typography, and the Style stack (fill, plate, stroke). Each writes only
 // through `set` with a minimal patch (LayerInspector.tsx's header). Split out
 // of LayerInspector.tsx (#433).
+import type { ReactNode } from "react";
 import { useTranslation } from "@/i18n";
 import { Link2, Link2Off, RotateCcw } from "lucide-react";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
@@ -23,15 +24,16 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Toggle } from "@/components/ui/toggle";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
-import { ScrubField } from "./ScrubField";
+import { BadgeSlot, ScrubField } from "./ScrubField";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import {
-  BadgeSlot, BlankableField, DimensionField, Field, Heading, PT, Row, Segmented, SelectField, SwitchRow,
+  BlankableField, DimensionField, Field, FieldPair, Heading, PT, Segmented, SelectField, SwitchRow,
   useInspectorOptions, type Ctx,
 } from "./LayerInspectorControls";
 
@@ -47,65 +49,98 @@ export function Position(props: Ctx & {
   const horizontal = binding?.side === "left" || binding?.side === "right";
   const others = props.layerNames.filter((n) => n.id !== id);
   const nameOf = (lid: string) => props.layerNames.find((n) => n.id === lid)?.name ?? lid;
+  // X and Y share one pair, and so do their guides; a side binding hides
+  // one axis, and the other then takes the row alone (no half-empty pair).
+  const showX = !horizontal;
+  const showY = (!binding || horizontal) && typeof y === "number";
+  const pair = (a: ReactNode, b: ReactNode) =>
+    a && b ? <FieldPair>{[a, b]}</FieldPair> : a || b;
+  const xField = showX && (
+    <DimensionField badge={badge(["x"], "X")}
+      id={`${id}-x`} label={guideOf(layer.guideX) ? t("X offset") : "X"} unit={props.unit} value={layer.x}
+      min={-2000} max={2000} {...PT} compact
+      onChange={(x) => set({ x })}
+    />
+  );
+  const yField = showY && (
+    <DimensionField badge={badge(["y"], "Y")}
+      id={`${id}-y`} label={guideOf(layer.guideY) ? t("Y offset") : "Y"} unit={props.unit} value={y}
+      min={-2000} max={2000} {...PT} compact
+      onChange={(v) => set({ y: v })}
+    />
+  );
+  // A segmented row is label + three icons + badge, too wide for half of
+  // the panel, so in a pair it stacks: label above, control below, its
+  // badge after the control so the control lines up under the label.
+  const stacked = (node: ReactNode) =>
+    <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-1 [&>div>span]:flex-row-reverse">{node}</div>;
+  const hGuide = showX && (
+    <Segmented
+      label={t("Horizontal guide")} value={guideOf(layer.guideX)}
+      options={hGuides}
+      badge={badge(["guideX", "anchor"], t("Horizontal guide"))}
+      onChange={(guideX) => set({ guideX, x: 0, anchor: guideX })}
+    />
+  );
+  const vGuide = showY && (
+    <Segmented
+      label={t("Vertical guide")} value={guideOf(layer.guideY)}
+      options={vGuides}
+      badge={badge(["guideY", "vAnchor"], t("Vertical guide"))}
+      onChange={(guideY) => set({ guideY, y: 0, vAnchor: guideY === "bottom" ? "bottom" : "top" })}
+    />
+  );
+  // Image layers are the one kind no backend rotates: raster art places as
+  // a bare rect with no transform, so honoring it would mean adding one to
+  // all three backends. Hide the control rather than ship a toggle that
+  // silently does nothing.
+  const rotation = layer.kind !== "image" && (
+    <span className="flex items-center gap-1.5">
+      <BadgeSlot badge={badge(["rotation"], t("Rotation"))} />
+      <Toggle
+        size="sm" variant="outline"
+        pressed={layer.rotation === 90}
+        onPressedChange={(on) => set({ rotation: on ? 90 : 0 })}
+        aria-label={t("Rotate 90°")}
+        title={t("Rotate 90° counter-clockwise (reads bottom to top)")}
+      >
+        <RotateCcw className="size-3.5" /> 90°
+      </Toggle>
+    </span>
+  );
+  // Unbound, Bind is an icon button on Rotation's row; bound, the binding's
+  // own rows (Bound to, Side, Gap, Unbind) replace it.
+  const bind = !binding && (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={
+        <Button variant="outline" size="icon-xs" aria-label={t("Bind to layer…")} title={t("Bind to layer…")}
+          disabled={!props.onBind || others.length === 0}>
+          <Link2 className="size-3" />
+        </Button>
+      } />
+      <DropdownMenuContent align="start">
+        {others.map((n) => (
+          <DropdownMenuSub key={n.id}>
+            <DropdownMenuSubTrigger aria-label={t("Bind to {{name}}", { name: n.name })}>{n.name}</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {(["top", "left", "right", "bottom"] as const).map((side) => (
+                <DropdownMenuItem key={side} aria-label={t("Bind to {{side}} of {{name}}", { side: t(side), name: n.name })}
+                  className="text-xs" onClick={() => props.onBind?.(n.id, side)}>
+                  {t(side)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
   return (
     <div className="space-y-1.5">
       <Heading>{t("Position")}</Heading>
-      {!horizontal && <>
-      <Row badge={badge(["x"], "X")}>
-        <DimensionField
-          id={`${id}-x`} label={guideOf(layer.guideX) ? t("X offset") : "X"} unit={props.unit} value={layer.x}
-          min={-2000} max={2000} {...PT}
-          onChange={(x) => set({ x })}
-        />
-      </Row>
-      <Segmented
-        label={t("Horizontal guide")} value={guideOf(layer.guideX)}
-        options={hGuides}
-        badge={badge(["guideX", "anchor"], t("Horizontal guide"))}
-        onChange={(guideX) => set({ guideX, x: 0, anchor: guideX })}
-      />
-      </>}
-      {(!binding || horizontal) && typeof y === "number" && (
-        <>
-          <Row badge={badge(["y"], "Y")}>
-            <DimensionField
-              id={`${id}-y`} label={guideOf(layer.guideY) ? t("Y offset") : "Y"} unit={props.unit} value={y}
-              min={-2000} max={2000} {...PT}
-              onChange={(v) => set({ y: v })}
-            />
-          </Row>
-          <Segmented
-            label={t("Vertical guide")} value={guideOf(layer.guideY)}
-            options={vGuides}
-            badge={badge(["guideY", "vAnchor"], t("Vertical guide"))}
-            onChange={(guideY) => set({ guideY, y: 0, vAnchor: guideY === "bottom" ? "bottom" : "top" })}
-          />
-        </>
-      )}
-      {!binding ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger render={
-            <Button variant="outline" size="xs" className="w-full" disabled={!props.onBind || others.length === 0}>
-              <Link2 className="size-3" /> {t("Bind to layer…")}
-            </Button>
-          } />
-          <DropdownMenuContent align="start">
-            {others.map((n) => (
-              <DropdownMenuSub key={n.id}>
-                <DropdownMenuSubTrigger aria-label={t("Bind to {{name}}", { name: n.name })}>{n.name}</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {(["top", "left", "right", "bottom"] as const).map((side) => (
-                    <DropdownMenuItem key={side} aria-label={t("Bind to {{side}} of {{name}}", { side: t(side), name: n.name })}
-                      className="text-xs" onClick={() => props.onBind?.(n.id, side)}>
-                      {t(side)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : (
+      {pair(xField, yField)}
+      {hGuide && vGuide ? pair(stacked(hGuide), stacked(vGuide)) : hGuide || vGuide}
+      {binding && (
         <>
           <Field label={t("Bound to")} badge={badge(["binding", "y"], t("Binding"))}>
             <span className="flex items-center gap-1 text-xs font-medium">
@@ -123,34 +158,21 @@ export function Position(props: Ctx & {
               </SelectContent>
             </Select>
           </Field>
-          <Row badge={badge(["binding", "y"], t("Gap"))}>
-            <DimensionField id={`${id}-gap`} label={t("Gap")} unit={props.unit} value={binding.gap}
-              min={-500} max={500} {...PT}
-              onChange={(gap) => layer.binding
-                ? set({ binding: { ...binding, gap } })
-                : set({ y: { below: binding.to, gap } })} />
-          </Row>
+          <DimensionField badge={badge(["binding", "y"], t("Gap"))} id={`${id}-gap`} label={t("Gap")} unit={props.unit} value={binding.gap}
+            min={-500} max={500} {...PT}
+            onChange={(gap) => layer.binding
+              ? set({ binding: { ...binding, gap } })
+              : set({ y: { below: binding.to, gap } })} />
           <Button variant="outline" size="xs" className="w-full" onClick={props.onUnbind}>
             <Link2Off className="size-3" /> {t("Unbind")}
           </Button>
         </>
       )}
-      {/* Image layers are the one kind no backend rotates: raster art places
-          as a bare rect with no transform, so honoring it would mean adding
-          one to all three backends. Hide the control rather than ship a
-          toggle that silently does nothing. */}
-      {layer.kind !== "image" && (
-      <Field label={t("Rotation")} badge={badge(["rotation"], t("Rotation"))}>
-        <Toggle
-          size="sm" variant="outline"
-          pressed={layer.rotation === 90}
-          onPressedChange={(on) => set({ rotation: on ? 90 : 0 })}
-          aria-label={t("Rotate 90°")}
-          title={t("Rotate 90° counter-clockwise (reads bottom to top)")}
-        >
-          <RotateCcw className="size-3.5" /> 90°
-        </Toggle>
-      </Field>
+      {(rotation || bind) && (
+        <div className="flex items-center justify-between gap-2">
+          {rotation && <Label className="text-xs text-muted-foreground">{t("Rotation")}</Label>}
+          <span className="flex items-center gap-1.5">{bind}{rotation}</span>
+        </div>
       )}
     </div>
   );
@@ -178,13 +200,11 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
           </SelectContent>
         </Select>
       </Field>
-      <Row badge={badge(["size"], t("Size"))}>
-        <ScrubField
-          id={`${id}-size`} label={t("Size")} unit="pt" unitTitle={t("Type size is always points")} value={layer.size}
-          min={1} max={300} {...PT}
-          onChange={(size) => set({ size })}
-        />
-      </Row>
+      <ScrubField badge={badge(["size"], t("Size"))}
+        id={`${id}-size`} label={t("Size")} unit="pt" unitTitle={t("Type size is always points")} value={layer.size}
+        min={1} max={300} {...PT}
+        onChange={(size) => set({ size })}
+      />
       <CharacterHeight key={layer.fontFamily ?? props.fontFamily} layer={layer}
         family={fontFamilyOf({ fontFamily: layer.fontFamily ?? props.fontFamily })}
         onChange={(size) => set({ size })} />
@@ -199,30 +219,24 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
         badge={badge(["width"], t("Wrap width"))}
         onChange={(width) => set({ width })}
       />
-      <Row badge={badge(["leading"], t("Leading"))}>
-        <ScrubField
-          id={`${id}-leading`} label={t("Line spacing")} unit="×"
-          value={layer.leading ?? 1.2} min={0.5} max={4} step={0.01} dragStep={0.05}
-          onChange={(leading) => set({ leading })}
-        />
-      </Row>
-      <Row badge={badge(["headerScale"], t("Header scale"))}>
-        <ScrubField
-          id={`${id}-header-scale`} label={t("Heading scale")} unit="×"
-          value={layer.headerScale ?? 1} min={0.5} max={4} step={0.01} dragStep={0.05}
-          onChange={(headerScale) => set({ headerScale })}
-        />
-      </Row>
+      <ScrubField badge={badge(["leading"], t("Leading"))}
+        id={`${id}-leading`} label={t("Line spacing")} unit="×"
+        value={layer.leading ?? 1.2} min={0.5} max={4} step={0.01} dragStep={0.05}
+        onChange={(leading) => set({ leading })}
+      />
+      <ScrubField badge={badge(["headerScale"], t("Header scale"))}
+        id={`${id}-header-scale`} label={t("Heading scale")} unit="×"
+        value={layer.headerScale ?? 1} min={0.5} max={4} step={0.01} dragStep={0.05}
+        onChange={(headerScale) => set({ headerScale })}
+      />
       {/* Clamped both ends by the field: tracking wide enough to overrun
           the label reads as a broken line, not a style. */}
-      <Row badge={badge(["style.letterSpacing"], t("Letter Spacing"))}>
-        <ScrubField
-          id={`${id}-tracking`} label={t("Letter spacing")} unit="pt"
-          unitTitle={t("Letter spacing is always points")}
-          value={layer.style.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
-          onChange={(letterSpacing) => set({ style: { letterSpacing } })}
-        />
-      </Row>
+      <ScrubField badge={badge(["style.letterSpacing"], t("Letter Spacing"))}
+        id={`${id}-tracking`} label={t("Letter spacing")} unit="pt"
+        unitTitle={t("Letter spacing is always points")}
+        value={layer.style.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
+        onChange={(letterSpacing) => set({ style: { letterSpacing } })}
+      />
       {/* A display transform, not an edit: the stored text keeps its
           typed case, which is what lets the QR's {name|slug} still read
           it. Legacy masters author it one level up, hence uppercaseOf. */}
@@ -252,13 +266,11 @@ export function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: bool
   return (
     <div className="space-y-1.5">
       <Heading>{t("Image")}</Heading>
-      <Row badge={badge(["w"], t("Width"))}>
-        <DimensionField
-          id={`${id}-w`} label={t("Width")} unit={props.unit} value={layer.w}
-          min={1} max={2000} {...PT}
-          onChange={(w) => set({ w })}
-        />
-      </Row>
+      <DimensionField badge={badge(["w"], t("Width"))}
+        id={`${id}-w`} label={t("Width")} unit={props.unit} value={layer.w}
+        min={1} max={2000} {...PT}
+        onChange={(w) => set({ w })}
+      />
       <BlankableField
         id={`${id}-h`} label={t("Height")} unit={props.unit} key={props.unit} placeholder={t("auto")}
         value={layer.h} min={1} max={2000} {...PT}
@@ -292,21 +304,17 @@ export function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
         items={symbologies} value={layer.symbology} onChange={(v) => set({ symbology: v as Symbology })} />
       {/* min > 0: a typed zero would collapse the symbol to nothing rather
           than reading as "very narrow". */}
-      <Row badge={badge(["moduleW"], t("Module width"))}>
-        <DimensionField
-          id={`${id}-modulew`} label={t("Module width")} unit={props.unit} value={layer.moduleW}
-          min={0.01} max={10} step={0.01} dragStep={0.05}
-          onChange={(moduleW) => set({ moduleW })}
-        />
-      </Row>
+      <DimensionField badge={badge(["moduleW"], t("Module width"))}
+        id={`${id}-modulew`} label={t("Module width")} unit={props.unit} value={layer.moduleW}
+        min={0.01} max={10} step={0.01} dragStep={0.05}
+        onChange={(moduleW) => set({ moduleW })}
+      />
       {warning && <p className="text-[11px] text-warning-text">{warning}</p>}
-      <Row badge={badge(["h"], t("Height"))}>
-        <DimensionField
-          id={`${id}-h`} label={t("Height")} unit={props.unit} value={layer.h}
-          min={1} max={300} {...PT}
-          onChange={(h) => set({ h })}
-        />
-      </Row>
+      <DimensionField badge={badge(["h"], t("Height"))}
+        id={`${id}-h`} label={t("Height")} unit={props.unit} value={layer.h}
+        min={1} max={300} {...PT}
+        onChange={(h) => set({ h })}
+      />
       <SwitchRow
         label={t("Show digits")} checked={layer.showDigits ?? true}
         badge={badge(["showDigits"], t("Show digits"))}
@@ -324,13 +332,11 @@ export function QrGeometry(props: Ctx & { layer: QrLayer }) {
   return (
     <div className="space-y-1.5">
       <Heading>{t("QR")}</Heading>
-      <Row badge={badge(["size"], t("Size"))}>
-        <DimensionField
-          id={`${id}-size`} label={t("Size")} unit={props.unit} value={layer.size}
-          min={1} max={300} {...PT}
-          onChange={(size) => set({ size })}
-        />
-      </Row>
+      <DimensionField badge={badge(["size"], t("Size"))}
+        id={`${id}-size`} label={t("Size")} unit={props.unit} value={layer.size}
+        min={1} max={300} {...PT}
+        onChange={(size) => set({ size })}
+      />
       <SelectField id={`${id}-qr-style`} label={t("Style")} ariaLabel={t("QR style")} badge={badge(["qrStyle"], t("QR style"))}
         items={qrStyles} value={layer.qrStyle} onChange={(v) => set({ qrStyle: v as QrLayer["qrStyle"] })} />
       {/* Match the renderer’s default (DEFAULT_EC_LEVEL) when the optional level is absent. */}
@@ -383,6 +389,9 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
       <div className="space-y-1">
         <Heading control={
           <span className="flex items-center gap-1.5">
+            {/* One reset per state: here while the stroke is off, beside
+                the colour while it is on. */}
+            <BadgeSlot badge={!strokeOn && badge(["style.stroke"], t("Stroke"))} />
             <Switch
               aria-label={t("Outer stroke")}
               checked={strokeOn}
@@ -392,9 +401,6 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
               onCheckedChange={(on) =>
                 setStyle({ stroke: on === true ? (isCode ? "#FFFFFF" : "#000000") : "none" })}
             />
-            {/* One reset per state: here while the stroke is off, beside
-                the colour while it is on. */}
-            <BadgeSlot badge={!strokeOn && badge(["style.stroke"], t("Stroke"))} />
           </span>
         }>{t("Stroke")}</Heading>
         {strokeOn && (
@@ -417,13 +423,11 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             </div>
             {/* 60px cap: wider strokes swallow the letterforms long before
                 the geometry breaks. */}
-            <Row badge={badge(["style.strokeWidth"], t("Stroke Width"))}>
-              <ScrubField
-                id={`${id}-stroke-width`} label={t("Width")} unit="px" unitTitle={t("Stroke width is pixels at 600 DPI")}
-                value={style.strokeWidth ?? DEFAULT_STROKE_PX} min={1} max={60} step={1}
-                onChange={(strokeWidth) => setStyle({ strokeWidth })}
-              />
-            </Row>
+            <ScrubField badge={badge(["style.strokeWidth"], t("Stroke Width"))}
+              id={`${id}-stroke-width`} label={t("Width")} unit="px" unitTitle={t("Stroke width is pixels at 600 DPI")}
+              value={style.strokeWidth ?? DEFAULT_STROKE_PX} min={1} max={60} step={1}
+              onChange={(strokeWidth) => setStyle({ strokeWidth })}
+            />
             {layer.kind === "barcode" && (
               <SwitchRow
                 label={t("Solid background")} checked={!!layer.solidBackground}
