@@ -97,11 +97,11 @@ export function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "u
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
  *  panel reads in the app's established voice. `control` sits at the
- *  heading's right (Stroke's switch), inside the same full-width rule and
- *  centred on the heading text (#621). */
+ *  heading's right (Stroke's switch), centred on the heading text (#621).
+ *  No rule above it: the heading and the gap group the section. */
 export function Heading(props: { children?: ReactNode; control?: ReactNode }) {
   return (
-    <div className="mb-2 mt-4 flex items-center justify-between border-t border-border pt-3">
+    <div className="mb-2 mt-7 flex items-center justify-between">
       <h2 className="text-xs font-medium text-foreground">{props.children}</h2>
       {props.control}
     </div>

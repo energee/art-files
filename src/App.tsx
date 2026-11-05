@@ -2358,7 +2358,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
             // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
-            className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border",
+            className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border bg-background",
               "transition-[margin] duration-200",
               active && inspected && "mr-[300px]",
               panning && "cursor-grabbing")}

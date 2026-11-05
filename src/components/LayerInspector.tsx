@@ -219,7 +219,7 @@ export function LayerInspector(props: {
           carries no Style stack. */}
       {!page && <StyleSection layer={layer} rasterArt={props.rasterArt} {...ctx} />}
       {(layer.kind === "text" || layer.kind === "barcode") && (
-        <details className="mt-4 border-t border-border pt-3">
+        <details className="mt-7">
           <summary className="cursor-pointer rounded py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {t("Template field settings")}
           </summary>
