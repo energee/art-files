@@ -167,9 +167,6 @@ export class CanScene {
    *  pack without re-framing, so the fresh angle spun the whole block around a
    *  stationary camera. Only frameCamera moves this. */
   private framedAzimuth = DEFAULT_FRONT_AZIMUTH;
-  /** Whether the camera has been aimed at a real (built) label yet. After
-   *  that the view belongs to the operator — see frameCamera. */
-  private framed = false;
 
   private mode: CanSceneMode = "can";
   /** Camera distance the current mode frames at — the denominator getZoom
@@ -515,31 +512,46 @@ export class CanScene {
     return this.canHeight * LABEL_HEIGHT_RATIO;
   }
 
+  /** New art or mask. The first call builds the label; after that only the
+   *  maps change, on the same material and meshes. Disposing a material releases
+   *  its shader programs before the next render can reuse them, so a fresh one
+   *  per edit relinked both of the double-sided label's programs every time. */
   applyTextures(tex: LabelTextures) {
     this.pendingTextures = tex;
     if (!this.canModel) return; // replayed by loadCan on arrival
 
     const soft = this.softMask(tex);
-    const oldMaterial = this.labelMaterial;
-    this.labelMaterial = new THREE.MeshStandardMaterial({
-      transparent: true, side: THREE.DoubleSide, metalness: 1.0, roughness: 1.0,
+    const maps = {
       map: this.createTexture(tex.art, true),
       metalnessMap: this.createTexture(soft),
       roughnessMap: this.createTexture(roughnessCanvas(soft)),
       bumpMap: this.createTexture(soft),
-      bumpScale: LAYER_DEPTH,
       alphaMap: this.createTexture(this.alphaCanvas(tex)),
-      alphaTest: 0.5,
+    };
+    if (this.labelMaterial) {
+      this.disposeMaterialMaps(this.labelMaterial);
+      Object.assign(this.labelMaterial, maps);
+      if (this.flat) this.flat.back.material.alphaMap = maps.alphaMap;
+      this.requestRender();
+      return;
+    }
+    this.labelMaterial = new THREE.MeshStandardMaterial({
+      transparent: true, side: THREE.DoubleSide, metalness: 1.0, roughness: 1.0,
+      bumpScale: LAYER_DEPTH, alphaTest: 0.5, ...maps,
     });
-    if (oldMaterial) { this.disposeMaterialMaps(oldMaterial); oldMaterial.dispose(); }
+    this.buildLabelMeshes();
+  }
 
+  /** The label's surfaces, once the can's real size is known: the cylinder and
+   *  the Rendered view's plane. Nothing later resizes the cylinder, and setCurve
+   *  rebuilds the plane's geometry itself. */
+  private buildLabelMeshes() {
     const labelRadius = this.canRadius * 1.005;
     // No clamp: the wrap is the trim's width over the can's circumference,
     // which is 97.9% — short of meeting itself by construction, so there is
     // no seam to protect against and nothing for an operator to overshoot.
     const wrapAngle = LABEL_WRAP_RATIO * Math.PI * 2;
 
-    this.disposeLabelMesh();
     this.labelMesh = new THREE.Mesh(
       new THREE.CylinderGeometry(
         labelRadius, labelRadius, this.labelHeight(), 64, 1, true, 0, wrapAngle,
@@ -553,9 +565,8 @@ export class CanScene {
     this.frontAzimuth = wrapAngle + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
     this.scene.add(this.labelMesh);
 
-    this.disposeFlatMesh();
     const flatGeometry = this.flatGeometry();
-    const front = new THREE.Mesh(flatGeometry, this.labelMaterial);
+    const front = new THREE.Mesh(flatGeometry, this.labelMaterial!);
     // The back face of the same surface: BackSide, so it only draws from
     // behind, and pulled toward the camera so it wins over the label's own
     // (DoubleSide) back face there. Shares the geometry, so a bend moves both.
@@ -563,18 +574,17 @@ export class CanScene {
     // label ever needs its back judged.
     const back = new THREE.Mesh(flatGeometry, new THREE.MeshStandardMaterial({
       color: 0xffffff, metalness: 0, roughness: 0.9, side: THREE.BackSide,
-      transparent: true, alphaTest: 0.5, alphaMap: this.labelMaterial.alphaMap,
+      transparent: true, alphaTest: 0.5, alphaMap: this.labelMaterial!.alphaMap,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
     }));
     this.flat = { front, back };
     this.scene.add(front, back);
 
-    // The opening view, once. frontAzimuth only becomes real after the first
-    // cylinder exists, so the constructor's guess needs correcting — but only
-    // that first time: later art changes must not yank a camera the operator
-    // has since moved. Ahead of applyMode, which lays the 4-pack out against
-    // whatever azimuth the camera ends up framed at.
-    if (!this.framed) { this.framed = true; this.frameCamera(); }
+    // The opening view. frontAzimuth only becomes real once the cylinder
+    // exists, so the constructor's guess needs correcting. Ahead of applyMode,
+    // which lays the 4-pack out against whatever azimuth the camera ends up
+    // framed at.
+    this.frameCamera();
     this.applyMode(); // rebuild the pack against the new meshes
   }
 
@@ -615,13 +625,9 @@ export class CanScene {
     this.applyMode();
   }
 
-  /** Show the meshes this mode uses, and rebuild the 4-pack (its clones hold
-   *  the label mesh by reference, so a rebuilt cylinder needs new ones).
-   *
-   *  Deliberately does NOT move the camera. This runs on every geometry
-   *  rebuild — each pixel of a size scrub, and every debounced preview
-   *  render — and re-aiming there dragged the view back to front-on while
-   *  the operator was mid-orbit. Framing is frameCamera's job. */
+  /** Show the meshes this mode uses, and rebuild the 4-pack. Its clones share
+   *  the label's material, so a new set of maps reaches them with no rebuild.
+   *  Framing is frameCamera's job, not this one's. */
   private applyMode() {
     const mode = this.mode;
     // Tear down the previous pack; clones share geometry/materials with the
@@ -642,8 +648,8 @@ export class CanScene {
   }
 
   /** Aim the camera at the current mode's subject. Called when the operator
-   *  asks for a different view — never on a rebuild, so an orbit survives
-   *  every size change and every re-render of the art. */
+   *  asks for a different view and once for the first label — never on a
+   *  rebuild, so an orbit survives every re-render of the art. */
   private frameCamera() {
     // The whole of framing is our own camera move: the zeroed target and the
     // 1x distance below are scaffolding, not where the operator is, so nothing
