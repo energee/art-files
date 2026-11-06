@@ -46,7 +46,7 @@ async function mountExport() {
     api = useExport({
       drawLayers: [], family: "poppins", liveImages: {}, planAssets: () => ({}) as never,
       pageArt: () => ({}), title: "Beer", exportBase: "beer",
-      render: { bleedIn: 0.125, dpi: 600 } as never, exportAgain: () => undefined,
+      exportAgain: () => undefined,
     });
     return null;
   }

@@ -9,7 +9,6 @@
 // (tests/toast-harness.ts).
 import { act } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { DEFAULT_RENDER } from "../src/settings";
 import { TOAST_MS, notify } from "../src/notify";
 import { advance, mount, setupToastHarness, settleDismissal, show, text, toastCount } from "./toast-harness";
 
@@ -60,7 +59,7 @@ function Probe({ tag = "before" }: { tag?: string }) {
   api = useExport({
     drawLayers: [], family: "poppins", liveImages: {}, planAssets: () => ({}) as never,
     pageArt: () => { builds.push(tag); if (failBuild) throw new Error("No art"); return {}; },
-    title: "T", exportBase: "Lupula", render: DEFAULT_RENDER, exportAgain: again,
+    title: "T", exportBase: "Lupula", exportAgain: again,
   });
   return null;
 }

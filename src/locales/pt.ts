@@ -29,7 +29,6 @@ const pt: Record<keyof typeof en, string> = {
   "Reloading opens a fresh window. Files already saved to disk are untouched; unsaved tabs are offered back after the reload (changes from the last couple of seconds may be missing).": "Recarregar abre uma nova janela. Os arquivos já salvos no disco não mudam; as abas não salvas são oferecidas de volta depois (alterações dos últimos segundos podem faltar).",
   "Building PDF…": "Gerando o PDF…",
   "Building PSD…": "Gerando o PSD…",
-  "Bleed or PSD resolution changed during the export. Export again.": "A sangria ou a resolução do PSD mudou durante a exportação. Exporte novamente.",
   "No canvas to draw the White Ink plate.": "Não há uma tela para desenhar a chapa de White Ink.",
   "Building PDFs…": "Gerando PDFs…",
   "Building PSDs…": "Gerando PSDs…",

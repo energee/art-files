@@ -29,7 +29,6 @@ const de: Record<keyof typeof en, string> = {
   "Reloading opens a fresh window. Files already saved to disk are untouched; unsaved tabs are offered back after the reload (changes from the last couple of seconds may be missing).": "Beim Neuladen öffnet sich ein neues Fenster. Gespeicherte Dateien bleiben unverändert. Ungespeicherte Tabs werden zur Wiederherstellung angeboten. Änderungen der letzten Sekunden können fehlen.",
   "Building PDF…": "PDF wird erstellt…",
   "Building PSD…": "PSD wird erstellt…",
-  "Bleed or PSD resolution changed during the export. Export again.": "Beschnitt oder PSD-Auflösung hat sich während des Exports geändert. Bitte erneut exportieren.",
   "No canvas to draw the White Ink plate.": "Keine Zeichenfläche für die White-Ink-Platte.",
   "Building PDFs…": "PDFs werden erstellt…",
   "Building PSDs…": "PSDs werden erstellt…",
