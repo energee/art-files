@@ -289,9 +289,9 @@ type DocumentEditorProps = {
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
    *  shell can drop the queued entry. Called after onMeta has reported the
-   *  open, so the tab's meta claims it from then on. `cancelled`: the operator backed out
-   *  (the different-master prompt's Cancel, or its Locate picker's), so a
-   *  tab made only for this open can go again (#553). */
+   *  open, so the tab's meta claims it from then on. `cancelled`: the
+   *  operator backed out (the different-master prompt's Cancel, or its Locate
+   *  picker's), so a tab made only for this open can go again (#553). */
   onOpenSettled: (seq: number, cancelled: boolean) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its save fn into on every render;
