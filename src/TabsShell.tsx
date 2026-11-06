@@ -721,8 +721,9 @@ export default function TabsShell() {
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
           editor's own save flows (dialog cancel keeps the tab). Hidden, not
-          dismissed, while Save has the master review up. */}
-      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
+          dismissed, while Save has the master review up. Escape can't dismiss
+          it mid-Save: that Save would still close the tab (#705). */}
+      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && !saving && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             {/* A window close or quit (⌘Q, Dock → Quit) ends the app, so the

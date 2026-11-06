@@ -14,6 +14,7 @@ that section to the new version (see .agents/release-steward.md).
 - **A master opened during Save Master no longer reads as unsaved.** The finishing save used to compare the new master against the old one, so it showed changes it didn't have and prompted on close.
 - **The browser no longer opens one file in two tabs.** Picking a label a tab already has focuses that tab, as the desktop app does, instead of letting the two tabs overwrite each other.
 - **Work you discard on quit stays discarded.** Quitting now waits for the tab's recovery copy to be deleted, so the next launch doesn't offer it back.
+- **Escape no longer interrupts the close prompt's Save.** It used to dismiss the prompt and cancel a quit while the Save carried on and closed the tab anyway.
 
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.

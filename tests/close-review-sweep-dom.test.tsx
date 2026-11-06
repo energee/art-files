@@ -9,7 +9,8 @@
 // updater's Restart Now runs the same sweep (beforeRestart) without closing
 // the window. The editor and the updater are stubbed so the test drives
 // masterSaveSlot, saveSlot and beforeRestart directly. A quit waits for a
-// discarded tab's snapshot to go (#697).
+// discarded tab's snapshot to go (#697), and Escape can't cancel a Save the
+// prompt already started (#705).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -139,6 +140,19 @@ it("a Discard's quit waits for the tab's recovery snapshot to go", async () => {
   await act(async () => { button("Discard").click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(destroyed()).toBe(false);
   await act(async () => { release(); });
+  await vi.waitFor(() => expect(destroyed()).toBe(true));
+});
+
+it("Escape during the prompt's Save leaves the Save and the quit running", async () => {
+  await oneTabClosingWindow();
+  let resolve!: (saved: boolean) => void;
+  mocks.editors[0].saveSlot.current = () => new Promise((r) => { resolve = r; });
+  await act(async () => { button("Save").click(); });
+  await act(async () => {
+    prompt()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  expect(prompt()).not.toBeNull();
+  await act(async () => { resolve(true); });
   await vi.waitFor(() => expect(destroyed()).toBe(true));
 });
 
