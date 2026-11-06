@@ -103,6 +103,40 @@ function RulerSettings(props: {
   );
 }
 
+/** The pointer's position on each ruler. Its own component so a pointer move
+ *  repaints these two marks, not the tick strips (#728). Mounted only with the
+ *  rulers, the one place the marks exist. The pane offset comes from the
+ *  measured geometry rather than a fresh rect: re-measuring per move is a
+ *  forced layout flush up to 120 times a second, and nothing can move the pane
+ *  without a measure running anyway. */
+function CursorMarkers({ paneRef, paneLeft, paneTop }: {
+  paneRef: RefObject<HTMLDivElement | null>;
+  paneLeft: number;
+  paneTop: number;
+}) {
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const move = (event: globalThis.PointerEvent) =>
+      setCursor({ x: event.clientX - paneLeft, y: event.clientY - paneTop });
+    const leave = () => setCursor(null);
+    pane.addEventListener("pointermove", move);
+    pane.addEventListener("pointerleave", leave);
+    return () => {
+      pane.removeEventListener("pointermove", move);
+      pane.removeEventListener("pointerleave", leave);
+    };
+  }, [paneRef, paneLeft, paneTop]);
+  if (!cursor || cursor.x <= RULER_SIZE || cursor.y <= RULER_SIZE) return null;
+  return (
+    <>
+      <path d={`M ${cursor.x - 3} 0 h 6 l -3 5 z`} className="fill-primary" />
+      <path d={`M 0 ${cursor.y - 3} v 6 l 5 -3 z`} className="fill-primary" />
+    </>
+  );
+}
+
 /** Memoized, so typing in the inspector skips it (#605); App passes stable
  *  callbacks. A zoom or pan reaches it through `view`, not a render of App. */
 export const Rulers = memo(function Rulers(props: {
@@ -142,7 +176,6 @@ export const Rulers = memo(function Rulers(props: {
   // The last measure with the view taken out: the page's box at z=1, x=y=0
   // from the view's origin, so a zoom or pan is arithmetic on it (below).
   const [fitted, setFitted] = useState<Geometry | null>(null);
-  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const suppressClick = useRef(false);
 
@@ -179,27 +212,6 @@ export const Rulers = memo(function Rulers(props: {
     observer.observe(page);
     return () => observer.disconnect();
   }, [measure, paneRef, previewRef]);
-
-  // Pointer readout lives here rather than in App, so moving across the page
-  // re-renders only this small overlay instead of the complete editor. Not
-  // attached at all when the rulers are hidden — the markers it feeds only
-  // exist inside the ruler strips. The pane offset comes from the measured
-  // geometry rather than a fresh rect: re-measuring per move is a forced
-  // layout flush up to 120 times a second, and nothing can move the pane
-  // without the measure above running anyway.
-  useEffect(() => {
-    const pane = paneRef.current;
-    if (!pane || !fitted || !showRulers) return;
-    const move = (event: globalThis.PointerEvent) =>
-      setCursor({ x: event.clientX - fitted.paneLeft, y: event.clientY - fitted.paneTop });
-    const leave = () => setCursor(null);
-    pane.addEventListener("pointermove", move);
-    pane.addEventListener("pointerleave", leave);
-    return () => {
-      pane.removeEventListener("pointermove", move);
-      pane.removeEventListener("pointerleave", leave);
-    };
-  }, [paneRef, fitted, showRulers]);
 
   // CSS transforms do not trigger ResizeObserver, and need not: the view
   // scales the fitted page about the origin, then offsets it.
@@ -365,12 +377,7 @@ export const Rulers = memo(function Rulers(props: {
                 )}
               </g>
             ))}
-            {cursor && cursor.x > RULER_SIZE && cursor.y > RULER_SIZE && (
-              <>
-                <path d={`M ${cursor.x - 3} 0 h 6 l -3 5 z`} className="fill-primary" />
-                <path d={`M 0 ${cursor.y - 3} v 6 l 5 -3 z`} className="fill-primary" />
-              </>
-            )}
+            <CursorMarkers paneRef={paneRef} paneLeft={geometry.paneLeft} paneTop={geometry.paneTop} />
           </>
         )}
       </svg>

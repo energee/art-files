@@ -13,6 +13,13 @@ import { PAGE } from "../src/layout";
 import { DEFAULT_MARGIN_PT, pointToScreen, type ManualGuide } from "../src/rulers";
 import { DEFAULT_RENDER } from "../src/settings";
 
+// A spy on what every render of Rulers calls per guide, so a test can count
+// those renders; the behaviour is the real one.
+vi.mock("../src/rulers", async (original) => {
+  const actual = await original<typeof import("../src/rulers")>();
+  return { ...actual, pointToScreen: vi.fn(actual.pointToScreen) };
+});
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -393,5 +400,31 @@ describe("Rulers follow the live view", () => {
     base.left = 42;
     act(() => { root.render(createElement(Rulers, { ...props, showRulers: false })); });
     expect(guideLeft()).toBeCloseTo(expectedLeft(100), 4);
+  });
+});
+
+describe("Rulers cursor markers", () => {
+  const markers = () => [...container.querySelectorAll("path.fill-primary")].map((m) => m.getAttribute("d"));
+  const move = (pane: HTMLElement, clientX: number, clientY: number) => act(() => {
+    pane.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY }));
+  });
+
+  it("follow the pointer without rendering the rulers (#728)", () => {
+    const pane = renderRulers().paneRef.current!;
+    vi.mocked(pointToScreen).mockClear();
+    for (let i = 1; i <= 5; i++) move(pane, 100 + i, 200 + i);
+    expect(pointToScreen).not.toHaveBeenCalled();
+    expect(markers()).toEqual(["M 102 0 h 6 l -3 5 z", "M 0 202 v 6 l 5 -3 z"]);
+  });
+
+  it("hide over the rulers and when the pointer leaves the pane", () => {
+    const pane = renderRulers().paneRef.current!;
+    move(pane, 100, 200);
+    expect(markers()).toHaveLength(2);
+    move(pane, 5, 200);
+    expect(markers()).toHaveLength(0);
+    move(pane, 100, 200);
+    act(() => { pane.dispatchEvent(new PointerEvent("pointerleave")); });
+    expect(markers()).toHaveLength(0);
   });
 });
