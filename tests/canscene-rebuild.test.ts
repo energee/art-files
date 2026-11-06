@@ -19,6 +19,8 @@ vi.mock("three", async (importOriginal) => {
   return { ...actual, WebGLRenderer };
 });
 const renders = vi.hoisted(() => ({ count: 0 }));
+/** Calls that pull pixels back to or from a 2D canvas on the main thread. */
+const readbacks = vi.hoisted(() => ({ count: 0 }));
 vi.mock("three/addons/loaders/GLTFLoader.js", async () => {
   const { BoxGeometry, Group, Mesh } = await import("three");
   return {
@@ -70,9 +72,9 @@ beforeEach(() => {
   });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
   // Only canvas sizes and call counts matter here, never the pixels.
-  const pixels = () => ({ data: new Uint8ClampedArray(8 * 4 * 4) });
+  const pixels = () => { readbacks.count++; return { data: new Uint8ClampedArray(8 * 4 * 4) }; };
   const calls: Record<string, () => unknown> = {
-    getImageData: pixels, createImageData: pixels,
+    getImageData: pixels, createImageData: pixels, putImageData: () => { readbacks.count++; },
     createRadialGradient: () => ({ addColorStop() {} }),
   };
   const context = new Proxy({}, { get: (_, name: string) => calls[name] ?? (() => {}), set: () => true });
@@ -146,4 +148,25 @@ it("paints a rebuild, in every view", async () => {
     expect(internals.labelMaterial.map!.image).toBe(next.art);
     scene.dispose();
   }
+});
+
+it("derives roughness in the shader, with no pixel readback on a rebuild", async () => {
+  const { scene, internals } = await loadedScene();
+  readbacks.count = 0;
+  scene.applyTextures(plates());
+  scene.setLabelOptions({ edgeSoftnessRatio: 0.004 });
+  expect(readbacks.count).toBe(0);
+  expect(internals.labelMaterial.roughnessMap).toBeNull();
+  scene.dispose();
+});
+
+it("patches three's own standard shader with the two roughness endpoints", async () => {
+  const { scene, internals } = await loadedScene();
+  const shader = { fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+  internals.labelMaterial.onBeforeCompile(shader as never, null as never);
+  // Guards a three upgrade: a renamed chunk would leave the shader unpatched.
+  expect(shader.fragmentShader).not.toContain("<roughnessmap_fragment>");
+  // 204/255 where the mask is black (white ink), 84/255 where it's white (foil).
+  expect(shader.fragmentShader).toContain("mix(0.800000, 0.329412, texture2D( metalnessMap");
+  scene.dispose();
 });

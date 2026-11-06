@@ -56,8 +56,8 @@ const DEFAULTS = {
   edgeSoftnessRatio: DEFAULT_RENDER.edgeSoftness / 100,
 };
 /** Per-pixel roughness endpoints: matte white-ink areas vs bare foil. */
-const MATTE_ROUGHNESS = 0.8;
-const METALLIC_ROUGHNESS = 0.33;
+const MATTE_ROUGHNESS = 204 / 255;
+const METALLIC_ROUGHNESS = 84 / 255;
 /** Bump height of the foil layer (soft mask as bumpMap). */
 const LAYER_DEPTH = 0.02;
 // The stage has no scene.background of its own: the renderer clears
@@ -101,26 +101,16 @@ export function bendPlane(geometry: THREE.PlaneGeometry, radius: number): THREE.
   return geometry;
 }
 
-/** Per-pixel lerp of the soft mask into a roughness map: matte 0.8 where the
- *  mask is black (white ink) down to 0.33 where it's white (foil). */
-function roughnessCanvas(softMask: HTMLCanvasElement): HTMLCanvasElement {
-  const { width, height } = softMask;
-  const out = document.createElement("canvas");
-  out.width = width;
-  out.height = height;
-  const ctx = out.getContext("2d")!;
-  const src = softMask.getContext("2d")!.getImageData(0, 0, width, height);
-  const dst = ctx.createImageData(width, height);
-  const matte = Math.round(MATTE_ROUGHNESS * 255);
-  const metallic = Math.round(METALLIC_ROUGHNESS * 255);
-  for (let i = 0; i < src.data.length; i += 4) {
-    const m = src.data[i] / 255;
-    const r = Math.round(matte + (metallic - matte) * m);
-    dst.data[i] = dst.data[i + 1] = dst.data[i + 2] = r;
-    dst.data[i + 3] = 255;
-  }
-  ctx.putImageData(dst, 0, 0);
-  return out;
+/** The label material's roughness, read from the soft mask in the shader:
+ *  matte where the mask is black (white ink) down to foil where it's white.
+ *  A separate roughness map cost a main-thread readback, a per-pixel loop and
+ *  another upload on every rebuild, for a straight line through the same
+ *  texels (#718). */
+function foilRoughness(shader: { fragmentShader: string }) {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    "#include <roughnessmap_fragment>",
+    `float roughnessFactor = mix(${MATTE_ROUGHNESS.toFixed(6)}, ${METALLIC_ROUGHNESS.toFixed(6)}, texture2D( metalnessMap, vMetalnessMapUv ).b);`,
+  );
 }
 
 type FlatMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
@@ -395,7 +385,6 @@ export class CanScene {
   private disposeMaterialMaps(material: THREE.MeshStandardMaterial) {
     material.map?.dispose();
     material.metalnessMap?.dispose();
-    material.roughnessMap?.dispose();
     material.bumpMap?.dispose();
     material.alphaMap?.dispose();
   }
@@ -418,8 +407,9 @@ export class CanScene {
     this.flat = null;
   }
 
-  /** Blurred copy of the metalness plate — the source for the metalness,
-   *  roughness and bump maps (see DEFAULTS for why the blur exists). */
+  /** Blurred copy of the metalness plate — the source for the metalness and
+   *  bump maps, and through them the roughness (see DEFAULTS for why the blur
+   *  exists, foilRoughness for the roughness). */
   private softMask(tex: LabelTextures): HTMLCanvasElement {
     const blur = this.edgeSoftnessRatio * tex.metalness.width;
     return filteredCopy(tex.metalness, blur > 0 ? `blur(${blur}px)` : "none");
@@ -456,9 +446,9 @@ export class CanScene {
    *
    *  Each knob is a scrub field emitting a change per dragged pixel, so this
    *  redoes only what that knob feeds: the radius is one canvas redraw,
-   *  and only the blur touches the three mask-derived
-   *  maps. A full applyTextures would re-blur, re-lerp and re-upload five
-   *  full-resolution textures per pixel of drag. */
+   *  and only the blur touches the mask-derived maps. A full applyTextures
+   *  would re-blur and re-upload every full-resolution texture per pixel of
+   *  drag. */
   setLabelOptions(opts: {
     cornerRadiusPct?: number;
     edgeSoftnessRatio?: number;
@@ -483,10 +473,8 @@ export class CanScene {
       const soft = this.softMask(tex);
       const m = this.labelMaterial;
       m.metalnessMap?.dispose();
-      m.roughnessMap?.dispose();
       m.bumpMap?.dispose();
       m.metalnessMap = this.createTexture(soft);
-      m.roughnessMap = this.createTexture(roughnessCanvas(soft));
       m.bumpMap = this.createTexture(soft);
       m.needsUpdate = true;
     }
@@ -524,7 +512,6 @@ export class CanScene {
     const maps = {
       map: this.createTexture(tex.art, true),
       metalnessMap: this.createTexture(soft),
-      roughnessMap: this.createTexture(roughnessCanvas(soft)),
       bumpMap: this.createTexture(soft),
       alphaMap: this.createTexture(this.alphaCanvas(tex)),
     };
@@ -536,9 +523,10 @@ export class CanScene {
       return;
     }
     this.labelMaterial = new THREE.MeshStandardMaterial({
-      transparent: true, side: THREE.DoubleSide, metalness: 1.0, roughness: 1.0,
+      transparent: true, side: THREE.DoubleSide, metalness: 1.0,
       bumpScale: LAYER_DEPTH, alphaTest: 0.5, ...maps,
     });
+    this.labelMaterial.onBeforeCompile = foilRoughness;
     this.buildLabelMeshes();
   }
 
