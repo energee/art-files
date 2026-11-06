@@ -182,17 +182,16 @@ it("patches three's own standard shader with the two roughness endpoints", async
 
 /** One debounced edit, end to end, counting the canvases it creates and the
  *  textures it hands the GPU. */
-function countEdit(scene: CanScene, previous: LabelTextures | null) {
+async function countEdit(scene: CanScene, previous: LabelTextures | null) {
   const made = vi.spyOn(document, "createElement");
   const uploads = vi.spyOn(THREE, "CanvasTexture");
-  return buildLabelTextures(drawPlates([], {} as never, "serif"), previous).then((textures) => {
-    scene.applyTextures(textures);
-    const canvases = made.mock.calls.filter(([tag]) => tag === "canvas").length;
-    const counts = { canvases, uploads: uploads.mock.calls.length, textures };
-    made.mockRestore();
-    uploads.mockRestore();
-    return counts;
-  });
+  const textures = await buildLabelTextures(drawPlates([], {} as never, "serif"), previous);
+  scene.applyTextures(textures);
+  const canvases = made.mock.calls.filter(([tag]) => tag === "canvas").length;
+  const uploaded = uploads.mock.calls.length;
+  made.mockRestore();
+  uploads.mockRestore();
+  return { canvases, uploads: uploaded, textures };
 }
 
 it("redraws and uploads only the art when the mask plate is unchanged", async () => {

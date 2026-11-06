@@ -32,9 +32,6 @@ const SCRATCH_UP = new THREE.Vector3();
 const SCRATCH_DIR = new THREE.Vector3();
 /** Normalized can height in world units. */
 const SCENE_SCALE = 0.12;
-/** Relative gap kept from OrbitControls' distance limits at rest: thousands of
- *  rounding errors wide, and far under anything visible. See holdInsideLimits. */
-const LIMIT_GAP = 1e-12;
 const LABEL_OFFSET_RATIO = -0.020;
 /** Center-to-center 4-pack spacing as a multiple of can radius: 2x = touching,
  *  the extra 0.02 leaves a hairline gap so adjacent walls don't z-fight. */
@@ -55,7 +52,8 @@ const DEFAULTS = {
   cornerRadiusPct: DEFAULT_RENDER.cornerRadius,
   edgeSoftnessRatio: DEFAULT_RENDER.edgeSoftness / 100,
 };
-/** Per-pixel roughness endpoints: matte white-ink areas vs bare foil. */
+/** Per-pixel roughness endpoints: matte white-ink areas vs bare foil, as the
+ *  8-bit levels nearest 0.8 and 0.33. */
 const MATTE_ROUGHNESS = 204 / 255;
 const METALLIC_ROUGHNESS = 84 / 255;
 /** Bump height of the foil layer (soft mask as bumpMap). */
@@ -73,6 +71,10 @@ const LAYER_DEPTH = 0.02;
  *  only flatten it. The flat label is a single plane that catches the key only
  *  at a grazing angle, so without more fill it reads grey. */
 const AMBIENT = { can: 0.4, flat: 1.5 };
+
+/** Relative gap kept from OrbitControls' distance limits at rest: thousands of
+ *  rounding errors wide, and far under anything visible. See holdInsideLimits. */
+const LIMIT_GAP = 1e-12;
 
 /** Remember a load's result for later callers. A failure is forgotten, so the
  *  next caller tries again. */
@@ -548,13 +550,13 @@ export class CanScene {
     });
     this.replaceMaskMap(this.labelMaterial, tex);
     this.labelMaterial.onBeforeCompile = foilRoughness;
-    this.buildLabelMeshes();
+    this.buildLabelMeshes(this.labelMaterial);
   }
 
   /** The label's surfaces, once the can's real size is known: the cylinder and
    *  the Rendered view's plane. Nothing later resizes the cylinder, and setCurve
    *  rebuilds the plane's geometry itself. */
-  private buildLabelMeshes() {
+  private buildLabelMeshes(material: THREE.MeshStandardMaterial) {
     const labelRadius = this.canRadius * 1.005;
     // No clamp: the wrap is the trim's width over the can's circumference,
     // which is 97.9% — short of meeting itself by construction, so there is
@@ -565,7 +567,7 @@ export class CanScene {
       new THREE.CylinderGeometry(
         labelRadius, labelRadius, this.labelHeight(), 64, 1, true, 0, wrapAngle,
       ),
-      this.labelMaterial!,
+      material,
     );
     this.labelMesh.position.y = this.canHeight * LABEL_OFFSET_RATIO;
     // wrapAngle/2 positions the cylinder's center seam at the back; the
@@ -575,7 +577,7 @@ export class CanScene {
     this.scene.add(this.labelMesh);
 
     const flatGeometry = this.flatGeometry();
-    const front = new THREE.Mesh(flatGeometry, this.labelMaterial!);
+    const front = new THREE.Mesh(flatGeometry, material);
     // The back face of the same surface: BackSide, so it only draws from
     // behind, and pulled toward the camera so it wins over the label's own
     // (DoubleSide) back face there. Shares the geometry, so a bend moves both.
@@ -583,7 +585,7 @@ export class CanScene {
     // label ever needs its back judged.
     const back = new THREE.Mesh(flatGeometry, new THREE.MeshStandardMaterial({
       color: 0xffffff, metalness: 0, roughness: 0.9, side: THREE.BackSide,
-      transparent: true, alphaTest: 0.5, alphaMap: this.labelMaterial!.alphaMap,
+      transparent: true, alphaTest: 0.5, alphaMap: material.alphaMap,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
     }));
     this.flat = { front, back };
