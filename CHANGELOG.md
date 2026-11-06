@@ -14,6 +14,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **View settings stay put across tabs.** The unit, rulers, guides, Lighting angle and More rows are now one set for every tab, so a change in one tab shows in the others and another tab can no longer undo it at the next launch.
+- **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
 
 ## [0.1.118] - 2026-11-04
 
