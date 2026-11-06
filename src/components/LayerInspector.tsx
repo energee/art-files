@@ -155,6 +155,7 @@ export function LayerInspector(props: {
           aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
           className="h-7 flex-1 text-xs font-medium"
           value={nameDraft ?? layer.name}
+          data-draft={nameDraft !== null ? "" : undefined}
           aria-invalid={(nameDraft !== null && !nameDraft.trim()) || undefined}
           onChange={(e) => setNameDraft(e.target.value)}
           onBlur={commitName}

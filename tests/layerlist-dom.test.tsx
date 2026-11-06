@@ -255,6 +255,7 @@ describe("LayerList", () => {
     dblclick(nameSpan);
     const input = rowFor("wordmark").querySelector('input[aria-label="Rename Brand"]') as HTMLInputElement;
     expect(input).not.toBeNull();
+    expect(input.matches("[data-draft]")).toBe(true); // commitFieldDraft can reach it (#684)
     input.value = "Renamed";
     keydown(input, "Enter");
     expect(props.onRename).toHaveBeenCalledWith("wordmark", "Renamed");

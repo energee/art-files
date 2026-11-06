@@ -103,7 +103,7 @@ vi.mock("../src/files", async (importOriginal) => {
 import { DocumentEditor, type FileToOpen } from "../src/App";
 import { buildPsd } from "../src/psd/build";
 import { lolevMaster } from "./fixtures/lolevMaster";
-import { packLabel, packMaster, unpackMaster } from "../src/model/files";
+import { packLabel, packMaster, unpackLabel, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";
 
 let root: Root;
@@ -1259,3 +1259,82 @@ it("a render error the user closed stays closed until the message changes", asyn
   await shown("Preview failed: other");
   expect(toastTitles()).toEqual(["Preview failed: other"]);
 }, 30_000);
+
+// #684: three fields hold typing until Enter or blur, and ⌘ commands stay live
+// inside them, so a command must commit the draft before it reads the document.
+const typeInto = (el: HTMLInputElement, text: string) => act(async () => {
+  el.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, text);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+});
+const pressSave = (from: Element) => act(async () => {
+  from.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 10));
+});
+const selectLayer = async (id: string) => {
+  await act(async () => (document.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`) as HTMLElement).click());
+};
+const field = (selector: string) => vi.waitFor(() => {
+  const el = document.querySelector(selector) as HTMLInputElement | null;
+  expect(el).not.toBeNull();
+  return el!;
+});
+const recordingPicker = () => {
+  const written: Uint8Array[] = [];
+  picker(async (bytes) => { written.push(bytes as unknown as Uint8Array); });
+  return written;
+};
+const savedLabel = (written: Uint8Array[]) => JSON.stringify(unpackLabel(written.at(-1)!).label);
+
+it("⌘S from a ChoiceBox saves what the field shows (#684)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const box = await field('input[role="combobox"]');
+  await typeInto(box, "Hazy IPA");
+  await pressSave(box);
+  expect(savedLabel(written)).toContain("Hazy IPA");
+});
+
+it("⌘S with a draft on a clean tab saves it, though the command started disabled (#684)", async () => {
+  const written = recordingPicker();
+  const { onMeta } = await mount();
+  await selectLayer("styleLine");
+  const box = await field('input[role="combobox"]');
+  await pressSave(document.body);
+  await vi.waitFor(() => expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false }));
+  await typeInto(box, "Hazy IPA");
+  await pressSave(box);
+  expect(written).toHaveLength(2);
+  expect(savedLabel(written)).toContain("Hazy IPA");
+});
+
+it("⌘S from the layer name box saves the typed name (#684)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const name = await field('input[id="styleLine-name"]');
+  await typeInto(name, "Renamed layer");
+  await pressSave(name);
+  expect(savedLabel(written)).toContain("Renamed layer");
+});
+
+it("⌘S from a hex box saves a 3-digit colour that only commits on blur (#684)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const hex = await field('input[aria-label$=" color"]:not([disabled])');
+  await typeInto(hex, "#abc");
+  await pressSave(hex);
+  expect(savedLabel(written).toLowerCase()).toContain("#aabbcc");
+});
+
+it("⌘S leaves focus in a field with nothing to commit (#684)", async () => {
+  recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const box = await field('input[role="combobox"]');
+  await act(async () => box.focus());
+  await pressSave(box);
+  expect(document.activeElement).toBe(box);
+});

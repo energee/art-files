@@ -270,6 +270,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             {renaming ? (
               <input
                 autoFocus
+                data-draft=""
                 defaultValue={name}
                 aria-label={t("Rename {{name}}", { name })}
                 onClick={stop}
