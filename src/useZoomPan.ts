@@ -28,7 +28,10 @@ function createLiveView() {
   const listeners = new Set<() => void>();
   return {
     get: () => view,
+    /** A clamped pan or a wheel past the range lands where it started: no
+     *  change, so nobody is told (#726). */
     set(next: View) {
+      if (next.z === view.z && next.x === view.x && next.y === view.y) return;
       view = next;
       for (const listener of listeners) listener();
     },
@@ -52,12 +55,13 @@ export const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
 export const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
 
 /** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
- *  point where it is. Shared by the wheel and the typed field. */
+ *  point where it is. Shared by the wheel and the typed field. Written as an
+ *  offset from `v` so an unchanged zoom keeps x and y exactly. */
 export const zoomAbout = (
   r: DOMRect, v: View, z: number, ax: number, ay: number,
 ) => {
   const k = z / v.z;
-  return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
+  return clampView(r, z, v.x + (1 - k) * (ax - v.x), v.y + (1 - k) * (ay - v.y));
 };
 
 /** `is2d`: the pane shows the 2D compare (wheel, pan and typed zoom act on

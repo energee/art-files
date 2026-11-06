@@ -7,19 +7,24 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { PREVIEW_OVERSAMPLE } from "../src/layout";
 import { DEFAULT_RENDER } from "../src/settings";
 import type { Command } from "../src/components/CommandMenu";
+import type { LiveView } from "../src/useZoomPan";
 
 type PreviewProps = import("react").ComponentProps<typeof import("../src/components/PreviewCompare").PreviewCompare>;
 const probe = vi.hoisted(() => ({
   renders: 0, preview: null as PreviewProps | null, actions: [] as Command[],
+  view: null as LiveView | null,
 }));
 vi.mock("../src/components/PreviewCompare", () => ({
   SNAP_PT: 6,
   PreviewCompare: (props: PreviewProps) => { probe.renders++; probe.preview = props; return null; },
 }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
-vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
+vi.mock("../src/components/Rulers", () => ({
+  Rulers: (props: { view: LiveView }) => { probe.view = props.view; return null; },
+}));
 vi.mock("../src/components/AppMenu", () => ({
   AppMenu: (props: { actions: Command[] }) => { probe.actions = props.actions; return null; },
 }));
@@ -115,4 +120,23 @@ it("a zoom not yet published survives a trip through the 3D views", async () => 
   settle();
   expect(scaleOf(layer)).toBeCloseTo(z, 10);
   expect(probe.preview!.zoom).toBeCloseTo(z, 10);
+});
+
+it("a gesture that moves nothing reaches no listener (#726)", async () => {
+  const { pane, layer } = await mountEditor();
+  let notified = 0;
+  const stop = probe.view!.subscribe(() => { notified++; });
+  // Fitted: there is nowhere to pan, and nothing past the bottom of the range.
+  pointer(pane, "pointerdown", 400, 300);
+  for (let i = 1; i <= 3; i++) pointer(pane, "pointermove", 400 + i, 300 + i);
+  pointer(pane, "pointerup", 403, 303);
+  wheel(pane, 50);
+  expect(notified).toBe(0);
+  // At the top of the range a further tick cannot zoom, so it cannot move.
+  for (let i = 0; i < 40; i++) wheel(pane, -50);
+  expect(scaleOf(layer)).toBe(PREVIEW_OVERSAMPLE);
+  notified = 0;
+  wheel(pane, -50);
+  stop();
+  expect(notified).toBe(0);
 });
