@@ -31,7 +31,14 @@ export function initTitlebar(root: HTMLElement = document.documentElement): void
       return win.setTheme(t === "light" || t === "dark" ? t : null);
     };
     new MutationObserver(() => void pin()).observe(root, { attributeFilter: ["data-theme"] });
-    const sync = async () => root.toggleAttribute("data-fullscreen", await win.isFullscreen());
+    // A resize burst puts several reads in flight and IPC replies can land out
+    // of order, so only the newest read may set the attribute.
+    let newest = 0;
+    const sync = async () => {
+      const read = ++newest;
+      const fullscreen = await win.isFullscreen();
+      if (read === newest) root.toggleAttribute("data-fullscreen", fullscreen);
+    };
     await win.onResized(sync);
     await Promise.all([sync(), pin()]);
   });

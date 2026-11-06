@@ -12,6 +12,12 @@ that section to the new version (see .agents/release-steward.md).
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
 
+### Fixed
+- **View settings stay put across tabs.** The unit, rulers, guides, Lighting angle and More rows are now one set for every tab, so a change in one tab shows in the others and another tab can no longer undo it at the next launch.
+- **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
+- **Menu shortcuts can't reach the tab you just left.** A shortcut pressed right after switching tabs, such as ⌘W, no longer acts on the tab that was just hidden.
+- **Full screen spacing settles correctly on macOS.** Entering or leaving full screen no longer risks leaving the room for the window buttons wrong until the next resize.
+
 ## [0.1.118] - 2026-11-04
 
 ### Changed
