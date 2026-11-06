@@ -41,6 +41,8 @@ Messages appear as toasts at the bottom of the preview. Notes about something th
 
 A **Something went wrong** toast means a save, export or open broke somewhere unexpected. Your tabs are untouched, but check that the last action actually finished before relying on it.
 
+On the desktop app, if a `.label` or `.master` changed after you opened it, in another tab or another app, Save stops and asks: **Save As…**, **Overwrite** or **Cancel**. Save As on a master makes a new master.
+
 ## Crash recovery
 
 Tabs with unsaved changes keep a recovery copy as you work. If Label Lab crashes or is forced to quit, the next launch offers them back: **Restore** reopens each one as an unsaved tab, **Discard** throws the copies away. On the desktop app, a restored tab that came from a `.label` saves back to that file, as long as the file is still there, hasn't been changed since that tab last opened or saved it, and isn't open in another tab. Otherwise Save asks where to write it, and a warning toast names the original file. Closing the offer without choosing keeps them for next time. Changes from the last couple of seconds before a crash may be missing.
