@@ -546,7 +546,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const {
     showRulers, setShowRulers, unit, setUnit, showGuides, setShowGuides, lightDeg, setLightDeg,
     moreTypography, setMoreTypography, morePosition, setMorePosition,
-  } = useViewPrefs();
+  } = useViewPrefs(active);
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
