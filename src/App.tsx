@@ -303,6 +303,9 @@ type DocumentEditorProps = {
    *  once the master file is written (false on Cancel or a failed save).
    *  Omitted by tests mounting a lone editor. */
   masterSaveSlot?: { current: (() => Promise<boolean>) | null };
+  /** Shell-owned slot reading the browser file this tab saves to, so the
+   *  shell can spot a second pick of it. Omitted by tests mounting a lone editor. */
+  fileHandleSlot?: { current: (() => FileSystemFileHandle | null) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
   onRenderChange: (render: RenderSettings) => void;
@@ -326,7 +329,7 @@ type DocumentEditorProps = {
 // body would re-run per keystroke. It only holds if the shell passes
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
+  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, fileHandleSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
@@ -1327,7 +1330,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
-  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
+  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt, boundHandle } = useProjectSave({
     pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
@@ -1337,6 +1340,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, dirty, edited, templateMoved, filePath]);
   saveSlot.current = () => saveProject();
+  if (fileHandleSlot) fileHandleSlot.current = boundHandle;
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
     reviewDone.current = done;

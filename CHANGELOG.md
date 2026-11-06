@@ -12,6 +12,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Opening a label during a Save keeps it tied to its own file.** If a label opened into the tab while the Save dialog was up, finishing the Save used to point the tab at the file just saved, so the next ⌘S wrote to the wrong file.
 - **A label that just opened stays open.** A second file opening at that same moment could land in its tab and replace it. It now gets its own tab.
 - **A master opened during Save Master no longer reads as unsaved.** The finishing save used to compare the new master against the old one, so it showed changes it didn't have and prompted on close.
+- **The browser no longer opens one file in two tabs.** Picking a label a tab already has focuses that tab, as the desktop app does, instead of letting the two tabs overwrite each other.
 
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.

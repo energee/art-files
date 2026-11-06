@@ -143,6 +143,6 @@ export function useProjectSave({
 
   return {
     filePath, bindPath, bindHandle, forgetProjectFile, saveProject,
-    boundModifiedAt: baseline.at,
+    boundModifiedAt: baseline.at, boundHandle: () => projectHandle.current,
   };
 }
