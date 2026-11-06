@@ -57,6 +57,7 @@ const en = {
   "Export again to save both files.": "Export again to save both files.",
   "Export again": "Export again",
   "Couldn't save {{file}}": "Couldn't save {{file}}",
+  "Closing when the export finishes": "Closing when the export finishes",
   "Don't send the old {{mask}} with it. This PDF already has the white ink.": "Don't send the old {{mask}} with it. This PDF already has the white ink.",
   "Could not quit: {{error}}": "Could not quit: {{error}}",
   "Could not update the native menu: {{error}}": "Could not update the native menu: {{error}}",
