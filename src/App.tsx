@@ -1488,9 +1488,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         // Redundant overrides can be promoted again on the next master save.
         return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
       });
+      const baseline = pristineMaster.current;
       await rememberMaster(m, where, bytes);
       refreshLibrary();
-      if (ours) pristineMaster.current = m;
+      // An Open Master during that await set its own baseline: it stays (#696).
+      if (ours && pristineMaster.current === baseline) pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
     try {

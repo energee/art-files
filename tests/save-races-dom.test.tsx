@@ -26,6 +26,9 @@ const menu = vi.hoisted(() => ({
   promoteError: "",
   /** When set, a new tab's boot restore (resolveDefaultMaster) fails with this. */
   restoreError: "",
+  /** When set, the next rememberMaster waits for this, and `remembering` says it got there. */
+  holdRemember: null as Promise<void> | null,
+  remembering: false,
 }));
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here. Its laurel's
@@ -74,6 +77,12 @@ vi.mock("../src/masters", async (importOriginal) => {
   const masters = await importOriginal<typeof import("../src/masters")>();
   return {
     ...masters,
+    rememberMaster: async (...args: Parameters<typeof masters.rememberMaster>) => {
+      const held = menu.holdRemember;
+      menu.holdRemember = null;
+      if (held) { menu.remembering = true; await held; }
+      return masters.rememberMaster(...args);
+    },
     resolveDefaultMaster: async () => {
       if (menu.restoreError) throw new Error(menu.restoreError);
       return masters.resolveDefaultMaster();
@@ -139,6 +148,8 @@ afterEach(async () => {
   menu.fontError = "";
   menu.promoteError = "";
   menu.restoreError = "";
+  menu.holdRemember = null;
+  menu.remembering = false;
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -784,6 +795,26 @@ it("Open Master during a Save Master write keeps the opened master, its baseline
   await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(pick).toHaveBeenCalledOnce();
   expect(other.createWritable).toHaveBeenCalledOnce();
+}, 30_000);
+
+// #696: the save's last await records the master in the library. An Open Master
+// landing there owns the baseline; the save resuming must not move it back.
+it("Open Master while a Save Master records its file keeps the opened master's baseline", async () => {
+  picker();
+  const { onMeta } = await mount();
+  await toggle("warning");
+  let release!: () => void;
+  menu.holdRemember = new Promise<void>((resolve) => { release = resolve; });
+  await promoteWarning();
+  await vi.waitFor(() => expect(menu.remembering).toBe(true), { timeout: 5_000 });
+  openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
+  await run("master-open");
+  await act(async () => { release(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: false });
+  // Its review lists only this label's override, not a diff against the old master.
+  await run("master-save");
+  expect(reviewRows()).toBe(1);
 }, 30_000);
 
 it("the benched-values toast survives the master's texture loading (#11)", async () => {
