@@ -9,7 +9,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rulers } from "../src/components/Rulers";
 import type { PreviewCompareHandle } from "../src/components/PreviewCompare";
-import { DEFAULT_MARGIN_PT, type ManualGuide } from "../src/rulers";
+import { PAGE } from "../src/layout";
+import { DEFAULT_MARGIN_PT, pointToScreen, type ManualGuide } from "../src/rulers";
 import { DEFAULT_RENDER } from "../src/settings";
 
 let container: HTMLDivElement;
@@ -306,4 +307,91 @@ it("offers inches, millimetres, points and pixels, and reads the margin in the c
   expect(document.querySelector<HTMLInputElement>("#guide-margin")!.value).toBe("8.5");
   await act(async () => { units[3].click(); });
   expect(props.onUnitChange).toHaveBeenLastCalledWith("px");
+});
+
+/** The view transform on a bordered pane: the page's rect follows the live
+ *  view like the browser's, and every rect read and listener add is counted.
+ *  `base` is the page's box in the transform's own space. */
+function transformedPane() {
+  let current = FITTED;
+  const listeners = new Set<() => void>();
+  const view = {
+    get: () => current,
+    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    set(next: typeof FITTED) { current = next; for (const l of listeners) l(); },
+  };
+  const BORDER = 1, PANE_LEFT = 200, PANE_TOP = 40;
+  const base = { left: 30, top: 20, width: 600, height: 400 };
+  const counts = { rects: 0, adds: 0 };
+  const pane = document.createElement("div");
+  Object.defineProperty(pane, "clientLeft", { value: BORDER });
+  pane.getBoundingClientRect = () => {
+    counts.rects++;
+    return { ...rect(800, 500), left: PANE_LEFT, top: PANE_TOP };
+  };
+  const add = pane.addEventListener.bind(pane);
+  pane.addEventListener = ((...args: Parameters<typeof add>) => { counts.adds++; add(...args); }) as typeof add;
+  const page = document.createElement("div");
+  page.getBoundingClientRect = () => {
+    counts.rects++;
+    const { z, x, y } = current;
+    return {
+      ...rect(base.width * z, base.height * z),
+      left: PANE_LEFT + BORDER + x + z * base.left, top: PANE_TOP + y + z * base.top,
+    };
+  };
+  container.appendChild(pane);
+  const previewRef = { current: { showArt() {}, showMask() {}, getPageElement: () => page } };
+  /** Where a guide must sit for the view, straight from the browser's rect. */
+  const expectedLeft = (point: number) => {
+    const p = page.getBoundingClientRect();
+    return pointToScreen(point, p.left - PANE_LEFT, p.width, PAGE.w);
+  };
+  return { view, base, counts, previewRef, paneRef: { current: pane }, expectedLeft };
+}
+
+const guideLeft = () =>
+  parseFloat(container.querySelector<HTMLElement>('.group[style*="left"]')!.style.left);
+
+describe("Rulers follow the live view", () => {
+  it("reads no rects and adds no listeners per zoom or pan (#727)", () => {
+    const { view, counts, paneRef, previewRef } = transformedPane();
+    renderRulers({ view, paneRef, previewRef });
+    counts.rects = 0;
+    counts.adds = 0;
+    for (let i = 1; i <= 5; i++) act(() => { view.set({ z: 1 + i / 10, x: -i, y: -i }); });
+    expect(counts).toEqual({ rects: 0, adds: 0 });
+  });
+
+  it("places a guide where the browser puts the page, border included", () => {
+    const { view, paneRef, previewRef, expectedLeft } = transformedPane();
+    renderRulers({ view, paneRef, previewRef });
+    act(() => { view.set({ z: 2.3, x: -417, y: -96 }); });
+    expect(guideLeft()).toBeCloseTo(expectedLeft(100), 4);
+  });
+
+  it("takes the view back out of a measure made while zoomed", () => {
+    const observed: ResizeObserverCallback[] = [];
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) { observed.push(callback); }
+      observe() {} disconnect() {}
+    });
+    const { view, base, paneRef, previewRef, expectedLeft } = transformedPane();
+    renderRulers({ view, paneRef, previewRef });
+    act(() => { view.set({ z: 2, x: -300, y: -100 }); });
+    base.width = 500;
+    base.left = 80;
+    act(() => { observed[0]([], {} as ResizeObserver); });
+    expect(guideLeft()).toBeCloseTo(expectedLeft(100), 4);
+    act(() => { view.set({ z: 1.5, x: -60, y: -20 }); });
+    expect(guideLeft()).toBeCloseTo(expectedLeft(100), 4);
+  });
+
+  it("re-measures when the rulers toggle, which shifts a page at its size cap", () => {
+    const { view, base, paneRef, previewRef, expectedLeft } = transformedPane();
+    const props = renderRulers({ view, paneRef, previewRef });
+    base.left = 42;
+    act(() => { root.render(createElement(Rulers, { ...props, showRulers: false })); });
+    expect(guideLeft()).toBeCloseTo(expectedLeft(100), 4);
+  });
 });

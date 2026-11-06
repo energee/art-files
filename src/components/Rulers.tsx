@@ -39,6 +39,9 @@ interface Geometry {
   height: number;
   paneLeft: number;
   paneTop: number;
+  /** The pane's border: the view's origin sits inside it, the rects outside. */
+  borderLeft: number;
+  borderTop: number;
   pageLeft: number;
   pageTop: number;
   pageWidth: number;
@@ -136,31 +139,37 @@ export const Rulers = memo(function Rulers(props: {
     onSnapGuide,
   } = props;
   const transform = useSyncExternalStore(view.subscribe, view.get);
-  const [geometry, setGeometry] = useState<Geometry | null>(null);
+  // The last measure with the view taken out: the page's box at z=1, x=y=0
+  // from the view's origin, so a zoom or pan is arithmetic on it (below).
+  const [fitted, setFitted] = useState<Geometry | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const suppressClick = useRef(false);
 
-  // Reads only refs and a state setter, so its identity is stable.
+  // Reads only refs, stable props and a state setter, so its identity is stable.
   const measure = useCallback(() => {
-    const pane = paneRef.current?.getBoundingClientRect();
+    const paneElement = paneRef.current;
+    const pane = paneElement?.getBoundingClientRect();
     const page = previewRef.current?.getPageElement()?.getBoundingClientRect();
-    if (!pane?.width || !pane.height || !page?.width || !page.height) return;
-    setGeometry({
+    if (!paneElement || !pane?.width || !pane.height || !page?.width || !page.height) return;
+    const { z, x, y } = view.get();
+    setFitted({
       width: pane.width,
       height: pane.height,
       paneLeft: pane.left,
       paneTop: pane.top,
-      pageLeft: page.left - pane.left,
-      pageTop: page.top - pane.top,
-      pageWidth: page.width,
-      pageHeight: page.height,
+      borderLeft: paneElement.clientLeft,
+      borderTop: paneElement.clientTop,
+      pageLeft: (page.left - pane.left - paneElement.clientLeft - x) / z,
+      pageTop: (page.top - pane.top - paneElement.clientTop - y) / z,
+      pageWidth: page.width / z,
+      pageHeight: page.height / z,
     });
-  }, [paneRef, previewRef]);
+  }, [paneRef, previewRef, view]);
 
-  // CSS transforms do not trigger ResizeObserver, so zoom/pan explicitly
-  // re-measures; observers cover pane/sidebar and responsive page resizing.
-  useLayoutEffect(() => { measure(); }, [measure, transform.z, transform.x, transform.y]);
+  // Observers cover pane/sidebar and responsive page resizing. Toggling the
+  // rulers pads the page, which moves it without resizing it at its size cap.
+  useLayoutEffect(() => { measure(); }, [measure, showRulers]);
   useEffect(() => {
     const pane = paneRef.current;
     const page = previewRef.current?.getPageElement();
@@ -180,9 +189,9 @@ export const Rulers = memo(function Rulers(props: {
   // without the measure above running anyway.
   useEffect(() => {
     const pane = paneRef.current;
-    if (!pane || !geometry || !showRulers) return;
+    if (!pane || !fitted || !showRulers) return;
     const move = (event: globalThis.PointerEvent) =>
-      setCursor({ x: event.clientX - geometry.paneLeft, y: event.clientY - geometry.paneTop });
+      setCursor({ x: event.clientX - fitted.paneLeft, y: event.clientY - fitted.paneTop });
     const leave = () => setCursor(null);
     pane.addEventListener("pointermove", move);
     pane.addEventListener("pointerleave", leave);
@@ -190,7 +199,17 @@ export const Rulers = memo(function Rulers(props: {
       pane.removeEventListener("pointermove", move);
       pane.removeEventListener("pointerleave", leave);
     };
-  }, [paneRef, geometry, showRulers]);
+  }, [paneRef, fitted, showRulers]);
+
+  // CSS transforms do not trigger ResizeObserver, and need not: the view
+  // scales the fitted page about the origin, then offsets it.
+  const geometry = useMemo(() => fitted && {
+    ...fitted,
+    pageLeft: fitted.borderLeft + transform.x + fitted.pageLeft * transform.z,
+    pageTop: fitted.borderTop + transform.y + fitted.pageTop * transform.z,
+    pageWidth: fitted.pageWidth * transform.z,
+    pageHeight: fitted.pageHeight * transform.z,
+  }, [fitted, transform]);
 
   const horizontalTicks = useMemo(() => geometry && showRulers ? rulerTicks({
     visibleStart: RULER_SIZE,
