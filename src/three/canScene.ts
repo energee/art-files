@@ -32,6 +32,9 @@ const SCRATCH_UP = new THREE.Vector3();
 const SCRATCH_DIR = new THREE.Vector3();
 /** Normalized can height in world units. */
 const SCENE_SCALE = 0.12;
+/** Relative gap kept from OrbitControls' distance limits at rest: thousands of
+ *  rounding errors wide, and far under anything visible. See holdInsideLimits. */
+const LIMIT_GAP = 1e-12;
 const LABEL_OFFSET_RATIO = -0.020;
 /** Center-to-center 4-pack spacing as a multiple of can radius: 2x = touching,
  *  the extra 0.02 leaves a hairline gap so adjacent walls don't z-fight. */
@@ -921,6 +924,23 @@ export class CanScene {
     this.requestRender();
   }
 
+  /** Step a camera resting on a distance limit just inside it. OrbitControls
+   *  reports a change whenever its clamp bites, and a camera on the limit can
+   *  sit a rounding error past it on every call, so update() would never
+   *  settle and the view would render at full frame rate while idle. Whether
+   *  it happens depends on the pane and the orbit (#721). Padding the limits
+   *  doesn't do it: a wheel lands on the padded limit and is back in the same
+   *  place. */
+  private holdInsideLimits() {
+    const { controls, camera } = this;
+    const distance = controls.getDistance();
+    const inside = THREE.MathUtils.clamp(
+      distance, controls.minDistance * (1 + LIMIT_GAP), controls.maxDistance * (1 - LIMIT_GAP),
+    );
+    if (inside === distance) return;
+    camera.position.sub(controls.target).multiplyScalar(inside / distance).add(controls.target);
+  }
+
   /** Coalesce renders to one per animation frame (on-demand rendering). */
   private requestRender() {
     if (this.renderRequested || this.disposed) return;
@@ -928,6 +948,7 @@ export class CanScene {
     this.raf = requestAnimationFrame(() => {
       this.renderRequested = false;
       this.raf = null;
+      if (this.controlsSettling) this.holdInsideLimits();
       if (this.controlsSettling && !this.controls.update()) {
         // update() can stop reporting changes while retaining angular/pan
         // inertia. One undamped update consumes and clears that remainder via
