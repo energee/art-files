@@ -16,6 +16,7 @@ that section to the new version (see .agents/release-steward.md).
 - **View settings stay put across tabs.** The unit, rulers, guides, Lighting angle and More rows are now one set for every tab, so a change in one tab shows in the others and another tab can no longer undo it at the next launch.
 - **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
 - **Menu shortcuts can't reach the tab you just left.** A shortcut pressed right after switching tabs, such as ⌘W, no longer acts on the tab that was just hidden.
+- **Full screen spacing settles correctly on macOS.** Entering or leaving full screen no longer risks leaving the room for the window buttons wrong until the next resize.
 
 ## [0.1.118] - 2026-11-04
 
