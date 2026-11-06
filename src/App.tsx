@@ -509,13 +509,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   usePreviewToastAnchor(previewPane, active);
   const canView = useRef<CanViewHandle>(null);
   const {
-    zoom, camZoomPct, carried, onCameraChange, zoomDraft, setZoomDraft, zoomTo, applyTypedZoom,
-    panning, onPanStart, onPanMove, onPanEnd,
+    zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
+    zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
   } = useZoomPan(viewMode === "2d", previewPane, canView);
   // The 3D scene's mode: Rendered shows the flat label, Can its count.
   let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
   if (viewMode === "rendered") canSceneMode = "flat";
-  const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
+  const shownZoomPct = viewMode === "2d" ? Math.round(zoom * 100) : camZoomPct;
   const view = viewState(viewMode, split);
   // The status bar's "Compare" note, which the view group points at so a
   // screen reader hears the state too. useId: each open tab has its own.
@@ -1033,18 +1033,21 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  When the grabbed layer is selected, every selected unlocked layer moves
    *  with it. */
   /** Every layer's resolved box for the current draw list — one full place
-   *  pass, wanted only at gesture starts and unbinds, never per move. */
-  const boxesNow = (layers: Layer[] = drawLayers) =>
-    canvasAssets ? layerBoxes(layers, canvasAssets.m, canvasAssets.planAssets) : undefined;
+   *  pass per draw-list change, shared so a gesture's moves pay for none. */
+  const drawBoxes = useMemo(() => canvasAssets
+    ? layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets)
+    : undefined, [canvasAssets, drawLayers]);
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
-  const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
+  const rowBoxes = () => canvasAssets
+    ? layerBoxes(rows.map((r) => r.layer), canvasAssets.m, canvasAssets.planAssets)
+    : undefined;
   /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
    *  with a line in the inspector, but they do NOT block export. */
-  const pastDie = useMemo(() => canvasAssets
-    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+  const pastDie = useMemo(() => drawBoxes
+    ? outsideGuides(drawBoxes,
       guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
-    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+    : new Set<string>(), [drawBoxes, master.physical]);
   // Keyed on the ids, not the Set: pastDie is rebuilt on every keystroke, and a
   // new Map each time would re-render the memoized LayerList per key (#605).
   const pastDieKey = [...pastDie].join("\0");
@@ -1120,17 +1123,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   const onDrag = (id: string, dx: number, dy: number, first: boolean): SnapLines => {
     if (first) gestureBase.current = null;
     if (first || dragBase.current?.id !== id) {
-      const boxes = boxesNow();
-      if (!boxes) return { x: null, y: null, dx, dy };
+      if (!drawBoxes) return { x: null, y: null, dx, dy };
       const ids = new Set(gestureIds(selected, id));
       const bases = drawLayers.filter((l) => ids.has(l.id) && !l.locked)
-        .map((layer) => ({ layer, w: boxes.get(layer.id)?.w ?? 0 }));
+        .map((layer) => ({ layer, w: drawBoxes.get(layer.id)?.w ?? 0 }));
       if (!bases.length) return { x: null, y: null, dx, dy };
       // The selection's own box, in the guides' space: layerBoxes measures in
       // page space, which BLEED_SHIFT offsets from the coordinates layer.x and
       // the guides are written in.
       const span = bases.reduce((acc, { layer }) => {
-        const box = boxes.get(layer.id);
+        const box = drawBoxes.get(layer.id);
         const left = (box?.x ?? layer.x) - BLEED_SHIFT;
         const top = (box?.y ?? 0) - BLEED_SHIFT;
         return {
@@ -1138,7 +1140,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           y: Math.min(acc.y, top), bottom: Math.max(acc.bottom, top + (box?.h ?? 0)),
         };
       }, { x: Infinity, right: -Infinity, y: Infinity, bottom: -Infinity });
-        const lines = snapTargets(ids, boxes);
+        const lines = snapTargets(ids, drawBoxes);
       dragBase.current = {
         id, bases, lines,
         bounds: { x: span.x, w: span.right - span.x, y: span.y, h: span.bottom - span.y },
@@ -1171,9 +1173,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  edges and middle — so "line this guide up with that logo" is a drag, not
    *  arithmetic. Rulers speaks page space; the lines are in guide space. */
   const snapGuidePoint = (axis: GuideAxis, point: number, id?: number) => {
-    const boxes = boxesNow();
-    if (!boxes) return point;
-    const line = nearestLine(point - BLEED_SHIFT, snapTargets(new Set(), boxes, id)[axis], SNAP_PT);
+    if (!drawBoxes) return point;
+    const line = nearestLine(point - BLEED_SHIFT, snapTargets(new Set(), drawBoxes, id)[axis], SNAP_PT);
     return line ? line.at + BLEED_SHIFT : point;
   };
 
@@ -1204,11 +1205,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   ): SnapLines => {
     if (first) {
       gestureBase.current = null;
-      const boxes = boxesNow();
       const layer = drawLayers.find((l) => l.id === id);
-      const box = boxes?.get(id);
-      resizeBase.current = layer && box && boxes
-        ? { layer, box, lines: snapTargets(new Set([id]), boxes) } : null;
+      const box = drawBoxes?.get(id);
+      resizeBase.current = layer && box && drawBoxes
+        ? { layer, box, lines: snapTargets(new Set([id]), drawBoxes) } : null;
     }
     const base = resizeBase.current;
     if (!base) return { x: null, y: null, dx, dy };
@@ -1224,11 +1224,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
     gesturePatch([[id, p]]);
     // The indicator spans the resized box and whatever the grabbed edge lined
-    // up with. `patch` is a state update, so boxesNow() here still measures
-    // the PREVIOUS frame's layers — the segment's cross-axis extent trails the
+    // up with. `patch` is a state update, so drawBoxes here still holds the
+    // PREVIOUS frame's layers — the segment's cross-axis extent trails the
     // pointer by one move, which is invisible at pointer rates and is not
     // worth re-planning the scene for.
-    const now = boxesNow()?.get(id) ?? base.box;
+    const now = drawBoxes?.get(id) ?? base.box;
     const top = now.y - BLEED_SHIFT;
     const left = now.x - BLEED_SHIFT;
     return {
@@ -2389,11 +2389,11 @@ export const DocumentEditor = memo(function DocumentEditor({
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
                 their own camera. Padded, not offset, by the rulers so Fit
                 keeps the label clear of them while the transform's origin
-                stays the pane's top-left. */}
+                stays the pane's top-left. useZoomPan writes the transform. */}
             <div
+              ref={zoomLayer}
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
-                transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
                 ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
@@ -2419,7 +2419,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onSplit={setSplit}
               bleed={showGuides}
               cornerRadiusPct={render.cornerRadius}
-              zoom={zoom.z}
+              zoom={zoom}
               onRenderError={setRenderError} />
             </div>
             {active && viewMode !== "2d" && (
@@ -2435,7 +2435,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             )}
             </div>
             {viewMode === "2d" && (
-              <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
+              <Rulers paneRef={previewPane} previewRef={previewRef} view={liveView}
                 showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
                 onMarginChange={rulerMargin} manual={manualGuides}
@@ -2474,6 +2474,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
+              ref={zoomField}
               value={zoomDraft ?? String(shownZoomPct)}
               onChange={(e) => setZoomDraft(e.target.value)}
               onFocus={(e) => e.currentTarget.select()}
