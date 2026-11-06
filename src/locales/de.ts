@@ -58,6 +58,7 @@ const de: Record<keyof typeof en, string> = {
   "Export again to save both files.": "Bitte erneut exportieren, um beide Dateien zu speichern.",
   "Export again": "Erneut exportieren",
   "Couldn't save {{file}}": "{{file}} konnte nicht gespeichert werden",
+  "Closing when the export finishes": "Wird nach dem Export geschlossen",
   "Don't send the old {{mask}} with it. This PDF already has the white ink.": "Die alte Datei {{mask}} nicht mitsenden. Dieses PDF enthält die weiße Tinte bereits.",
   "Could not quit: {{error}}": "Beenden fehlgeschlagen: {{error}}",
   "Could not update the native menu: {{error}}": "Systemmenü konnte nicht aktualisiert werden: {{error}}",

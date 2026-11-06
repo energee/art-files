@@ -6,7 +6,7 @@
 // reports nothing), where this tab's desktop exports were last written (so a
 // repeat export needs no dialog), and the batch of download URLs every save
 // (exports, Save Label, Save Master) hands its plain-download fallback through.
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { nativeExists, saveThrough, type FileTarget } from "@/files";
 import { baseName, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
@@ -126,6 +126,7 @@ export function useExport({
   // the files being built (#401), and blocks a second export.
   /** What is building, for the overlay: one file ("pdf") or a pair ("pdfs"). */
   const [exporting, setExporting] = useState<"pdf" | "psd" | "pdfs" | "psds" | null>(null);
+  const [exportFailures, countFailure] = useReducer((n: number) => n + 1, 0);
   // Each export run reports under its own toast id (runToastId), and a new run
   // dismisses only the previous run's. Sonner keeps a dismissed id for ~250 ms
   // and folds a toast shown under it into the dying one (useOwnedToast.ts makes
@@ -300,6 +301,7 @@ export function useExport({
         id: toastId, action: revealAction(artPath),
       });
     } catch (error) {
+      countFailure();
       notify.error(t("Couldn't save {{file}}", { file: baseName(pending) }), {
         id: toastId,
         description: saved.length ? `${t("Saved {{files}}.", { files: saved.join(", ") })} ${errMsg(error)}` : errMsg(error),
@@ -355,6 +357,7 @@ export function useExport({
         if (format === "pdf") void warnIfStaleMask(path, result.name);
       }
     } catch (error) {
+      countFailure();
       notify.error(t("Couldn't save {{file}}", { file: baseName(name) }), { id: toastId, description: errMsg(error) });
     } finally {
       exportRunning.current = false;
@@ -460,7 +463,7 @@ export function useExport({
   }
 
   return {
-    exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
     buildFull, exportPdfPlate, exportPsd,
   };
 }
