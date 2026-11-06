@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 // use-project-save-dom.test.tsx — useProjectSave reports a pack failure (an
 // asset over the archive size caps) through onError and resolves false, so a
-// close-tab Save keeps the tab instead of hanging (#416 review).
+// close-tab Save keeps the tab instead of hanging (#416 review). Saves take
+// turns (#690), and a Save's finish leaves alone a binding an Open made (#693).
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
@@ -141,4 +142,85 @@ it("bindPath and a save record the bound file's mtime as the recovery baseline",
   act(() => root.unmount());
   vi.doUnmock("@tauri-apps/api/core");
   vi.doUnmock("@tauri-apps/plugin-fs");
+});
+
+/** A useProjectSave bound to /w/a.label whose writes each wait for the test:
+ *  `written` holds each write's first byte in start order, `landed` in finish
+ *  order, and `release(n)` ends the nth. */
+async function heldSave(fail = (_n: number) => false) {
+  vi.resetModules();
+  const written: number[] = [];
+  const landed: number[] = [];
+  const finish: (() => void)[] = [];
+  vi.doMock("@/files", () => ({
+    confirmOverwrite: async () => "overwrite",
+    nativeModifiedAt: async () => 1,
+    saveThrough: async (content: ((name: string) => Uint8Array) | Uint8Array, options: { target?: { path: string } }) => {
+      const path = options.target?.path ?? "/w/a.label";
+      const bytes = typeof content === "function" ? content(path) : content;
+      const n = written.push(bytes[0]) - 1;
+      await new Promise<void>((resolve) => { finish.push(resolve); });
+      if (fail(n)) throw new Error("Disk full");
+      landed.push(bytes[0]);
+      return { name: path, bytes, target: { path } };
+    },
+  }));
+  const { useProjectSave: hook } = await import("@/useProjectSave");
+  const onSaved = vi.fn(() => true);
+  const onError = vi.fn();
+  let api: ReturnType<typeof hook> | undefined;
+  function Probe({ doc }: { doc: number }) {
+    api = hook({
+      pack: () => new Uint8Array([doc]),
+      exportBase: "x", onSaved, onError,
+      startSaveBatch: () => undefined, saveBytes: () => undefined,
+    });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  const render = (doc: number) => act(async () => { root.render(createElement(Probe, { doc })); });
+  await render(1);
+  act(() => api!.bindPath("/w/a.label"));
+  return {
+    written, landed, onSaved, onError, render, save: () => api!.saveProject(),
+    release: (n: number) => finish[n](),
+    cleanup: () => { act(() => root.unmount()); vi.doUnmock("@/files"); },
+  };
+}
+
+// #690: rename is a sync command and the write is not, so two writes in flight
+// could finish in either order and leave the older bytes on disk.
+it("a Save during a write waits its turn, then writes the newest document", async () => {
+  const s = await heldSave();
+  const first = s.save();
+  await vi.waitFor(() => expect(s.written).toEqual([1]));
+  await s.render(2);
+  const second = s.save();
+  await s.render(3); // edited again while that Save waits
+  await new Promise((r) => setTimeout(r, 0));
+  expect(s.written).toEqual([1]); // the second write has not started
+  s.release(0);
+  await vi.waitFor(() => expect(s.written).toEqual([1, 3]));
+  expect(s.landed).toEqual([1]);
+  s.release(1);
+  await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+  expect(s.landed).toEqual([1, 3]); // the newest bytes land last
+  s.cleanup();
+});
+
+// A failed write must not read as saved, and must not stop the Save behind it.
+it("a failed write reports failure, and the Save behind it still runs", async () => {
+  const s = await heldSave((n) => n === 0);
+  const first = s.save();
+  await vi.waitFor(() => expect(s.written).toEqual([1]));
+  const second = s.save();
+  s.release(0);
+  await expect(first).resolves.toBe(false);
+  expect(s.onError).toHaveBeenCalledWith("Could not save label: Disk full");
+  expect(s.onSaved).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(s.written).toEqual([1, 1]));
+  s.release(1);
+  await expect(second).resolves.toBe(true);
+  expect(s.onSaved).toHaveBeenCalledOnce();
+  s.cleanup();
 });

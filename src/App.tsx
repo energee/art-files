@@ -78,7 +78,7 @@ import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
-import { useFileBaseline, useProjectSave } from "@/useProjectSave";
+import { useFileBaseline, useProjectSave, useSaveTurns } from "@/useProjectSave";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
@@ -1397,7 +1397,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const report = (saved: boolean) => {
       if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
     };
-    void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
+    void saveMasterInTurn(as, promote).then(report, (err: unknown) => { report(false); throw err; });
   }
 
   /** File → Save Master… / Save Master As…, the picker's button and the
@@ -1422,7 +1422,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *
    *  packMaster goes through the same three-way platform save path as
    *  saveProject, then registers the file in the library index and moves the
-   *  master-dirty baseline. */
+   *  master-dirty baseline. Called through saveMasterInTurn, so writes can't
+   *  finish out of order. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
     // Another tab's Save Master may have moved the file: nothing pushes that
     // into this tab's copy, so writing it blind would erase those edits (#682).
@@ -1515,6 +1516,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       return false;
     }
   }
+
+  const saveMasterInTurn = useSaveTurns(saveMaster);
 
   /** Parse a candidate .master file (ZIP or legacy JSON; a v1 file is
    *  refused), reporting a clear error and leaving the document untouched

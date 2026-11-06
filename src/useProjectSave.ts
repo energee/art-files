@@ -46,6 +46,21 @@ export function useFileBaseline() {
   return { record, at: () => seen.current.at };
 }
 
+/** `save`, one call at a time, in call order: a later Save can't finish
+ *  before an earlier one and leave the older bytes on disk (#690). A turn runs
+ *  the latest render's `save`, so a Save queued behind a write writes what the
+ *  document holds when its turn comes. A failed turn doesn't stop the next. */
+export function useSaveTurns<A extends unknown[]>(save: (...args: A) => Promise<boolean>) {
+  const latest = useRef(save);
+  latest.current = save;
+  const last = useRef<Promise<boolean>>(Promise.resolve(true));
+  return (...args: A) => {
+    const turn = () => latest.current(...args);
+    last.current = last.current.then(turn, turn);
+    return last.current;
+  };
+}
+
 export function useProjectSave({
   pack, exportBase, onSaved, onError, startSaveBatch, saveBytes,
 }: ProjectSaveInputs) {
@@ -84,8 +99,9 @@ export function useProjectSave({
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). Resolves false when the user
    *  cancels the dialog or the write fails. A bound file that changed since
-   *  this tab last saw it stops for confirmOverwrite first. */
-  async function saveProject(as = false): Promise<boolean> {
+   *  this tab last saw it stops for confirmOverwrite first. Saves take turns:
+   *  see useSaveTurns. */
+  const saveProject = useSaveTurns(async (as = false): Promise<boolean> => {
     try {
       if (!as && projectPath.current) {
         const choice = await confirmOverwrite(projectPath.current, baseline.at());
@@ -113,7 +129,7 @@ export function useProjectSave({
       onError(t("Could not save label: {{error}}", { error: errMsg(err) }));
       return false;
     }
-  }
+  });
 
   return {
     filePath, bindPath, bindHandle, forgetProjectFile, saveProject,

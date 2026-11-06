@@ -295,6 +295,21 @@ it("Save Master with nothing to promote writes the changed master at once", asyn
     .toEqual(["name", "logo"]);
 });
 
+// #690: Save Master has Save's shape, so an older write could land last.
+it("a second Save Master waits for the write in flight", async () => {
+  const finish: (() => void)[] = [];
+  const { handle, pick } = picker(() => new Promise<void>((resolve) => { finish.push(resolve); }), "Lolev.master");
+  await mount();
+  await reorderName();
+  await act(async () => { menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  await vi.waitFor(() => expect(finish).toHaveLength(1));
+  await act(async () => { menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(pick).toHaveBeenCalledOnce(); // the second is still waiting its turn
+  await act(async () => { finish[0](); await new Promise((r) => setTimeout(r, 10)); });
+  await vi.waitFor(() => expect(handle.createWritable).toHaveBeenCalledTimes(2));
+  await act(async () => { finish[1](); await new Promise((r) => setTimeout(r, 10)); });
+}, 30_000);
+
 it("Save Master As with nothing to promote goes straight to the save dialog", async () => {
   const { pick } = picker();
   await mount();
