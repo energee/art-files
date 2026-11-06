@@ -623,7 +623,9 @@ function useNativeMenu(
         const tag = `#${++nativeMenuBuilds}`;
         const run = (id: string) => {
           const command = commandsRef.current[id];
-          if (!command || command.disabled) return;
+          // Torn down: this menu stays the app's until the next one installs,
+          // and on a tab switch its commands now belong to the hidden tab.
+          if (!live || !command || command.disabled) return;
           // Re-assert the check even when nothing runs below.
           if (CHECK_IDS.has(id)) {
             appliedState.current.delete(id);
