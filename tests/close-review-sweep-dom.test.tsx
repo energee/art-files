@@ -8,7 +8,8 @@
 // — Review Changes… (the per-tab prompts) / Discard All / Cancel — and the
 // updater's Restart Now runs the same sweep (beforeRestart) without closing
 // the window. The editor and the updater are stubbed so the test drives
-// masterSaveSlot and beforeRestart directly.
+// masterSaveSlot, saveSlot and beforeRestart directly. A quit waits for a
+// discarded tab's snapshot to go (#697).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,11 +19,13 @@ import type { DocumentMeta } from "../src/App";
 type Slot = { current: (() => Promise<boolean>) | null };
 const mocks = vi.hoisted(() => ({
   /** Latest props each stub editor rendered with, by mount order. */
-  editors: [] as Array<{ onMeta: (meta: DocumentMeta) => void; masterSaveSlot: Slot }>,
+  editors: [] as Array<{ onMeta: (meta: DocumentMeta) => void; masterSaveSlot: Slot; saveSlot: Slot }>,
   /** The updater stub's latest props. */
   updater: null as null | { beforeRestart?: () => Promise<boolean> },
   /** IPC commands the shell sent, in order. */
   calls: [] as string[],
+  /** When set, recovery store writes wait for this. */
+  heldWrites: null as Promise<void> | null,
 }));
 
 const { mockIPC, mockWindows } = await import("@tauri-apps/api/mocks");
@@ -32,6 +35,16 @@ mockIPC((cmd) => { mocks.calls.push(cmd); return null; }, { shouldMockEvents: tr
 vi.mock("../src/components/DesktopUpdater", () => ({
   DesktopUpdater: (props: NonNullable<typeof mocks.updater>) => { mocks.updater = props; return null; },
 }));
+vi.mock("../src/masterCache", async (importOriginal) => {
+  const cache = await importOriginal<typeof import("../src/masterCache")>();
+  return {
+    ...cache,
+    run: async (...args: Parameters<typeof cache.run>) => {
+      await mocks.heldWrites;
+      return cache.run(...args);
+    },
+  };
+});
 vi.mock("../src/App", async () => {
   const { createElement: h, useRef } = await import("react");
   return {
@@ -54,6 +67,7 @@ afterEach(async () => {
   await act(async () => { root.unmount(); });
   mocks.editors.length = 0;
   mocks.calls.length = 0;
+  mocks.heldWrites = null;
   document.body.replaceChildren();
 });
 
@@ -106,6 +120,27 @@ async function review(saved: boolean, beforeResolve?: () => void) {
   expect(prompt()).toBeNull(); // hidden while the review is up
   await act(async () => { beforeResolve?.(); resolve(saved); });
 }
+
+/** One unsaved tab and a window close: its prompt is up. */
+async function oneTabClosingWindow() {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => { root.render(createElement(TabsShell)); });
+  await act(async () => { mocks.editors[0].onMeta(meta("A", true, false)); });
+  await act(async () => { await emit("tauri://close-requested"); });
+  await vi.waitFor(() => expect(prompt()?.textContent).toContain("“A”"));
+}
+
+it("a Discard's quit waits for the tab's recovery snapshot to go", async () => {
+  await oneTabClosingWindow();
+  let release!: () => void;
+  mocks.heldWrites = new Promise<void>((resolve) => { release = resolve; });
+  await act(async () => { button("Discard").click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(destroyed()).toBe(false);
+  await act(async () => { release(); });
+  await vi.waitFor(() => expect(destroyed()).toBe(true));
+});
 
 it("words the prompt for quitting during a window close, and for the tab otherwise", async () => {
   await twoTabsClosingWindow();

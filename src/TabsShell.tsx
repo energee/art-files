@@ -22,7 +22,7 @@ import {
 import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
-import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
+import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
@@ -398,7 +398,9 @@ export default function TabsShell() {
   const endSweep = (finished: boolean) => {
     const done = sweep.current;
     sweep.current = null;
-    done?.(finished);
+    // The app may be about to go: let a discarded tab's snapshot drop land, or
+    // the next launch offers that work back (#697).
+    void recoveryWritten().then(() => done?.(finished));
   };
 
   /** Walk every unsaved tab through the close prompt before the app goes
