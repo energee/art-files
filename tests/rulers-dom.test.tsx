@@ -39,6 +39,8 @@ const rect = (width: number, height: number): DOMRect => ({
   toJSON: () => ({}),
 }) as DOMRect;
 
+const FITTED = { z: 1, x: 0, y: 0 };
+
 const MANUAL: ManualGuide[] = [
   { id: 7, axis: "x", point: 100 },
   { id: 8, axis: "y", point: 60 },
@@ -54,7 +56,7 @@ function renderRulers(over: Partial<Parameters<typeof Rulers>[0]> = {}) {
     current: { showArt() {}, showMask() {}, getPageElement: () => page },
   };
   const props: Parameters<typeof Rulers>[0] = {
-    paneRef: { current: pane }, previewRef, transform: { z: 1, x: 0, y: 0 },
+    paneRef: { current: pane }, previewRef, view: { get: () => FITTED, subscribe: () => () => {} },
     showRulers: true, unit: "in", onUnitChange: vi.fn(),
     showGuides: true, marginPt: DEFAULT_MARGIN_PT, onMarginChange: vi.fn(),
     manual: MANUAL, onAddManual: vi.fn(), onMoveManual: vi.fn(), onRemoveManual: vi.fn(),

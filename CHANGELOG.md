@@ -11,6 +11,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
+- **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops.
 
 ## [0.1.118] - 2026-11-04
 

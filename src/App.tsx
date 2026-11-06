@@ -509,13 +509,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   usePreviewToastAnchor(previewPane, active);
   const canView = useRef<CanViewHandle>(null);
   const {
-    zoom, camZoomPct, carried, onCameraChange, zoomDraft, setZoomDraft, zoomTo, applyTypedZoom,
-    panning, onPanStart, onPanMove, onPanEnd,
+    zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
+    zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
   } = useZoomPan(viewMode === "2d", previewPane, canView);
   // The 3D scene's mode: Rendered shows the flat label, Can its count.
   let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
   if (viewMode === "rendered") canSceneMode = "flat";
-  const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
+  const shownZoomPct = viewMode === "2d" ? Math.round(zoom * 100) : camZoomPct;
   const view = viewState(viewMode, split);
   // The status bar's "Compare" note, which the view group points at so a
   // screen reader hears the state too. useId: each open tab has its own.
@@ -2389,11 +2389,11 @@ export const DocumentEditor = memo(function DocumentEditor({
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
                 their own camera. Padded, not offset, by the rulers so Fit
                 keeps the label clear of them while the transform's origin
-                stays the pane's top-left. */}
+                stays the pane's top-left. useZoomPan writes the transform. */}
             <div
+              ref={zoomLayer}
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
-                transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
                 ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
@@ -2419,7 +2419,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onSplit={setSplit}
               bleed={showGuides}
               cornerRadiusPct={render.cornerRadius}
-              zoom={zoom.z}
+              zoom={zoom}
               onRenderError={setRenderError} />
             </div>
             {active && viewMode !== "2d" && (
@@ -2435,7 +2435,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             )}
             </div>
             {viewMode === "2d" && (
-              <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
+              <Rulers paneRef={previewPane} previewRef={previewRef} view={liveView}
                 showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
                 onMarginChange={rulerMargin} manual={manualGuides}
@@ -2474,6 +2474,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
+              ref={zoomField}
               value={zoomDraft ?? String(shownZoomPct)}
               onChange={(e) => setZoomDraft(e.target.value)}
               onFocus={(e) => e.currentTarget.select()}

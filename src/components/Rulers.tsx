@@ -7,7 +7,8 @@
 // session view state; the settings popover's margin inset is the exception —
 // it writes the master's guides, so it sits locked under a "Master" heading.
 import {
-  memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
+  memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
+  type MouseEvent, type PointerEvent, type RefObject,
 } from "react";
 import { useTranslation } from "@/i18n";
 import { ART, PAGE } from "@/layout";
@@ -19,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { decimalsOf } from "@/numeric";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
+import type { LiveView } from "@/useZoomPan";
 import { ScrubField } from "@/components/ScrubField";
 import { Label } from "@/components/ui/label";
 import {
@@ -99,11 +101,11 @@ function RulerSettings(props: {
 }
 
 /** Memoized, so typing in the inspector skips it (#605); App passes stable
- *  callbacks. */
+ *  callbacks. A zoom or pan reaches it through `view`, not a render of App. */
 export const Rulers = memo(function Rulers(props: {
   paneRef: RefObject<HTMLDivElement | null>;
   previewRef: RefObject<PreviewCompareHandle | null>;
-  transform: { z: number; x: number; y: number };
+  view: Pick<LiveView, "get" | "subscribe">;
   showRulers: boolean;
   unit: LengthUnit;
   onUnitChange: (unit: LengthUnit) => void;
@@ -129,10 +131,11 @@ export const Rulers = memo(function Rulers(props: {
 }) {
   const { t } = useTranslation();
   const {
-    paneRef, previewRef, transform, showRulers, unit, onUnitChange, showGuides,
+    paneRef, previewRef, view, showRulers, unit, onUnitChange, showGuides,
     marginPt, onMarginChange, manual, onAddManual, onMoveManual, onRemoveManual,
     onSnapGuide,
   } = props;
+  const transform = useSyncExternalStore(view.subscribe, view.get);
   const [geometry, setGeometry] = useState<Geometry | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
