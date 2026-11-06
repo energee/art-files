@@ -26,6 +26,8 @@ const menu = vi.hoisted(() => ({
   promoteError: "",
   /** When set, a new tab's boot restore (resolveDefaultMaster) fails with this. */
   restoreError: "",
+  /** When set, a new tab's boot restore resolves with this instead. */
+  restored: null as null | Promise<unknown>,
 }));
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here. Its laurel's
@@ -76,6 +78,7 @@ vi.mock("../src/masters", async (importOriginal) => {
     ...masters,
     resolveDefaultMaster: async () => {
       if (menu.restoreError) throw new Error(menu.restoreError);
+      if (menu.restored) return menu.restored as ReturnType<typeof masters.resolveDefaultMaster>;
       return masters.resolveDefaultMaster();
     },
   };
@@ -103,7 +106,7 @@ vi.mock("../src/files", async (importOriginal) => {
 import { DocumentEditor, type FileToOpen } from "../src/App";
 import { buildPsd } from "../src/psd/build";
 import { lolevMaster } from "./fixtures/lolevMaster";
-import { packLabel, packMaster, unpackMaster } from "../src/model/files";
+import { packLabel, packMaster, unpackLabel, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";
 
 let root: Root;
@@ -119,6 +122,7 @@ afterEach(async () => {
   menu.fontError = "";
   menu.promoteError = "";
   menu.restoreError = "";
+  menu.restored = null;
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -401,6 +405,103 @@ it("a texture that fails to decode keeps an error toast until a good texture rep
   await dropArt(textureFile("art.png"));
   await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
 }, 30_000);
+
+// #685: a tab stays pristine while its first drop decodes, so an open can reuse
+// it. The late decode belongs to the document that was replaced.
+/** The decode of `slow` waits for release(). A layer image decodes from a bare
+ *  Blob, which has no name: pass null for that. */
+function gateDecoding(slow: string | null, fail = false) {
+  stubDecoding([]);
+  class FakeBitmap { width = 10; height = 10; close() {} }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  vi.stubGlobal("createImageBitmap", async (f: Blob) => {
+    if (((f as File).name ?? null) === slow) { await gate; if (fail) throw new Error("Invalid image"); }
+    return new FakeBitmap();
+  });
+  return () => act(async () => { release(); await new Promise((r) => setTimeout(r, 50)); });
+}
+const ownAsset = (name: string) => ({ name, bytes: new Uint8Array([1, 2, 3, 4]) });
+async function openLabel(props: Awaited<ReturnType<typeof mount>>["props"], assets: Parameters<typeof packLabel>[1]) {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} }, assets);
+  await act(async () => root.render(createElement(DocumentEditor, {
+    ...props, fileToOpen: { seq: 1, file: new File([label as unknown as BlobPart], "beer.label") },
+  })));
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
+}
+async function savedAssets(saveSlot: { current: (() => Promise<boolean>) | null }) {
+  let written: Uint8Array | undefined;
+  picker(async (bytes) => { written = bytes as unknown as Uint8Array; });
+  await act(async () => { await saveSlot.current!(); });
+  return unpackLabel(written!);
+}
+
+it("a texture still decoding does not replace the label opened into its tab (#685)", async () => {
+  const release = gateDecoding("dropped.png");
+  const { props, onMeta, saveSlot } = await mount();
+  await dropArt(textureFile("dropped.png"));
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: false });
+  await openLabel(props, { texture: ownAsset("label-own.png") });
+  await release();
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: false });
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("label-own.png");
+});
+
+it("a mask still decoding does not replace the label opened into its tab (#685)", async () => {
+  const release = gateDecoding("dropped.png");
+  const { props, saveSlot } = await mount();
+  await dropArt(textureFile("dropped.png"), 10_000); // past the split: the mask side
+  await openLabel(props, { mask: ownAsset("label-mask.png") });
+  await release();
+  expect((await savedAssets(saveSlot)).assets.mask?.name).toBe("label-mask.png");
+});
+
+it("an image still decoding does not write into the label opened into its tab (#685)", async () => {
+  const release = gateDecoding(null);
+  const { props, saveSlot, onMeta } = await mount();
+  await act(async () => (document.querySelector('[data-layer-id="logo"] [data-slot="sidebar-menu-button"]') as HTMLElement).click());
+  const well = await vi.waitFor(() => {
+    const el = document.querySelector('input[type="file"][accept*="image"]:not(header input)') as HTMLInputElement | null;
+    expect(el).not.toBeNull();
+    return el!;
+  });
+  Object.defineProperty(well, "files", { value: [textureFile("dropped.png")], configurable: true });
+  await act(async () => { well.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: false }); // still decoding
+  await openLabel(props, {});
+  await release();
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: false });
+  const { assets } = await savedAssets(saveSlot);
+  expect(Object.keys(assets.customImages ?? {})).toEqual([]);
+});
+
+// Boot restore swaps in the last master on the same untitled document, so art
+// dropped while it runs is still this document's and must land.
+it("art dropped during the boot restore survives it", async () => {
+  const release = gateDecoding("dropped.png");
+  let restore!: (r: unknown) => void;
+  menu.restored = new Promise((r) => { restore = r; });
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("dropped.png"));
+  const last = lolevMaster();
+  await act(async () => {
+    restore({ master: { ...last, layers: last.layers.map((l) => l.id === "name" ? { ...l, name: "Beer name" } : l) }, assets: {} });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  expect(document.querySelector('[data-layer-id="name"]')?.textContent).toContain("Beer name");
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("dropped.png");
+});
+
+it("a decode that fails after the open reports nothing over the opened label (#685)", async () => {
+  const release = gateDecoding("dropped.png", true);
+  const { props } = await mount();
+  await dropArt(textureFile("dropped.png"));
+  await openLabel(props, {});
+  await release();
+  expect(toastTitles()).toEqual([]);
+});
 
 // Opening a label swaps the texture and mask out with the old label, so a load
 // error for the one it replaced must not stay over the new label.

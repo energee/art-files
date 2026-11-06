@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Fixed
+- **Opening a label keeps its own art.** A texture, mask or image still loading in a fresh tab no longer replaces the art of a label opened into that tab, and saving no longer writes the wrong art into the file.
+
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
