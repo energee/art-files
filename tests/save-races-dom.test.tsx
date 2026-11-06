@@ -503,6 +503,46 @@ it("a decode that fails after the open reports nothing over the opened label (#6
   expect(toastTitles()).toEqual([]);
 });
 
+// #686: two drops on one slot. The last file dropped stays, whichever decode
+// finishes last, and the well's X stops a decode still running.
+it("a slower, older texture does not replace the newer drop (#686)", async () => {
+  const release = gateDecoding("big.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("big.png"));
+  await dropArt(textureFile("small.png"));
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("small.png");
+});
+
+it("a slower, older mask does not replace the newer drop (#686)", async () => {
+  const release = gateDecoding("big.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("big.png"), 10_000); // past the split: the mask side
+  await dropArt(textureFile("small.png"), 10_000);
+  await release();
+  expect((await savedAssets(saveSlot)).assets.mask?.name).toBe("small.png");
+});
+
+it("an older decode that fails reports nothing over the newer drop (#686)", async () => {
+  const release = gateDecoding("big.png", true);
+  await mount();
+  await dropArt(textureFile("big.png"));
+  await dropArt(textureFile("small.png"));
+  await release();
+  expect(toastTitles()).toEqual([]);
+});
+
+it("the well's X stops a decode still running (#686)", async () => {
+  const release = gateDecoding("big.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("art.png"));
+  await textureShown("art.png");
+  await dropArt(textureFile("big.png"));
+  await act(async () => (document.querySelector('button[aria-label="Remove Texture"]') as HTMLElement).click());
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture).toBeUndefined();
+});
+
 // Opening a label swaps the texture and mask out with the old label, so a load
 // error for the one it replaced must not stay over the new label.
 it("a texture load error does not outlive opening another label", async () => {

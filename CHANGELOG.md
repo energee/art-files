@@ -8,6 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Opening a label keeps its own art.** A texture, mask or image still loading in a fresh tab no longer replaces the art of a label opened into that tab, and saving no longer writes the wrong art into the file.
+- **The last file dropped stays.** Dropping a second texture or mask while the first is still loading keeps the second, and the well's X now stops a file that is still loading.
 
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.

@@ -899,8 +899,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  the well's Undo instead (#426). It restores the value the clear actually
    *  removed (read in the updater, not a render's closure, so a decode landing
    *  in between can't swap in an older file), keeping its bytes and minting a
-   *  fresh thumbnail URL, since the clear revoked the old one. */
-  const clearLoaded = (set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
+   *  fresh thumbnail URL, since the clear revoked the old one. A drop still
+   *  decoding for the slot is dropped with it (#686). */
+  const clearLoaded = (slot: "texture" | "mask", set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
+    slotRun.current[slot]++;
     let gone: LoadedRaster | null = null;
     swapLoaded<LoadedRaster>((fn) => set((old) => { gone = old; return fn(old); }), null);
     return () => {
@@ -924,8 +926,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     const run = docRun.current;
     return () => run === docRun.current;
   };
+  /** Bumped by every drop on a slot and by its X. */
+  const slotRun = useRef({ texture: 0, mask: 0 });
+  /** sameDocument for a drop: it also takes the slot, so of two drops only the
+   *  newer commits, whichever decode finishes last (#686). */
+  const newestDrop = (slot: "texture" | "mask") => {
+    const run = ++slotRun.current[slot];
+    const sameDoc = sameDocument();
+    return () => sameDoc() && run === slotRun.current[slot];
+  };
   async function onTexture(f: File) {
-    const current = sameDocument();
+    const current = newestDrop("texture");
     try {
       const mint = previewOnce(await readRaster(f), f);
       if (current()) { swapLoaded(setTexture, mint); textureError.clear(); }
@@ -934,7 +945,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
   async function onMask(f: File) {
-    const current = sameDocument();
+    const current = newestDrop("mask");
     try {
       const mint = previewOnce(await readRaster(f), f);
       if (current()) { swapLoaded(setMask, mint); maskError.clear(); }
@@ -2132,12 +2143,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (layer.role === "background") {
         return <FileDrop label={t("Texture")} accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] }}
           fileName={texture?.name} previewUrl={texture?.previewUrl}
-          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded(setTexture)} />;
+          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded("texture", setTexture)} />;
       }
       if (layer.role === "mask") {
         return <FileDrop label={t("Metallic mask")} accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
-          onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
+          onFile={(f) => void onMask(f)} onClear={() => clearLoaded("mask", setMask)} />;
       }
       const file = customImages[layer.asset];
       return <FileDrop label={t("Image")} accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
