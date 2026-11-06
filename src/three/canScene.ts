@@ -74,6 +74,26 @@ const LAYER_DEPTH = 0.02;
  *  at a grazing angle, so without more fill it reads grey. */
 const AMBIENT = { can: 0.4, flat: 1.5 };
 
+/** Remember a load's result for later callers. A failure is forgotten, so the
+ *  next caller tries again. */
+function cached<T>(load: () => Promise<T>): () => Promise<T> {
+  let asset: Promise<T> | null = null;
+  return () => asset ??= load().catch((err) => { asset = null; throw err; });
+}
+
+/** The parsed can, shared across scenes: CanView builds a new one on every
+ *  2D to 3D entry, and the file is 4MB. Read-only; each scene clones it. */
+const loadCanModel = cached(() => new Promise<THREE.Group>((resolve, reject) => {
+  new GLTFLoader().load(
+    `${import.meta.env.BASE_URL}Can.gltf`, (gltf) => resolve(gltf.scene), undefined, reject,
+  );
+}));
+
+/** The parsed studio.hdr, shared the same way. */
+const loadStudioHdr = cached(() => new Promise<THREE.DataTexture>((resolve, reject) => {
+  new HDRLoader().load(`${import.meta.env.BASE_URL}studio.hdr`, resolve, undefined, reject);
+}));
+
 /** Same-size copy of a canvas with one CSS filter applied during the blit. */
 function filteredCopy(canvas: HTMLCanvasElement, filter: string): HTMLCanvasElement {
   const copy = document.createElement("canvas");
@@ -276,15 +296,15 @@ export class CanScene {
   /** studio.hdr as scene.environment only — background stays the flat theme
    *  color; the HDRI exists for the metal's reflections. */
   private loadEnvironment() {
-    new HDRLoader().load(
-      `${import.meta.env.BASE_URL}studio.hdr`,
-      (texture) => {
-        if (this.disposed) { texture.dispose(); return; }
+    loadStudioHdr().then(
+      (hdr) => {
+        if (this.disposed) return;
+        // A clone shares the parsed pixels but is this scene's to dispose.
+        const texture = hdr.clone();
         texture.mapping = THREE.EquirectangularReflectionMapping;
         this.scene.environment = texture;
         this.requestRender();
       },
-      undefined,
       (err) => console.warn("Failed to load HDR environment:", err),
     );
   }
@@ -292,12 +312,13 @@ export class CanScene {
   /** Load /Can.gltf, orient upright, normalize to SCENE_SCALE height,
    *  center at origin, and give every mesh the brushed-aluminum material. */
   private async loadCan() {
-    const gltf = await new Promise<{ scene: THREE.Group }>((resolve, reject) => {
-      new GLTFLoader().load(`${import.meta.env.BASE_URL}Can.gltf`, resolve, undefined, reject);
-    }).catch((err) => { console.warn("Failed to load can model:", err); return null; });
-    if (!gltf || this.disposed) return;
+    const loaded = await loadCanModel()
+      .catch((err) => { console.warn("Failed to load can model:", err); return null; });
+    if (!loaded || this.disposed) return;
 
-    const model = gltf.scene;
+    // Everything below re-materials and moves the model, so it works on a
+    // clone. The clone shares the geometry; see dispose().
+    const model = loaded.clone();
     // Matched to a studio photo of a printed can, where the bare top and
     // bottom read bright silver: a darker colour or a smoother finish mirrors
     // the HDRI's dark regions and turns the shoulder near-black (#570).
@@ -973,6 +994,8 @@ export class CanScene {
       m.map?.dispose();
       m.dispose();
     }
+    // The geometry outlives this scene in the shared model. Disposing it drops
+    // this renderer's buffers and listeners, and the next scene uploads afresh.
     this.canModel?.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) (child as THREE.Mesh).geometry.dispose();
     });
