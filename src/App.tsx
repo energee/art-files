@@ -288,7 +288,8 @@ type DocumentEditorProps = {
   active: boolean;
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
-   *  shell can drop the queued entry. `cancelled`: the operator backed out
+   *  shell can drop the queued entry. Called after onMeta has reported the
+   *  open, so the tab's meta claims it from then on. `cancelled`: the operator backed out
    *  (the different-master prompt's Cancel, or its Locate picker's), so a
    *  tab made only for this open can go again (#553). */
   onOpenSettled: (seq: number, cancelled: boolean) => void;
@@ -348,6 +349,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // fileToOpen attempt and reported through onOpenSettled.
   const openCancelled = useRef(false);
   const openChain = useRef<Promise<void>>(Promise.resolve());
+  /** A finished fileToOpen attempt, until the effect below reports it. */
+  const [openSettled, setOpenSettled] = useState<{ seq: number; cancelled: boolean } | null>(null);
   // The master as of the last open/save — the baseline the "unsaved master
   // edits" dot (Save Master) compares against, itemised by masterChanges.
   const pristineMaster = useRef(doc.master);
@@ -1973,11 +1976,19 @@ export const DocumentEditor = memo(function DocumentEditor({
       } catch (err) {
         reportOpenError(err);
       } finally {
-        onOpenSettled(mySeq, openCancelled.current);
+        setOpenSettled({ seq: mySeq, cancelled: openCancelled.current });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
+  // Declared after the onMeta effect, so in a shared commit it runs second:
+  // the queued open keeps claiming the tab until its meta has taken over (#694).
+  useEffect(() => {
+    if (!openSettled) return;
+    onOpenSettled(openSettled.seq, openSettled.cancelled);
+    setOpenSettled(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSettled]);
 
   /** Every command the app exposes, once. The palette and AppMenu read this
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires

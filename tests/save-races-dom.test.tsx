@@ -237,6 +237,17 @@ it("a cancelled Save As preserves the original target (#265)", async () => {
   expect(handle.createWritable).toHaveBeenCalledTimes(2);
 });
 
+// #694: the shell's queued open guards the tab until tab meta says it holds a
+// file. If the guard dropped first, a second open could replace the document.
+it("an open reports the tab's new meta before it settles", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} }, {});
+  const { onMeta, props } = await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 5000 });
+  const opened = onMeta.mock.calls.findIndex(([meta]) => !meta.dirty);
+  expect(opened).toBeGreaterThanOrEqual(0);
+  expect(onMeta.mock.invocationCallOrder[opened]).toBeLessThan(props.onOpenSettled.mock.invocationCallOrder[0]);
+}, 30_000);
+
 /** The Save Master review loads on first open (#410): wait for its row. */
 const reviewRow = (id: string) => vi.waitFor(() => {
   const row = document.querySelector(`[data-row="${id}"]`);
