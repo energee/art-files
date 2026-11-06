@@ -543,6 +543,56 @@ it("the well's X stops a decode still running (#686)", async () => {
   expect((await savedAssets(saveSlot)).assets.texture).toBeUndefined();
 });
 
+// #687: a master's template art fills a slot only if the slot is still empty
+// when the decode lands, and only for the master that asked.
+const templateArt = (name: string) => ({ texture: ownAsset(name) });
+const otherMaster = (id: string): Master => ({ ...lolevMaster(), id, name: id });
+
+it("art dropped while the master's texture decodes keeps the slot (#687)", async () => {
+  const release = gateDecoding("template.png");
+  const { saveSlot } = await mount();
+  openMasterFile(otherMaster("master-a"), templateArt("template.png"));
+  await run("master-open");
+  await dropArt(textureFile("mine.png"));
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("mine.png");
+});
+
+// The adopt must not take the turn of a drop that started before it.
+it("a drop still decoding when the master arrives lands over its art (#687)", async () => {
+  const release = gateDecoding("mine.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("mine.png"));
+  openMasterFile(otherMaster("master-a"), templateArt("template.png"));
+  await run("master-open");
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("mine.png");
+});
+
+it("master A's texture does not land on master B when B has none (#687)", async () => {
+  const release = gateDecoding("template-a.png");
+  const { saveSlot } = await mount();
+  openMasterFile(otherMaster("master-a"), templateArt("template-a.png"));
+  await run("master-open");
+  openMasterFile(otherMaster("master-b"));
+  await run("master-open");
+  await release();
+  const { label, assets } = await savedAssets(saveSlot);
+  expect(label?.masterId).toBe("master-b");
+  expect(assets.texture).toBeUndefined();
+});
+
+it("master A's slower texture does not replace master B's (#687)", async () => {
+  const release = gateDecoding("template-a.png");
+  const { saveSlot } = await mount();
+  openMasterFile(otherMaster("master-a"), templateArt("template-a.png"));
+  await run("master-open");
+  openMasterFile(otherMaster("master-b"), templateArt("template-b.png"));
+  await run("master-open");
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("template-b.png");
+});
+
 // Opening a label swaps the texture and mask out with the old label, so a load
 // error for the one it replaced must not stay over the new label.
 it("a texture load error does not outlive opening another label", async () => {

@@ -234,6 +234,8 @@ function focusContentField(layerId: string, stillActive: () => boolean) {
  *  is `path`, set only when the label came off disk (desktop): its folder
  *  is where the label's masterHint may be read from (masters.ts hintTrusted). */
 type LabelSource = { name: string; bytes: Uint8Array; path?: string };
+/** A texture or mask slot's state setter, or fillEmpty's wrapper of one. */
+type SetSlot = (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void;
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
 
@@ -901,8 +903,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  in between can't swap in an older file), keeping its bytes and minting a
    *  fresh thumbnail URL, since the clear revoked the old one. A drop still
    *  decoding for the slot is dropped with it (#686). */
-  const clearLoaded = (slot: "texture" | "mask", set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
-    slotRun.current[slot]++;
+  const clearLoaded = (slot: "texture" | "mask", set: SetSlot) => {
+    runs.current[slot]++;
     let gone: LoadedRaster | null = null;
     swapLoaded<LoadedRaster>((fn) => set((old) => { gone = old; return fn(old); }), null);
     return () => {
@@ -926,29 +928,33 @@ export const DocumentEditor = memo(function DocumentEditor({
     const run = docRun.current;
     return () => run === docRun.current;
   };
-  /** Bumped by every drop on a slot and by its X. */
-  const slotRun = useRef({ texture: 0, mask: 0 });
-  /** sameDocument for a drop: it also takes the slot, so of two drops only the
-   *  newer commits, whichever decode finishes last (#686). */
-  const newestDrop = (slot: "texture" | "mask") => {
-    const run = ++slotRun.current[slot];
+  /** Bumped by every drop on a slot and by its X (`texture`, `mask`), and by
+   *  every master's adopt (`adopt`). */
+  const runs = useRef({ texture: 0, mask: 0, adopt: 0 });
+  /** sameDocument that also takes the newest run of `kind`: of two drops on a
+   *  slot, or two masters' adopts, only the newer commits, whichever decode
+   *  finishes last (#686, #687). */
+  const newestRun = (kind: "texture" | "mask" | "adopt") => {
+    const run = ++runs.current[kind];
     const sameDoc = sameDocument();
-    return () => sameDoc() && run === slotRun.current[slot];
+    return () => sameDoc() && run === runs.current[kind];
   };
-  async function onTexture(f: File) {
-    const current = newestDrop("texture");
+  /** swapLoaded's `set` for a master's template art: only a slot still empty
+   *  when the decode lands takes it (#687). */
+  const fillEmpty = (set: SetSlot): SetSlot => (fn) => set((old) => old ?? fn(null));
+  /** A drop by default; adoptMasterAssets passes its own `current` and `set`. */
+  async function onTexture(f: File, current = newestRun("texture"), set: SetSlot = setTexture) {
     try {
       const mint = previewOnce(await readRaster(f), f);
-      if (current()) { swapLoaded(setTexture, mint); textureError.clear(); }
+      if (current()) { swapLoaded(set, mint); textureError.clear(); }
     } catch (err) {
       if (current()) textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
     }
   }
-  async function onMask(f: File) {
-    const current = newestDrop("mask");
+  async function onMask(f: File, current = newestRun("mask"), set: SetSlot = setMask) {
     try {
       const mint = previewOnce(await readRaster(f), f);
-      if (current()) { swapLoaded(setMask, mint); maskError.clear(); }
+      if (current()) { swapLoaded(set, mint); maskError.clear(); }
     } catch (err) {
       if (current()) maskError.set(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
     }
@@ -1553,12 +1559,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  again as they commit, so an id filled meanwhile mints no thumbnail).
    *  Slots are read from savedAssetsRef, not this render's state: a switch
    *  adopts only after its awaits (the library write), so art dropped in
-   *  that window must still win (#516). */
+   *  that window must still win (#516). Texture and mask are checked again
+   *  as they commit too, and a newer adopt or open drops them, so they land
+   *  only on the master that asked (#687). A late image needs no such check:
+   *  it lands under its own id, which only a master naming that id reads. */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
     const { texture, mask, customImages } = savedAssetsRef.current;
+    const current = newestRun("adopt");
     await Promise.all([
-      !texture && a.texture ? onTexture(assetToFile(a.texture)) : null,
-      !mask && a.mask ? onMask(assetToFile(a.mask)) : null,
+      !texture && a.texture ? onTexture(assetToFile(a.texture), current, fillEmpty(setTexture)) : null,
+      !mask && a.mask ? onMask(assetToFile(a.mask), current, fillEmpty(setMask)) : null,
       (async () => {
         const missing = Object.entries(a.customImages ?? {}).filter(([id]) => !customImages[id]);
         if (!missing.length) return;
