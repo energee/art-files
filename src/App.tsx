@@ -1854,7 +1854,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         const cfg = parseConfigFile(unpacked.legacy);
         const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy), current);
         notes = r.warnings;
-        masterAssets = { customImages: imageBundle(customImages, masterAssetIds(current)) };
+        // From the ref: this open's render can predate a boot restore's images (#706).
+        masterAssets = { customImages: imageBundle(savedAssetsRef.current.customImages, masterAssetIds(current)) };
         masterPath = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
         next = { master: current, label: adoptLegacyCollab(r.label) };
       } else {

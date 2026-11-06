@@ -8,9 +8,11 @@
 // a master switch, and the error paths of opening and saving (a promotion and a
 // boot restore that fail are simulated by mocks: no user action reaches them).
 // @vitest-environment happy-dom
+import { strToU8, zipSync } from "fflate";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { defaultConfig } from "../src/defaults";
 import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
 import { headerMessages, mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
@@ -107,7 +109,7 @@ import { DocumentEditor, type FileToOpen } from "../src/App";
 import { buildPsd } from "../src/psd/build";
 import { lolevMaster } from "./fixtures/lolevMaster";
 import { packLabel, packMaster, unpackLabel, unpackMaster } from "../src/model/files";
-import type { Master } from "../src/model/layers";
+import type { ImageLayer, Master } from "../src/model/layers";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -591,6 +593,32 @@ it("master A's slower texture does not replace master B's (#687)", async () => {
   await run("master-open");
   await release();
   expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("template-b.png");
+});
+
+// #706: the open's effect ran in a render from before the restore's images
+// landed, and it runs after them on the chain. Its read is held until they
+// have rendered, as a real file read outlasts React's commit.
+it("a v1 label opened during the boot restore keeps the master's images (#706)", async () => {
+  const release = gateDecoding(null);
+  let restore!: (r: unknown) => void;
+  menu.restored = new Promise((r) => { restore = r; });
+  const { props, saveSlot } = await mount();
+  const master = lolevMaster();
+  const logo = master.layers.find((l) => l.id === "logo") as ImageLayer;
+  await act(async () => {
+    restore({ master, assets: { customImages: { [logo.asset]: ownAsset("logo.png") } } });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  const v1 = zipSync({ "config.json": strToU8(JSON.stringify({ version: 1, ...defaultConfig() })) });
+  const file = new File([v1 as unknown as BlobPart], "old.label");
+  let read!: () => void;
+  const held = new Promise<void>((r) => { read = r; });
+  file.arrayBuffer = async () => { await held; return v1.buffer as ArrayBuffer; };
+  await act(async () => root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 1, file } })));
+  await release();
+  await act(async () => read());
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
+  expect(Object.keys((await savedAssets(saveSlot)).assets.customImages ?? {})).toEqual([logo.asset]);
 });
 
 // Opening a label swaps the texture and mask out with the old label, so a load
