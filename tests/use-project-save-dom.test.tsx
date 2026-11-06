@@ -156,7 +156,7 @@ async function heldSave(fail = (_n: number) => false) {
     confirmOverwrite: async () => "overwrite",
     nativeModifiedAt: async () => 1,
     saveThrough: async (content: ((name: string) => Uint8Array) | Uint8Array, options: { target?: { path: string } }) => {
-      const path = options.target?.path ?? "/w/a.label";
+      const path = options.target?.path ?? "/w/x.label"; // what Save As picks
       const bytes = typeof content === "function" ? content(path) : content;
       const n = written.push(bytes[0]) - 1;
       await new Promise<void>((resolve) => { finish.push(resolve); });
@@ -182,7 +182,7 @@ async function heldSave(fail = (_n: number) => false) {
   await render(1);
   act(() => api!.bindPath("/w/a.label"));
   return {
-    written, landed, onSaved, onError, render, save: () => api!.saveProject(),
+    written, landed, onSaved, onError, render, api: () => api!, save: (as?: boolean) => api!.saveProject(as),
     release: (n: number) => finish[n](),
     cleanup: () => { act(() => root.unmount()); vi.doUnmock("@/files"); },
   };
@@ -222,5 +222,44 @@ it("a failed write reports failure, and the Save behind it still runs", async ()
   s.release(1);
   await expect(second).resolves.toBe(true);
   expect(s.onSaved).toHaveBeenCalledOnce();
+  s.cleanup();
+});
+
+// #693: a pristine tab's Save As sheet can sit open while an OS open lands in
+// that tab. The bytes written are the old document, so the file the sheet
+// picked must not take the binding from the file now on screen.
+it("a Save finishing after an Open leaves the Open's binding and clean state", async () => {
+  const s = await heldSave();
+  const saving = s.save(true);
+  await vi.waitFor(() => expect(s.written).toEqual([1]));
+  act(() => s.api().bindPath("/w/opened.label"));
+  s.release(0);
+  await act(async () => { await expect(saving).resolves.toBe(false); });
+  expect(s.api().filePath).toBe("/w/opened.label");
+  expect(s.onSaved).not.toHaveBeenCalled();
+  s.cleanup();
+});
+
+// A dropped .label has no file: the Save must not bind it to the sheet's either.
+it("a Save finishing after a pathless Open leaves the tab unbound", async () => {
+  const s = await heldSave();
+  const saving = s.save(true);
+  await vi.waitFor(() => expect(s.written).toEqual([1]));
+  act(() => s.api().forgetProjectFile());
+  s.release(0);
+  await act(async () => { await expect(saving).resolves.toBe(false); });
+  expect(s.api().filePath).toBeNull();
+  s.cleanup();
+});
+
+// An edit is not an Open: Save As still moves the tab to the file it wrote.
+it("an edit during Save As still binds the tab to the new file", async () => {
+  const s = await heldSave();
+  const saving = s.save(true);
+  await vi.waitFor(() => expect(s.written).toEqual([1]));
+  await s.render(2);
+  s.release(0);
+  await act(async () => { await expect(saving).resolves.toBe(true); });
+  expect(s.api().filePath).toBe("/w/x.label");
   s.cleanup();
 });
