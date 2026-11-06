@@ -82,6 +82,36 @@ afterEach(() => { document.body.replaceChildren(); });
 /** A click on the installed row `id`: Tauri routes it by the row's own id. */
 const click = (id: string) => act(async () => { native.channels.get(native.latest.get(id)!.id)?.(); });
 
+it("the outgoing tab's rows do nothing while the next tab's menu is installing (#704)", async () => {
+  const ran: string[] = [];
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  const show = (tab: string) => act(async () => {
+    root.render(createElement(AppMenu, {
+      key: tab,
+      actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => ran.push(`${tab}:${entry.id}`) })),
+      checked: {},
+      onNativeError: (message: string) => { throw new Error(message); },
+      onCheckForUpdates: () => {},
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  try {
+    await show("A");
+    const rowOfA = native.latest.get("tab-close")!.id;
+    let install = () => {};
+    native.installGate = new Promise<void>((resolve) => { install = resolve; });
+    await show("B");
+    // A's menu is still the app's, so ⌘W still routes to its row.
+    await act(async () => { native.channels.get(rowOfA)?.(); });
+    expect(ran).toEqual([]);
+    await act(async () => { install(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await click("tab-close");
+    expect(ran).toEqual(["B:tab-close"]);
+  } finally {
+    await act(async () => { root.unmount(); });
+  }
+});
+
 it("a menu rebuilt for a newly active tab still runs its commands", async () => {
   rememberRecent("/labels/One.label");
   const opened: string[] = [];
@@ -113,36 +143,6 @@ it("a menu rebuilt for a newly active tab still runs its commands", async () => 
     expect(ran).toEqual(["A:tab-new", "B:tab-new", "B:project-open"]);
     expect(opened).toEqual(["/labels/One.label"]);
     expect(updates).toHaveBeenCalledOnce();
-  } finally {
-    await act(async () => { root.unmount(); });
-  }
-});
-
-it("the outgoing tab's rows do nothing while the next tab's menu is installing (#704)", async () => {
-  const ran: string[] = [];
-  const root = createRoot(document.body.appendChild(document.createElement("div")));
-  const show = (tab: string) => act(async () => {
-    root.render(createElement(AppMenu, {
-      key: tab,
-      actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => ran.push(`${tab}:${entry.id}`) })),
-      checked: {},
-      onNativeError: (message: string) => { throw new Error(message); },
-      onCheckForUpdates: () => {},
-    }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-  try {
-    await show("A");
-    const rowOfA = native.latest.get("tab-close")!.id;
-    let install = () => {};
-    native.installGate = new Promise<void>((resolve) => { install = resolve; });
-    await show("B");
-    // A's menu is still the app's, so ⌘W still routes to its row.
-    await act(async () => { native.channels.get(rowOfA)?.(); });
-    expect(ran).toEqual([]);
-    await act(async () => { install(); await new Promise((resolve) => setTimeout(resolve, 0)); });
-    await click("tab-close");
-    expect(ran).toEqual(["B:tab-close"]);
   } finally {
     await act(async () => { root.unmount(); });
   }
