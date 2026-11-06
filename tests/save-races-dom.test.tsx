@@ -812,9 +812,8 @@ it("Open Master while a Save Master records its file keeps the opened master's b
   await act(async () => { release(); await new Promise((r) => setTimeout(r, 10)); });
   expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: false });
-  // Its review lists only this label's override, not a diff against the old master.
-  await run("master-save");
-  expect(reviewRows()).toBe(1);
+  // Nothing to save: it is not diffed against the master the save just wrote.
+  expect(menu.actions.find((c) => c.id === "master-save")!.disabled).toBe(true);
 }, 30_000);
 
 it("the benched-values toast survives the master's texture loading (#11)", async () => {
