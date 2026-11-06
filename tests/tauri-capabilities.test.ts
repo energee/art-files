@@ -84,6 +84,11 @@ describe("desktop master-file access", () => {
     expect(caps.permissions).toContain("dialog:allow-open");
   });
 
+  // confirmOverwrite's alert (#682).
+  it("can show a native alert", () => {
+    expect(caps.permissions).toContain("dialog:allow-message");
+  });
+
   // The "Show in Finder" toast action reveals an export in its folder. The
   // opener plugin can also open arbitrary paths and URLs, so grant nothing but
   // the reveal; `opener:default` would add open-url.

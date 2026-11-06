@@ -5,7 +5,7 @@
 // a completed save means for the dirty flags (onSaved) stay with the editor
 // state that owns them.
 import { useRef, useState } from "react";
-import { nativeModifiedAt, saveThrough } from "@/files";
+import { confirmOverwrite, nativeModifiedAt, saveThrough } from "@/files";
 import { labelFilter, labelTypes } from "@/filePickers";
 import { LABEL_EXT } from "@/labelfile";
 import { errMsg } from "@/lib/utils";
@@ -30,6 +30,22 @@ type ProjectSaveInputs = {
   saveBytes: (bytes: Uint8Array, name: string, type?: string) => void;
 };
 
+/** A bound desktop file's mtime when this tab last opened or saved it: what
+ *  confirmOverwrite compares against and crash recovery snapshots. `at()` is
+ *  undefined until the stat lands, or when it fails. */
+export function useFileBaseline() {
+  const seen = useRef<{ at?: number }>({});
+  /** Start from `path` — `known` when the caller already has its mtime,
+   *  otherwise stat'ed now. A later record supersedes a stat still running. */
+  function record(path: string | null, known?: number) {
+    const entry: { at?: number } = { at: known };
+    seen.current = entry;
+    if (!path || known !== undefined) return;
+    void nativeModifiedAt(path).then((t) => { entry.at = t ?? undefined; }, () => {});
+  }
+  return { record, at: () => seen.current.at };
+}
+
 export function useProjectSave({
   pack, exportBase, onSaved, onError, startSaveBatch, saveBytes,
 }: ProjectSaveInputs) {
@@ -40,11 +56,10 @@ export function useProjectSave({
   const projectPath = useRef<string | null>(null);
   /** State mirror of projectPath (a ref, which can't drive onMeta). */
   const [filePath, setFilePath] = useState<string | null>(null);
-  /** projectPath's mtime when this tab last opened or saved it: the baseline
-   *  crash recovery snapshots, so a restore rebinds only a file nothing else
-   *  has written since (recovery.ts canRebind). Undefined until the stat
-   *  lands, or when it fails — a snapshot without it never rebinds. */
-  const modifiedAt = useRef<number | undefined>(undefined);
+  /** projectPath's baseline. Save checks it before rewriting the file (#682),
+   *  and a restore rebinds only a file nothing else has written since
+   *  (recovery.ts canRebind); a snapshot without it never rebinds. */
+  const baseline = useFileBaseline();
 
   /** Bind Save to a file an Open read or a Save wrote (desktop), recording
    *  its mtime — `known` when the caller already has it (a restore cleared
@@ -52,11 +67,7 @@ export function useProjectSave({
   function bindPath(path: string, known?: number) {
     projectPath.current = path;
     setFilePath(path);
-    modifiedAt.current = known;
-    if (known !== undefined) return;
-    void nativeModifiedAt(path).then((t) => {
-      if (projectPath.current === path) modifiedAt.current = t ?? undefined;
-    }, () => {});
+    baseline.record(path, known);
   }
   /** Bind Save to a file an Open picked through File System Access. */
   function bindHandle(handle: FileSystemFileHandle) {
@@ -67,14 +78,20 @@ export function useProjectSave({
     projectHandle.current = null;
     projectPath.current = null;
     setFilePath(null);
-    modifiedAt.current = undefined;
+    baseline.record(null);
   }
 
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). Resolves false when the user
-   *  cancels the dialog or the write fails. */
+   *  cancels the dialog or the write fails. A bound file that changed since
+   *  this tab last saw it stops for confirmOverwrite first. */
   async function saveProject(as = false): Promise<boolean> {
     try {
+      if (!as && projectPath.current) {
+        const choice = await confirmOverwrite(projectPath.current, baseline.at());
+        if (choice === "cancel") return false;
+        as = choice === "save-as";
+      }
       // Inside the try: packing throws past the archive size caps, and a
       // rejection would leave the close-tab Save neither closing nor
       // cancelling. Packed before any dialog, so an oversized label fails
@@ -100,6 +117,6 @@ export function useProjectSave({
 
   return {
     filePath, bindPath, bindHandle, forgetProjectFile, saveProject,
-    boundModifiedAt: () => modifiedAt.current,
+    boundModifiedAt: baseline.at,
   };
 }

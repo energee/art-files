@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Fixed
+- **Saving no longer erases changes made elsewhere.** On desktop, if a `.master` or `.label` changed after you opened it, in another tab or another app, Save now stops and offers Save As, Overwrite or Cancel. Before, the file was overwritten without warning.
+
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
