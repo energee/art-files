@@ -26,7 +26,19 @@ export interface LabelTextures {
   /** Binary metalness mask: white = metallic foil, black = matte white ink.
    *  Same pixel dimensions as `art`. */
   metalness: HTMLCanvasElement;
+  /** `metalness`'s pixels, kept so the next rebuild can spot an unchanged mask. */
+  metalnessPixels: Uint8ClampedArray<ArrayBuffer>;
+}
 
+/** Whether two classified masks match. A word at a time: this runs on the main
+ *  thread for every edit that leaves the mask alone, which is most of them. */
+function samePixels(
+  a: Uint8ClampedArray<ArrayBuffer>, b: Uint8ClampedArray<ArrayBuffer>,
+): boolean {
+  if (a.length !== b.length) return false;
+  const x = new Uint32Array(a.buffer), y = new Uint32Array(b.buffer);
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+  return true;
 }
 
 /**
@@ -41,16 +53,18 @@ export interface LabelTextures {
  */
 async function deriveMetalness(
   maskRender: HTMLCanvasElement,
-): Promise<HTMLCanvasElement> {
+  previous: LabelTextures | null,
+): Promise<Pick<LabelTextures, "metalness" | "metalnessPixels">> {
   const { width, height } = maskRender;
   const src = maskRender.getContext("2d")!.getImageData(0, 0, width, height);
   // The per-pixel classification runs in a worker (see metalnessMask.ts).
   const pixels = await deriveMetalnessPixels(src.data);
+  if (previous && samePixels(previous.metalnessPixels, pixels)) return previous;
   const out = document.createElement("canvas");
   out.width = width;
   out.height = height;
   out.getContext("2d")!.putImageData(new ImageData(pixels, width, height), 0, 0);
-  return out;
+  return { metalness: out, metalnessPixels: pixels };
 }
 
 /** Draw both plates from the display list at texture resolution: MAX_SCALE
@@ -75,10 +89,13 @@ export function drawPlates(
 /**
  * Build the 3D label's texture inputs from the two rendered plates. Pixel
  * work only — async because the mask classification runs in a worker;
- * drawing the plates is drawPlates' job.
+ * drawing the plates is drawPlates' job. A mask that matches `previous` reuses
+ * its canvas, which is how CanScene knows to leave the mask maps alone.
  */
 export async function buildLabelTextures(
   { art, mask }: { art: HTMLCanvasElement; mask: HTMLCanvasElement },
+  previous: LabelTextures | null,
 ): Promise<LabelTextures> {
-  return { art, metalness: await deriveMetalness(mask) };
+  const { metalness, metalnessPixels } = await deriveMetalness(mask, previous);
+  return { art, metalness, metalnessPixels };
 }

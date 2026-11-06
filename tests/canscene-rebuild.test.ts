@@ -21,6 +21,8 @@ vi.mock("three", async (importOriginal) => {
 const renders = vi.hoisted(() => ({ count: 0 }));
 /** Calls that pull pixels back to or from a 2D canvas on the main thread. */
 const readbacks = vi.hoisted(() => ({ count: 0 }));
+/** What the fake mask plate reads back as: one RGB value for every pixel. */
+let maskInk = 255;
 vi.mock("three/addons/loaders/GLTFLoader.js", async () => {
   const { BoxGeometry, Group, Mesh } = await import("three");
   return {
@@ -35,7 +37,7 @@ vi.mock("three/addons/loaders/GLTFLoader.js", async () => {
 });
 vi.mock("three/addons/loaders/HDRLoader.js", () => ({ HDRLoader: class { load() {} } }));
 import { CanScene, type CanSceneMode } from "../src/three/canScene";
-import type { LabelTextures } from "../src/three/labelTextures";
+import { buildLabelTextures, drawPlates, type LabelTextures } from "../src/three/labelTextures";
 
 type Label = THREE.MeshStandardMaterial;
 type Internals = {
@@ -51,7 +53,9 @@ const canvas = () => {
   c.width = 8; c.height = 4;
   return c;
 };
-const plates = (): LabelTextures => ({ art: canvas(), metalness: canvas() });
+const plates = (): LabelTextures => ({
+  art: canvas(), metalness: canvas(), metalnessPixels: new Uint8ClampedArray(0),
+});
 
 let frames: Map<number, FrameRequestCallback>;
 const drainFrames = () => {
@@ -64,6 +68,8 @@ const drainFrames = () => {
 
 beforeEach(() => {
   renders.count = 0;
+  maskInk = 255;
+  vi.stubGlobal("ImageData", class { constructor(public data: Uint8ClampedArray) {} });
   frames = new Map();
   let nextFrame = 0;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -72,7 +78,10 @@ beforeEach(() => {
   });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
   // Only canvas sizes and call counts matter here, never the pixels.
-  const pixels = () => { readbacks.count++; return { data: new Uint8ClampedArray(8 * 4 * 4) }; };
+  const pixels = () => {
+    readbacks.count++;
+    return { data: new Uint8ClampedArray(8 * 4 * 4).fill(maskInk) };
+  };
   const calls: Record<string, () => unknown> = {
     getImageData: pixels, createImageData: pixels, putImageData: () => { readbacks.count++; },
     createRadialGradient: () => ({ addColorStop() {} }),
@@ -168,5 +177,88 @@ it("patches three's own standard shader with the two roughness endpoints", async
   expect(shader.fragmentShader).not.toContain("<roughnessmap_fragment>");
   // 204/255 where the mask is black (white ink), 84/255 where it's white (foil).
   expect(shader.fragmentShader).toContain("mix(0.800000, 0.329412, texture2D( metalnessMap");
+  scene.dispose();
+});
+
+/** One debounced edit, end to end, counting the canvases it creates and the
+ *  textures it hands the GPU. */
+function countEdit(scene: CanScene, previous: LabelTextures | null) {
+  const made = vi.spyOn(document, "createElement");
+  const uploads = vi.spyOn(THREE, "CanvasTexture");
+  return buildLabelTextures(drawPlates([], {} as never, "serif"), previous).then((textures) => {
+    scene.applyTextures(textures);
+    const canvases = made.mock.calls.filter(([tag]) => tag === "canvas").length;
+    const counts = { canvases, uploads: uploads.mock.calls.length, textures };
+    made.mockRestore();
+    uploads.mockRestore();
+    return counts;
+  });
+}
+
+it("redraws and uploads only the art when the mask plate is unchanged", async () => {
+  const { scene, internals } = await loadedScene();
+  const first = await countEdit(scene, null);
+  const { metalnessMap, alphaMap } = internals.labelMaterial;
+
+  const second = await countEdit(scene, first.textures);
+
+  // The two plates are always drawn; nothing derived from the mask is redone.
+  expect(second.canvases).toBe(2);
+  expect(second.uploads).toBe(1);
+  expect(second.textures.metalness).toBe(first.textures.metalness);
+  expect(internals.labelMaterial.metalnessMap).toBe(metalnessMap);
+  expect(internals.labelMaterial.alphaMap).toBe(alphaMap);
+  scene.dispose();
+});
+
+it("rebuilds the mask maps when the mask plate changes", async () => {
+  const { scene, internals } = await loadedScene();
+  const first = await countEdit(scene, null);
+  const { metalnessMap, alphaMap } = internals.labelMaterial;
+
+  maskInk = 0;
+  const second = await countEdit(scene, first.textures);
+
+  // The plates, the classified mask and its blurred copy.
+  expect(second.canvases).toBe(4);
+  expect(second.uploads).toBe(2);
+  expect(second.textures.metalness).not.toBe(first.textures.metalness);
+  expect(internals.labelMaterial.metalnessMap).not.toBe(metalnessMap);
+  expect(internals.labelMaterial.alphaMap).toBe(alphaMap);
+  scene.dispose();
+});
+
+it("feeds metalness and bump from one texture", async () => {
+  const { scene, internals } = await loadedScene();
+  expect(internals.labelMaterial.bumpMap).toBe(internals.labelMaterial.metalnessMap);
+  scene.setLabelOptions({ edgeSoftnessRatio: 0.004 });
+  expect(internals.labelMaterial.bumpMap).toBe(internals.labelMaterial.metalnessMap);
+  scene.dispose();
+});
+
+it("redraws the die-cut silhouette for a new corner radius, front and back", async () => {
+  const { scene, internals } = await loadedScene();
+  const before = internals.labelMaterial.alphaMap;
+  scene.setLabelOptions({ cornerRadiusPct: 12 });
+  const after = internals.labelMaterial.alphaMap;
+  expect(after).not.toBe(before);
+  scene.applyTextures(plates());
+  expect(internals.labelMaterial.alphaMap).toBe(after);
+  expect(internals.flat.back.material.alphaMap).toBe(after);
+  scene.dispose();
+});
+
+it("repaints when the edge softness changes after a rebuild reused the mask", async () => {
+  const { scene, internals } = await loadedScene();
+  const first = await countEdit(scene, null);
+  const second = await countEdit(scene, first.textures);
+  const before = internals.labelMaterial.metalnessMap;
+  drainFrames();
+  renders.count = 0;
+  scene.setLabelOptions({ edgeSoftnessRatio: 0.004 });
+  drainFrames();
+  expect(internals.labelMaterial.metalnessMap).not.toBe(before);
+  expect(internals.labelMaterial.metalnessMap!.image).not.toBe(second.textures.metalness);
+  expect(renders.count).toBeGreaterThan(0);
   scene.dispose();
 });

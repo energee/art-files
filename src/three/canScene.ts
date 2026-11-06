@@ -384,8 +384,7 @@ export class CanScene {
 
   private disposeMaterialMaps(material: THREE.MeshStandardMaterial) {
     material.map?.dispose();
-    material.metalnessMap?.dispose();
-    material.bumpMap?.dispose();
+    material.metalnessMap?.dispose(); // bumpMap is the same texture
     material.alphaMap?.dispose();
   }
 
@@ -413,6 +412,13 @@ export class CanScene {
   private softMask(tex: LabelTextures): HTMLCanvasElement {
     const blur = this.edgeSoftnessRatio * tex.metalness.width;
     return filteredCopy(tex.metalness, blur > 0 ? `blur(${blur}px)` : "none");
+  }
+
+  /** Point the metalness and bump maps at a fresh soft mask: one texture, one
+   *  upload, since the two read the same pixels. */
+  private replaceMaskMap(material: THREE.MeshStandardMaterial, tex: LabelTextures) {
+    material.metalnessMap?.dispose();
+    material.metalnessMap = material.bumpMap = this.createTexture(this.softMask(tex));
   }
 
   /** The die-cut silhouette as an alphaMap source: a white rounded rect on
@@ -470,13 +476,7 @@ export class CanScene {
     if (!this.labelMaterial) { this.applyTextures(tex); return; }
 
     if (softness) {
-      const soft = this.softMask(tex);
-      const m = this.labelMaterial;
-      m.metalnessMap?.dispose();
-      m.bumpMap?.dispose();
-      m.metalnessMap = this.createTexture(soft);
-      m.bumpMap = this.createTexture(soft);
-      m.needsUpdate = true;
+      this.replaceMaskMap(this.labelMaterial, tex);
     }
     if (radius) {
       this.labelMaterial.alphaMap?.dispose();
@@ -501,31 +501,31 @@ export class CanScene {
   }
 
   /** New art or mask. The first call builds the label; after that only the
-   *  maps change, on the same material and meshes. Disposing a material releases
-   *  its shader programs before the next render can reuse them, so a fresh one
-   *  per edit relinked both of the double-sided label's programs every time. */
+   *  maps that changed are replaced, on the same material and meshes. Disposing
+   *  a material releases its shader programs before the next render can reuse
+   *  them, so a fresh one per edit relinked both of the double-sided label's
+   *  programs every time. The silhouette stays: it depends only on the corner
+   *  radius, which setLabelOptions owns. An unchanged mask arrives as the same
+   *  canvas (see buildLabelTextures). */
   applyTextures(tex: LabelTextures) {
+    const sameMask = tex.metalness === this.pendingTextures?.metalness;
     this.pendingTextures = tex;
     if (!this.canModel) return; // replayed by loadCan on arrival
 
-    const soft = this.softMask(tex);
-    const maps = {
-      map: this.createTexture(tex.art, true),
-      metalnessMap: this.createTexture(soft),
-      bumpMap: this.createTexture(soft),
-      alphaMap: this.createTexture(this.alphaCanvas(tex)),
-    };
+    const map = this.createTexture(tex.art, true);
     if (this.labelMaterial) {
-      this.disposeMaterialMaps(this.labelMaterial);
-      Object.assign(this.labelMaterial, maps);
-      if (this.flat) this.flat.back.material.alphaMap = maps.alphaMap;
+      this.labelMaterial.map?.dispose();
+      this.labelMaterial.map = map;
+      if (!sameMask) this.replaceMaskMap(this.labelMaterial, tex);
       this.requestRender();
       return;
     }
     this.labelMaterial = new THREE.MeshStandardMaterial({
       transparent: true, side: THREE.DoubleSide, metalness: 1.0,
-      bumpScale: LAYER_DEPTH, alphaTest: 0.5, ...maps,
+      bumpScale: LAYER_DEPTH, alphaTest: 0.5, map,
+      alphaMap: this.createTexture(this.alphaCanvas(tex)),
     });
+    this.replaceMaskMap(this.labelMaterial, tex);
     this.labelMaterial.onBeforeCompile = foilRoughness;
     this.buildLabelMeshes();
   }

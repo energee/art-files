@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
-- **Smoother edits in the Can view.** Changing the label no longer rebuilds the can's shaders after every edit, so typing with the can in view pauses less.
+- **Smoother edits in the Can view.** Each edit now redoes only what changed: the can's shaders stay built, and foil and corner shapes are kept unless they changed, so typing with the can in view pauses less.
 - **The Can view stops drawing when nothing moves.** A can left at 100%, or zoomed all the way in or out, could keep redrawing at full frame rate while idle, costing GPU and battery.
 
 ### Changed
