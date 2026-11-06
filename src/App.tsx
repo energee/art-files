@@ -1140,7 +1140,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           y: Math.min(acc.y, top), bottom: Math.max(acc.bottom, top + (box?.h ?? 0)),
         };
       }, { x: Infinity, right: -Infinity, y: Infinity, bottom: -Infinity });
-        const lines = snapTargets(ids, boxes);
+        const lines = snapTargets(ids, drawBoxes);
       dragBase.current = {
         id, bases, lines,
         bounds: { x: span.x, w: span.right - span.x, y: span.y, h: span.bottom - span.y },
