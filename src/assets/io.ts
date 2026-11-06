@@ -198,7 +198,7 @@ export function imageBundle(
 }
 
 // Blob snapshots the bytes at construction (no transfer), so no copy needed.
-export const blobUrl = (bytes: Uint8Array, type: string) =>
+const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytesPart(bytes)], { type }));
 
 /** The plain-download fallback: click a throwaway anchor naming the file. */
@@ -207,4 +207,18 @@ export function download(url: string, name: string) {
   a.href = url;
   a.download = name;
   a.click();
+}
+
+/** How long a download's URL outlives its click. Revoking at once can abort a
+ *  large download; once it has started the browser holds the bytes itself. */
+const DOWNLOAD_URL_MS = 60_000;
+
+/** A save's plain download: every save (exports, Save Label, Save Master)
+ *  hands this to saveThrough. Each URL revokes itself on its own timer, so no
+ *  later save can cut a download short (#699) and one minted after its tab
+ *  closed still lets its bytes go (#85, #698). */
+export function saveBytes(bytes: Uint8Array, name: string, type: string) {
+  const url = blobUrl(bytes, type);
+  download(url, name);
+  setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_MS);
 }

@@ -6,7 +6,8 @@
 // Export again), a failed write stays as an error naming the file, an edit
 // during the export withholds the confirmation (#400), and a later export
 // replaces only its own earlier toast (#473). The real <Toaster /> shows them
-// (tests/toast-harness.ts).
+// (tests/toast-harness.ts). A download fallback's URL revokes on its own timer,
+// whatever the tab or the next save does (#698, #699).
 import { act } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TOAST_MS, notify } from "../src/notify";
@@ -17,11 +18,17 @@ const save = vi.hoisted(() => ({
   next: [] as (() => Promise<Saved>)[],
   requests: [] as { name: string; target?: unknown }[],
   desktop: false,
+  /** Every save falls back to a plain download, as Safari's and Firefox's do. */
+  falling: false,
   revealItemInDir: vi.fn(async (_path: string) => undefined),
 }));
 vi.mock("../src/files", () => ({
-  saveThrough: (bytes: Uint8Array, options: { name: string; target?: unknown }) => {
+  saveThrough: (
+    bytes: Uint8Array, options: { name: string; target?: unknown; type: string },
+    download: (bytes: Uint8Array, name: string, type: string) => void,
+  ) => {
     save.requests.push({ name: options.name, target: options.target });
+    if (save.falling) download(bytes, options.name, options.type);
     return save.next.shift()?.() ?? Promise.resolve({ name: options.name, bytes });
   },
   nativeExists: async () => false,
@@ -37,6 +44,7 @@ vi.mock("../src/fonts", () => ({
 
 await import("../src/pdf/build"); // before any test fakes the clock (tests/toast-harness.ts)
 const { useExport } = await import("../src/useExport");
+const DOWNLOAD_URL_MS = 60_000; // assets/io.ts's: long enough for any download to start
 
 setupToastHarness();
 
@@ -68,6 +76,7 @@ beforeEach(() => {
   save.next = [];
   save.requests = [];
   save.desktop = false;
+  save.falling = false;
   save.revealItemInDir.mockClear();
   failBuild = false;
   builds = [];
@@ -368,4 +377,40 @@ it("a warning that lands after its tab closed offers no Export again", async () 
 
   expect(toastTitle()).toBe("Lupula-mask.pdf wasn't saved");
   expect(button("Export again")).toBeUndefined();
+}, 30000);
+
+/** Count the URLs a download fallback mints and revokes. */
+function watchUrls() {
+  let minted = 0;
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:test/${minted++}`);
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  return { minted: () => minted, revoked: () => revoke.mock.calls.map(([url]) => url) };
+}
+
+it("a download URL minted after its tab closed is still revoked (#698)", async () => {
+  const urls = watchUrls();
+  save.falling = true;
+  mount(<Probe />);
+  let running!: Promise<void>;
+  act(() => { running = api.buildFull(); });
+  mount(); // closed while the build runs: nothing is left to revoke on unmount
+  await finish(() => running);
+  expect(urls.minted()).toBe(1);
+  advance(DOWNLOAD_URL_MS);
+  expect(urls.revoked()).toEqual(["blob:test/0"]);
+}, 30000);
+
+it("a later save leaves an earlier download's URL alone until its time is up (#699)", async () => {
+  const urls = watchUrls();
+  save.falling = true;
+  mount(<Probe />);
+  await printPdf();
+  advance(DOWNLOAD_URL_MS - 1);
+  await printPdf(); // the next save: the first download may still be starting
+  expect(urls.revoked()).toEqual([]);
+  advance(1);
+  expect(urls.revoked()).toEqual(["blob:test/0"]);
+  advance(DOWNLOAD_URL_MS);
+  expect(urls.revoked()).toEqual(["blob:test/0", "blob:test/1"]);
 }, 30000);

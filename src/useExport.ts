@@ -3,9 +3,8 @@
 // the art + mask pairs, built on demand from the same layers the preview draws,
 // the export-in-flight state, the toast that reports each export's result
 // (saved, left half-saved, failed, or saved beside a stale mask — a cancel
-// reports nothing), where this tab's desktop exports were last written (so a
-// repeat export needs no dialog), and the batch of download URLs every save
-// (exports, Save Label, Save Master) hands its plain-download fallback through.
+// reports nothing), and where this tab's desktop exports were last written (so
+// a repeat export needs no dialog).
 import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { nativeExists, saveThrough, type FileTarget } from "@/files";
 import { baseName, errMsg } from "@/lib/utils";
@@ -25,7 +24,7 @@ import type { FontFamilyId } from "@/fontCatalog";
 // only their types are needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
 import type { PsdAssets, PsdOpts } from "@/psd/build";
-import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } from "@/assets/io";
+import { rasterPixelsNatural, saveBytes, tintedPng, type CustomFile } from "@/assets/io";
 
 /** `path` with its extension (if any) replaced by `suffix`: the one rule for
  *  every export name derived from a .label or an art file. */
@@ -187,20 +186,6 @@ export function useExport({
   }>({});
   const forgetExportPaths = () => { exportPaths.current = {}; };
 
-  // Revoking immediately can abort a large download, so each URL lives until
-  // the NEXT save batch — or until the tab closes, which releases them so
-  // they don't pin their bytes for the rest of the session (#85).
-  const lastSaved = useRef<string[]>([]);
-  useEffect(() => () => lastSaved.current.forEach((u) => URL.revokeObjectURL(u)), []);
-  function startSaveBatch() {
-    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
-    lastSaved.current = [];
-  }
-  function saveBytes(bytes: Uint8Array, name: string, type = "application/pdf") {
-    const url = blobUrl(bytes, type);
-    lastSaved.current.push(url);
-    download(url, name);
-  }
   /** Save one exported file through the platform's save dialog. Tauri uses
    *  the OS dialog; supported browsers use File System Access; Safari/Firefox
    *  keep the plain-download fallback. A `target` writes there with no
@@ -259,7 +244,6 @@ export function useExport({
     exportRunning.current = true;
     setExporting(`${extension}s`);
     const { toastId, geometry } = startRun();
-    startSaveBatch();
     // What the dialog suggests when no destination is remembered. It is also
     // the file an error is blamed on until the first save starts (a failed build).
     const defaultName = labelPath != null ? withSuffix(labelPath, `.${extension}`) : `${exportBase}.${extension}`;
@@ -343,7 +327,6 @@ export function useExport({
     exportRunning.current = true;
     setExporting(format);
     const { toastId, geometry } = startRun();
-    startSaveBatch();
     const labelPath = request.labelPath ?? null;
     let remembered: string | undefined;
     const key = format === "pdf" ? "printPdf" : "printPsd";
@@ -470,7 +453,7 @@ export function useExport({
   }
 
   return {
-    exporting, exportFailures, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths,
     buildFull, exportPdfPlate, exportPsd,
   };
 }
