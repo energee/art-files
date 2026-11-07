@@ -11,8 +11,9 @@ import { useCallback, useRef, useState } from "react";
 // Consecutive edits closer together than this collapse into one undo step, so
 // a drag on a ScrubField is one ⌘Z rather than sixty.
 const COALESCE_MS = 500;
-// Cap on stack depth. Each entry is a full LabelConfig clone; a hundred of
-// them is nothing next to the embedded fonts, and it bounds a long session.
+// Cap on stack depth, which bounds a long session. Edits are copy-on-write, so
+// an entry holds only what its edit changed and shares the rest with its
+// neighbours.
 const LIMIT = 100;
 
 export type Stacks<T> = { past: T[]; present: T; future: T[] };
