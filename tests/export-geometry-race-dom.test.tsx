@@ -23,7 +23,7 @@ const race = vi.hoisted(() => ({
   move: () => {},
   fire(hook: string) { if (race.at === hook) { race.at = ""; race.move(); } },
   saved: [] as Uint8Array[],
-  planned: [] as { pageW: number; shift: number; canvasW: number }[],
+  planned: [] as { pageW: number; canvasW: number }[],
   /** The geometry each PSD job carried to its worker. */
   jobs: [] as { bleedIn: number; dpi: number }[],
 }));
@@ -42,7 +42,7 @@ vi.mock("../src/fonts", () => ({
 }));
 vi.mock("../src/canvas/draw", () => ({
   drawPlate: (ctx: CanvasRenderingContext2D) => {
-    race.planned.push({ pageW: L.PAGE.w, shift: L.BLEED_SHIFT, canvasW: ctx.canvas.width });
+    race.planned.push({ pageW: L.PAGE.w, canvasW: ctx.canvas.width });
   },
 }));
 vi.mock("../src/assets/io", async (real) => ({
@@ -67,7 +67,7 @@ vi.mock("../src/psd/offThread", async (real) => {
 const { useExport } = await import("../src/useExport");
 const { laurelCustom, lolevLayers, onePxPng } = await import("./fixtures");
 
-/** An opaque 1x1 art image, so a build embeds it and its footprint is awaited. */
+/** A raster art layer, so a build embeds it and awaits its footprint. */
 const STYLE = lolevLayers()[0].style;
 const ART_LAYER = {
   id: "art", name: "art", kind: "image", enabled: true, x: 100, anchor: "left", y: 100, asset: "art",
