@@ -675,6 +675,7 @@ export default function TabsShell() {
                 tabStripHost={tabStripHost}
                 updateStatusHost={setUpdateStatusHost}
                 active={isActive}
+                keepSource={t.id === state.previous}
                 fileToOpen={pending[t.id] ?? null}
                 onOpenSettled={e.onOpenSettled}
                 onMeta={e.onMeta}

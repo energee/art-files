@@ -286,6 +286,8 @@ export type DocumentMeta = TabMeta;
 
 type DocumentEditorProps = {
   active: boolean;
+  /** Hidden, but the last tab shown: see useRenderSource's keepSource. */
+  keepSource?: boolean;
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
    *  shell can drop the queued entry. `cancelled`: the operator backed out
@@ -325,7 +327,7 @@ type DocumentEditorProps = {
 // body would re-run per keystroke. It only holds if the shell passes
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
+  active, keepSource, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
@@ -1002,7 +1004,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // (useRenderSource.ts): what the preview draws with, and the font metrics
   // and plan assets the hit boxes and the die check measure with.
   const { canvasAssets, canvasSource, previewReady, assetsFailed } = useRenderSource({
-    active, family, fontOverrides, liveImages, texture, mask,
+    active, keepSource, family, fontOverrides, liveImages, texture, mask,
     bgOn: pageOn("background"), maskOn: pageOn("mask"), guides, editSession,
     pageArt, planAssets: planAssetsOf, assetError,
   });
@@ -2398,7 +2400,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}
-              canvasRender={viewMode === "2d" ? canvasSource : null}
+              canvasRender={active && viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
               layers={drawLayers}
               editLayerOf={shownLayer}
