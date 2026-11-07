@@ -333,7 +333,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
-  const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
+  const { value: doc, set: setDoc, reset: resetDoc, undo, redo, ownsStep, canUndo, canRedo } =
     useHistory<Doc>(() => { const m = starterMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   const docRef = useRef(doc);
@@ -639,6 +639,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The selection can hold an id that no longer exists (an undone add, a
     // deleted variant's layer); removing it would throw and delete nothing.
     const ids = gestureIds(selected, id).filter((k) => rows.some((r) => r.layer.id === k));
+    // Just after a tab switch the render source is still assembling, and a
+    // layer others bind to can't go without their boxes: wait it out (#708).
+    // A failed assembly never brings them, so the edit's refusal says why.
+    const bound = rows.some(({ layer }) => layer.binding && ids.includes(layer.binding.to));
+    if (bound && !canvasAssets && !assetsFailed) return;
     const boxes = rowBoxes();
     if (edit((d) => ids.reduce((next, key) => removeLayerIn(next, key, boxes), d)))
       setSelection((s) => ({ ids: s.ids.filter((x) => !ids.includes(x)),
@@ -934,7 +939,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     const mint = previewOnce(await readCustomImage(f), f);
     if (!alive.current) return;
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
-    setContent(layer, assetId);
+    // Its own undo step: the decode lands whenever it lands, so the timing
+    // window would fold it into whatever the user did last (#702).
+    setContent(layer, assetId, false);
   }
 
   /** The images the doc still names. The store also keeps replaced/cleared
@@ -1007,21 +1014,31 @@ export const DocumentEditor = memo(function DocumentEditor({
     pageArt, planAssets: planAssetsOf, assetError,
   });
 
-  /** The doc before the in-flight canvas drag or resize opened its undo
-   *  step; null until a move actually patches something (a first move that
-   *  snapped to zero opens nothing, so the next can't fold into the edit
-   *  before it — #74). Every move is applied to this base, not to the last
-   *  move's result, so an axis whose delta is back at 0 returns to where the
-   *  drag began (#164). Escape undoes only a step that exists. */
-  const gestureBase = useRef<Doc | null>(null);
-  const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
-    const real = entries.filter(([, p]) => Object.keys(p).length);
-    const opened = gestureBase.current;
-    if (!opened && !real.length) return;
-    if (edit((d) => patchLayers(opened ?? d, real), !!opened)) gestureBase.current ??= doc;
+  /** The in-flight canvas drag or resize; null until its first move. `key` is
+   *  its history session, fresh per gesture: the moves fold into one undo step,
+   *  and anything else reaching history mid-gesture (a late image decode, ⌘Z)
+   *  closes that step, so the next move opens another. `written` holds each
+   *  layer's start value for every key a move has written. A move patches the
+   *  LIVE doc, never a copy from the gesture's start, so a change landing
+   *  mid-gesture survives (#689); restating `written` under each patch returns
+   *  an axis whose delta is back at 0 to where the gesture began (#164). */
+  const gestureBase = useRef<{ key: string; written: Map<string, DeepPartial<Layer>> } | null>(null);
+  const gestureCount = useRef(0);
+  const gesturePatch = (moves: [Layer, DeepPartial<Layer>][]) => {
+    const gesture = gestureBase.current ??= { key: `gesture-${++gestureCount.current}`, written: new Map() };
+    const entries = moves.map(([layer, p]): [string, DeepPartial<Layer>] => {
+      const start = Object.fromEntries(Object.keys(p).map((k) => [k, layer[k as keyof Layer]]));
+      const written = { ...start, ...gesture.written.get(layer.id) };
+      gesture.written.set(layer.id, written);
+      return [layer.id, { ...written, ...p }];
+    }).filter(([, p]) => Object.keys(p).length);
+    // A first move that snapped to zero opens no step (#74).
+    if (entries.length) edit((d) => patchLayers(d, entries), gesture.key);
   };
+  /** Escape: undo the gesture's step, but only while it is the latest one.
+   *  After ⌘Z or an outside edit the top step belongs to something else. */
   const cancelGesture = () => {
-    if (gestureBase.current) mutating(undo)();
+    if (gestureBase.current && ownsStep(gestureBase.current.key)) mutating(undo)();
     gestureBase.current = null;
   };
 
@@ -1155,7 +1172,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x, SNAP_PT);
     const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y, SNAP_PT);
     const entries = dragBase.current.bases
-      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)]);
+      .map(({ layer }): [Layer, DeepPartial<Layer>] => [layer, moveBy(layer, sx.delta, sy.delta, moving)]);
     gesturePatch(entries);
     // The indicator spans the moved selection AND whatever it lined up with.
     const top = bounds.y + sy.delta;
@@ -1222,7 +1239,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sy = handle.hy === 0 ? { delta: dy, line: null }
       : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y, SNAP_PT);
     const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
-    gesturePatch([[id, p]]);
+    gesturePatch([[base.layer, p]]);
     // The indicator spans the resized box and whatever the grabbed edge lined
     // up with. `patch` is a state update, so boxesNow() here still measures
     // the PREVIOUS frame's layers — the segment's cross-axis extent trails the
@@ -1470,7 +1487,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
         return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
-      });
+      }, false); // the write ends whenever it ends: never fold into a nearby edit (#702)
       await rememberMaster(m, where, bytes);
       refreshLibrary();
       if (ours) pristineMaster.current = m;
@@ -1554,7 +1571,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { label: next, dropped } = rebindLabel(current, from, target);
     const switched: Doc = { master: target, label: next };
     markDirty();
-    setDoc(switched);
+    setDoc(switched, false); // async callers: never fold into a nearby edit (#702)
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     // The texture and mask survive a master switch, and so do their load errors.
