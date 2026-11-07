@@ -80,9 +80,7 @@ vi.mock("../src/masters", async (importOriginal) => {
     },
   };
 });
-vi.mock("../src/psd/build", () => ({
-  psdImages: async () => ({}), buildPsd: vi.fn(async () => new Uint8Array([3])),
-}));
+vi.mock("../src/psd/build", () => ({ buildPsd: vi.fn(async () => new Uint8Array([3])) }));
 // The PSD plates flatten through drawPlate; here they only need a canvas.
 vi.mock("../src/canvas/draw", () => ({ drawPlate: () => undefined }));
 // A desktop save names the file by the path the dialog returned; browsers return a

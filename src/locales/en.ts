@@ -29,6 +29,7 @@ const en = {
   "Building PDF…": "Building PDF…",
   "Building PSD…": "Building PSD…",
   "No canvas to draw the White Ink plate.": "No canvas to draw the White Ink plate.",
+  "The export stopped unexpectedly. Export again.": "The export stopped unexpectedly. Export again.",
   "Building PDFs…": "Building PDFs…",
   "Building PSDs…": "Building PSDs…",
   "rendering label…": "rendering label…",

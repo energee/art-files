@@ -50,15 +50,16 @@ vi.mock("../src/assets/io", async (real) => ({
     race.fire("decode");
     return { data: new Uint8Array([0, 0, 0, 255]), width: 1, height: 1 };
   },
+  bitmapPixels: () => ({ data: new Uint8Array([0, 0, 0, 255]), width: 1, height: 1 }),
 }));
 
 vi.mock("../src/psd/offThread", async (real) => {
   const actual = await real<typeof import("../src/psd/offThread")>();
   return {
     ...actual,
-    buildPsdOffThread: (job: Parameters<typeof actual.buildPsdOffThread>[0]) => {
-      race.jobs.push(job.geometry);
-      return actual.buildPsdOffThread(job);
+    buildPsdOffThread: (...args: Parameters<typeof actual.buildPsdOffThread>) => {
+      race.jobs.push(args[0].geometry);
+      return actual.buildPsdOffThread(...args);
     },
   };
 });

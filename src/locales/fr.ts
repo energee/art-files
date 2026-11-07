@@ -30,6 +30,7 @@ const fr: Record<keyof typeof en, string> = {
   "Building PDF…": "Création du PDF…",
   "Building PSD…": "Création du PSD…",
   "No canvas to draw the White Ink plate.": "Aucun canevas pour dessiner la plaque White Ink.",
+  "The export stopped unexpectedly. Export again.": "L'export s'est arrêté de façon inattendue. Exportez à nouveau.",
   "Building PDFs…": "Création des PDF…",
   "Building PSDs…": "Création des PSD…",
   "rendering label…": "rendu de l’étiquette…",

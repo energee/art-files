@@ -12,6 +12,12 @@
 // SecurityError for a worker CSP blocks) or a worker script that fails to
 // load falls back to runPsdJob on the main thread — slower, never broken. A build
 // that throws inside the worker rejects with its own message, like the in-thread call.
+//
+// A job's pixels can transfer rather than copy (#723). That empties them here,
+// so a job posts only once the worker says it loaded: a load failure still
+// has its pixels to fall back on. A worker that dies after a transfer has
+// nothing left to build from, so that export fails.
+import { t } from "@/i18n";
 import { buildPsd, type PsdAssets, type PsdMode, type PsdOpts } from "./build";
 import type { PlacedLayer } from "../planLayers";
 import { withGeometry, type Geometry } from "../layout";
@@ -26,14 +32,14 @@ export interface PsdJob {
   geometry: Geometry;
 }
 
-/** What the worker posts back: the file, or the build's error message. */
-export type PsdWorkerReply = { bytes: Uint8Array } | { error: string };
+/** What the worker posts: that it loaded, then the file or the build's error message. */
+export type PsdWorkerReply = { ready: true } | { bytes: Uint8Array } | { error: string };
 
 /** The slice of Worker this file uses — a seam for tests. */
 export interface PsdWorkerLike {
   onmessage: ((e: { data: PsdWorkerReply }) => void) | null;
   onerror: ((e: Event) => void) | null;
-  postMessage(job: PsdJob): void;
+  postMessage(job: PsdJob, transfer: Transferable[]): void;
   terminate(): void;
 }
 
@@ -49,31 +55,43 @@ export function runPsdJob(job: PsdJob): Promise<Uint8Array> {
 const spawn = (): PsdWorkerLike | null => typeof Worker === "undefined" ? null
   : new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }) as unknown as PsdWorkerLike;
 
-/** buildPsd in a fresh worker, terminated when the job settles. `create`
- *  is the test seam; returning null or throwing means "no worker", build
- *  in-thread. */
+/** buildPsd in a fresh worker, terminated when the job settles. `transfer`
+ *  names buffers in the job that nothing reads afterwards, which leave this
+ *  realm rather than copy. `create` is the test seam; returning null or
+ *  throwing means "no worker", build in-thread. */
 export function buildPsdOffThread(
-  job: PsdJob, create: () => PsdWorkerLike | null = spawn,
+  job: PsdJob, transfer: ArrayBuffer[] = [], create: () => PsdWorkerLike | null = spawn,
 ): Promise<Uint8Array> {
   const inThread = () => runPsdJob(job);
   let worker: PsdWorkerLike | null = null;
   try { worker = create(); } catch { /* blocked worker: build in-thread */ }
   if (!worker) return inThread();
   return new Promise<Uint8Array>((resolve, reject) => {
+    let transferred = false;
+    const fallBack = () => {
+      worker.terminate();
+      inThread().then(resolve, reject);
+    };
     worker.onmessage = ({ data }) => {
+      if ("ready" in data) {
+        // A job that can't be cloned (DataCloneError) builds here too: a post
+        // that throws has moved nothing, and the idle worker is torn down
+        // rather than leaked.
+        try { worker.postMessage(job, transfer); } catch { fallBack(); return; }
+        transferred = transfer.length > 0;
+        return;
+      }
       worker.terminate();
       if ("error" in data) reject(new Error(data.error));
       else resolve(data.bytes);
     };
     // Load failure (CSP, missing chunk) or a crash the worker couldn't
-    // report: build here instead of failing the export.
-    const fallBack = () => {
+    // report: build here instead of failing the export, unless the job's
+    // pixels already left.
+    worker.onerror = () => {
+      if (!transferred) return fallBack();
       worker.terminate();
-      inThread().then(resolve, reject);
+      reject(new Error(t("The export stopped unexpectedly. Export again.")));
     };
-    worker.onerror = fallBack;
-    // A job that can't be cloned (DataCloneError) builds here too, and the
-    // idle worker is torn down rather than leaked.
-    try { worker.postMessage(job); } catch { fallBack(); }
   });
 }

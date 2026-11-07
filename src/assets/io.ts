@@ -43,16 +43,21 @@ async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** A decoded image on a fresh 2D canvas at its natural size. */
+function bitmapToCanvas(bmp: ImageBitmap): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  canvas.getContext("2d")!.drawImage(bmp, 0, 0);
+  return canvas;
+}
+
 /** Decode an image into a fresh 2D canvas at its natural size — the front
  *  half of every pixel pipeline here. The bitmap is always closed. */
 async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
   const bmp = await createImageBitmap(src);
   try {
-    const canvas = document.createElement("canvas");
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    canvas.getContext("2d")!.drawImage(bmp, 0, 0);
-    return canvas;
+    return bitmapToCanvas(bmp);
   } finally {
     bmp.close();
   }
@@ -74,14 +79,21 @@ export async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Arr
   return canvasToPng(canvas);
 }
 
-/** An image's raster bytes as RGBA at NATURAL size — buildPsd resamples
- *  every raster (page texture and mask included) to its placed rect
- *  itself, so nothing is pre-fit here (#88). Export only: a full-res
- *  texture decodes to tens of MB. */
-export async function rasterPixelsNatural(bytes: Uint8Array): Promise<Rgba> {
-  const canvas = await decodeToCanvas(blobOf(bytes));
+function canvasPixels(canvas: HTMLCanvasElement): Rgba {
   const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
   return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
+}
+
+/** A decoded image as RGBA at NATURAL size — buildPsd resamples every raster
+ *  (page texture and mask included) to its placed rect itself, so pixels
+ *  pre-fit to PSD_DOC would be fit twice and stretch any texture whose aspect
+ *  differs from the page (#88). Export only: a full-res texture decodes to
+ *  tens of MB. The caller keeps and closes the bitmap. */
+export const bitmapPixels = (bmp: ImageBitmap): Rgba => canvasPixels(bitmapToCanvas(bmp));
+
+/** bitmapPixels from raster bytes, for a caller with no other use for the bitmap. */
+export async function rasterPixelsNatural(bytes: Uint8Array): Promise<Rgba> {
+  return canvasPixels(await decodeToCanvas(blobOf(bytes)));
 }
 
 /** A packed container asset as a typed File — the type matters: FileDrop
