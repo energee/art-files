@@ -58,6 +58,14 @@ export async function keepRecovery(key: string, snap: RecoverySnapshot): Promise
   return (await write((s) => s.put(snap, key))) !== null;
 }
 
+/** Discard All bumps this: a snapshot timer armed before it must skip its
+ *  write, or a tab that stays mounted until the app goes brings the discarded
+ *  work back (#697). A later edit arms a fresh timer, so a quit that gets
+ *  abandoned (a failed export, a failed update) keeps its crash protection. */
+let discards = 0;
+export const discardCount = () => discards;
+export const noteDiscard = () => { discards += 1; };
+
 export async function dropRecovery(key: string): Promise<void> {
   await write((s) => s.delete(key));
 }
