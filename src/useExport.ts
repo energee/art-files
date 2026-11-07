@@ -19,10 +19,11 @@ import { labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
 import { drawPlate } from "@/canvas/draw";
 import { liveGeometry, PSD_DOC, withGeometry, type Geometry } from "@/layout";
 import { usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
-// The builders are imported dynamically at export time (buildFull, exportPsd,
-// which runs buildPsd in a worker) so they stay out of the initial bundle;
-// only their types are needed up front.
+// The builders are imported dynamically at export time (pdfInputs, psdInputs,
+// which run them in workers) so they stay out of the initial bundle; only
+// their types are needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
+import type { PdfJob } from "@/pdf/offThread";
 import type { PsdAssets, PsdOpts } from "@/psd/build";
 import { bitmapPixels, rasterPixelsNatural, saveBytes, tintedPng, type CustomFile } from "@/assets/io";
 
@@ -298,14 +299,20 @@ export function useExport({
     }
   }
 
+  /** Everything a PDF build needs, gathered on the main thread: the plan and
+   *  the file's assets. `build` runs one PDF in its own worker (#713), which
+   *  gets the run's `geometry` in the assets. */
   async function pdfInputs(geometry: Geometry) {
     const art = pageArt(false);
-    const [{ plan, images, fontFamilies }, fonts] = await Promise.all([exportPlan(geometry), loadFonts(family)]);
-    const assets: Assets = {
+    const [{ buildPdfOffThread }, { plan, images, fontFamilies }, fonts] = await Promise.all([
+      import("@/pdf/offThread"), exportPlan(geometry), loadFonts(family),
+    ]);
+    const assets: PdfJob["assets"] = {
       fonts, fontFamilies, title, geometry,
       images: { ...images, ...pageImages(art) },
     };
-    return { art, plan, assets };
+    const build = (plate: PdfJob["plate"]) => buildPdfOffThread({ plate, items: plan, assets });
+    return { art, assets, build };
   }
 
   /** One file through one dialog: the print PDF or PSD (art with White Ink
@@ -373,7 +380,7 @@ export function useExport({
   /** Build one combined print PDF by default; the retained pair is explicit. */
   async function buildFull(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
     if (kind === "print") return exportSingle("pdf", "print", request, async (geometry) => {
-      const [{ buildPrintPdf }, { art, plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs(geometry)]);
+      const { art, assets, build } = await pdfInputs(geometry);
       if (art.maskPng) {
         const pixels = await rasterPixelsNatural(art.maskPng);
         assets.maskPixels = {
@@ -382,21 +389,16 @@ export function useExport({
           height: pixels.height,
         };
       }
-      return buildPrintPdf(plan, assets);
+      return build("print");
     });
     await exportPair("pdf", "application/pdf", request, async (geometry) => {
-      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([
-        import("@/pdf/build"), pdfInputs(geometry),
-      ]);
-      return await Promise.all([buildArtPdf(plan, assets), buildMaskPdf(plan, assets)]);
+      const { build } = await pdfInputs(geometry);
+      return await Promise.all([build("art"), build("mask")]);
     });
   }
 
   function exportPdfPlate(mode: "art" | "mask", request: ExportRequest = {}) {
-    return exportSingle("pdf", mode, request, async (geometry) => {
-      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs(geometry)]);
-      return (mode === "art" ? buildArtPdf : buildMaskPdf)(plan, assets);
-    });
+    return exportSingle("pdf", mode, request, async (geometry) => (await pdfInputs(geometry)).build(mode));
   }
 
   /** Everything a PSD build needs, gathered on the main thread: the plan,

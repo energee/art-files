@@ -12,9 +12,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { readPsd } from "ag-psd";
 import * as L from "../src/layout";
 import { buildPsd } from "../src/psd/build";
-import {
-  buildPsdOffThread, runPsdJob, type PsdJob, type PsdWorkerLike, type PsdWorkerReply,
-} from "../src/psd/offThread";
+import type { BuildReply, BuildWorker } from "../src/offThread";
+import { buildPsdOffThread, runPsdJob, type PsdJob } from "../src/psd/offThread";
 import { lolevLayers, lolevPlan, psdAssets } from "./fixtures";
 
 const SHIPPED = { bleedIn: L.SHIPPED_BLEED_IN, dpi: L.DESIGN_DPI };
@@ -33,9 +32,9 @@ const size = (bytes: Uint8Array) => {
 /** A Worker stand-in that behaves like the real one: it says it loaded, the
  *  message crosses the boundary through a real structured clone (so a
  *  transfer really empties the sender's buffers), and the job runs in runPsdJob. */
-type FakeWorker = PsdWorkerLike & { terminated: boolean };
+type FakeWorker = BuildWorker<PsdJob> & { terminated: boolean };
 function fakeWorker(run: (job: PsdJob) => Promise<Uint8Array> = runPsdJob): FakeWorker {
-  let onmessage: PsdWorkerLike["onmessage"] = null;
+  let onmessage: BuildWorker<PsdJob>["onmessage"] = null;
   const w: FakeWorker = {
     get onmessage() { return onmessage; },
     set onmessage(handler) {
@@ -46,8 +45,8 @@ function fakeWorker(run: (job: PsdJob) => Promise<Uint8Array> = runPsdJob): Fake
     postMessage(msg: PsdJob, transfer: Transferable[] = []) {
       const cloned = structuredClone(msg, { transfer });
       run(cloned).then(
-        (bytes) => w.onmessage?.({ data: { bytes } satisfies PsdWorkerReply }),
-        (err: Error) => w.onmessage?.({ data: { error: err.message } satisfies PsdWorkerReply }),
+        (bytes) => w.onmessage?.({ data: { bytes } satisfies BuildReply }),
+        (err: Error) => w.onmessage?.({ data: { error: err.message } satisfies BuildReply }),
       );
     },
     terminate() { w.terminated = true; },
@@ -57,7 +56,7 @@ function fakeWorker(run: (job: PsdJob) => Promise<Uint8Array> = runPsdJob): Fake
 
 /** A worker whose script never loads: it errors and never says it is ready. */
 function unloadedWorker(): FakeWorker {
-  let onerror: PsdWorkerLike["onerror"] = null;
+  let onerror: BuildWorker<PsdJob>["onerror"] = null;
   const w: FakeWorker = {
     onmessage: null, terminated: false,
     get onerror() { return onerror; },
@@ -99,7 +98,7 @@ describe("PSD build off the main thread (#415)", () => {
   it("falls back to the main thread when no Worker is available", async () => {
     const j = await job();
     const main = await buildPsd(j.items, j.assets, j.mode, j.opts);
-    const off = await buildPsdOffThread(j, [], () => null);
+    const off = await buildPsdOffThread(j);
     expect(Buffer.from(off).equals(Buffer.from(main))).toBe(true);
   });
 
@@ -171,7 +170,7 @@ describe("PSD build off the main thread (#415)", () => {
     L.setBleed(0.25);
     L.setOutputDpi(150);
     const live = { ...L.PSD_DOC };
-    for (const create of [() => null, unloadedWorker]) {
+    for (const create of [undefined, unloadedWorker]) {
       const off = await buildPsdOffThread(j, [], create);
       expect(Buffer.from(off).equals(Buffer.from(inWorker))).toBe(true);
       expect(L.PSD_DOC).toEqual(live);

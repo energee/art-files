@@ -1,16 +1,6 @@
-// worker.ts — module-worker entry for the PSD build (#415): says it loaded,
-// then one job in, the file's bytes (transferred, not copied) or the error
-// message out. Spawned and torn down per job by offThread.ts's buildPsdOffThread.
-import { errMsg } from "@/lib/utils";
-import { runPsdJob, type PsdJob, type PsdWorkerReply } from "./offThread";
+// worker.ts — module-worker entry for the PSD build (#415). Spawned and torn
+// down per job by offThread.ts's buildPsdOffThread.
+import { serveBuild } from "@/offThread";
+import { runPsdJob } from "./offThread";
 
-self.onmessage = async ({ data }: MessageEvent<PsdJob>) => {
-  try {
-    const bytes = await runPsdJob(data);
-    self.postMessage({ bytes } satisfies PsdWorkerReply, { transfer: [bytes.buffer] });
-  } catch (err) {
-    self.postMessage({ error: errMsg(err) } satisfies PsdWorkerReply);
-  }
-};
-
-self.postMessage({ ready: true } satisfies PsdWorkerReply);
+serveBuild(runPsdJob);

@@ -1,23 +1,7 @@
-// offThread.ts — runs buildPsd in a module worker so a full-resolution PSD
-// export (raster resampling plus ag-psd's channel packing, seconds of CPU at
-// 600dpi) no longer freezes the UI (#415). buildPsd is DOM-free, so the
-// worker runs the very same code; this file is only the hand-off.
-//
-// The worker is a separate realm with its own copy of layout.ts, so the job
-// carries the document geometry (bleed, output DPI) the export started with,
-// and runPsdJob builds at it. Anything else module-level that buildPsd reads
-// must travel the same way.
-//
-// No Worker (Node, tests), a Worker constructor that throws (WebKit throws a
-// SecurityError for a worker CSP blocks) or a worker script that fails to
-// load falls back to runPsdJob on the main thread — slower, never broken. A build
-// that throws inside the worker rejects with its own message, like the in-thread call.
-//
-// A job's pixels can transfer rather than copy (#723). That empties them here,
-// so a job posts only once the worker says it loaded: a load failure still
-// has its pixels to fall back on. A worker that dies after a transfer has
-// nothing left to build from, so that export fails.
-import { t } from "@/i18n";
+// offThread.ts — runs buildPsd in a module worker (#415): raster resampling
+// plus ag-psd's channel packing are seconds of CPU at 600dpi. This file is
+// the PSD's job type; ../offThread.ts owns the hand-off and its fallbacks.
+import { buildOffThread, type BuildWorker } from "../offThread";
 import { buildPsd, type PsdAssets, type PsdMode, type PsdOpts } from "./build";
 import type { PlacedLayer } from "../planLayers";
 import { withGeometry, type Geometry } from "../layout";
@@ -32,17 +16,6 @@ export interface PsdJob {
   geometry: Geometry;
 }
 
-/** What the worker posts: that it loaded, then the file or the build's error message. */
-export type PsdWorkerReply = { ready: true } | { bytes: Uint8Array } | { error: string };
-
-/** The slice of Worker this file uses — a seam for tests. */
-export interface PsdWorkerLike {
-  onmessage: ((e: { data: PsdWorkerReply }) => void) | null;
-  onerror: ((e: Event) => void) | null;
-  postMessage(job: PsdJob, transfer: Transferable[]): void;
-  terminate(): void;
-}
-
 /** Build at the job's geometry, in whichever realm this runs: the worker
  *  (see worker.ts) or, on a fallback, the main thread, whose live layout may
  *  have moved since the export started (#710). withGeometry needs a
@@ -52,46 +25,11 @@ export function runPsdJob(job: PsdJob): Promise<Uint8Array> {
   return withGeometry(job.geometry, () => buildPsd(job.items, job.assets, job.mode, job.opts));
 }
 
-const spawn = (): PsdWorkerLike | null => typeof Worker === "undefined" ? null
-  : new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }) as unknown as PsdWorkerLike;
+const spawn = () => new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }) as unknown as BuildWorker<PsdJob>;
 
-/** buildPsd in a fresh worker, terminated when the job settles. `transfer`
- *  names buffers in the job that nothing reads afterwards, which leave this
- *  realm rather than copy. `create` is the test seam; returning null or
- *  throwing means "no worker", build in-thread. */
+/** buildPsd in a fresh worker. `create` is the test seam. */
 export function buildPsdOffThread(
-  job: PsdJob, transfer: ArrayBuffer[] = [], create: () => PsdWorkerLike | null = spawn,
+  job: PsdJob, transfer: ArrayBuffer[] = [], create: () => BuildWorker<PsdJob> = spawn,
 ): Promise<Uint8Array> {
-  const inThread = () => runPsdJob(job);
-  let worker: PsdWorkerLike | null = null;
-  try { worker = create(); } catch { /* blocked worker: build in-thread */ }
-  if (!worker) return inThread();
-  return new Promise<Uint8Array>((resolve, reject) => {
-    let transferred = false;
-    const fallBack = () => {
-      worker.terminate();
-      inThread().then(resolve, reject);
-    };
-    worker.onmessage = ({ data }) => {
-      if ("ready" in data) {
-        // A job that can't be cloned (DataCloneError) builds here too: a post
-        // that throws has moved nothing, and the idle worker is torn down
-        // rather than leaked.
-        try { worker.postMessage(job, transfer); } catch { fallBack(); return; }
-        transferred = transfer.length > 0;
-        return;
-      }
-      worker.terminate();
-      if ("error" in data) reject(new Error(data.error));
-      else resolve(data.bytes);
-    };
-    // Load failure (CSP, missing chunk) or a crash the worker couldn't
-    // report: build here instead of failing the export, unless the job's
-    // pixels already left.
-    worker.onerror = () => {
-      if (!transferred) return fallBack();
-      worker.terminate();
-      reject(new Error(t("The export stopped unexpectedly. Export again.")));
-    };
-  });
+  return buildOffThread(job, runPsdJob, create, transfer);
 }

@@ -15,6 +15,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Saving from inside a field keeps what you typed.** ⌘S, ⌘E, ⌘W, the menus and closing the window now commit the text in a Style, layer name, variant name or hex box first. Before, the file could keep the old value while the field showed the new one, or the tab could close with no prompt.
 
 ### Changed
+- **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
 - **Print PSD export holds up the app less.** Each image now decodes once instead of twice, and the images move to the background build instead of being copied. If the background build dies partway, which should be rare, the export now fails with an error instead of finishing on the main thread. The exported file is unchanged.
 - **Exports read only the fonts a label uses.** An export used to parse every bundled family to measure text. It now parses the label's own families, and the exported file is unchanged.
 - **White Ink for transparent art builds faster.** The plate's solid colour under art with alpha is now laid down in large blocks instead of one byte at a time. The exported file is unchanged.

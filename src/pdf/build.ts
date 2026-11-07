@@ -78,7 +78,8 @@ export interface Assets {
   title?: string;
   /** The bleed the build runs at: the app's export snapshot (layout.ts
    *  withGeometry). Absent, it reads the live layout, which only the CLI
-   *  and tests can rely on, since nothing moves it there. */
+   *  and tests can rely on, since nothing moves it there. A worker's layout
+   *  never saw Settings, so offThread.ts's PdfJob requires it. */
   geometry?: L.Geometry;
 }
 

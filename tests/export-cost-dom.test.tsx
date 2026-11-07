@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
 // export-cost-dom.test.tsx — what one export costs, as counts: font parses
 // (#736), and for a print PSD the image decodes and the pixels its job copies
-// rather than transfers (#723). The real builders run; only the dialog, the
-// font loader and the canvas are faked.
+// rather than transfers (#723), and how much of a PDF build stays on the main
+// thread (#713). The real builders run; only the dialog, the font loader and
+// the canvas are faked.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import fontkit from "@pdf-lib/fontkit";
+import { PDFDocument } from "pdf-lib";
 import * as L from "../src/layout";
 import { PAGE_ART_ID, type Layer } from "../src/model/layers";
 import { notify } from "../src/notify";
@@ -140,4 +142,37 @@ it("copies a PSD pair's pixels: both jobs read them", async () => {
   await mount(lolevLayers());
   await exported(() => api.exportPsd({}, "pair"));
   expect(cost.psdJobs.map(({ transfer }) => transfer ?? [])).toEqual([[], []]);
+}, 30_000);
+
+/** A Worker that loads, takes its job and answers with a stand-in file. */
+function stubWorkers() {
+  const spawned: unknown[] = [];
+  class FakeWorker {
+    onmessage: ((e: { data: unknown }) => void) | null = null;
+    onerror = null;
+    constructor() {
+      spawned.push(this);
+      queueMicrotask(() => this.onmessage?.({ data: { ready: true } }));
+    }
+    postMessage() {
+      queueMicrotask(() => this.onmessage?.({ data: { bytes: new Uint8Array([1]) } }));
+    }
+    terminate() {}
+  }
+  vi.stubGlobal("Worker", FakeWorker);
+  return spawned;
+}
+
+it.each([
+  ["print PDF", () => api.buildFull(), 1],
+  ["PDF pair", () => api.buildFull({}, "pair"), 2],
+  ["art plate", () => api.exportPdfPlate("art"), 1],
+  ["mask plate", () => api.exportPdfPlate("mask"), 1],
+] as const)("a %s builds in workers, never on the main thread (#713)", async (_name, run, workers) => {
+  const spawned = stubWorkers();
+  const saves = vi.spyOn(PDFDocument.prototype, "save");
+  await mount(lolevLayers());
+  await exported(run);
+  expect(spawned).toHaveLength(workers);
+  expect(saves).not.toHaveBeenCalled();
 }, 30_000);
