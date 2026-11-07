@@ -5,16 +5,26 @@
 // quit leaves it behind, and the next launch offers it back (TabsShell).
 // A desktop snapshot also records the file its tab was bound to, and that
 // file's mtime when the tab bound or saved it, which canRebind checks before
-// the restored tab may take the file back.
+// the restored tab may take the file back. A tab with unsaved master edits
+// also keeps its master, since a .label only names one (#692).
 // Best-effort like masterCache: a failed write just means nothing to offer.
 import { RECOVERY_STORE, run } from "@/masterCache";
+
+/** A tab's unsaved master edits as packMaster bytes: `edited` is the master
+ *  the tab held, `base` the one it was last opened or saved as, which keeps
+ *  the edits unsaved after a restore. Neither carries art: the snapshot's label
+ *  packs every image the master names. */
+export type RecoveredMaster = { edited: Uint8Array; base: Uint8Array };
 
 /** `filePath`: the desktop file the tab was bound to, if any. Optional
  *  because snapshots written before it, and every browser snapshot, have none.
  *  `fileModifiedAt`: that file's mtime when the tab last bound or saved it —
- *  the baseline canRebind compares against. */
+ *  the baseline canRebind compares against.
+ *  `master`: set while the master has unsaved edits; absent, and on snapshots
+ *  from before it, the master reopens from disk. */
 export type RecoverySnapshot = {
   name: string; bytes: Uint8Array; savedAt: number; filePath?: string; fileModifiedAt?: number;
+  master?: RecoveredMaster;
 };
 /** A snapshot an earlier launch left, with the key that drops it. */
 export type Recoverable = RecoverySnapshot & { key: string };

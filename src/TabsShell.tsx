@@ -209,7 +209,7 @@ export default function TabsShell() {
           ]),
         } : undefined;
         if (recoveredPath?.rebind) rebound.push(recoveredPath.path);
-        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath });
+        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath, recoveredMaster: r.master });
       }
     })();
   };

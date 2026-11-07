@@ -67,7 +67,7 @@ import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterInde
 import { layerBoxes, outsideGuides } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
-import { dropRecovery, keepRecovery } from "@/recovery";
+import { dropRecovery, keepRecovery, type RecoveredMaster } from "@/recovery";
 import {
   assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, slotAsset,
   type CustomFile, type LoadedRaster,
@@ -232,8 +232,9 @@ function focusContentField(layerId: string, stillActive: () => boolean) {
  *  to this shape itself (fileSource for picked Files), so the shared
  *  pipeline never branches on where the bytes came from. The one exception
  *  is `path`, set only when the label came off disk (desktop): its folder
- *  is where the label's masterHint may be read from (masters.ts hintTrusted). */
-type LabelSource = { name: string; bytes: Uint8Array; path?: string };
+ *  is where the label's masterHint may be read from (masters.ts hintTrusted).
+ *  `master` is a crash-recovery snapshot's own master (FileToOpen). */
+type LabelSource = { name: string; bytes: Uint8Array; path?: string; master?: RecoveredMaster };
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
 
@@ -269,7 +270,9 @@ const VIEWS = [
  *  `recoveredPath` is the file that tab was bound to (desktop): Save binds
  *  back to it when the shell found that safe (recovery.ts canRebind), and
  *  otherwise a note names it while Save asks where. Its `modifiedAt` is the
- *  snapshot's baseline mtime, carried into the rebound tab's snapshots. */
+ *  snapshot's baseline mtime, carried into the rebound tab's snapshots.
+ *  `recoveredMaster` is the snapshot's unsaved master, opened in place of the
+ *  one on disk. */
 export type FileToOpen = {
   seq: number;
   path?: string;
@@ -277,6 +280,7 @@ export type FileToOpen = {
   file?: File;
   recovered?: string;
   recoveredPath?: { path: string; rebind: boolean; modifiedAt?: number };
+  recoveredMaster?: RecoveredMaster;
 };
 
 /** What the tab strip shows for this document (src/tabs.ts TabMeta — one
@@ -1346,7 +1350,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => () => settleReview(false), []);
 
   // Crash recovery (#394): while this tab holds unsaved work, keep a packed
-  // .label of it a moment after each change; drop it once the work is saved.
+  // .label of it, and any unsaved master, a moment after each change; drop it
+  // once the work is saved.
   // Never dropped on unmount — a render crash unmounts too, and that is the
   // snapshot the next launch must find. The shell drops it on a tab close.
   const hasUnsaved = unsaved({ dirty, edited, masterUnsaved: templateMoved });
@@ -1355,15 +1360,20 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
     const timer = setTimeout(() => {
       let bytes: Uint8Array;
-      try { bytes = packProject(); } catch { return; } // over the size caps: nothing Save could write either
+      let edits: RecoveredMaster | undefined;
+      try {
+        bytes = packProject();
+        if (templateMoved) edits = { edited: packMaster(master, {}), base: packMaster(pristineMaster.current, {}) };
+      } catch { return; } // over the size caps: nothing Save could write either
       void keepRecovery(recoveryKey, {
         name: exportBase + LABEL_EXT, bytes, savedAt: Date.now(),
         filePath: filePath ?? undefined, fileModifiedAt: filePath ? boundModifiedAt() : undefined,
+        master: edits,
       });
     }, 2000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
-  }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey, filePath]);
+  }, [hasUnsaved, templateMoved, doc, texture, mask, customImages, recoveryKey, filePath]);
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
@@ -1784,6 +1794,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean | "cancelled"> {
     try {
       const unpacked = unpackLabel(f.bytes);
+      const recovered = f.master
+        && { edited: unpackMaster(f.master.edited).master, base: unpackMaster(f.master.base).master };
       let notes: string[] = [];
       let masterAssets: MasterAssets = {};
       let masterPath: string | undefined;
@@ -1818,8 +1830,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
         const hint = ref.masterHint;
-        const resolved = await resolveLabelMaster(ref.masterId, hint, f.path)
-          ?? await missingMasterChoice(ref.masterId, hint, f.path);
+        // A recovered master needs no file: one found only supplies the Save
+        // Master target and the template art the label doesn't embed.
+        const resolved = recovered
+          ? { assets: {}, ...await resolveMasterById(ref.masterId, hint, f.path), master: recovered.edited }
+          : await resolveLabelMaster(ref.masterId, hint, f.path)
+            ?? await missingMasterChoice(ref.masterId, hint, f.path);
         refreshLibrary(); // resolving (or the missing-master prompt) can remember or retire library rows
         if (!resolved) return "cancelled";
         masterAssets = resolved.assets;
@@ -1890,6 +1906,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       ]);
       if (!alive.current) return "cancelled"; // the tab closed: no retry
       resetDocument(next, masterPath);
+      if (recovered) pristineMaster.current = recovered.base; // the edits stay unsaved
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(() => Object.fromEntries(images.map(([id, mint]) => [id, mint()])));
@@ -1915,7 +1932,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
     const mySeq = fileToOpen.seq;
-    const { path, handle, file, recovered, recoveredPath } = fileToOpen;
+    const { path, handle, file, recovered, recoveredPath, recoveredMaster } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
       openCancelled.current = false;
@@ -1928,7 +1945,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           if (await openWithRetry(async () => fileSource(await handle.getFile())))
             bindHandle(handle);
         } else if (file) {
-          if (await openWithRetry(() => fileSource(file))) {
+          if (await openWithRetry(async () => ({ ...await fileSource(file), master: recoveredMaster }))) {
             forgetProjectFile();
             if (recovered) {
               // Still unsaved work: Save stays live, a close prompts, and the
@@ -1948,7 +1965,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               const rebound = recoveredPath?.rebind ? recoveredPath : undefined;
               if (!recoveryKey || await keepRecovery(recoveryKey, {
                 name: file.name, bytes, savedAt: Date.now(),
-                filePath: rebound?.path, fileModifiedAt: rebound?.modifiedAt,
+                filePath: rebound?.path, fileModifiedAt: rebound?.modifiedAt, master: recoveredMaster,
               }))
                 void dropRecovery(recovered);
             }

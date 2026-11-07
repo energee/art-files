@@ -9,19 +9,22 @@ import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
-import { packLabel } from "../src/model/files";
+import { packLabel, packMaster, unpackMaster } from "../src/model/files";
+import { lolevMaster } from "./fixtures/lolevMaster";
 import { unsaved } from "../src/tabs";
 import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
 
 const calls = vi.hoisted(() => [] as string[]);
 const kept = vi.hoisted(() => [] as { key: string; filePath?: string; fileModifiedAt?: number }[]);
+const snaps = vi.hoisted(() => [] as import("../src/recovery").RecoverySnapshot[]);
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here.
 vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
 vi.mock("../src/recovery", () => ({
-  keepRecovery: async (key: string, snap: { filePath?: string; fileModifiedAt?: number }) => {
+  keepRecovery: async (key: string, snap: import("../src/recovery").RecoverySnapshot) => {
     calls.push(`keep ${key}`);
     kept.push({ key, filePath: snap.filePath, fileModifiedAt: snap.fileModifiedAt });
+    snaps.push(snap);
     return true;
   },
   dropRecovery: async (key: string) => { calls.push(`drop ${key}`); },
@@ -66,7 +69,7 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
     await unmount(); // the caller never gets the handle to do it
     throw err;
   }
-  return { meta: () => onMeta.mock.calls.at(-1)![0], unmount, closeTab };
+  return { meta: () => onMeta.mock.calls.at(-1)![0], unmount, closeTab, container };
 }
 
 function snapshotFile(extra: Record<string, unknown> = {}) {
@@ -82,6 +85,7 @@ it("a restored snapshot opens unsaved and takes the snapshot over", async () => 
   try {
     expect(meta().title).toBe("Alpha");
     expect(unsaved(meta())).toBe(true);
+    expect(meta().masterUnsaved).toBe(false); // no master rode along: the one on disk opens
     expect(meta().filePath).toBeNull();
     // Copied to this tab's key first, then the old key dropped.
     const keep = calls.indexOf("keep now:2");
@@ -89,6 +93,71 @@ it("a restored snapshot opens unsaved and takes the snapshot over", async () => 
     expect(calls.indexOf("drop old:1")).toBeGreaterThan(keep);
     // The mount-time drop (nothing unsaved yet) is fine; none may follow the copy.
     expect(calls.slice(keep)).not.toContain("drop now:2");
+  } finally {
+    await unmount();
+  }
+}, 30_000);
+
+/** Add a Text layer through the Add layer menu: a master edit. */
+async function addTextLayer(container: HTMLElement) {
+  // base-ui's menu trigger opens on the full press, not click alone.
+  const trigger = container.querySelector('[aria-label="Add layer"]')!;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    (trigger as HTMLElement).click();
+    await Promise.resolve();
+  });
+  const text = Array.from(document.querySelectorAll('[role="menuitem"]'))
+    .find((el) => el.textContent?.trim() === "Text") as HTMLElement;
+  await act(async () => { text.click(); await Promise.resolve(); });
+}
+const debounce = () => act(async () => { await new Promise((r) => setTimeout(r, 2500)); });
+
+// #692: a master edit is what makes a tab unsaved, so its snapshot must hold
+// the edit. It comes back as an edit: unsaved against the master as it was, so
+// the tab still asks to save it, and a second crash can still offer it back.
+it("a master edit survives a crash and stays an unsaved master edit", async () => {
+  snaps.length = 0;
+  const first = await restore({ seq: 1, file: snapshotFile(), recovered: "old:1" });
+  let snap: (typeof snaps)[number];
+  try {
+    await addTextLayer(first.container);
+    expect(first.meta().masterUnsaved).toBe(true);
+    await debounce();
+    snap = snaps.at(-1)!;
+  } finally {
+    await first.unmount();
+  }
+  expect(snap.master).toBeDefined();
+  const edited = unpackMaster(snap.master!.edited).master;
+  expect(edited.layers).toHaveLength(lolevMaster().layers.length + 1);
+
+  snaps.length = 0;
+  const { meta, unmount, container } = await restore({
+    seq: 1, file: new File([snap.bytes as BlobPart], "alpha.label"), recovered: "old:1", recoveredMaster: snap.master,
+  });
+  try {
+    expect(meta().masterUnsaved).toBe(true);
+    expect(container.textContent).toContain(edited.layers.at(-1)!.name);
+    expect(snaps[0].master).toEqual(snap.master); // moved to this tab's key with the snapshot
+  } finally {
+    await unmount();
+  }
+}, 60_000);
+
+// The master in the snapshot is the whole of it: a file that has gone missing
+// since must not stop the restore to ask for one.
+it("a snapshot's master restores with no master file left to resolve", async () => {
+  const base = { ...lolevMaster(), id: "gone" };
+  const edited = { ...base, name: "Edited" };
+  const bytes = packLabel({ formatVersion: 3, masterId: "gone", enabledVariants: [], values: {} }, {});
+  const { meta, unmount } = await restore({
+    seq: 1, file: new File([bytes as BlobPart], "alpha.label"), recovered: "old:1",
+    recoveredMaster: { edited: packMaster(edited, {}), base: packMaster(base, {}) },
+  });
+  try {
+    expect(meta().masterUnsaved).toBe(true);
   } finally {
     await unmount();
   }
