@@ -16,6 +16,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Holds DOCS_DEPLOY_KEY and only releases it to main.
+    environment: docs-pages
     permissions:
       contents: read
     defaults:
