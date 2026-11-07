@@ -945,3 +945,12 @@ no status, no attempts, no delta.
 - delta: docRun (App.tsx) is bumped when an open installs a document; onTexture, onMask and onLayerImage capture it before their await and drop the result, including an error toast, if it moved. The audit suggested bumping in resetDocument; boot restore calls that on the same untitled document, so art dropped just after launch would be lost, and the bump sits at the open install instead.
 - evidence: on fix/685-decode-doc-guard, four #685 tests in tests/save-races-dom.test.tsx were red before the fix and green after. "art dropped during the boot restore survives it" passes before and after, and fails when the bump is moved into resetDocument (mutation check). Full Vitest 187 files / 1958 tests (--maxWorkers=4), tsc, lint, knip@6.38.0 and check-release vs origin/main pass. Not driven in the live desktop app. Two drops on one slot (#686) and adoptMasterAssets (#687) stay open: their decodes are on the same document.
 - release: binary-impacting; bullet queued under Unreleased, no version bump.
+
+## 2026-11-06 issue-686-687-706-decode-slots
+- finding: [race/medium] #686, #687, #706 — an older decode could replace a newer drop on one slot, a master's art could land on a filled slot or the wrong master, and a legacy v1 open read customImages from a stale render; found by the 2026-11-05 performance and race audit (#682-#740)
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/decode-slots @ fix/decode-slot-races, stacked on fix/685-decode-doc-guard
+- delta: each drop takes a per-slot run and only the newest commits or reports an error, and clearLoaded bumps the run. An adopt commits through fillEmpty under its own adopt run. A v1 open reads savedAssetsRef.current.customImages. Image layers keep the two-drop race, which #686 does not name.
+- evidence: at 35c4d29c, tsc, lint, knip 6.38.0, build and check-release exit 0, and vitest passed 187 files and 1967 tests. New tests in tests/save-races-dom.test.tsx were red before their fixes, except one stated guard. Nothing ran in WKWebView or Tauri. The #706 fix relies on React rendering the restored images before the open reads the ref, which nothing enforces.
+- release: binary-impacting; bullets queued under Unreleased, no version bump.
