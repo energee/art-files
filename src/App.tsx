@@ -1442,7 +1442,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     // A promotion re-validates through parseMaster; surface a rejection as an
     // error toast like the write failures below instead of an unhandled
-    // rejection from the `void saveMaster(...)` caller (#92).
+    // rejection from the `void saveMasterInTurn(...)` caller (#92).
     let promoted: ReturnType<typeof applyPromotions>;
     try {
       promoted = applyPromotions(master, label, promote, version ?? undefined);
