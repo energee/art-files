@@ -15,6 +15,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Saving from inside a field keeps what you typed.** ⌘S, ⌘E, ⌘W, the menus and closing the window now commit the text in a Style, layer name, variant name or hex box first. Before, the file could keep the old value while the field showed the new one, or the tab could close with no prompt.
 
 ### Changed
+- **White Ink for transparent art builds faster.** The plate's solid colour under art with alpha is now laid down in large blocks instead of one byte at a time. The exported file is unchanged.
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
