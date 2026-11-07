@@ -15,6 +15,7 @@ that section to the new version (see .agents/release-steward.md).
 ### Fixed
 - **Dragging no longer erases what lands mid-drag.** An image that finished loading, a Save Master or a master switch arriving during a drag or resize used to vanish on the next move. It now stays, and the rest of the drag is its own undo step.
 - **⌘Z during a drag no longer costs the edit before it.** Pressing Esc after ⌘Z mid-drag used to undo your previous edit too.
+- **Late changes keep their own undo step.** A master switch, Save Master or loaded image landing right after an edit no longer folds into that edit, so ⌘Z takes back one or the other. The edit straight after a drag no longer folds into the drag either.
 
 ## [0.1.118] - 2026-11-04
 

@@ -934,7 +934,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     const mint = previewOnce(await readCustomImage(f), f);
     if (!alive.current) return;
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
-    setContent(layer, assetId);
+    // Its own undo step: the decode lands whenever it lands, so the timing
+    // window would fold it into whatever the user did last (#702).
+    setContent(layer, assetId, false);
   }
 
   /** The images the doc still names. The store also keeps replaced/cleared
@@ -1480,7 +1482,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
         return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
-      });
+      }, false); // the write ends whenever it ends: never fold into a nearby edit (#702)
       await rememberMaster(m, where, bytes);
       refreshLibrary();
       if (ours) pristineMaster.current = m;
@@ -1564,7 +1566,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { label: next, dropped } = rebindLabel(current, from, target);
     const switched: Doc = { master: target, label: next };
     markDirty();
-    setDoc(switched);
+    setDoc(switched, false); // async callers: never fold into a nearby edit (#702)
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     // The texture and mask survive a master switch, and so do their load errors.

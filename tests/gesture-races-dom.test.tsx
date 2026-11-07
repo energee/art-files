@@ -245,6 +245,22 @@ it("⌘Z after a finished drag still undoes it (#703)", async () => {
   expect(xOf("barcode")).toBeCloseTo(startX);
 }, 60_000);
 
+// A pinned clock puts the landing inside history's 500 ms window however
+// loaded the machine is.
+it("an image decoded just after an edit is its own undo step (#702)", async () => {
+  await selectImageLayer();
+  vi.spyOn(performance, "now").mockReturnValue(performance.now() + 10_000);
+  const decode = gate();
+  held.decode = decode.opened;
+  const landing = held.well!.onFile(svg());
+  await toggle("qr");
+  decode.open();
+  await act(async () => { await landing; });
+  await undo();
+  expect(held.well!.fileName).toBeUndefined();
+  expect(enabled("qr")).toBe("false");
+}, 60_000);
+
 it("the next edit after a drag never folds into the drag's step", async () => {
   vi.spyOn(performance, "now").mockReturnValue(performance.now() + 10_000);
   const startX = xOf("barcode");
