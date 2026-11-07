@@ -342,6 +342,8 @@ const de: Record<keyof typeof en, string> = {
   "Rotate 90°": "Um 90° drehen",
   "Rotate 90° counter-clockwise (reads bottom to top)": "Um 90° gegen den Uhrzeigersinn drehen (von unten nach oben lesbar)",
   "Typography": "Typografie",
+  "More Typography options": "Weitere Typografie-Optionen",
+  "More Position options": "Weitere Positionsoptionen",
   "Font": "Schriftart",
   "Default ({{font}})": "Standard ({{font}})",
   "Size": "Größe",

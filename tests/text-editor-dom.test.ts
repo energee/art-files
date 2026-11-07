@@ -287,6 +287,15 @@ describe("TextEditor", () => {
     expect(container.querySelector("[placeholder]")).toBeNull();
   });
 
+  // A one-word layer gets a one-line box, not a fixed 8.5rem block; the
+  // contenteditable grows with its lines on its own.
+  it("starts the rich field one line tall, with no fixed block minimum", () => {
+    renderEditor({ id: "name", lines: [line("peregrine")] });
+    const box = container.querySelector("#name") as HTMLElement;
+    expect(box.className).not.toContain("min-h-[8.5rem]");
+    expect(box.classList.contains("min-h-8")).toBe(true);
+  });
+
   it("passes uppercase through to the field", () => {
     renderEditor({ id: "name", lines: [line("peregrine")], uppercase: true });
     const box = container.querySelector("#name") as HTMLElement;

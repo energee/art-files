@@ -73,10 +73,12 @@ export function NumberRoot(props: {
 
 /** The input and its unit addon; render inside a NumberRoot. Wider for the
  *  length units whose readings run to more digits than points (0.0139 in,
- *  0.353 mm, 4800.25 px). */
-export function UnitInput(props: { unit: string; unitTitle?: string; placeholder?: string }) {
+ *  0.353 mm, 4800.25 px). `compact` fills the rest of its row instead, for
+ *  a FieldPair cell too narrow for either fixed width. */
+export function UnitInput(props: { unit: string; unitTitle?: string; placeholder?: string; compact?: boolean }) {
+  const width = props.compact ? "min-w-0 flex-1" : WIDE_UNITS.has(props.unit) ? "w-28" : "w-24";
   return (
-    <InputGroup className={WIDE_UNITS.has(props.unit) ? "h-6 w-28" : "h-6 w-24"}>
+    <InputGroup className={`h-6 ${width}`}>
       <NumberField.Input
         render={<InputGroupInput className="h-6 text-xs" />}
         placeholder={props.placeholder}
@@ -89,6 +91,14 @@ export function UnitInput(props: { unit: string; unitTitle?: string; placeholder
       </InputGroupAddon>
     </InputGroup>
   );
+}
+
+/** The override badge's column, held open while no badge shows, so every
+ *  control lines up and none shifts when its reset dot appears (#619). It
+ *  sits LEFT of the control, so controls end flush with the panel's right
+ *  padding, matching the labels' left edge. */
+export function BadgeSlot(props: { badge?: ReactNode }) {
+  return <span className="flex min-w-6 shrink-0 justify-end">{props.badge}</span>;
 }
 
 export function ScrubField(props: {
@@ -112,6 +122,11 @@ export function ScrubField(props: {
   dragStep?: number;
   /** See NumberRoot. */
   disabled?: boolean;
+  /** The input fills the field's cell instead of its fixed width — set
+   *  inside a FieldPair, where two fields share one row. */
+  compact?: boolean;
+  /** The override badge, drawn in its slot just left of the input. */
+  badge?: ReactNode;
   onChange: (v: number) => void;
 }) {
   const { t } = useTranslation();
@@ -133,7 +148,10 @@ export function ScrubField(props: {
           <MoveHorizontal className="size-4" aria-hidden="true" />
         </NumberField.ScrubAreaCursor>
       </NumberField.ScrubArea>
-      <UnitInput unit={props.unit} unitTitle={props.unitTitle} />
+      <span className={`flex items-center gap-1.5 ${props.compact ? "min-w-0 flex-1" : ""}`}>
+        <BadgeSlot badge={props.badge} />
+        <UnitInput unit={props.unit} unitTitle={props.unitTitle} compact={props.compact} />
+      </span>
     </NumberRoot>
   );
 }

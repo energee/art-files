@@ -527,7 +527,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
           />
           <DropdownMenuContent align="end">
             {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
-              <DropdownMenuItem key={kind} variant="attention" onClick={() => props.onAdd(kind)}>
+              <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
                 <Icon className="size-3.5" /> {t(label)}
               </DropdownMenuItem>
             ))}
