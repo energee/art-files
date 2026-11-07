@@ -4,12 +4,29 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { shortDate } from "../src/lib/utils";
-import { getLanguage, languages, resolveLanguage, setLanguage, t, useLanguage } from "../src/i18n";
+import { getLanguage, languages, resolveLanguage, setLanguage, t, useCachedT, useLanguage } from "../src/i18n";
 
 afterEach(async () => {
   vi.restoreAllMocks();
   await setLanguage("en");
   localStorage.clear();
+});
+
+describe("useCachedT", () => {
+  it("remembers a plain lookup per language and passes options straight through", async () => {
+    const root = createRoot(document.createElement("div"));
+    let seen = [] as string[];
+    const Labels = () => {
+      const cached = useCachedT();
+      seen = [cached("Language"), cached("{{count}} layer", { count: 1 }), cached("{{count}} layer", { count: 2 })];
+      return null;
+    };
+    await act(async () => root.render(createElement(Labels)));
+    expect(seen).toEqual(["Language", "1 layer", "2 layers"]);
+    await act(async () => { await setLanguage("de"); });
+    expect(seen).toEqual(["Sprache", "1 Ebene", "2 Ebenen"]);
+    await act(async () => root.unmount());
+  });
 });
 
 describe("language selection", () => {

@@ -1,4 +1,5 @@
-import i18next from "i18next";
+import i18next, { type TFunction, type TOptions } from "i18next";
+import { useMemo } from "react";
 import { initReactI18next, useTranslation } from "react-i18next";
 import en from "./locales/en";
 
@@ -70,6 +71,22 @@ void i18n.use(initReactI18next).init({
 });
 
 export const t = i18n.t.bind(i18n);
+
+/** useTranslation's `t` for a component that re-reads fixed labels on every
+ *  render (App's command table, #725): plain lookups are remembered, while a
+ *  call with options still goes to i18next. A language change gives a new `t`
+ *  and so a new cache, which is what relabels everything. */
+export function useCachedT(): TFunction {
+  const { t: lookup } = useTranslation();
+  return useMemo(() => {
+    const seen = new Map<string, string>();
+    return ((key: string, options?: TOptions) => {
+      if (options) return lookup(key, options);
+      if (!seen.has(key)) seen.set(key, lookup(key));
+      return seen.get(key);
+    }) as TFunction;
+  }, [lookup]);
+}
 export function getLanguage(): Language {
   const language = i18n.resolvedLanguage ?? null;
   return isLanguage(language) ? language : "en";
