@@ -20,12 +20,13 @@ import type { MeasureFace, PlanAssets } from "@/plan";
 
 export function useRenderSource(p: {
   /** Only the front tab assembles; a background tab drops its decoded
-   *  source (the ImageBitmaps are the heavy, cheaply rebuilt part)... */
+   *  source (the ImageBitmaps are the heavy, cheaply rebuilt part) unless
+   *  keepSource says otherwise. */
   active: boolean;
-  /** ...unless it is the last tab shown (TabsState.previous): the one hidden
-   *  source kept, so switching back decodes nothing and shows no spinner.
-   *  Its cost is that tab's bitmaps and their page layers, whatever the
-   *  number of open tabs. */
+  /** This hidden tab is the last one shown (TabsState.previous): it alone
+   *  keeps its source, so switching back decodes nothing and shows no
+   *  spinner. The cost is one tab's bitmaps and their page layers, however
+   *  many tabs are open. */
   keepSource?: boolean;
   family: FontFamilyId; fontOverrides: FontFamilyId[];
   /** The image assets the document references. */
