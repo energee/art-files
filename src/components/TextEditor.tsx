@@ -644,6 +644,7 @@ export function ChoiceBox(props: {
         value={typed}
         placeholder={placeholder}
         aria-invalid={invalid || undefined}
+        data-draft={draft !== null && draft !== value ? "" : undefined}
         onFocus={() => setDraft(value)}
         // Blur COMMITS what was typed — clicking away must not throw the edit
         // out. Escape has already cleared the draft, so it still cancels.

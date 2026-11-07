@@ -20,7 +20,7 @@ import {
   type Tab, type TabsState,
 } from "@/tabs";
 import { LABEL_EXT, isLabelName } from "@/labelfile";
-import { shortcutLabel } from "@/keys";
+import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
 import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
@@ -473,6 +473,7 @@ export default function TabsShell() {
     if (!isTauri()) return;
     const stopping = currentWindow().then((w) =>
       w.onCloseRequested((event) => {
+        commitFieldDraft(); // a draft in a focused field counts as unsaved work
         if (!stateRef.current.tabs.some(unsaved)) return; // the close proceeds
         event.preventDefault();
         void sweepRef.current().then((finished) => { if (finished) void w.destroy(); });
