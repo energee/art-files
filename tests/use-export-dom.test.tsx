@@ -232,6 +232,17 @@ it("a failed write keeps an error toast naming the file", async () => {
   expect(document.querySelectorAll("[data-close-button]")).toHaveLength(1);
 }, 30000);
 
+// The shell reads this to keep the app open after a quit waited on the export (#683).
+it("counts a failed export, but not a cancelled one", async () => {
+  save.next = [async () => null];
+  mount(<Probe />);
+  await printPdf();
+  expect(api.exportFailures).toBe(0);
+  save.next = [async () => { throw new Error("disk full"); }];
+  await printPdf();
+  expect(api.exportFailures).toBe(1);
+}, 30000);
+
 it("a failed write names the file, not its folder, when the label has a path", async () => {
   save.next = [async () => { throw new Error("disk full"); }];
   mount(<Probe />);
