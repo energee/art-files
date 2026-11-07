@@ -3,9 +3,8 @@
 // the art + mask pairs, built on demand from the same layers the preview draws,
 // the export-in-flight state, the toast that reports each export's result
 // (saved, left half-saved, failed, or saved beside a stale mask — a cancel
-// reports nothing), where this tab's desktop exports were last written (so a
-// repeat export needs no dialog), and the batch of download URLs every save
-// (exports, Save Label, Save Master) hands its plain-download fallback through.
+// reports nothing), and where this tab's desktop exports were last written (so
+// a repeat export needs no dialog).
 import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { nativeExists, saveThrough, type FileTarget } from "@/files";
 import { baseName, errMsg } from "@/lib/utils";
@@ -16,17 +15,16 @@ import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
-import type { RenderSettings } from "@/settings";
 import { FONT_URLS, labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
 import { drawPlate } from "@/canvas/draw";
-import { PSD_DOC } from "@/layout";
+import { liveGeometry, PSD_DOC, withGeometry, type Geometry } from "@/layout";
 import type { FontFamilyId } from "@/fontCatalog";
 // The builders are imported dynamically at export time (buildFull, exportPsd,
 // which runs buildPsd in a worker) so they stay out of the initial bundle;
 // only their types are needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
 import type { PsdAssets, PsdOpts } from "@/psd/build";
-import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } from "@/assets/io";
+import { rasterPixelsNatural, saveBytes, tintedPng, type CustomFile } from "@/assets/io";
 
 /** `path` with its extension (if any) replaced by `suffix`: the one rule for
  *  every export name derived from a .label or an art file. */
@@ -56,38 +54,37 @@ function pageImages(art: PageArt): Record<string, CollabImage> {
 
 type FlatPlate = NonNullable<PsdOpts["composite"]>;
 
-/** Both plates flattened by the preview's canvas renderer at `doc`, the
- *  export's PSD_DOC size: each PSD's composite (PsdOpts.composite), the image
- *  Finder and Preview show, and the mask the print PSD turns into White Ink.
+/** Both plates flattened by the preview's canvas renderer at the export's
+ *  `geometry`: each PSD's composite (PsdOpts.composite), the image Finder and
+ *  Preview show, and the mask the print PSD turns into White Ink.
  *  The full-resolution export images decode once for both plates, which draw
  *  one after the other on one canvas. SVG art plans as paths, so it needs no
  *  bitmap. Undefined without a 2D canvas.
  *  ponytail: draws on the main thread; an OffscreenCanvas in the PSD worker
  *  would free the UI if high-DPI exports stall it. */
 async function flattenPlates(
-  plan: readonly PlacedLayer[], images: Record<string, CollabImage>, fontCss: string, doc: { w: number; h: number },
+  plan: readonly PlacedLayer[], images: Record<string, CollabImage>, fontCss: string, geometry: Geometry,
 ): Promise<Record<"art" | "mask", FlatPlate> | undefined> {
   const bitmaps: Record<string, ImageBitmap> = {};
   try {
     for (const [id, image] of Object.entries(images))
       if (image.kind !== "svg") bitmaps[id] = await createImageBitmap(new Blob([image.bytes as BlobPart]));
-    // The plan and the worker's page are this size; drawPlate reads the live
-    // page, which a Bleed or PSD resolution change mid-export would move.
-    if (PSD_DOC.w !== doc.w || PSD_DOC.h !== doc.h)
-      throw new Error(t("Bleed or PSD resolution changed during the export. Export again."));
-    const canvas = document.createElement("canvas");
-    canvas.width = doc.w;
-    canvas.height = doc.h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return undefined;
-    const flat = (mode: "art" | "mask"): FlatPlate => {
-      ctx.resetTransform();
-      ctx.clearRect(0, 0, doc.w, doc.h);
-      drawPlate(ctx, plan, { images: bitmaps }, mode, fontCss);
-      const { data, width, height } = ctx.getImageData(0, 0, doc.w, doc.h);
-      return { data, width, height };
-    };
-    return { art: flat("art"), mask: flat("mask") };
+    return withGeometry(geometry, () => {
+      const { w, h } = PSD_DOC;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return undefined;
+      const flat = (mode: "art" | "mask"): FlatPlate => {
+        ctx.resetTransform();
+        ctx.clearRect(0, 0, w, h);
+        drawPlate(ctx, plan, { images: bitmaps }, mode, fontCss);
+        const { data, width, height } = ctx.getImageData(0, 0, w, h);
+        return { data, width, height };
+      };
+      return { art: flat("art"), mask: flat("mask") };
+    });
   } finally {
     for (const bitmap of Object.values(bitmaps)) bitmap.close();
   }
@@ -106,8 +103,6 @@ type ExportInputs = {
   /** The document title the PDFs carry, and the base of every file name. */
   title: string;
   exportBase: string;
-  /** Bleed and DPI, handed to the PSD workers with each job. */
-  render: RenderSettings;
   /** What a warning's Export again does: App runs its own "Export … As…" pair
    *  command for `format`, so the export gate and the label's current state
    *  are the menu's, not this hook's. */
@@ -120,7 +115,7 @@ type ExportInputs = {
 type ExportRequest = { labelPath?: string | null; ask?: boolean };
 
 export function useExport({
-  drawLayers, family, liveImages, planAssets, pageArt, title, exportBase, render, exportAgain,
+  drawLayers, family, liveImages, planAssets, pageArt, title, exportBase, exportAgain,
 }: ExportInputs) {
   // The export in flight, if any: it blurs the preview under a note naming
   // the files being built (#401), and blocks a second export.
@@ -139,19 +134,31 @@ export function useExport({
   const toastBase = `${useId()}:export`;
   // exportFresh goes false on any edit (#400), so an export that an edit
   // overlapped confirms nothing: its files hold the label as it was when the
-  // export began.
+  // export began. Bleed and PSD resolution live outside the document, so
+  // runIsCurrent compares them instead.
   const exportFresh = useRef(false);
   // Bumped by every export start, so a slow check from an older export can't
   // replace a newer export's toast.
   const exportRun = useRef(0);
   const exportStale = () => { exportFresh.current = false; };
   /** Begin an export run: retire the previous run's toast, mark the run fresh,
-   *  and return the id this run's toasts use. */
+   *  and return the id this run's toasts use and the geometry it builds at.
+   *  That snapshot, taken before anything awaits, is the only place an export
+   *  reads Bleed and PSD resolution: from layout.ts, which always holds the
+   *  Settings values, where a hidden tab's own `render` prop is frozen (#691).
+   *  Everything after reads layout.ts through it (withGeometry), so a Settings
+   *  change mid-export can't reach the file (#688). */
   function startRun() {
     notify.dismiss(runToastId(toastBase, exportRun.current));
     exportFresh.current = true;
     exportRun.current++;
-    return runToastId(toastBase, exportRun.current);
+    return { toastId: runToastId(toastBase, exportRun.current), geometry: liveGeometry() };
+  }
+  /** Whether a finished run's files are still the label as it stands: no edit
+   *  overlapped the run and Settings still give the geometry it built at. */
+  function runIsCurrent(geometry: Geometry) {
+    const live = liveGeometry();
+    return exportFresh.current && live.bleedIn === geometry.bleedIn && live.dpi === geometry.dpi;
   }
   // A closed tab's export toasts go with it, and none offers Export again for a
   // label that no longer exists (see closed.current in exportPair).
@@ -179,20 +186,6 @@ export function useExport({
   }>({});
   const forgetExportPaths = () => { exportPaths.current = {}; };
 
-  // Revoking immediately can abort a large download, so each URL lives until
-  // the NEXT save batch — or until the tab closes, which releases them so
-  // they don't pin their bytes for the rest of the session (#85).
-  const lastSaved = useRef<string[]>([]);
-  useEffect(() => () => lastSaved.current.forEach((u) => URL.revokeObjectURL(u)), []);
-  function startSaveBatch() {
-    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
-    lastSaved.current = [];
-  }
-  function saveBytes(bytes: Uint8Array, name: string, type = "application/pdf") {
-    const url = blobUrl(bytes, type);
-    lastSaved.current.push(url);
-    download(url, name);
-  }
   /** Save one exported file through the platform's save dialog. Tauri uses
    *  the OS dialog; supported browsers use File System Access; Safari/Firefox
    *  keep the plain-download fallback. A `target` writes there with no
@@ -229,13 +222,14 @@ export function useExport({
    *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
    *  Every bundled family is loaded so a layer's own font measures true.
    *  An output plan: an empty field's placeholder is left out (#604). */
-  async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
+  async function exportPlan(geometry: Geometry): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
     const [{ pdfMeasureFace }, loaded] = await Promise.all([
       import("@/pdf/build"),
       Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
     ]);
     const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
-    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssets(), { output: true });
+    const measure = await pdfMeasureFace(packs, family);
+    const plan = withGeometry(geometry, () => planLayers(drawLayers, measure, planAssets(), { output: true }));
     const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
     const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
     return { plan, images: await imageAssets(), fontFamilies };
@@ -244,20 +238,19 @@ export function useExport({
   const exportRunning = useRef(false);
   async function exportPair(
     extension: "pdf" | "psd", type: string, { labelPath, ask }: ExportRequest,
-    build: () => Promise<[art: Uint8Array, mask: Uint8Array]>,
+    build: (geometry: Geometry) => Promise<[art: Uint8Array, mask: Uint8Array]>,
   ) {
     if (exportRunning.current) return;
     exportRunning.current = true;
     setExporting(`${extension}s`);
-    const toastId = startRun();
-    startSaveBatch();
+    const { toastId, geometry } = startRun();
     // What the dialog suggests when no destination is remembered. It is also
     // the file an error is blamed on until the first save starts (a failed build).
     const defaultName = labelPath != null ? withSuffix(labelPath, `.${extension}`) : `${exportBase}.${extension}`;
     const saved: string[] = [];
     let pending = defaultName;
     try {
-      const pair = await build();
+      const pair = await build(geometry);
       // The art file: the remembered one, written with no dialog unless
       // `ask`; otherwise the dialog opens on it, or beside the tab's .label
       // under its name, or (neither) on the bare export name. Memory belongs
@@ -297,7 +290,7 @@ export function useExport({
           maskPath = maskBeside(path, extension);
         }
       }
-      if (exportFresh.current) notify.success(t("Saved {{files}}", { files: saved.join(", ") }), {
+      if (runIsCurrent(geometry)) notify.success(t("Saved {{files}}", { files: saved.join(", ") }), {
         id: toastId, action: revealAction(artPath),
       });
     } catch (error) {
@@ -312,11 +305,11 @@ export function useExport({
     }
   }
 
-  async function pdfInputs() {
+  async function pdfInputs(geometry: Geometry) {
     const art = pageArt(false);
-    const [{ plan, images, fontFamilies }, fonts] = await Promise.all([exportPlan(), loadFonts(family)]);
+    const [{ plan, images, fontFamilies }, fonts] = await Promise.all([exportPlan(geometry), loadFonts(family)]);
     const assets: Assets = {
-      fonts, fontFamilies, title,
+      fonts, fontFamilies, title, geometry,
       images: { ...images, ...pageImages(art) },
     };
     return { art, plan, assets };
@@ -327,13 +320,13 @@ export function useExport({
    *  makes it. Only the print files remember a destination; individual
    *  plates always ask. */
   async function exportSingle(
-    format: "pdf" | "psd", mode: "print" | "art" | "mask", request: ExportRequest, build: () => Promise<Uint8Array>,
+    format: "pdf" | "psd", mode: "print" | "art" | "mask", request: ExportRequest,
+    build: (geometry: Geometry) => Promise<Uint8Array>,
   ) {
     if (exportRunning.current) return;
     exportRunning.current = true;
     setExporting(format);
-    const toastId = startRun();
-    startSaveBatch();
+    const { toastId, geometry } = startRun();
     const labelPath = request.labelPath ?? null;
     let remembered: string | undefined;
     const key = format === "pdf" ? "printPdf" : "printPsd";
@@ -346,10 +339,10 @@ export function useExport({
     const name = remembered ?? (labelPath != null ? withSuffix(labelPath, suffix) : `${exportBase}${suffix}`);
     try {
       const target = !request.ask && remembered ? { path: remembered } : undefined;
-      const result = await saveVia(await build(), name, type, target);
+      const result = await saveVia(await build(geometry), name, type, target);
       if (!result) return; // a cancel is the user's own choice: nothing to report
       const path = pathOf(result.target);
-      if (exportFresh.current) notify.success(t("Saved {{files}}", { files: baseName(result.name) }), {
+      if (runIsCurrent(geometry)) notify.success(t("Saved {{files}}", { files: baseName(result.name) }), {
         id: toastId, action: revealAction(path),
       });
       if (mode === "print" && path) {
@@ -386,8 +379,8 @@ export function useExport({
 
   /** Build one combined print PDF by default; the retained pair is explicit. */
   async function buildFull(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
-    if (kind === "print") return exportSingle("pdf", "print", request, async () => {
-      const [{ buildPrintPdf }, { art, plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs()]);
+    if (kind === "print") return exportSingle("pdf", "print", request, async (geometry) => {
+      const [{ buildPrintPdf }, { art, plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs(geometry)]);
       if (art.maskPng) {
         const pixels = await rasterPixelsNatural(art.maskPng);
         assets.maskPixels = {
@@ -398,31 +391,28 @@ export function useExport({
       }
       return buildPrintPdf(plan, assets);
     });
-    await exportPair("pdf", "application/pdf", request, async () => {
+    await exportPair("pdf", "application/pdf", request, async (geometry) => {
       const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([
-        import("@/pdf/build"), pdfInputs(),
+        import("@/pdf/build"), pdfInputs(geometry),
       ]);
       return await Promise.all([buildArtPdf(plan, assets), buildMaskPdf(plan, assets)]);
     });
   }
 
   function exportPdfPlate(mode: "art" | "mask", request: ExportRequest = {}) {
-    return exportSingle("pdf", mode, request, async () => {
-      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs()]);
+    return exportSingle("pdf", mode, request, async (geometry) => {
+      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs(geometry)]);
       return (mode === "art" ? buildArtPdf : buildMaskPdf)(plan, assets);
     });
   }
 
   /** Everything a PSD build needs, gathered on the main thread: the plan,
    *  ag-psd's decoded pixels, and both plates flattened (flattenPlates). Each
-   *  build then runs in its own worker (#415), which gets this editor's
-   *  bleed and DPI with the job — captured here, with the page size, before
-   *  anything awaits. */
-  async function psdInputs() {
-    const geometry = { bleedIn: render.bleedIn, dpi: render.dpi };
-    const doc = { w: PSD_DOC.w, h: PSD_DOC.h };
+   *  build then runs in its own worker (#415), which gets the run's
+   *  `geometry` with the job. */
+  async function psdInputs(geometry: Geometry) {
     const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images, fontFamilies }] = await Promise.all([
-      import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
+      import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(geometry),
     ]);
     const art = pageArt(false);
     const assets: PsdAssets = {
@@ -431,7 +421,7 @@ export function useExport({
     };
     // The flattened plates draw with the preview's registered faces.
     await loadLabelFaces(family, Object.keys(fontFamilies ?? {}) as FontFamilyId[]);
-    const flatten = () => flattenPlates(plan, { ...images, ...pageImages(art) }, labelFontCss(family), doc);
+    const flatten = () => flattenPlates(plan, { ...images, ...pageImages(art) }, labelFontCss(family), geometry);
     const build = (mode: "art" | "mask", opts: PsdOpts) =>
       buildPsdOffThread({ items: plan, assets, mode, geometry, opts: { layers: drawLayers, ...opts } });
     return { flatten, build };
@@ -443,8 +433,8 @@ export function useExport({
    *  knockout — already Photoshop's spot storage (0 = 100% ink). Without a
    *  canvas there is no White Ink to add, so it fails rather than save a
    *  print file without it. */
-  async function printPsd(): Promise<Uint8Array> {
-    const { flatten, build } = await psdInputs();
+  async function printPsd(geometry: Geometry): Promise<Uint8Array> {
+    const { flatten, build } = await psdInputs(geometry);
     const plates = await flatten();
     if (!plates) throw new Error(t("No canvas to draw the White Ink plate."));
     return build("art", { composite: plates.art, whiteInk: plates.mask });
@@ -455,15 +445,15 @@ export function useExport({
    *  (see buildFull). */
   async function exportPsd(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
     if (kind === "print") return exportSingle("psd", "print", request, printPsd);
-    await exportPair("psd", "image/vnd.adobe.photoshop", request, async () => {
-      const { flatten, build } = await psdInputs();
+    await exportPair("psd", "image/vnd.adobe.photoshop", request, async (geometry) => {
+      const { flatten, build } = await psdInputs(geometry);
       const plates = await flatten(); // no canvas: ag-psd's black previews
       return await Promise.all([build("art", { composite: plates?.art }), build("mask", { composite: plates?.mask })]);
     });
   }
 
   return {
-    exporting, exportFailures, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths,
     buildFull, exportPdfPlate, exportPsd,
   };
 }

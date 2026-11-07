@@ -69,7 +69,7 @@ import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
 import {
-  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, slotAsset,
+  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, saveBytes, slotAsset,
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
@@ -984,10 +984,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
   const {
-    exporting, exportFailures, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths,
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
-    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
+    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase,
     // A cancelled pair's warning offers Export again. It runs the menu's own
     // Export … As… command, so the label as it is now applies, and so does the
     // gate: no second export while one runs, and a blocked label shows the
@@ -1251,7 +1251,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The assets this tab holds right now, read by the unmount cleanup: a
    *  closed tab releases their thumbnails, or each one pins its file's bytes
-   *  for the rest of the session (#85). useExport releases its export URLs.
+   *  for the rest of the session (#85).
    *  `alive` goes false with it, so a decode that lands after the tab closed
    *  commits nothing: React 19 still runs a setState updater on an unmounted
    *  component, and the updater is where the thumbnail is minted (#432). */
@@ -1324,7 +1324,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     return unchanged;
   };
   const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
@@ -1481,7 +1481,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       repaintMasterDirty((n) => n + 1);
     };
     try {
-      startSaveBatch();
       const path = as ? null : saveTargetFor(masterFilePath.current, master.id);
       const handle = as ? null : saveTargetFor(masterFileHandle.current, master.id);
       const saved = await saveThrough((name) => packMaster(titled(name), assets), {

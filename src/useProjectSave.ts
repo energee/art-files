@@ -5,6 +5,7 @@
 // a completed save means for the dirty flags (onSaved) stay with the editor
 // state that owns them.
 import { useRef, useState } from "react";
+import { saveBytes } from "@/assets/io";
 import { nativeModifiedAt, saveThrough } from "@/files";
 import { labelFilter, labelTypes } from "@/filePickers";
 import { LABEL_EXT } from "@/labelfile";
@@ -25,13 +26,10 @@ type ProjectSaveInputs = {
   onSaved: () => boolean;
   /** Reports a failed save (App.tsx passes notify.error). */
   onError: (error: string) => void;
-  /** useExport's download batch, shared with every other save. */
-  startSaveBatch: () => void;
-  saveBytes: (bytes: Uint8Array, name: string, type?: string) => void;
 };
 
 export function useProjectSave({
-  pack, exportBase, onSaved, onError, startSaveBatch, saveBytes,
+  pack, exportBase, onSaved, onError,
 }: ProjectSaveInputs) {
   /** The file Save rewrites in place: set by Save As and picker-based Open.
    *  Null until then, so plain Save falls through to the Save As dialog. */
@@ -82,7 +80,6 @@ export function useProjectSave({
       // master hint is written relative to the file actually saved.
       const bound = projectPath.current ?? undefined;
       const zip = pack(bound);
-      startSaveBatch();
       const saved = await saveThrough((name) => name === bound ? zip : pack(name), {
         name: exportBase + LABEL_EXT, type: "application/zip", filter: labelFilter(), types: labelTypes(),
         target: as ? null : projectPath.current ? { path: projectPath.current }
