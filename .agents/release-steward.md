@@ -14,7 +14,10 @@ rebuilt for a user to receive it. This includes changes to:
 - updater configuration or another input that is compiled or packaged into the app.
 
 Documentation, tests, agent memory, CI-only configuration, and release notes do not
-require a new binary unless they also change a build input. When the classification
+require a new binary unless they also change a build input. A diff of only
+`package.json`, `package-lock.json`, `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock`
+is binary-impacting but needs no bullet, so `check-release.mjs` passes it; add one if
+the bump changes something users see. When the classification
 is genuinely ambiguous, treat the change as binary-impacting and record why in the
 handoff.
 
