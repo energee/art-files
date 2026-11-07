@@ -5,6 +5,10 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// PSD hashes re-baselined 2026-11-07 (#594, ag-psd 33): same length, and the
+// parsed layers, pixels and paths match. Text box bounds are 0 where ag-psd 31
+// wrote NaN, and vector masks carry each subpath's component index, as
+// Photoshop writes them. PDFs unchanged. Photoshop review pending on #594.
 // Collab ON mask PDF re-baselined 2026-11-03 (#668): a raster image's White
 // Ink footprint follows its alpha instead of its whole rectangle. The 1x1
 // slot fixture (onePxPng) is fully transparent, so each slot now draws an
@@ -128,7 +132,7 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
     expect(digests(await shipped([]))).toEqual({
       art: "9696a852e6b242588e7a641a764c9eff0776516702677ee33e62d7c7187a6b9b", artLen: 71227,
       mask: "e16db7a3fc2c8e63b18f5d6f881b3f1a1066cc4a2abafb044fd3b7a39a9d4e33", maskLen: 71336,
-      psd: "4fe3b1b28b2822389ee437c48aaee81fbd73fdd4046220a7fc5925c724f782f4", psdLen: 1169316,
+      psd: "991cfa88a897ffc74866467a2aee658ec0cedfd2cbd7ee664db1350c914b0703", psdLen: 1169316,
     });
   });
 });
@@ -138,7 +142,7 @@ describe("collab byte-identity goldens — Collab variant ON, both slots loaded"
     expect(digests(await shipped(["collab"]))).toEqual({
       art: "2800cc460d4a758b7f69c8a665b1a2fde8748d5e770a780eb869d92e9ba98590", artLen: 73132,
       mask: "34bf0aba9b20ed20598f15e6c6109be3a452c28029a8a72b97f863163c342429", maskLen: 73616,
-      psd: "8fa9894c061bd463496d54edbfb8b936e65b3071bf5827afdb7c3aba60821aaa", psdLen: 1179336,
+      psd: "d417469626e0c4c326e19aa1d2b7c17309d2ed42522083b52831e16ca29f651a", psdLen: 1179336,
     });
   });
 });
