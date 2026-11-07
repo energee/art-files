@@ -6,6 +6,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Fixed
+- **Smoother edits in the Can view.** Each edit now redoes only what changed: the can's shaders stay built, and foil and corner shapes are kept unless they changed, so typing with the can in view pauses less.
+- **Less work returning to the Can view.** The can model and studio lighting are read once per session instead of every time you switch to the Can view.
+- **The Can view stops drawing when nothing moves.** A can left at 100%, or zoomed all the way in or out, could keep redrawing at full frame rate while idle, costing GPU and battery.
+
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.

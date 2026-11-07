@@ -161,3 +161,55 @@ it("cancels settling and ignores subsequent input after disposal", () => {
   expect(frames.size).toBe(0);
   expect(render).not.toHaveBeenCalled();
 });
+
+// OrbitControls reports a change whenever its distance clamp bites, and a
+// camera resting on a limit can sit one rounding error past it on every call.
+// Whether it does depends on the pane and the orbit, so this walks a grid of
+// panes through every way of landing on a limit (#721).
+it("stops rendering when the camera rests on a distance limit, in any pane", () => {
+  const looped: string[] = [];
+  const landings: [string, (s: CanScene, c: OrbitControls) => void][] = [
+    ["framed", (s) => { s.setZoom(1.5); drainFrames(); s.setZoom(1); }],
+    ["zoomed all the way in", (_, c) => c.dollyIn(0.001)],
+    ["zoomed all the way out", (_, c) => c.dollyOut(0.001)],
+  ];
+  const settles = () => {
+    try { drainFrames(); return true; } catch { frames.clear(); return false; }
+  };
+  for (let w = 500; w <= 1800; w += 37) {
+    for (let h = 400; h <= 1100; h += 101) {
+      const pane = document.createElement("div");
+      Object.defineProperties(pane, { clientWidth: { value: w }, clientHeight: { value: h } });
+      for (const [name, land] of landings) {
+        const paneScene = new CanScene(pane);
+        const { controls } = paneScene as unknown as CameraScene;
+        paneScene.resize();
+        controls.rotateLeft(0.37);
+        const settled = settles() && (land(paneScene, controls), settles());
+        if (!settled) looped.push(`${w}x${h} ${name}`);
+        paneScene.dispose();
+      }
+    }
+  }
+  expect(looped).toEqual([]);
+});
+
+it("still paints every picture change once the camera has stopped on a limit", () => {
+  scene.setZoom(1);
+  drainFrames();
+  const render = vi.spyOn(internals.renderer, "render");
+  const changes: [string, () => void][] = [
+    ["light", () => scene.setLight(45)],
+    ["mode", () => scene.setMode("pack")],
+    ["zoom", () => scene.setZoom(1.2)],
+    ["back to the limit", () => scene.setZoom(1)],
+    ["pan", () => scene.setPan({ x: 0.1, y: 0 })],
+    ["resize", () => scene.resize()],
+  ];
+  for (const [name, change] of changes) {
+    render.mockClear();
+    change();
+    drainFrames();
+    expect(render.mock.calls.length, name).toBeGreaterThan(0);
+  }
+});
