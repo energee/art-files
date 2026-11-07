@@ -12,6 +12,10 @@ that section to the new version (see .agents/release-steward.md).
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
 
+### Fixed
+- **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
+- **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+
 ## [0.1.118] - 2026-11-04
 
 ### Changed
