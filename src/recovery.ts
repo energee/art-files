@@ -113,6 +113,9 @@ export async function earlierSnapshots(): Promise<Recoverable[]> {
     const snap = await run<RecoverySnapshot>("readonly", (s) => s.get(key), RECOVERY_STORE);
     if (!snap?.bytes) return null;
     const art = snap.splitArt ? await run<Uint8Array>("readonly", (s) => s.get(artKey(key)), RECOVERY_STORE) : null;
+    // A write that aborted can leave the label without its art record; a label
+    // missing its art is not worth offering. The record stays for a later launch.
+    if (snap.splitArt && !art) return null;
     return { ...snap, key, bytes: art ? joinLabel(art, snap.bytes) : snap.bytes };
   }));
   return snaps.filter((s) => s !== null).sort((a, b) => a.savedAt - b.savedAt);

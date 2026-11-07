@@ -79,6 +79,15 @@ describe("a snapshot's art", () => {
     expect(puts.filter((k) => k === key)).toHaveLength(3);
   });
 
+  it("withholds a snapshot whose art record never landed", async () => {
+    store.clear();
+    const key = recoveryKey(19);
+    await keepRecovery(key, snap("a"), packer([{}]));
+    crash(key, "crashed:19");
+    store.delete("crashed:19:art");
+    expect(await earlierSnapshots()).toEqual([]);
+  });
+
   it("is packed again when any of it changes, or once its snapshot was dropped", async () => {
     store.clear();
     const key = recoveryKey(11);
