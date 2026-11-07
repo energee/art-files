@@ -92,7 +92,7 @@ export async function keepRecovery(key: string, snap: RecoverySnapshot, art?: Sn
     if (packed) s.put(packed, artKey(key));
     return s.put(art ? { ...snap, splitArt: true } : snap, key);
   });
-  if (kept === null && packed && heldArt.get(key) === art?.ids) heldArt.delete(key);
+  if (kept === null && packed) heldArt.delete(key);
   return kept !== null;
 }
 
