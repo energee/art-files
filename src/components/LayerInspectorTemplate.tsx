@@ -2,14 +2,17 @@
 // the fill contract a text layer declares (placeholder, input, range,
 // symbology, suffix) and the fill vocabulary (field label and choices) a text
 // or barcode layer offers. Every key here routes to the master (edit.ts's
-// patchLayers). Split out of LayerInspector.tsx (#433).
+// patchLayers). Split out of LayerInspector.tsx (#433). Memoized like the
+// sections in LayerInspectorSections.tsx (#715).
+import { memo } from "react";
 import { useTranslation } from "@/i18n";
 import { X } from "lucide-react";
 import type { Choice, Layer, Symbology, TextLayer } from "@/model/layers";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  BlankableField, InputRow, Row, SelectField, useInspectorOptions, useRequiredText, type Ctx,
+  BlankableField, InputRow, Row, SelectField, ignoringContentAndPlacement, useInspectorOptions,
+  useRequiredText, type Ctx,
 } from "./LayerInspectorControls";
 
 /** Authoring the fill vocabulary: the caption a filler sees, and the list they
@@ -21,7 +24,7 @@ import {
  *  review, and a per-item patch would have neither. Not text-only: a barcode
  *  carries a `value` rather than an `input`, and its tier list is the same
  *  thing, so this renders for both. */
-export function Vocabulary(props: Ctx & { layer: Layer }) {
+export const Vocabulary = memo(function Vocabulary(props: Ctx & { layer: Layer }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const id = layer.id;
@@ -74,7 +77,7 @@ export function Vocabulary(props: Ctx & { layer: Layer }) {
       </Row>
     </>
   );
-}
+}, ignoringContentAndPlacement);
 
 /** One row of the vocabulary editor. Its value is required — see
  *  useRequiredText — while the title is free to be blank. */
@@ -107,7 +110,7 @@ function ChoiceRow(props: {
   );
 }
 
-export function FillContract(props: Ctx & { layer: TextLayer }) {
+export const FillContract = memo(function FillContract(props: Ctx & { layer: TextLayer }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const { inputs, symbologies } = useInspectorOptions();
@@ -142,4 +145,4 @@ export function FillContract(props: Ctx & { layer: TextLayer }) {
       )}
     </div>
   );
-}
+}, ignoringContentAndPlacement);

@@ -255,6 +255,7 @@ describe("LayerList", () => {
     dblclick(nameSpan);
     const input = rowFor("wordmark").querySelector('input[aria-label="Rename Brand"]') as HTMLInputElement;
     expect(input).not.toBeNull();
+    expect(input.matches("[data-draft]")).toBe(true); // commitFieldDraft can reach it (#684)
     input.value = "Renamed";
     keydown(input, "Enter");
     expect(props.onRename).toHaveBeenCalledWith("wordmark", "Renamed");
@@ -584,6 +585,42 @@ it("measures repeated pointer moves over the same drop position", () => {
     // (Base UI 1.8 adds one); the guard is one top-level commit per position.
     expect(commits.mock.calls.filter((c) => c[1] !== "nested-update").length).toBe(1);
   } finally { vi.restoreAllMocks(); }
+});
+
+// A drag or scrub re-resolves every layer per move: the list must sit out
+// whatever its rows do not draw, and take everything they do.
+describe("what re-renders the list (#716)", () => {
+  const { compare } = LayerList as unknown as { compare: (a: LayerListProps, b: LayerListProps) => boolean };
+  const props = baseProps();
+  const target = props.rows.find((row) => row.layer.kind === "text" && !row.layer.locked);
+  const editing = (change: (row: LayerRow) => LayerRow) =>
+    ({ ...props, rows: props.rows.map((row) => (row === target ? change(row) : { ...row, layer: { ...row.layer } })) });
+  const layer = (over: object) => (row: LayerRow) => ({ ...row, layer: { ...row.layer, ...over } as Layer });
+
+  it.each([
+    ["position", { x: 12, y: 34 }], ["guide", { guideX: "left", anchor: "left" }], ["size", { size: 99, w: 99 }],
+    ["style", { style: { fill: "#123456", layer: "white" } }], ["content", { lines: [], value: "1" }],
+  ])("skips a change to the layer's %s", (_name, over) => {
+    expect(compare(props, editing(layer(over)))).toBe(true);
+  });
+
+  const chip: VariantChip = { id: "collab", name: "Collab", enabled: true };
+  it.each<[string, (row: LayerRow) => LayerRow]>([
+    ["name", layer({ name: "Renamed" })], ["power", layer({ enabled: false })], ["lock", layer({ locked: true })],
+    ["kind", layer({ kind: "qr" })], ["role", layer({ kind: "image", role: "mask" })],
+    ["variant chip", (row) => ({ ...row, variant: chip })],
+    ["variant override", (row) => ({ ...row, variantOverridden: chip })],
+    ["changed mark", (row) => ({ ...row, changed: true })],
+  ])("redraws for the row's %s", (_name, change) => {
+    expect(compare(props, editing(change))).toBe(false);
+  });
+
+  it("redraws when a chip's own state or the order changes", () => {
+    const on = { ...props, rows: props.rows.map((row) => ({ ...row, variant: chip })) };
+    const off = { ...props, rows: on.rows.map((row) => ({ ...row, variant: { ...chip, enabled: false } })) };
+    expect(compare(on, off)).toBe(false);
+    expect(compare(props, { ...props, rows: props.rows.slice().reverse() })).toBe(false);
+  });
 });
 
 describe("ownership vs override", () => {

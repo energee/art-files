@@ -113,3 +113,34 @@ it("a menu rebuilt for a newly active tab still runs its commands", async () => 
     await act(async () => { root.unmount(); });
   }
 });
+
+// #684: native accelerators fire before the webview's keydown, so the menu's
+// own run path has to commit a field's draft too.
+it("a native menu command commits the focused field's draft first, except the field's own undo", async () => {
+  const ran: string[] = [];
+  const execCommand = vi.fn();
+  Object.defineProperty(document, "execCommand", { value: execCommand, configurable: true });
+  const input = document.body.appendChild(document.createElement("input"));
+  input.dataset.draft = "";
+  input.addEventListener("blur", () => ran.push("blur"));
+  input.focus();
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  await act(async () => {
+    root.render(createElement(AppMenu, {
+      actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => ran.push(entry.id) })),
+      checked: {},
+      onNativeError: (message: string) => { throw new Error(message); },
+      onCheckForUpdates: vi.fn(),
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  try {
+    await click("undo");
+    expect(execCommand).toHaveBeenCalledWith("undo");
+    expect(ran).toEqual([]);
+    await click("project-save");
+    expect(ran).toEqual(["blur", "project-save"]);
+  } finally {
+    await act(async () => { root.unmount(); });
+  }
+});

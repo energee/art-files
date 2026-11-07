@@ -32,9 +32,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
-import { useTranslation } from "@/i18n";
-import { t as translate } from "@/i18n";
-import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
+import { t as translate, useCachedT } from "@/i18n";
+import { commitFieldDraft, dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -329,7 +328,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
-  const { t } = useTranslation();
+  const t = useCachedT();
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
@@ -768,16 +767,20 @@ export const DocumentEditor = memo(function DocumentEditor({
       }
       // ⌘+ is Zoom In as well as ⌘=: "+" is Shift+= on a US keyboard (so it
       // arrives as ⇧⌘) and a key of its own on many others.
-      const cmd = e.key === "+" && mods
+      const lookup = () => e.key === "+" && mods
         ? commandsRef.current.find((c) => c.id === "zoom-in")
         : commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
-      if (!cmd) return;
+      if (!lookup()) return;
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
       if (dialogOpen()) return;
-      if (!cmd.disabled) cmd.run();
+      // Looked up again after the commit: a draft can dirty the document and
+      // enable the command, and it must run against the committed doc.
+      commitFieldDraft();
+      const cmd = lookup();
+      if (cmd && !cmd.disabled) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
