@@ -14,7 +14,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
-- **Lighter typing and dragging.** A keystroke in the Text box no longer redraws the rest of the inspector, and dragging a layer redraws only Position. Dragging or scrubbing a layer no longer redraws the Layers list, and menu labels are looked up once per language instead of on every keystroke. Character height is measured only when a layer's text or type changes, not on every zoom or pan, and a keystroke measures the layers once for the preview and the past-the-edge check together.
+- **Lighter typing and dragging.** A keystroke or a drag now redraws only the inspector rows it changes and leaves the Layers list alone. Zooming and panning no longer re-measure character height.
 
 ## [0.1.118] - 2026-11-04
 

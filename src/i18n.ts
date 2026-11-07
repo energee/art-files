@@ -87,6 +87,7 @@ export function useCachedT(): TFunction {
     }) as TFunction;
   }, [lookup]);
 }
+
 export function getLanguage(): Language {
   const language = i18n.resolvedLanguage ?? null;
   return isLanguage(language) ? language : "en";
