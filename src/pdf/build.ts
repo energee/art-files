@@ -78,7 +78,8 @@ export interface Assets {
   title?: string;
   /** The bleed the build runs at: the app's export snapshot (layout.ts
    *  withGeometry). Absent, it reads the live layout, which only the CLI
-   *  and tests can rely on, since nothing moves it there. */
+   *  and tests can rely on, since nothing moves it there. A worker's layout
+   *  never saw Settings, so offThread.ts's PdfJob requires it. */
   geometry?: L.Geometry;
 }
 
@@ -290,7 +291,10 @@ async function alphaFootprints(
     const smask = doc.context.lookup(image.ref, PDFStream).dict.get(PDFName.of("SMask"));
     if (!smask) continue;
     const samples = new Uint8Array(image.width * image.height * sample.length);
-    for (let i = 0; i < samples.length; i++) samples[i] = sample[i % sample.length];
+    // Repeat the pixel by doubling the filled prefix: a block copy per step,
+    // not a JS write per byte of a print-size image (#739).
+    samples.set(sample);
+    for (let filled = sample.length; filled < samples.length; filled *= 2) samples.copyWithin(filled, 0, filled);
     out.set(r.asset, doc.context.register(doc.context.flateStream(samples, {
       Type: "XObject", Subtype: "Image", Width: image.width, Height: image.height,
       ColorSpace: colorSpace, BitsPerComponent: 8, SMask: smask,

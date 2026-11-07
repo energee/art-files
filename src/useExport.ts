@@ -15,16 +15,17 @@ import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
-import { FONT_URLS, labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
+import { labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
 import { drawPlate } from "@/canvas/draw";
 import { liveGeometry, PSD_DOC, withGeometry, type Geometry } from "@/layout";
-import type { FontFamilyId } from "@/fontCatalog";
-// The builders are imported dynamically at export time (buildFull, exportPsd,
-// which runs buildPsd in a worker) so they stay out of the initial bundle;
-// only their types are needed up front.
+import { usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
+// The builders are imported dynamically at export time (pdfInputs, psdInputs,
+// which run them in workers) so they stay out of the initial bundle; only
+// their types are needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
+import type { PdfJob } from "@/pdf/offThread";
 import type { PsdAssets, PsdOpts } from "@/psd/build";
-import { rasterPixelsNatural, saveBytes, tintedPng, type CustomFile } from "@/assets/io";
+import { bitmapPixels, rasterPixelsNatural, saveBytes, tintedPng, type CustomFile } from "@/assets/io";
 
 /** `path` with its extension (if any) replaced by `suffix`: the one rule for
  *  every export name derived from a .label or an art file. */
@@ -57,37 +58,29 @@ type FlatPlate = NonNullable<PsdOpts["composite"]>;
 /** Both plates flattened by the preview's canvas renderer at the export's
  *  `geometry`: each PSD's composite (PsdOpts.composite), the image Finder and
  *  Preview show, and the mask the print PSD turns into White Ink.
- *  The full-resolution export images decode once for both plates, which draw
- *  one after the other on one canvas. SVG art plans as paths, so it needs no
- *  bitmap. Undefined without a 2D canvas.
+ *  Both plates draw one after the other on one canvas. SVG art plans as paths,
+ *  so `bitmaps` has no entry for it. Undefined without a 2D canvas.
  *  ponytail: draws on the main thread; an OffscreenCanvas in the PSD worker
  *  would free the UI if high-DPI exports stall it. */
-async function flattenPlates(
-  plan: readonly PlacedLayer[], images: Record<string, CollabImage>, fontCss: string, geometry: Geometry,
-): Promise<Record<"art" | "mask", FlatPlate> | undefined> {
-  const bitmaps: Record<string, ImageBitmap> = {};
-  try {
-    for (const [id, image] of Object.entries(images))
-      if (image.kind !== "svg") bitmaps[id] = await createImageBitmap(new Blob([image.bytes as BlobPart]));
-    return withGeometry(geometry, () => {
-      const { w, h } = PSD_DOC;
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return undefined;
-      const flat = (mode: "art" | "mask"): FlatPlate => {
-        ctx.resetTransform();
-        ctx.clearRect(0, 0, w, h);
-        drawPlate(ctx, plan, { images: bitmaps }, mode, fontCss);
-        const { data, width, height } = ctx.getImageData(0, 0, w, h);
-        return { data, width, height };
-      };
-      return { art: flat("art"), mask: flat("mask") };
-    });
-  } finally {
-    for (const bitmap of Object.values(bitmaps)) bitmap.close();
-  }
+function flattenPlates(
+  plan: readonly PlacedLayer[], bitmaps: Record<string, ImageBitmap>, fontCss: string, geometry: Geometry,
+): Record<"art" | "mask", FlatPlate> | undefined {
+  return withGeometry(geometry, () => {
+    const { w, h } = PSD_DOC;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined;
+    const flat = (mode: "art" | "mask"): FlatPlate => {
+      ctx.resetTransform();
+      ctx.clearRect(0, 0, w, h);
+      drawPlate(ctx, plan, { images: bitmaps }, mode, fontCss);
+      const { data, width, height } = ctx.getImageData(0, 0, w, h);
+      return { data, width, height };
+    };
+    return { art: flat("art"), mask: flat("mask") };
+  });
 }
 
 type ExportInputs = {
@@ -220,12 +213,13 @@ export function useExport({
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the pdf-lib widths the PDF draws with
    *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
-   *  Every bundled family is loaded so a layer's own font measures true.
+   *  Only the families the layers use load and parse (#736), and a layer's
+   *  own font is one of them, so it measures true.
    *  An output plan: an empty field's placeholder is left out (#604). */
   async function exportPlan(geometry: Geometry): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
     const [{ pdfMeasureFace }, loaded] = await Promise.all([
       import("@/pdf/build"),
-      Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
+      Promise.all(usedFontFamilies(family, drawLayers).map(async (id) => [id, await loadFonts(id)] as const)),
     ]);
     const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
     const measure = await pdfMeasureFace(packs, family);
@@ -305,14 +299,20 @@ export function useExport({
     }
   }
 
+  /** Everything a PDF build needs, gathered on the main thread: the plan and
+   *  the file's assets. `build` runs one PDF in its own worker (#713), which
+   *  gets the run's `geometry` in the assets. */
   async function pdfInputs(geometry: Geometry) {
     const art = pageArt(false);
-    const [{ plan, images, fontFamilies }, fonts] = await Promise.all([exportPlan(geometry), loadFonts(family)]);
-    const assets: Assets = {
+    const [{ buildPdfOffThread }, { plan, images, fontFamilies }, fonts] = await Promise.all([
+      import("@/pdf/offThread"), exportPlan(geometry), loadFonts(family),
+    ]);
+    const assets: PdfJob["assets"] = {
       fonts, fontFamilies, title, geometry,
       images: { ...images, ...pageImages(art) },
     };
-    return { art, plan, assets };
+    const build = (plate: PdfJob["plate"]) => buildPdfOffThread({ plate, items: plan, assets });
+    return { art, assets, build };
   }
 
   /** One file through one dialog: the print PDF or PSD (art with White Ink
@@ -380,7 +380,7 @@ export function useExport({
   /** Build one combined print PDF by default; the retained pair is explicit. */
   async function buildFull(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
     if (kind === "print") return exportSingle("pdf", "print", request, async (geometry) => {
-      const [{ buildPrintPdf }, { art, plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs(geometry)]);
+      const { art, assets, build } = await pdfInputs(geometry);
       if (art.maskPng) {
         const pixels = await rasterPixelsNatural(art.maskPng);
         assets.maskPixels = {
@@ -389,42 +389,42 @@ export function useExport({
           height: pixels.height,
         };
       }
-      return buildPrintPdf(plan, assets);
+      return build("print");
     });
     await exportPair("pdf", "application/pdf", request, async (geometry) => {
-      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([
-        import("@/pdf/build"), pdfInputs(geometry),
-      ]);
-      return await Promise.all([buildArtPdf(plan, assets), buildMaskPdf(plan, assets)]);
+      const { build } = await pdfInputs(geometry);
+      return await Promise.all([build("art"), build("mask")]);
     });
   }
 
   function exportPdfPlate(mode: "art" | "mask", request: ExportRequest = {}) {
-    return exportSingle("pdf", mode, request, async (geometry) => {
-      const [{ buildArtPdf, buildMaskPdf }, { plan, assets }] = await Promise.all([import("@/pdf/build"), pdfInputs(geometry)]);
-      return (mode === "art" ? buildArtPdf : buildMaskPdf)(plan, assets);
-    });
+    return exportSingle("pdf", mode, request, async (geometry) => (await pdfInputs(geometry)).build(mode));
   }
 
   /** Everything a PSD build needs, gathered on the main thread: the plan,
    *  ag-psd's decoded pixels, and both plates flattened (flattenPlates). Each
-   *  build then runs in its own worker (#415), which gets the run's
-   *  `geometry` with the job. */
+   *  image decodes once, for both uses (#723). Each build then runs in its own
+   *  worker (#415), which gets the run's `geometry` with the job. */
   async function psdInputs(geometry: Geometry) {
-    const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images, fontFamilies }] = await Promise.all([
-      import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(geometry),
+    const [{ buildPsdOffThread }, fonts, { plan, images, fontFamilies }] = await Promise.all([
+      import("@/psd/offThread"), loadFonts(family), exportPlan(geometry),
     ]);
     const art = pageArt(false);
-    const assets: PsdAssets = {
-      fonts, fontFamily: family,
-      images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
-    };
     // The flattened plates draw with the preview's registered faces.
     await loadLabelFaces(family, Object.keys(fontFamilies ?? {}) as FontFamilyId[]);
-    const flatten = () => flattenPlates(plan, { ...images, ...pageImages(art) }, labelFontCss(family), geometry);
-    const build = (mode: "art" | "mask", opts: PsdOpts) =>
-      buildPsdOffThread({ items: plan, assets, mode, geometry, opts: { layers: drawLayers, ...opts } });
-    return { flatten, build };
+    const bitmaps: Record<string, ImageBitmap> = {};
+    try {
+      for (const [id, image] of Object.entries({ ...images, ...pageImages(art) }))
+        if (image.kind !== "svg") bitmaps[id] = await createImageBitmap(new Blob([image.bytes as BlobPart]));
+      const pixels = Object.fromEntries(Object.entries(bitmaps).map(([id, bmp]) => [id, bitmapPixels(bmp)]));
+      const plates = flattenPlates(plan, bitmaps, labelFontCss(family), geometry);
+      const assets: PsdAssets = { fonts, fontFamily: family, images: pixels };
+      const build = (mode: "art" | "mask", opts: PsdOpts, transfer?: ArrayBuffer[]) =>
+        buildPsdOffThread({ items: plan, assets, mode, geometry, opts: { layers: drawLayers, ...opts } }, transfer);
+      return { plates, pixels, build };
+    } finally {
+      for (const bitmap of Object.values(bitmaps)) bitmap.close();
+    }
   }
 
   /** The one-file print PSD: the art layers with the White Ink plate as a
@@ -432,12 +432,13 @@ export function useExport({
    *  PDF reads it (embedWhiteInkMask): blue R=0 is full ink, white R=255 a
    *  knockout — already Photoshop's spot storage (0 = 100% ink). Without a
    *  canvas there is no White Ink to add, so it fails rather than save a
-   *  print file without it. */
+   *  print file without it. This job is the only reader of its pixels, so
+   *  they transfer to the worker instead of copying (#723). */
   async function printPsd(geometry: Geometry): Promise<Uint8Array> {
-    const { flatten, build } = await psdInputs(geometry);
-    const plates = await flatten();
+    const { plates, pixels, build } = await psdInputs(geometry);
     if (!plates) throw new Error(t("No canvas to draw the White Ink plate."));
-    return build("art", { composite: plates.art, whiteInk: plates.mask });
+    const buffers = [...Object.values(pixels), plates.art, plates.mask].map(({ data }) => data.buffer as ArrayBuffer);
+    return build("art", { composite: plates.art, whiteInk: plates.mask }, buffers);
   }
 
   /** Layered Photoshop files, built full-resolution on demand like the PDFs:
@@ -446,8 +447,7 @@ export function useExport({
   async function exportPsd(request: ExportRequest = {}, kind: "print" | "pair" = "print") {
     if (kind === "print") return exportSingle("psd", "print", request, printPsd);
     await exportPair("psd", "image/vnd.adobe.photoshop", request, async (geometry) => {
-      const { flatten, build } = await psdInputs(geometry);
-      const plates = await flatten(); // no canvas: ag-psd's black previews
+      const { plates, build } = await psdInputs(geometry); // no canvas: ag-psd's black previews
       return await Promise.all([build("art", { composite: plates?.art }), build("mask", { composite: plates?.mask })]);
     });
   }

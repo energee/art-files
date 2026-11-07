@@ -8,8 +8,9 @@
 //   - the barcode backing: the solid background takes the halo's plate and
 //     paints before the bars.
 // Reads fill-colour operators from the real content stream pdf-lib emits.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PNG } from "pngjs";
+import { decodePDFRawStream, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
 import * as L from "../src/layout";
 import type { PlacedImage } from "../src/plan";
@@ -87,6 +88,29 @@ describe("mask plate polarity", () => {
     // (print-pdf-separations.test.ts rasterizes it).
     expect(fillOps(stream)).toEqual([WHITE, BLUE]);
     expect(stream).toMatch(/\/MaskImage-\d+ Do/);
+  });
+
+  it("fills a footprint in log(size) block copies, not byte by byte (#739)", async () => {
+    const png = new PNG({ width: 64, height: 64 }); // all zero: fully transparent
+    const size = 64 * 64 * 3;
+    const copies = vi.spyOn(Uint8Array.prototype, "copyWithin");
+    const image: PlacedImage = { kind: "image", id: "art", asset: "art", x: 10, y: 10, w: 20, h: 20 };
+    const bytes = await buildMaskPdf([image], {
+      ...assets, images: { art: { kind: "png", bytes: new Uint8Array(PNG.sync.write(png)) } },
+    });
+    const filled = (copies.mock.contexts as Uint8Array[]).filter((buffer) => buffer.length === size).length;
+    copies.mockRestore();
+    expect(filled).toBeGreaterThan(0);
+    expect(filled).toBeLessThanOrEqual(Math.ceil(Math.log2(size)));
+
+    // Every pixel of the footprint is still mask blue. (The art embeds as
+    // DeviceRGB with an SMask too, so it sits among these streams.)
+    const doc = await PDFDocument.load(bytes);
+    const rgbImages = doc.context.enumerateIndirectObjects().flatMap(([, object]) =>
+      object instanceof PDFRawStream && object.dict.get(PDFName.of("ColorSpace")) === PDFName.of("DeviceRGB")
+        && object.dict.has(PDFName.of("SMask")) ? [decodePDFRawStream(object).decode()] : []);
+    const blue = BLUE.map((c) => Math.round(c * 255));
+    expect(rgbImages.some((data) => data.length === size && data.every((byte, i) => byte === blue[i % 3]))).toBe(true);
   });
 });
 

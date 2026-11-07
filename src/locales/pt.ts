@@ -30,6 +30,7 @@ const pt: Record<keyof typeof en, string> = {
   "Building PDF…": "Gerando o PDF…",
   "Building PSD…": "Gerando o PSD…",
   "No canvas to draw the White Ink plate.": "Não há uma tela para desenhar a chapa de White Ink.",
+  "The export stopped unexpectedly. Export again.": "A exportação parou inesperadamente. Exporte novamente.",
   "Building PDFs…": "Gerando PDFs…",
   "Building PSDs…": "Gerando PSDs…",
   "rendering label…": "renderizando rótulo…",

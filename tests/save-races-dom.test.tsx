@@ -55,7 +55,7 @@ vi.mock("../src/fonts", () => ({
     if (menu.fontError) throw new Error(menu.fontError);
     return (t: string, s: number) => t.length * s * 0.55;
   },
-  labelFontCss: () => "sans-serif", FONT_URLS: { poppins: {} },
+  labelFontCss: () => "sans-serif",
   loadFonts: async () => (await import("./fixtures")).assets.fonts,
 }));
 // No promotion a user can tick fails parseMaster's validation, so the throw
@@ -80,9 +80,7 @@ vi.mock("../src/masters", async (importOriginal) => {
     },
   };
 });
-vi.mock("../src/psd/build", () => ({
-  psdImages: async () => ({}), buildPsd: vi.fn(async () => new Uint8Array([3])),
-}));
+vi.mock("../src/psd/build", () => ({ buildPsd: vi.fn(async () => new Uint8Array([3])) }));
 // The PSD plates flatten through drawPlate; here they only need a canvas.
 vi.mock("../src/canvas/draw", () => ({ drawPlate: () => undefined }));
 // A desktop save names the file by the path the dialog returned; browsers return a

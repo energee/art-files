@@ -10,7 +10,7 @@ import { DEFAULT_RENDER } from "../src/settings";
 vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
-vi.mock("../src/fonts", () => ({ loadLabelFaces: async () => (t: string, s: number) => t.length * s * 0.55, labelFontCss: () => "sans-serif", FONT_URLS: { poppins: {} } }));
+vi.mock("../src/fonts", () => ({ loadLabelFaces: async () => (t: string, s: number) => t.length * s * 0.55, labelFontCss: () => "sans-serif" }));
 import { DocumentEditor } from "../src/App";
 
 let root: Root;
