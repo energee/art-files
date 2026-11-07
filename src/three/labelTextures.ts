@@ -36,7 +36,8 @@ function samePixels(
   a: Uint8ClampedArray<ArrayBuffer>, b: Uint8ClampedArray<ArrayBuffer>,
 ): boolean {
   if (a.length !== b.length) return false;
-  const x = new Uint32Array(a.buffer), y = new Uint32Array(b.buffer);
+  const words = a.length >> 2; // RGBA, so the length is a whole number of words
+  const x = new Uint32Array(a.buffer, a.byteOffset, words), y = new Uint32Array(b.buffer, b.byteOffset, words);
   for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
   return true;
 }
