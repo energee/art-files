@@ -15,6 +15,7 @@ import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real
 
 const calls = vi.hoisted(() => [] as string[]);
 const kept = vi.hoisted(() => [] as { key: string; filePath?: string; fileModifiedAt?: number }[]);
+const discards = vi.hoisted(() => ({ count: 0 }));
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here.
 vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
@@ -25,6 +26,7 @@ vi.mock("../src/recovery", () => ({
     return true;
   },
   dropRecovery: async (key: string) => { calls.push(`drop ${key}`); },
+  discardCount: () => discards.count,
 }));
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -66,7 +68,9 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
     await unmount(); // the caller never gets the handle to do it
     throw err;
   }
-  return { meta: () => onMeta.mock.calls.at(-1)![0], unmount, closeTab };
+  /** Re-arms the snapshot timer the way an edit does. */
+  const rearm = () => act(async () => { root.render(createElement(DocumentEditor, { ...props, recoveryKey: "now:3" })); });
+  return { meta: () => onMeta.mock.calls.at(-1)![0], unmount, closeTab, rearm };
 }
 
 function snapshotFile(extra: Record<string, unknown> = {}) {
@@ -122,6 +126,27 @@ it("a rebound restore's snapshots record the file and its baseline mtime", async
     await act(async () => { await new Promise((r) => setTimeout(r, 2500)); }); // the snapshot debounce
     expect(kept.length).toBeGreaterThan(1);
     expect(kept.at(-1)).toEqual({ key: "now:2", filePath: "/w/alpha.label", fileModifiedAt: 4 });
+  } finally {
+    await unmount();
+  }
+}, 30_000);
+
+// Discard All leaves the tab mounted until the app goes, so a timer already
+// armed must not write the discarded work back (#697). The quit can still be
+// abandoned, so a timer armed afterwards snapshots as usual.
+it("a snapshot timer armed before Discard All writes nothing, and a later one does", async () => {
+  const { unmount, rearm } = await restore({
+    seq: 1, file: snapshotFile(), recovered: "old:1",
+    recoveredPath: { path: "/w/alpha.label", rebind: true, modifiedAt: 4 },
+  });
+  try {
+    kept.length = 0;
+    discards.count += 1;
+    await act(async () => { await new Promise((r) => setTimeout(r, 2500)); }); // the snapshot debounce
+    expect(kept).toEqual([]);
+    await rearm();
+    await act(async () => { await new Promise((r) => setTimeout(r, 2500)); });
+    expect(kept.map((k) => k.key)).toEqual(["now:3"]);
   } finally {
     await unmount();
   }
