@@ -24,10 +24,10 @@
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
 // listeners or renders a singleton surface (the native menu) MUST honor the
-// `active` prop — and per-document renders are dropped while inactive (see
-// the deactivation effect). The editor reports its DocumentMeta upward
-// through onMeta; the shell owns tabs, file-open routing, render settings,
-// and the updater.
+// `active` prop — and per-document renders are dropped while inactive
+// (canvasRender below; useRenderSource for the decoded source). The editor
+// reports its DocumentMeta upward through onMeta; the shell owns tabs,
+// file-open routing, render settings, and the updater.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
@@ -51,7 +51,7 @@ import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
   applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -76,6 +76,7 @@ import { useExport } from "@/useExport";
 import { useViewPrefs } from "@/useViewPrefs";
 import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
+import { useSettledQr } from "@/useSettledQr";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
 import { useProjectSave } from "@/useProjectSave";
@@ -286,6 +287,8 @@ export type DocumentMeta = TabMeta;
 
 type DocumentEditorProps = {
   active: boolean;
+  /** Hidden, but the last tab shown: see useRenderSource's keepSource. */
+  keepSource?: boolean;
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
    *  shell can drop the queued entry. `cancelled`: the operator backed out
@@ -325,7 +328,7 @@ type DocumentEditorProps = {
 // body would re-run per keystroke. It only holds if the shell passes
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
+  active, keepSource, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
@@ -333,7 +336,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
-  const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
+  const { value: doc, past, future, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
     useHistory<Doc>(() => { const m = starterMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   const docRef = useRef(doc);
@@ -430,8 +433,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const savedAssetsRef = useRef({ texture, mask, customImages });
   savedAssetsRef.current = { texture, mask, customImages };
   // The layers that DRAW: enabled, values applied, page art bound to the
-  // loaded slots. What the preview, the hit boxes, the drag targets and the
-  // exports all plan from.
+  // loaded slots. What the preview (through useSettledQr), the hit boxes, the
+  // drag targets and the exports all plan from.
   const drawLayers = useMemo(() => withPageArt(
     rows.filter((r) => r.layer.enabled && (!r.variant || r.variant.enabled)).map((r) => r.layer),
     !!texture, !!mask,
@@ -926,7 +929,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
-   *  point the layer back at it (#75); see liveImages. */
+   *  point the layer back at it (#75), until no history step can (#737). */
   // A good image clears only the load error a bad one set (#511).
   const imageError = useOwnedToast(active);
   async function onLayerImage(layer: ImageLayer, f: File) {
@@ -936,6 +939,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
     setContent(layer, assetId);
   }
+
+  // Replaced art stays only while undo, redo or the bench can reach it: once
+  // the stack trims it, or a new edit ends its redo, nothing can (#737). Runs
+  // per undo step, not per keystroke: folded edits keep `past` and an empty
+  // `future`. `gone` comes from this render's store, so art added since, whose
+  // doc this render hasn't seen, is never in it. A history with no past has
+  // replaced nothing yet, so an open leaves everything it unpacked.
+  useEffect(() => {
+    if (!past.length) return;
+    const held = new Set([...past, doc, ...future].flatMap((d) => [...heldAssetIds(d.master, d.label)]));
+    const gone = Object.keys(customImages).filter((id) => !held.has(id));
+    if (!gone.length) return;
+    for (const id of gone) URL.revokeObjectURL(customImages[id].previewUrl);
+    setCustomImages((old) => Object.fromEntries(Object.entries(old).filter(([id]) => !gone.includes(id))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above; doc and customImages are this render's
+  }, [past, future.length]);
 
   /** The images the doc still names. The store also keeps replaced/cleared
    *  art so undo can bring it back (#75); the preview, the exports and Save
@@ -1002,7 +1021,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // (useRenderSource.ts): what the preview draws with, and the font metrics
   // and plan assets the hit boxes and the die check measure with.
   const { canvasAssets, canvasSource, previewReady, assetsFailed } = useRenderSource({
-    active, family, fontOverrides, liveImages, texture, mask,
+    active, keepSource, family, fontOverrides, liveImages, texture, mask,
     bgOn: pageOn("background"), maskOn: pageOn("mask"), guides, editSession,
     pageArt, planAssets: planAssetsOf, assetError,
   });
@@ -1041,10 +1060,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
   /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
    *  with a line in the inspector, but they do NOT block export. */
+  const previewLayers = useSettledQr(drawLayers);
   const pastDie = useMemo(() => canvasAssets
-    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+    ? outsideGuides(layerBoxes(previewLayers, canvasAssets.m, canvasAssets.planAssets),
       guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
-    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+    : new Set<string>(), [canvasAssets, previewLayers, master.physical]);
   // Keyed on the ids, not the Set: pastDie is rebuilt on every keystroke, and a
   // new Map each time would re-render the memoized LayerList per key (#605).
   const pastDieKey = [...pastDie].join("\0");
@@ -2398,9 +2418,9 @@ export const DocumentEditor = memo(function DocumentEditor({
                 ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}
-              canvasRender={viewMode === "2d" ? canvasSource : null}
+              canvasRender={active && viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
-              layers={drawLayers}
+              layers={previewLayers}
               editLayerOf={shownLayer}
               selected={selected}
               onPick={pick}
