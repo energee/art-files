@@ -93,7 +93,8 @@ export const PreviewCompare = forwardRef<
     canvasRender: CanvasRenderSource | null;
     /** The resolved layers that draw (enabled, values applied), in draw
      *  order — what the display list, the hit boxes and the drag targets are
-     *  all computed from, so they cannot disagree. */
+     *  all computed from, so they cannot disagree. A QR's value trails the
+     *  typing (useSettledQr). */
     layers: Layer[];
     /** Maps a resolved layer to the one the in-place editor opens on (App:
      *  its stored value, if the resolver rejected it — see shownLayer). */

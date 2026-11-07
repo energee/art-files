@@ -76,6 +76,7 @@ import { useExport } from "@/useExport";
 import { useViewPrefs } from "@/useViewPrefs";
 import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
+import { useSettledQr } from "@/useSettledQr";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
 import { useProjectSave } from "@/useProjectSave";
@@ -432,8 +433,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const savedAssetsRef = useRef({ texture, mask, customImages });
   savedAssetsRef.current = { texture, mask, customImages };
   // The layers that DRAW: enabled, values applied, page art bound to the
-  // loaded slots. What the preview, the hit boxes, the drag targets and the
-  // exports all plan from.
+  // loaded slots. What the preview (through useSettledQr), the hit boxes, the
+  // drag targets and the exports all plan from.
   const drawLayers = useMemo(() => withPageArt(
     rows.filter((r) => r.layer.enabled && (!r.variant || r.variant.enabled)).map((r) => r.layer),
     !!texture, !!mask,
@@ -1043,10 +1044,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
   /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
    *  with a line in the inspector, but they do NOT block export. */
+  const previewLayers = useSettledQr(drawLayers);
   const pastDie = useMemo(() => canvasAssets
-    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+    ? outsideGuides(layerBoxes(previewLayers, canvasAssets.m, canvasAssets.planAssets),
       guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
-    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+    : new Set<string>(), [canvasAssets, previewLayers, master.physical]);
   // Keyed on the ids, not the Set: pastDie is rebuilt on every keystroke, and a
   // new Map each time would re-render the memoized LayerList per key (#605).
   const pastDieKey = [...pastDie].join("\0");
@@ -2402,7 +2404,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             <PreviewCompare ref={previewRef} unit={unit}
               canvasRender={active && viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
-              layers={drawLayers}
+              layers={previewLayers}
               editLayerOf={shownLayer}
               selected={selected}
               onPick={pick}
