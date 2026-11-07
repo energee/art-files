@@ -5,7 +5,8 @@
 // an undo stack. Only the config goes through here — loaded texture/mask
 // files and the transient preview state are deliberately outside it, so undo
 // never re-runs an image decode. Their wells' X offers its own Undo instead
-// (App.tsx clearLoaded, #426).
+// (App.tsx clearLoaded, #426). An image layer's art isn't in the entries either,
+// only its asset id; App.tsx keeps the bytes for as long as an entry names them.
 import { useCallback, useRef, useState } from "react";
 
 // Consecutive edits closer together than this collapse into one undo step, so
@@ -114,6 +115,10 @@ export function useHistory<T>(initial: T | (() => T)) {
 
   return {
     value: h.present,
+    /** The stacks either side of `value`: every other state undo or redo can
+     *  reach. */
+    past: h.past,
+    future: h.future,
     set,
     undo,
     redo,

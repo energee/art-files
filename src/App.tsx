@@ -51,7 +51,7 @@ import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
   applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -336,7 +336,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
-  const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
+  const { value: doc, past, future, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
     useHistory<Doc>(() => { const m = starterMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   const docRef = useRef(doc);
@@ -929,7 +929,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
-   *  point the layer back at it (#75); see liveImages. */
+   *  point the layer back at it (#75), until no history step can (#737). */
   // A good image clears only the load error a bad one set (#511).
   const imageError = useOwnedToast(active);
   async function onLayerImage(layer: ImageLayer, f: File) {
@@ -939,6 +939,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
     setContent(layer, assetId);
   }
+
+  // Replaced art stays only while undo, redo or the bench can reach it: once
+  // the stack trims it, or a new edit ends its redo, nothing can (#737). Runs
+  // per undo step, not per keystroke: folded edits keep `past` and an empty
+  // `future`. `gone` comes from this render's store, so art added since, whose
+  // doc this render hasn't seen, is never in it. A history with no past has
+  // replaced nothing yet, so an open leaves everything it unpacked.
+  useEffect(() => {
+    if (!past.length) return;
+    const held = new Set([...past, doc, ...future].flatMap((d) => [...heldAssetIds(d.master, d.label)]));
+    const gone = Object.keys(customImages).filter((id) => !held.has(id));
+    if (!gone.length) return;
+    for (const id of gone) URL.revokeObjectURL(customImages[id].previewUrl);
+    setCustomImages((old) => Object.fromEntries(Object.entries(old).filter(([id]) => !gone.includes(id))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above; doc and customImages are this render's
+  }, [past, future.length]);
 
   /** The images the doc still names. The store also keeps replaced/cleared
    *  art so undo can bring it back (#75); the preview, the exports and Save
