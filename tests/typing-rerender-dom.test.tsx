@@ -42,7 +42,6 @@ vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
   labelFontCss: () => "sans-serif",
-  FONT_URLS: { poppins: {}, "barlow-condensed": {} },
 }));
 import { DocumentEditor } from "../src/App";
 

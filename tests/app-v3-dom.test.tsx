@@ -19,7 +19,6 @@ vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async (...args: unknown[]) => { perf.fontLoads++; perf.fontArgs.push(args); await perf.facesGate; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
-  FONT_URLS: { poppins: {}, "barlow-condensed": {} },
   loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
 }));
 // Exports wait on loadFonts; the export test holds every call open to read

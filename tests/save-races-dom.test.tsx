@@ -55,7 +55,7 @@ vi.mock("../src/fonts", () => ({
     if (menu.fontError) throw new Error(menu.fontError);
     return (t: string, s: number) => t.length * s * 0.55;
   },
-  labelFontCss: () => "sans-serif", FONT_URLS: { poppins: {} },
+  labelFontCss: () => "sans-serif",
   loadFonts: async () => (await import("./fixtures")).assets.fonts,
 }));
 // No promotion a user can tick fails parseMaster's validation, so the throw
