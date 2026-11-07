@@ -14,6 +14,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
+- **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
 
 ## [0.1.118] - 2026-11-04
 

@@ -1295,20 +1295,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   }
 
-  /** This document as .label bytes: the v3 label plus its embedded art —
-   *  what Save writes and what a crash-recovery snapshot keeps. The hint names
-   *  this tab's own master file: another tab may have opened a different file
-   *  with the same id since (#405). Saved to `labelPath`, it is written
-   *  relative to that label, so a shared .label carries no absolute path
-   *  (#428); a snapshot (no labelPath) stays on this machine and keeps it. */
-  const packProject = (labelPath?: string) => {
-    const masterHint = labelRelativeHint(
-      saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path, labelPath);
-    return packLabel({ ...label, masterHint }, {
-      texture: slotAsset(texture), mask: slotAsset(mask),
-      customImages: imageBundle(customImages, Object.keys(liveImages)),
-    });
-  };
+  /** This document's label with its master hint. The hint names this tab's
+   *  own master file: another tab may have opened a different file with the
+   *  same id since (#405). Saved to `labelPath`, it is written relative to that
+   *  label, so a shared .label carries no absolute path (#428); a snapshot (no
+   *  labelPath) stays on this machine and keeps it. */
+  const hintedLabel = (labelPath?: string) => ({
+    ...label,
+    masterHint: labelRelativeHint(
+      saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path, labelPath),
+  });
+  /** This document as .label bytes: the v3 label plus its embedded art — what
+   *  Save writes and what a crash-recovery snapshot stores as its art. */
+  const packProject = (labelPath?: string) => packLabel(hintedLabel(labelPath), {
+    texture: slotAsset(texture), mask: slotAsset(mask),
+    customImages: imageBundle(customImages, Object.keys(liveImages)),
+  });
 
   /** What a completed Save means here: the document reads saved unless it
    *  changed during the write. */
@@ -1350,8 +1352,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => () => settleReview(false), []);
 
   // Crash recovery (#394): while this tab holds unsaved work, keep a packed
-  // .label of it, and any unsaved master, a moment after each change; drop it
-  // once the work is saved.
+  // label of it, and any unsaved master, a moment after each change; drop it
+  // once the work is saved. The art is packed apart, only when it changes
+  // (recovery.ts): an edit keeps these objects, so typing never re-zips it.
   // Never dropped on unmount — a render crash unmounts too, and that is the
   // snapshot the next launch must find. The shell drops it on a tab close.
   const hasUnsaved = unsaved({ dirty, edited, masterUnsaved: templateMoved });
@@ -1362,14 +1365,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       let bytes: Uint8Array;
       let edits: RecoveredMaster | undefined;
       try {
-        bytes = packProject();
+        bytes = packLabel(hintedLabel(), {});
         if (templateMoved) edits = { edited: packMaster(master, {}), base: packMaster(pristineMaster.current, {}) };
       } catch { return; } // over the size caps: nothing Save could write either
       void keepRecovery(recoveryKey, {
         name: exportBase + LABEL_EXT, bytes, savedAt: Date.now(),
         filePath: filePath ?? undefined, fileModifiedAt: filePath ? boundModifiedAt() : undefined,
         master: edits,
-      });
+      }, { ids: [texture, mask, liveImages], pack: packProject });
     }, 2000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets

@@ -9,7 +9,7 @@ import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
-import { packLabel, packMaster, unpackMaster } from "../src/model/files";
+import { packLabel, packMaster, unpackLabel, unpackMaster } from "../src/model/files";
 import { lolevMaster } from "./fixtures/lolevMaster";
 import { unsaved } from "../src/tabs";
 import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
@@ -17,14 +17,18 @@ import { mountToaster, settle, shown, toastTitles, unmountToaster } from "./real
 const calls = vi.hoisted(() => [] as string[]);
 const kept = vi.hoisted(() => [] as { key: string; filePath?: string; fileModifiedAt?: number }[]);
 const snaps = vi.hoisted(() => [] as import("../src/recovery").RecoverySnapshot[]);
+const arts = vi.hoisted(() => [] as (import("../src/recovery").SnapshotArt | undefined)[]);
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here.
 vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
 vi.mock("../src/recovery", () => ({
-  keepRecovery: async (key: string, snap: import("../src/recovery").RecoverySnapshot) => {
+  keepRecovery: async (
+    key: string, snap: import("../src/recovery").RecoverySnapshot, art?: import("../src/recovery").SnapshotArt,
+  ) => {
     calls.push(`keep ${key}`);
     kept.push({ key, filePath: snap.filePath, fileModifiedAt: snap.fileModifiedAt });
     snaps.push(snap);
+    arts.push(art);
     return true;
   },
   dropRecovery: async (key: string) => { calls.push(`drop ${key}`); },
@@ -162,6 +166,38 @@ it("a snapshot's master restores with no master file left to resolve", async () 
     await unmount();
   }
 }, 30_000);
+
+// #717: edits leave the art alone, so a snapshot packs only the label and
+// names art that compares equal; the whole .label is packed on request.
+it("a snapshot after an edit carries no art and names the same art as the last", async () => {
+  class FakeBitmap { width = 10; height = 10; close() {} }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  vi.stubGlobal("createImageBitmap", async () => new FakeBitmap());
+  const context = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
+  const blob = vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
+  const bytes = packLabel(
+    { formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} },
+    { texture: { name: "art.png", bytes: new Uint8Array(4096) } });
+  const { container, unmount } = await restore({ seq: 1, file: new File([bytes as BlobPart], "alpha.label"), recovered: "old:1" });
+  try {
+    snaps.length = 0;
+    arts.length = 0;
+    await addTextLayer(container);
+    await debounce();
+    await addTextLayer(container);
+    await debounce();
+    expect(snaps).toHaveLength(2);
+    for (const s of snaps) expect(unpackLabel(s.bytes).assets).toEqual({});
+    expect(arts[1]!.ids).toHaveLength(arts[0]!.ids.length);
+    arts[0]!.ids.forEach((id, i) => expect(arts[1]!.ids[i]).toBe(id));
+    expect(unpackLabel(arts[1]!.pack()).assets.texture?.name).toBe("art.png");
+  } finally {
+    await unmount();
+    context.mockRestore();
+    blob.mockRestore();
+    vi.unstubAllGlobals();
+  }
+}, 60_000);
 
 // UX audit 26: the shell hands back the file the tab was bound to when
 // rebinding is safe, so Save writes there instead of asking where.
