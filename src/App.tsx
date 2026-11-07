@@ -24,10 +24,10 @@
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
 // listeners or renders a singleton surface (the native menu) MUST honor the
-// `active` prop — and per-document renders are dropped while inactive (see
-// the deactivation effect). The editor reports its DocumentMeta upward
-// through onMeta; the shell owns tabs, file-open routing, render settings,
-// and the updater.
+// `active` prop — and per-document renders are dropped while inactive
+// (canvasRender below; useRenderSource for the decoded source). The editor
+// reports its DocumentMeta upward through onMeta; the shell owns tabs,
+// file-open routing, render settings, and the updater.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";

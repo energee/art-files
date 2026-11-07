@@ -7,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PreviewCompare } from "../src/components/PreviewCompare";
 import type { CanvasRenderSource } from "../src/canvas/draw";
-import type { TextLayer } from "../src/model/layers";
+import type { Layer, TextLayer } from "../src/model/layers";
 import * as L from "../src/layout";
 import { measure } from "./fixtures";
 
@@ -59,6 +59,23 @@ it("a cancelled drag leaves the next tap to select", () => {
   fire("pointercancel", 20);
   act(() => { sheet.dispatchEvent(new MouseEvent("click", { bubbles: true, ...at })); });
   expect(onPick).toHaveBeenCalledWith("t", expect.anything());
+});
+
+// A hidden tab's editor passes no render source: both plates give up their
+// backing stores rather than sit at up to plate size behind display:none (#734).
+it("empties both plates while there is no render source", () => {
+  const props = {
+    canvasRender: source as CanvasRenderSource | null, layers: [layer], editLayerOf: (l: Layer) => l, selected: [],
+    onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCommit: vi.fn(),
+    onDrag: () => ({ x: null, y: null, dx: 0, dy: 0 }), onDragCancel: vi.fn(), onResize: vi.fn(),
+    onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN, unit: "in" as const,
+  };
+  act(() => { root.render(createElement(PreviewCompare, props)); });
+  const plates = [...container.querySelectorAll("canvas")];
+  expect(plates).toHaveLength(2);
+  for (const c of plates) { c.width = 4500; c.height = 2839; }
+  act(() => { root.render(createElement(PreviewCompare, { ...props, canvasRender: null })); });
+  expect(plates.map((c) => [c.width, c.height])).toEqual([[0, 0], [0, 0]]);
 });
 
 // The divider's grip is inset by its own width at each end, so the sheet's

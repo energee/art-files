@@ -12,6 +12,7 @@ that section to the new version (see .agents/release-steward.md).
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
 - **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
+- **Hidden tabs use less memory.** A tab you are not looking at no longer holds its rendered preview.
 - **Faster tab switching.** Going back to the last tab you were on shows the label straight away, and any other tab no longer waits before it starts rendering.
 
 ## [0.1.118] - 2026-11-04
