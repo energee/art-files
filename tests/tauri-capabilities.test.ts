@@ -147,21 +147,10 @@ describe("desktop overlay title bar", () => {
 // A null CSP let any injected markup load and run remote code. Everything the
 // app loads is bundled ('self', blob: previews, data: inlined assets) and the
 // updater downloads from Rust, so no directive names a remote host or eval.
-// The one exception is 'wasm-unsafe-eval' in script-src (#597): the AI
-// export compiles CanvasKit's bundled wasm (src/ai/expand.ts). It allows
-// WebAssembly compilation only, never JavaScript eval or new Function.
 describe("desktop content security policy", () => {
-  const csp = tauriConf.app.security.csp ?? "";
-  const directive = (name: string) =>
-    csp.split(";").map((d) => d.trim().split(/\s+/)).find(([n]) => n === name)?.slice(1);
-
   it("is enforced, allows no eval and names no remote host", () => {
+    const csp = tauriConf.app.security.csp ?? "";
     expect(csp).toContain("default-src 'self'");
-    expect(csp.replace("'wasm-unsafe-eval'", "")).not.toMatch(/unsafe-eval|https?:\/\/(?!ipc\.localhost)|\*/);
-  });
-
-  it("lets scripts compile bundled wasm and nothing broader", () => {
-    expect(directive("script-src")).toEqual(["'self'", "'wasm-unsafe-eval'"]);
-    expect(csp.match(/wasm-unsafe-eval/g)).toHaveLength(1);
+    expect(csp).not.toMatch(/unsafe-eval|https?:\/\/(?!ipc\.localhost)|\*/);
   });
 });
