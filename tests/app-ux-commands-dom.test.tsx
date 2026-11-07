@@ -291,7 +291,7 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
   await mount();
   await paletteRows();
   const groups = paletteGroups();
-  expect(Object.keys(groups)).toEqual(["File", "Export", "Edit", "Layer", "View", "Units", "Appearance", "Other"]);
+  expect(Object.keys(groups)).toEqual(["File", "Export", "Edit", "Layer", "View", "Units", "Appearance", "Help", "Other"]);
   expect(groups.File.map((r) => r.replace(/(⌘|Ctrl).*$/, ""))).toEqual([
     "New Tab", "Open Label…", "Close Tab", "Save Label", "Save Label As…",
     "Open Master…", "Save Master…", "Save Master As…",

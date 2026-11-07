@@ -99,6 +99,8 @@ const pt: Record<keyof typeof en, string> = {
   "View": "Visualizar",
   "Redo": "Refazer",
   "Settings…": "Configurações…",
+  "User Guide": "Guia do usuário",
+  "Couldn't open the User Guide": "Não foi possível abrir o guia do usuário",
   "Add Text Layer": "Adicionar camada de texto",
   "Add Image Layer": "Adicionar camada de imagem",
   "Add Barcode Layer": "Adicionar camada de código de barras",

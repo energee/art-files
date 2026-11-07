@@ -1,0 +1,51 @@
+# docs-deploy.yml — publish the user guide to https://energ.ee/label-lab-docs/.
+# The site lives in its own repository because this one's Pages site carries
+# the updater feed. DOCS_DEPLOY_KEY is a write deploy key on energee/label-lab-docs.
+name: Deploy docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs-site/**', '.github/workflows/docs-deploy.yml', '.nvmrc']
+  workflow_dispatch:
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: docs-site
+    env:
+      BASE_PATH: /label-lab-docs
+      SITE_URL: https://energ.ee/label-lab-docs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Push the site to gh-pages
+        working-directory: docs-site/out
+        env:
+          DOCS_DEPLOY_KEY: ${{ secrets.DOCS_DEPLOY_KEY }}
+        run: |
+          key="$RUNNER_TEMP/docs-deploy-key"
+          (umask 077; printf '%s\n' "$DOCS_DEPLOY_KEY" > "$key")
+          ssh-keyscan github.com > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
+          touch .nojekyll # Jekyll would drop _next/
+          git init -q -b gh-pages
+          git add -A
+          git -c user.name=docs-deploy -c user.email=docs-deploy@users.noreply.github.com commit -qm "Deploy $GITHUB_SHA"
+          git push -qf git@github.com:energee/label-lab-docs.git gh-pages

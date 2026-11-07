@@ -18,6 +18,10 @@
     "dialog:allow-open",
     "opener:allow-reveal-item-in-dir",
     {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://energ.ee/label-lab-docs/docs" }]
+    },
+    {
       "identifier": "fs:allow-read-file",
       "allow": [
         { "path": "**/*.[lL][aA][bB][eE][lL]" },

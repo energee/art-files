@@ -30,6 +30,7 @@ import { errMsg } from "@/lib/utils";
  *  src-tauri/src/menu_symbols.rs) and the in-window menu draws the closest
  *  Lucide glyph, so every row carries the same picture in both. */
 const SYMBOL_GLYPH = {
+  "book": BookOpen,
   "plus.square.on.square": SquarePlus,
   "folder": FolderOpen,
   "clock.arrow.circlepath": History,
@@ -214,6 +215,11 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "predefined", item: "Fullscreen", text: "Enter Full Screen" },
     ],
   },
+  {
+    kind: "submenu", id: "help-menu", text: "Help", items: [
+      { kind: "action", id: "user-guide", text: "User Guide", symbol: "book" },
+    ],
+  },
 ];
 
 type Translate = (key: string) => string;
@@ -384,7 +390,6 @@ type NativeMenuLabels = {
   showAll: string;
   clearMenu: string;
   quit: string;
-  help: string;
   update: { check: string; restart: string };
   fullScreen: [string, string];
 };
@@ -396,7 +401,6 @@ const DEFAULT_NATIVE_MENU_LABELS: NativeMenuLabels = {
   showAll: "Show All",
   clearMenu: "Clear Menu",
   quit: "Quit Label Lab",
-  help: "Help",
   update: { check: "Check for Updates…", restart: "Restart to Update" },
   fullScreen: ["Enter Full Screen", "Exit Full Screen"],
 };
@@ -672,9 +676,8 @@ function useNativeMenu(
             action: () => updateRef.current(),
           });
           resources.push(updater);
-          const help = await api.Submenu.new({ id: "help-menu", text: labels.help, items: [updater] });
-          resources.push(help);
-          roots.push(help);
+          // macOS keeps this row in the application menu; elsewhere it joins Help.
+          await (roots.find((root) => root.id === "help-menu") as Submenu).append(updater);
         }
         const menu = await api.Menu.new({ id: "label-lab-menu", items: roots });
         resources.push(menu);
@@ -832,7 +835,6 @@ export const AppMenu = memo(function AppMenu(props: {
     showAll: t("Show All"),
     clearMenu: t("Clear Menu"),
     quit: t("Quit Label Lab"),
-    help: t("Help"),
     update: { check: t(UPDATE_ITEM_TEXT.check), restart: t(UPDATE_ITEM_TEXT.restart) },
     fullScreen: [t("Enter Full Screen"), t("Exit Full Screen")],
   }), [t]);

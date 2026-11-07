@@ -84,14 +84,15 @@ describe("desktop master-file access", () => {
     expect(caps.permissions).toContain("dialog:allow-open");
   });
 
-  // The "Show in Finder" toast action reveals an export in its folder. The
-  // opener plugin can also open arbitrary paths and URLs, so grant nothing but
-  // the reveal; `opener:default` would add open-url.
-  it("grants only reveal-item-in-dir from the opener plugin", () => {
+  // The "Show in Finder" toast action reveals an export in its folder, and
+  // Help > User Guide opens the guide. The opener plugin can also open
+  // arbitrary paths and URLs, so grant only those two, the URL scoped to the
+  // guide (tests/user-guide.test.ts); `opener:default` would open anything.
+  it("grants only the reveal and the scoped open-url from the opener plugin", () => {
     const opener = caps.permissions
       .map((p) => (typeof p === "string" ? p : p.identifier))
       .filter((id) => id.startsWith("opener:"));
-    expect(opener).toEqual(["opener:allow-reveal-item-in-dir"]);
+    expect(opener).toEqual(["opener:allow-reveal-item-in-dir", "opener:allow-open-url"]);
   });
 });
 

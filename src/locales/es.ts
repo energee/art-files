@@ -99,6 +99,8 @@ const es: Record<keyof typeof en, string> = {
   "View": "Ver",
   "Redo": "Rehacer",
   "Settings…": "Ajustes…",
+  "User Guide": "Guía de usuario",
+  "Couldn't open the User Guide": "No se pudo abrir la guía de usuario",
   "Add Text Layer": "Añadir capa de texto",
   "Add Image Layer": "Añadir capa de imagen",
   "Add Barcode Layer": "Añadir capa de código de barras",

@@ -53,7 +53,8 @@ const native = vi.hoisted(() => {
     installCalls: 0,
     api: {
       MenuItem: class extends Resource {}, IconMenuItem: class extends Resource {},
-      PredefinedMenuItem: class extends Resource {}, Submenu: class extends Resource {},
+      PredefinedMenuItem: class extends Resource {},
+      Submenu: class extends Resource { async append() {} },
       Menu: class extends Resource {}, CheckMenuItem,
     },
   };

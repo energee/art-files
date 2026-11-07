@@ -73,6 +73,7 @@ import {
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
+import { openUserGuide } from "@/userGuide";
 import { useViewPrefs } from "@/useViewPrefs";
 import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
@@ -2026,6 +2027,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "layer-remove", label: t("Remove Layer"), shortcut: "⌫", disabled: !removable,
       run: () => onRemoveLayer(selected[selected.length - 1]) },
     { id: "settings", label: t("Settings…"), key: ",", mods: "⌘", run: () => setSettingsOpen(true) },
+    { id: "user-guide", label: t("User Guide"), run: () => void openUserGuide() },
     { id: "view-label", label: t("Label"), key: "1", run: () => show2d("art") },
     { id: "view-mask", label: t("Mask"), key: "2", run: () => show2d("mask") },
     { id: "view-rendered", label: t("Rendered"), key: "3", run: () => setViewMode("rendered") },

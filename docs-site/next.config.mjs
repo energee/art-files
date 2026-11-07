@@ -5,10 +5,9 @@ const withMDX = createMDX();
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
-  // The guide is the site: no splash page in front of it.
-  async redirects() {
-    return [{ source: '/', destination: '/docs', permanent: false }];
-  },
+  // Plain files for GitHub Pages: no server, so no redirects, rewrites or proxy.
+  output: 'export',
+  basePath: process.env.BASE_PATH ?? '',
 };
 
 export default withMDX(config);

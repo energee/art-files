@@ -98,6 +98,8 @@ const en = {
   "View": "View",
   "Redo": "Redo",
   "Settings…": "Settings…",
+  "User Guide": "User Guide",
+  "Couldn't open the User Guide": "Couldn't open the User Guide",
   "Add Text Layer": "Add Text Layer",
   "Add Image Layer": "Add Image Layer",
   "Add Barcode Layer": "Add Barcode Layer",

@@ -83,7 +83,7 @@ describe("file menu", () => {
 
 describe("layer menu", () => {
   it("sits between Edit and View with the four Add rows, a separator, then Remove Layer", () => {
-    expect(APP_MENUS.map((menu) => menu.text)).toEqual(["File", "Edit", "Layer", "View"]);
+    expect(APP_MENUS.map((menu) => menu.text)).toEqual(["File", "Edit", "Layer", "View", "Help"]);
     const layer = APP_MENUS.find((menu) => menu.id === "layer-menu")!;
     expect(layer.items.map((entry) => entry.kind === "action" ? entry.id : entry.kind)).toEqual([
       "layer-add-text", "layer-add-image", "layer-add-barcode", "layer-add-qr", "separator", "layer-remove",
