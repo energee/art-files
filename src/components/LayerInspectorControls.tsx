@@ -383,6 +383,7 @@ const sameProps = (ignored: string[]) => {
     deepEqual({ ...a, layer: { ...a.layer, ...blank } }, { ...b, layer: { ...b.layer, ...blank } });
 };
 export const ignoringContent = sameProps(CONTENT);
+export const ignoringPlacement = sameProps(PLACEMENT);
 export const ignoringContentAndPlacement = sameProps([...CONTENT, ...PLACEMENT]);
 
 /** A REQUIRED text box: one parseMaster refuses to leave empty (a choice's

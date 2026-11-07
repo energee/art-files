@@ -4,7 +4,7 @@
 // through `set` with a minimal patch (LayerInspector.tsx's header). Split out
 // of LayerInspector.tsx (#433). Each is memoized on the part of the layer it
 // reads, so typing or dragging re-renders only the sections it changes (#715).
-import { memo, type ReactNode } from "react";
+import { memo, useCallback, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
 import { Link2, Link2Off, RotateCcw } from "lucide-react";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
@@ -185,12 +185,13 @@ type TextProps = Ctx & { layer: TextLayer; fontFamily?: string };
  *  text being typed: it stays out of the memoized halves so they can skip. */
 export function TextGeometry(props: TextProps) {
   const { layer, set } = props;
+  const setSize = useCallback((size: number) => set({ size }), [set]);
   return (
     <div className="space-y-1.5">
       <TextFace {...props} />
       <CharacterHeight key={layer.fontFamily ?? props.fontFamily} layer={layer}
         family={fontFamilyOf({ fontFamily: layer.fontFamily ?? props.fontFamily })}
-        onChange={(size) => set({ size })} />
+        onChange={setSize} />
       <TextSetting {...props} />
     </div>
   );
