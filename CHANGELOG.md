@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Opening a label keeps its own art.** A texture, mask or image still loading in a fresh tab no longer replaces the art of a label opened into that tab, and saving no longer writes the wrong art into the file.
 - **Saving from inside a field keeps what you typed.** ⌘S, ⌘E, ⌘W, the menus and closing the window now commit the text in a Style, layer name, variant name or hex box first. Before, the file could keep the old value while the field showed the new one, or the tab could close with no prompt.
 
 ### Changed
