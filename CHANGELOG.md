@@ -27,6 +27,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Security
 - **Safer update downloads.** Updated the built-in updater to a version whose zip library fixes a crash on a malformed update archive (RUSTSEC-2026-0429) and three older zip extraction flaws. Updates are still verified against Label Lab's signature before they are opened.
+- **WebAssembly for the coming Illustrator export.** The desktop app's security policy now lets it compile the WebAssembly code it ships with, which the upcoming Illustrator (.ai) export uses to turn keylines into outlines. It still cannot run JavaScript from text or load code from the internet. Nothing loads this code until that export exists.
 
 ### Changed
 - **Colour-profile embedding is deferred.** PDF exports keep CMYK fills and White Ink but do not embed an output ICC profile or claim PDF/X-4 compliance. In Acrobat, enable Overprint Preview manually before reviewing the White Ink separation.
