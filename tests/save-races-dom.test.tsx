@@ -1329,6 +1329,20 @@ it("⌘S from a hex box saves a 3-digit colour that only commits on blur (#684)"
   expect(savedLabel(written).toLowerCase()).toContain("#aabbcc");
 });
 
+// The Style section skips the render the first edit causes (#715); the hex
+// box's commit must still land on top of that edit.
+it("⌘S from a hex box keeps an edit made after the box last rendered (#684, #715)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  await typeInto(await field('input[role="combobox"]'), "Hazy IPA");
+  const hex = await field('input[aria-label$=" color"]:not([disabled])');
+  await typeInto(hex, "#abc");
+  await pressSave(hex);
+  expect(savedLabel(written)).toContain("Hazy IPA");
+  expect(savedLabel(written).toLowerCase()).toContain("#aabbcc");
+});
+
 it("⌘S leaves focus in a field with nothing to commit (#684)", async () => {
   recordingPicker();
   await mount();
