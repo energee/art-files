@@ -78,7 +78,7 @@ import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
-import { useFileBaseline, useProjectSave } from "@/useProjectSave";
+import { useFileBaseline, useProjectSave, useSaveTurns } from "@/useProjectSave";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
@@ -288,9 +288,10 @@ type DocumentEditorProps = {
   active: boolean;
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
-   *  shell can drop the queued entry. `cancelled`: the operator backed out
-   *  (the different-master prompt's Cancel, or its Locate picker's), so a
-   *  tab made only for this open can go again (#553). */
+   *  shell can drop the queued entry. Called after onMeta has reported the
+   *  open, so the tab's meta claims it from then on. `cancelled`: the
+   *  operator backed out (the different-master prompt's Cancel, or its Locate
+   *  picker's), so a tab made only for this open can go again (#553). */
   onOpenSettled: (seq: number, cancelled: boolean) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its save fn into on every render;
@@ -302,6 +303,9 @@ type DocumentEditorProps = {
    *  once the master file is written (false on Cancel or a failed save).
    *  Omitted by tests mounting a lone editor. */
   masterSaveSlot?: { current: (() => Promise<boolean>) | null };
+  /** Shell-owned slot reading the browser file this tab saves to, so the
+   *  shell can spot a second pick of it. Omitted by tests mounting a lone editor. */
+  fileHandleSlot?: { current: (() => FileSystemFileHandle | null) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
   onRenderChange: (render: RenderSettings) => void;
@@ -325,7 +329,7 @@ type DocumentEditorProps = {
 // body would re-run per keystroke. It only holds if the shell passes
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
+  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, fileHandleSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
@@ -348,6 +352,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // fileToOpen attempt and reported through onOpenSettled.
   const openCancelled = useRef(false);
   const openChain = useRef<Promise<void>>(Promise.resolve());
+  /** A finished fileToOpen attempt, until the effect below reports it. */
+  const [openSettled, setOpenSettled] = useState<{ seq: number; cancelled: boolean } | null>(null);
   // The master as of the last open/save — the baseline the "unsaved master
   // edits" dot (Save Master) compares against, itemised by masterChanges.
   const pristineMaster = useRef(doc.master);
@@ -1324,7 +1330,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
-  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
+  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt, boundHandle } = useProjectSave({
     pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
@@ -1334,6 +1340,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, dirty, edited, templateMoved, filePath]);
   saveSlot.current = () => saveProject();
+  if (fileHandleSlot) fileHandleSlot.current = boundHandle;
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
     reviewDone.current = done;
@@ -1397,7 +1404,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const report = (saved: boolean) => {
       if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
     };
-    void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
+    void saveMasterInTurn(as, promote).then(report, (err: unknown) => { report(false); throw err; });
   }
 
   /** File → Save Master… / Save Master As…, the picker's button and the
@@ -1422,7 +1429,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *
    *  packMaster goes through the same three-way platform save path as
    *  saveProject, then registers the file in the library index and moves the
-   *  master-dirty baseline. */
+   *  master-dirty baseline. Called through saveMasterInTurn, so writes can't
+   *  finish out of order. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
     // Another tab's Save Master may have moved the file: nothing pushes that
     // into this tab's copy, so writing it blind would erase those edits (#682).
@@ -1434,7 +1442,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     // A promotion re-validates through parseMaster; surface a rejection as an
     // error toast like the write failures below instead of an unhandled
-    // rejection from the `void saveMaster(...)` caller (#92).
+    // rejection from the `void saveMasterInTurn(...)` caller (#92).
     let promoted: ReturnType<typeof applyPromotions>;
     try {
       promoted = applyPromotions(master, label, promote, version ?? undefined);
@@ -1484,9 +1492,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         // Redundant overrides can be promoted again on the next master save.
         return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
       });
+      const baseline = pristineMaster.current;
       await rememberMaster(m, where, bytes);
       refreshLibrary();
-      if (ours) pristineMaster.current = m;
+      // An Open Master during that await set its own baseline: it stays (#696).
+      if (ours && pristineMaster.current === baseline) pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
     try {
@@ -1515,6 +1525,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       return false;
     }
   }
+
+  const saveMasterInTurn = useSaveTurns(saveMaster);
 
   /** Parse a candidate .master file (ZIP or legacy JSON; a v1 file is
    *  refused), reporting a clear error and leaving the document untouched
@@ -1970,11 +1982,19 @@ export const DocumentEditor = memo(function DocumentEditor({
       } catch (err) {
         reportOpenError(err);
       } finally {
-        onOpenSettled(mySeq, openCancelled.current);
+        setOpenSettled({ seq: mySeq, cancelled: openCancelled.current });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
+  // Declared after the onMeta effect, so in a shared commit it runs second:
+  // the queued open keeps claiming the tab until its meta has taken over (#694).
+  useEffect(() => {
+    if (!openSettled) return;
+    onOpenSettled(openSettled.seq, openSettled.cancelled);
+    setOpenSettled(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSettled]);
 
   /** Every command the app exposes, once. The palette and AppMenu read this
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires

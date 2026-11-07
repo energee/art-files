@@ -8,6 +8,13 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Saving no longer erases changes made elsewhere.** On desktop, if a `.master` or `.label` changed after you opened it, in another tab or another app, Save now stops and offers Save As, Overwrite or Cancel. Before, the file was overwritten without warning.
+- **A newer Save can no longer be replaced by an older one.** Saves of a label or master now run one at a time, so a Save made while another is writing keeps your latest edits on disk, even if you close the tab right after.
+- **Opening a label during a Save keeps it tied to its own file.** If a label opened into the tab while the Save dialog was up, finishing the Save used to point the tab at the file just saved, so the next ⌘S wrote to the wrong file.
+- **A label that just opened stays open.** A second file opening at that same moment could land in its tab and replace it. It now gets its own tab.
+- **A master opened during Save Master no longer reads as unsaved.** The finishing save used to compare the new master against the old one, so it showed changes it didn't have and prompted on close.
+- **The browser no longer opens one file in two tabs.** Picking a label a tab already has focuses that tab, as the desktop app does, instead of letting the two tabs overwrite each other.
+- **Work you discard on quit stays discarded.** Quitting now waits for the tab's recovery copy to be deleted, so the next launch doesn't offer it back.
+- **Escape no longer interrupts the close prompt's Save.** It used to dismiss the prompt and cancel a quit while the Save carried on and closed the tab anyway.
 
 ### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
