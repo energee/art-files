@@ -270,3 +270,38 @@ it("the next edit after a drag never folds into the drag's step", async () => {
   expect(enabled("qr")).toBe("true");
   expect(xOf("barcode")).toBeCloseTo(startX + dx);
 }, 60_000);
+
+it("Remove of a bound layer waits for the render source after a tab switch (#708)", async () => {
+  await pick("volume");
+  const faces = gate();
+  held.faces = faces.opened;
+  await act(async () => root.render(editor(false)));
+  await act(async () => root.render(editor(true)));
+  expect(held.preview!.canvasRender).toBeNull();
+  const remove = () => act(async () => held.actions.find((c) => c.id === "layer-remove")!.run());
+  await remove();
+  await settle();
+  expect(toastTitles()).toEqual([]);
+  expect(row("volume")).not.toBeNull();
+  faces.open();
+  await vi.waitFor(() => expect(held.preview!.canvasRender).toBeTruthy(), { timeout: 30_000 });
+  await remove();
+  expect(row("volume")).toBeNull();
+  expect(row("abv")).not.toBeNull();
+}, 60_000);
+
+it("a failed render source refuses a bound layer's Remove out loud, and removes the rest", async () => {
+  held.faces = Promise.reject(new Error("no font"));
+  held.faces.catch(() => {});
+  await act(async () => root.render(editor(false)));
+  await act(async () => root.render(editor(true)));
+  await shown("no font");
+  const remove = () => act(async () => held.actions.find((c) => c.id === "layer-remove")!.run());
+  await pick("volume");
+  await remove();
+  await shown("Cannot remove");
+  expect(row("volume")).not.toBeNull();
+  await pick("qr");
+  await remove();
+  expect(row("qr")).toBeNull();
+}, 60_000);

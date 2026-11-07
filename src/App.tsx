@@ -639,6 +639,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The selection can hold an id that no longer exists (an undone add, a
     // deleted variant's layer); removing it would throw and delete nothing.
     const ids = gestureIds(selected, id).filter((k) => rows.some((r) => r.layer.id === k));
+    // Just after a tab switch the render source is still assembling, and a
+    // layer others bind to can't go without their boxes: wait it out (#708).
+    // A failed assembly never brings them, so the edit's refusal says why.
+    const bound = rows.some(({ layer }) => layer.binding && ids.includes(layer.binding.to));
+    if (bound && !canvasAssets && !assetsFailed) return;
     const boxes = rowBoxes();
     if (edit((d) => ids.reduce((next, key) => removeLayerIn(next, key, boxes), d)))
       setSelection((s) => ({ ids: s.ids.filter((x) => !ids.includes(x)),
