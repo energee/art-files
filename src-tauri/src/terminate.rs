@@ -27,8 +27,9 @@ const TERMINATE_NOW: usize = 1;
 /** How soon a repeated quit must follow a cancelled one to force through. */
 const REPEAT_QUIT: Duration = Duration::from_secs(5);
 
-/** Whether any tab has unsaved work — written by the frontend (TabsShell)
- *  whenever that changes, read by the terminate hook. */
+/** Whether quitting now would lose work: a tab has unsaved changes or an
+ *  export is running — written by the frontend (TabsShell) whenever that
+ *  changes, read by the terminate hook. */
 static UNSAVED: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]

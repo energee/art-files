@@ -22,6 +22,15 @@ const BINARY_FILES = new Set([
   "vite.config.ts",
 ]);
 
+// A diff of only these is a dependency bump: it has nothing to tell users, and
+// the release PR reviews [Unreleased] anyway. A version bump still needs notes.
+const DEPENDENCY_FILES = new Set([
+  "package.json",
+  "package-lock.json",
+  "src-tauri/Cargo.toml",
+  "src-tauri/Cargo.lock",
+]);
+
 const BINARY_PREFIXES = ["public/", "src/", "src-tauri/"];
 const NON_BINARY_FILES = new Set(["src-tauri/.gitignore"]);
 
@@ -156,11 +165,13 @@ if (releaseMode && !bumped) {
 if (!bumped && version !== baseVersion) {
   abort(`version ${version} is older than ${baseVersion} at ${baseRef}`);
 }
-if (binaryFiles.length > 0 && !changedFiles.includes("CHANGELOG.md")) {
+const dependencyBump = !bumped && changedFiles.every((path) => DEPENDENCY_FILES.has(path));
+const needsNotes = binaryFiles.length > 0 && !dependencyBump;
+if (needsNotes && !changedFiles.includes("CHANGELOG.md")) {
   abort("binary-impacting files changed, but CHANGELOG.md was not updated");
 }
 const pending = pendingNotes();
-if (binaryFiles.length > 0 && !bumped && !pending) {
+if (needsNotes && !bumped && !pending) {
   abort(
     `binary-impacting files changed (${binaryFiles.join(", ")}) without a version bump; ` +
     "add user-facing bullets under ## [Unreleased] in CHANGELOG.md, or bump the version to cut a release",
