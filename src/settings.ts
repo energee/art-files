@@ -125,7 +125,7 @@ export function addColor(list: string[], hex: string): string[] {
 // already written — #407.)
 // ---------------------------------------------------------------------------
 
-const RENDER_KEY = "labellab.render";
+export const RENDER_KEY = "labellab.render";
 const SWATCHES_KEY = "labellab.swatches";
 
 /** A guarded JSON read of one localStorage key: null when the key is absent,
@@ -179,10 +179,13 @@ function subscribeSwatches(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-/** Replace the swatch list, persist it, and re-render every subscriber. */
+/** Replace the swatch list, persist it, and re-render every subscriber. Starts
+ *  from storage, not the shared copy: another browser window may have saved a
+ *  swatch since, and this write must not drop it (#701). */
 export function setSwatches(update: (current: string[]) => string[]): void {
-  const next = update(currentSwatches());
-  if (next === swatches) return; // addColor's "already saved" — nothing to write
+  const stored = loadSwatches();
+  const next = update(stored);
+  if (next === stored) return; // addColor's "already saved" — nothing to write
   swatches = next;
   localStorage.setItem(SWATCHES_KEY, JSON.stringify(next));
   for (const l of listeners) l();

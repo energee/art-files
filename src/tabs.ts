@@ -10,16 +10,20 @@ export type TabMeta = {
   edited: boolean;          // any user mutation since mount/open — gates close prompts
   masterUnsaved: boolean;   // the master differs from its last open/save — ⌘S doesn't write it
   filePath: string | null;  // Tauri path identity, for OS-open dedupe
+  exporting: boolean;       // an export is running — holds a quit until it ends
+  exportFailures: number;   // failed exports so far, so a held quit can tell its export failed
 };
 export type Tab = TabMeta & { id: number };
-export type TabsState = { tabs: Tab[]; active: number; nextId: number };
+/** `previous`: the tab shown before `active`, which alone among the hidden
+ *  tabs keeps its decoded preview source (useRenderSource's keepSource). */
+export type TabsState = { tabs: Tab[]; active: number; previous?: number; nextId: number };
 
 // dirty starts true, edited false: a fresh default document has Save enabled
 // and counts as pristine (isPristine), but closing it must not prompt.
 // `untitled` is its title until the editor reports one: the shell passes the
 // UI language's word, so the window isn't titled in English first.
 const fresh = (id: number, untitled: string): Tab => ({
-  id, title: untitled, dirty: true, edited: false, masterUnsaved: false, filePath: null,
+  id, title: untitled, dirty: true, edited: false, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0,
 });
 
 export function initialTabs(untitled = "Untitled"): TabsState {
@@ -27,11 +31,11 @@ export function initialTabs(untitled = "Untitled"): TabsState {
 }
 
 export function addTab(s: TabsState, untitled = "Untitled"): TabsState {
-  return { tabs: [...s.tabs, fresh(s.nextId, untitled)], active: s.nextId, nextId: s.nextId + 1 };
+  return { tabs: [...s.tabs, fresh(s.nextId, untitled)], active: s.nextId, previous: s.active, nextId: s.nextId + 1 };
 }
 
 export function activateTab(s: TabsState, id: number): TabsState {
-  return s.tabs.some((t) => t.id === id) ? { ...s, active: id } : s;
+  return id !== s.active && s.tabs.some((t) => t.id === id) ? { ...s, active: id, previous: s.active } : s;
 }
 
 export function updateTabMeta(s: TabsState, id: number, meta: Partial<TabMeta>): TabsState {

@@ -3,6 +3,7 @@
 // round data dots + circular finder rings (the Labradorite label's "dots"
 // style, still the default) or plain/rounded module squares, per QrOptions.
 import qrcode from "qrcode-generator";
+import { lruGet } from "@/lib/lru";
 
 /** Beer title -> machine name: lowercase, non-alphanumeric runs -> "-". */
 export function machineName(name: string): string {
@@ -192,15 +193,10 @@ export function qrPath(shapes: QrShapes, size: number, grow = 0): string {
  *  object, which qrShapes memoizes, so entries die with it. Per shapes only
  *  the two most recently used (size, grow) entries are kept — a plan asks for
  *  at most a fill and a stroke — so a resize drag's intermediate sizes do not
- *  pile up. Map order is the recency order: a hit is re-inserted. */
+ *  pile up. */
 const pathsCache = new WeakMap<QrShapes, Map<string, readonly string[]>>();
 export function qrPaths(shapes: QrShapes, size: number, grow = 0): readonly string[] {
   let recent = pathsCache.get(shapes);
   if (!recent) pathsCache.set(shapes, (recent = new Map()));
-  const key = `${size}|${grow}`;
-  const hit = recent.get(key) ?? [qrPath(shapes, size, grow)];
-  recent.delete(key);
-  recent.set(key, hit);
-  if (recent.size > 2) recent.delete(recent.keys().next().value!);
-  return hit;
+  return lruGet(recent, `${size}|${grow}`, 2, () => [qrPath(shapes, size, grow)]);
 }

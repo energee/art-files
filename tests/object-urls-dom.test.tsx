@@ -1,5 +1,5 @@
 // object-urls-dom.test.tsx — a DocumentEditor must release every blob URL it
-// mints: a closed tab (unmount) revokes its thumbnails and export URLs, and a
+// mints: a closed tab (unmount) revokes its thumbnails, and a
 // custom image that fails to decode never leaves its preview URL behind (#85).
 // Decoders mint no URL; one is minted only as a decode commits to state, so a
 // decode that is discarded (a sibling failed, or the slot was already

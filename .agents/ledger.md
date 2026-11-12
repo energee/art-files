@@ -937,6 +937,13 @@ no status, no attempts, no delta.
 - evidence: on release/0.1.117, all 1940 tests across 186 files pass (--maxWorkers=4), zero-warning lint, TypeScript/production app build, Knip 6.38.0, both release metadata gates (origin/main and --release label-lab-v0.1.116), runtime npm audit (0 vulnerabilities), and docs production build pass. Existing happy-dom fetch-abort diagnostics, Vite chunk-size advisory and docs CSS warnings remain.
 - release: binary-impacting; all five version files synchronized at 0.1.117 and Unreleased renamed to the dated 0.1.117 section. Release candidate validated for the user-authorized merge/publication after CI. Colour-profile embedding remains explicitly out of this release; CMYK fills and White Ink are retained.
 
+## 2026-11-06 issue-682-overwrite-check
+- finding: [race/high] #682 — Save Master in one tab silently erased another tab's saved master edits; the same blind write applied to a bound .label rewritten outside the app; found by the 2026-11-05 performance and race audit (#682-#740)
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/fix-682 @ fix/682-overwrite-check, based on dda449b9
+- delta: user chose stop-and-ask, covering .label too. confirmOverwrite (files.ts) compares a bound file's mtime with the tab's baseline before an in-place write and shows a native alert: Save As, Overwrite, Cancel. useFileBaseline replaces useProjectSave's own mtime logic and also serves masters through bindMasterPath, which replaces five direct writes of masterFilePath. A native alert, not a React dialog, because the close prompt's Save would otherwise stack two modals. NSAlert's first button answers Return, so that is Save As; anything but the Overwrite label means cancel. Adds the dialog:allow-message capability.
+- evidence: tests/confirm-overwrite.test.ts and #682 tests in tests/save-races-dom.test.tsx were red before the fix (blind writes on cancel and Save As) and green after. Custom-button results read from tauri-plugin-dialog 2.8.3 and rfd 0.17.2 source. Full Vitest 188 files / 1968 tests (--maxWorkers=4), 13 Rust tests (compiling the new capability), tsc, lint, knip@6.38.0 and check-release vs origin/main pass. Not driven in the live desktop app, so the alert itself has not been seen on screen. Desktop only: browser File System Access saves keep today's behaviour.
 ## 2026-11-06 issue-684-field-draft-commit
 - finding: [race/high] #684 — ⌘ commands ran before a focused field's draft committed, so a file omitted what the field showed; found by the 2026-11-05 performance and race audit (#682-#740)
 - status: done
@@ -952,4 +959,21 @@ no status, no attempts, no delta.
 - attempted-in: .agents/worktrees/fix-685 @ fix/685-decode-doc-guard, based on 2f065d08
 - delta: docRun (App.tsx) is bumped when an open installs a document; onTexture, onMask and onLayerImage capture it before their await and drop the result, including an error toast, if it moved. The audit suggested bumping in resetDocument; boot restore calls that on the same untitled document, so art dropped just after launch would be lost, and the bump sits at the open install instead.
 - evidence: on fix/685-decode-doc-guard, four #685 tests in tests/save-races-dom.test.tsx were red before the fix and green after. "art dropped during the boot restore survives it" passes before and after, and fails when the bump is moved into resetDocument (mutation check). Full Vitest 187 files / 1958 tests (--maxWorkers=4), tsc, lint, knip@6.38.0 and check-release vs origin/main pass. Not driven in the live desktop app. Two drops on one slot (#686) and adoptMasterAssets (#687) stay open: their decodes are on the same document.
+- release: binary-impacting; bullet queued under Unreleased, no version bump.
+
+## 2026-11-06 issue-686-687-706-decode-slots
+- finding: [race/medium] #686, #687, #706 — an older decode could replace a newer drop on one slot, a master's art could land on a filled slot or the wrong master, and a legacy v1 open read customImages from a stale render; found by the 2026-11-05 performance and race audit (#682-#740)
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/decode-slots @ fix/decode-slot-races, stacked on fix/685-decode-doc-guard
+- delta: each drop takes a per-slot run and only the newest commits or reports an error, and clearLoaded bumps the run. An adopt commits through fillEmpty under its own adopt run. A v1 open reads savedAssetsRef.current.customImages. Image layers keep the two-drop race, which #686 does not name.
+- evidence: at 35c4d29c, tsc, lint, knip 6.38.0, build and check-release exit 0, and vitest passed 187 files and 1967 tests. New tests in tests/save-races-dom.test.tsx were red before their fixes, except one stated guard. Nothing ran in WKWebView or Tauri. The #706 fix relies on React rendering the restored images before the open reads the ref, which nothing enforces.
+- release: binary-impacting; bullets queued under Unreleased, no version bump.
+## 2026-11-06 issue-683-hold-quit-during-export
+- finding: [race/med] #683 — Quit, Dock Quit and Restart Now during an export were not held back: the export was lost, or the print file could be left truncated; found by the 2026-11-05 performance and race audit (#682-#740)
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/fix-683 @ fix/683-hold-quit-during-export, stacked on fix/684-choicebox-flush (same onCloseRequested lines)
+- delta: user chose wait-then-quit. Tabs report exporting and exportFailures through onMeta. TabsShell.readyToExit sweeps unsaved tabs, then waits for exports; the window close and DesktopUpdater's beforeRestart both use it, and set_unsaved reports a running export so a Dock Quit is held and routed through the close. If an export fails during the wait the app stays open, because the error is the only sign the file wasn't written. A close during the wait is ignored, so a repeated ⌘Q can't cut a file off; Dock Quit's 5-second repeat still forces through. beforeunload also covers a running export.
+- evidence: tests/tabs-exit-export-dom.test.tsx and the use-export-dom failure count were red before the fix and green after. Exit paths audited: w.destroy() and both relaunch_app calls all follow readyToExit. Full Vitest 189 files / 1969 tests (--maxWorkers=4), 13 Rust tests, tsc, lint, knip@6.38.0 and check-release vs the stack parent pass. Not driven in the live desktop app; terminate.rs is a comment change only, and the Dock path is proven only as far as set_unsaved.
 - release: binary-impacting; bullet queued under Unreleased, no version bump.
