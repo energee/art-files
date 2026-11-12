@@ -32,8 +32,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
-import { useTranslation } from "@/i18n";
-import { t as translate } from "@/i18n";
+import { t as translate, useCachedT } from "@/i18n";
 import { commitFieldDraft, dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
@@ -329,7 +328,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
-  const { t } = useTranslation();
+  const t = useCachedT();
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
@@ -918,13 +917,33 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  both at once). */
   const textureError = useOwnedToast(active);
   const maskError = useOwnedToast(active);
+  /** Bumped when an open installs another document. A tab stays pristine while
+   *  its first drop decodes, so an open can reuse it; a decode started before
+   *  that belongs to the replaced document and must not commit (#685). Boot
+   *  restore doesn't bump it: that is the same untitled document, so art
+   *  dropped during it still lands. */
+  const docRun = useRef(0);
+  const sameDocument = () => {
+    const run = docRun.current;
+    return () => run === docRun.current;
+  };
   async function onTexture(f: File) {
-    try { swapLoaded(setTexture, previewOnce(await readRaster(f), f)); textureError.clear(); }
-    catch (err) { textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
+    const current = sameDocument();
+    try {
+      const mint = previewOnce(await readRaster(f), f);
+      if (current()) { swapLoaded(setTexture, mint); textureError.clear(); }
+    } catch (err) {
+      if (current()) textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
+    }
   }
   async function onMask(f: File) {
-    try { swapLoaded(setMask, previewOnce(await readRaster(f), f)); maskError.clear(); }
-    catch (err) { maskError.set(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
+    const current = sameDocument();
+    try {
+      const mint = previewOnce(await readRaster(f), f);
+      if (current()) { swapLoaded(setMask, mint); maskError.clear(); }
+    } catch (err) {
+      if (current()) maskError.set(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
+    }
   }
 
   /** An image layer's well: read the dropped file into the per-id store
@@ -935,8 +954,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const imageError = useOwnedToast(active);
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
+    const current = sameDocument();
     const mint = previewOnce(await readCustomImage(f), f);
-    if (!alive.current) return;
+    if (!alive.current || !current()) return;
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
     setContent(layer, assetId);
   }
@@ -1893,6 +1913,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         Promise.all(Object.entries(ci).map(async ([id, a]) => [id, await readPacked(a, readCustomImage)] as const)),
       ]);
       if (!alive.current) return "cancelled"; // the tab closed: no retry
+      docRun.current++;
       resetDocument(next, masterPath);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);

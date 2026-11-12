@@ -8,6 +8,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Quitting waits for a running export.** Quit, Dock Quit and Restart Now now hold until the PDF or PSD finishes, then close by themselves. Before, the export was lost or the print file could be left cut off. If the export fails, the app stays open so you can read the error.
+
+## [0.1.119] - 2026-11-12
+
+### Fixed
+- **Opening a label keeps its own art.** A texture, mask or image still loading in a fresh tab no longer replaces the art of a label opened into that tab, and saving no longer writes the wrong art into the file.
 - **Saving from inside a field keeps what you typed.** ⌘S, ⌘E, ⌘W, the menus and closing the window now commit the text in a Style, layer name, variant name or hex box first. Before, the file could keep the old value while the field showed the new one, or the tab could close with no prompt.
 
 ### Changed
@@ -15,6 +20,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
+- **Lighter typing and dragging.** A keystroke or a drag now redraws only the inspector rows it changes and leaves the Layers list alone. Zooming and panning no longer re-measure character height.
 
 ## [0.1.118] - 2026-11-04
 

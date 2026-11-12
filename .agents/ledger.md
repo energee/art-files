@@ -944,6 +944,14 @@ no status, no attempts, no delta.
 - attempted-in: .agents/worktrees/fix-684 @ fix/684-choicebox-flush, based on 2f065d08
 - delta: fields that hold typing until Enter or blur (ChoiceBox, layer name, hex box, layer-row rename, variant name) mark themselves data-draft; commitFieldDraft (keys.ts) blurs that field inside flushSync, called by App's ⌘ key handler, AppMenu's native run, and the window close. A field with no draft keeps focus; ⌘Z stays the field's own undo. The audit's suggested blur-before-every-command was rejected because it would take focus from every plain field on ⌘S.
 - evidence: on fix/684-choicebox-flush, new tests in save-races-dom, close-save-master-dom, appmenu-tab-switch-dom and tabs-close-draft-dom were red before the fix (draft missing from the file, no close prompt, window destroyed) and green after; full Vitest 188 files / 1961 tests (--maxWorkers=4), tsc, lint, knip@6.38.0 and check-release vs origin/main pass. Not driven in the live desktop app. Dock Quit is not covered: Rust answers from the set_unsaved flag without asking the webview, so a draft there is lost; it belongs with #683.
+
+## 2026-11-06 issue-685-decode-doc-guard
+- finding: [race/high] #685 — a texture, mask or image still decoding landed on the label opened into the same tab; found by the 2026-11-05 performance and race audit (#682-#740)
+- status: done
+- attempts: 1/3
+- attempted-in: .agents/worktrees/fix-685 @ fix/685-decode-doc-guard, based on 2f065d08
+- delta: docRun (App.tsx) is bumped when an open installs a document; onTexture, onMask and onLayerImage capture it before their await and drop the result, including an error toast, if it moved. The audit suggested bumping in resetDocument; boot restore calls that on the same untitled document, so art dropped just after launch would be lost, and the bump sits at the open install instead.
+- evidence: on fix/685-decode-doc-guard, four #685 tests in tests/save-races-dom.test.tsx were red before the fix and green after. "art dropped during the boot restore survives it" passes before and after, and fails when the bump is moved into resetDocument (mutation check). Full Vitest 187 files / 1958 tests (--maxWorkers=4), tsc, lint, knip@6.38.0 and check-release vs origin/main pass. Not driven in the live desktop app. Two drops on one slot (#686) and adoptMasterAssets (#687) stay open: their decodes are on the same document.
 - release: binary-impacting; bullet queued under Unreleased, no version bump.
 
 ## 2026-11-06 issue-683-hold-quit-during-export
