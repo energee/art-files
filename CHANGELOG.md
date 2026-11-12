@@ -19,7 +19,6 @@ that section to the new version (see .agents/release-steward.md).
 - **The last file dropped stays.** Dropping a second texture or mask while the first is still loading keeps the second, and the well's X now stops a file that is still loading.
 - **A master's art no longer lands over yours.** While a master's texture or mask loads, art you drop keeps the slot, and switching to another master drops the first one's art instead of saving it under the new master.
 - **Old labels keep the master's images at launch.** A v1 label opened by launching the app no longer loses the master's template images.
-- **Saving no longer erases changes made elsewhere.** On desktop, if a `.master` or `.label` changed after you opened it, in another tab or another app, Save now stops and offers Save As, Overwrite or Cancel. Before, the file was overwritten without warning.
 - **Changing Bleed during an export no longer tears the file.** A PDF or PSD now builds at the Bleed and PSD resolution it started with, so the file matches a normal export of those settings. Before, a change mid-export could write a print PDF whose page, trim box and art disagreed, or stop a PSD with an error. The Saved toast is held back, as it is after an edit, because the file no longer matches Settings.
 - **Export again from a background tab uses the current Settings.** A PSD exported from a tab that was hidden while Bleed or PSD resolution changed came out at the old size with a composite of the new one.
 - **Browser downloads keep their file until they have started.** A plain download's link now lasts a minute on its own, instead of ending at the next save, which could cut a large download short, or never ending if its tab had closed during the export.
@@ -29,6 +28,10 @@ that section to the new version (see .agents/release-steward.md).
 - **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
 - **Menu shortcuts can't reach the tab you just left.** A shortcut pressed right after switching tabs, such as ⌘W, no longer acts on the tab that was just hidden.
 - **Full screen spacing settles correctly on macOS.** Entering or leaving full screen no longer risks leaving the room for the window buttons wrong until the next resize.
+- **Dragging no longer erases what lands mid-drag.** An image that finished loading, a Save Master or a master switch arriving during a drag or resize used to vanish on the next move. It now stays, and the rest of the drag is its own undo step.
+- **⌘Z during a drag no longer costs the edit before it.** Pressing Esc after ⌘Z mid-drag used to undo your previous edit too.
+- **Late changes keep their own undo step.** A master switch, Save Master or loaded image landing right after an edit no longer folds into that edit, so ⌘Z takes back one or the other. The edit straight after a drag no longer folds into the drag either.
+- **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 
 ### Changed
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.

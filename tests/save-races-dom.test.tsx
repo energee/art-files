@@ -1064,6 +1064,39 @@ it("the benched-values toast survives the master's texture loading (#11)", async
   expect(document.querySelector("[data-sonner-toast] [data-description]")!.textContent).toContain("volume");
 }, 30_000);
 
+// A pinned clock puts each landing inside history's 500 ms window however loaded
+// the machine is: without its own step, ⌘Z would revert the toggle beside it.
+const qrPressed = () =>
+  document.querySelector('[data-layer-id="qr"] button[aria-label$=": enabled"]')?.getAttribute("aria-pressed");
+const pressUndo = () => act(async () => {
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+});
+
+it("a master switch just after an edit is its own undo step (#702)", async () => {
+  await mount();
+  vi.spyOn(performance, "now").mockReturnValue(performance.now() + 10_000);
+  await toggle("qr");
+  openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
+  await run("master-open");
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  await pressUndo();
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+  expect(qrPressed()).toBe("false");
+}, 30_000);
+
+it("a Save Master landing just after an edit is its own undo step (#702)", async () => {
+  let finish!: () => void;
+  picker(() => new Promise<void>((resolve) => { finish = resolve; }));
+  await mount();
+  await toggle("warning");
+  vi.spyOn(performance, "now").mockReturnValue(performance.now() + 10_000);
+  await promoteWarning();
+  await toggle("qr");
+  await act(async () => { finish(); await new Promise((r) => setTimeout(r, 10)); });
+  await pressUndo();
+  expect(qrPressed()).toBe("false");
+}, 30_000);
+
 /** A label filling `volume`, and a master without that layer to open over it. */
 async function openHidingMaster() {
   const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});

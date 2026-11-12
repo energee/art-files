@@ -45,9 +45,6 @@ const svg = (name: string, d: string) =>
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const saveSlot: { current: null | (() => Promise<boolean>) } = { current: null };
-// History folds edits made within 500ms into one undo step; each drop here
-// must be its own step, as it is for a person dropping files by hand.
-const settle = () => act(() => new Promise((r) => setTimeout(r, 600)));
 const undo = () => act(async () => {
   document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
 });
@@ -75,7 +72,6 @@ beforeEach(async () => {
     (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
   });
   expect(wells.image).not.toBeNull();
-  await settle();
 });
 
 afterEach(async () => {
@@ -89,7 +85,6 @@ it("undo after replacing an image layer's art brings the first image back (#75)"
   expect(wells.image!.fileName).toBe("a.svg");
   const urlA = wells.image!.previewUrl;
   expect(urlA).toBeTruthy();
-  await settle();
   await act(async () => { await wells.image!.onFile(svg("b.svg", "M0 0 L10 10 L0 10 Z")); });
   expect(wells.image!.fileName).toBe("b.svg");
   await undo();
@@ -99,7 +94,6 @@ it("undo after replacing an image layer's art brings the first image back (#75)"
 
 it("undo after clearing an image layer brings the image back (#75)", async () => {
   await act(async () => { await wells.image!.onFile(svg("a.svg", "M0 0 L10 0 L10 10 Z")); });
-  await settle();
   await act(async () => { wells.image!.onClear!(); });
   expect(wells.image!.fileName).toBeUndefined();
   await undo();
