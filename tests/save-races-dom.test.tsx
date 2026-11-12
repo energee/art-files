@@ -28,6 +28,9 @@ const menu = vi.hoisted(() => ({
   promoteError: "",
   /** When set, a new tab's boot restore (resolveDefaultMaster) fails with this. */
   restoreError: "",
+  /** When set, the next rememberMaster waits for this, and `remembering` says it got there. */
+  holdRemember: null as Promise<void> | null,
+  remembering: false,
   /** When set, a new tab's boot restore resolves with this instead. */
   restored: null as null | Promise<unknown>,
 }));
@@ -78,6 +81,12 @@ vi.mock("../src/masters", async (importOriginal) => {
   const masters = await importOriginal<typeof import("../src/masters")>();
   return {
     ...masters,
+    rememberMaster: async (...args: Parameters<typeof masters.rememberMaster>) => {
+      const held = menu.holdRemember;
+      menu.holdRemember = null;
+      if (held) { menu.remembering = true; await held; }
+      return masters.rememberMaster(...args);
+    },
     resolveDefaultMaster: async () => {
       if (menu.restoreError) throw new Error(menu.restoreError);
       if (menu.restored) return menu.restored as ReturnType<typeof masters.resolveDefaultMaster>;
@@ -144,6 +153,8 @@ afterEach(async () => {
   menu.fontError = "";
   menu.promoteError = "";
   menu.restoreError = "";
+  menu.holdRemember = null;
+  menu.remembering = false;
   menu.restored = null;
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
@@ -243,6 +254,17 @@ it("a cancelled Save As preserves the original target (#265)", async () => {
   expect(handle.createWritable).toHaveBeenCalledTimes(2);
 });
 
+// #694: the shell's queued open guards the tab until tab meta says it holds a
+// file. If the guard dropped first, a second open could replace the document.
+it("an open reports the tab's new meta before it settles", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} }, {});
+  const { onMeta, props } = await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 5000 });
+  const opened = onMeta.mock.calls.findIndex(([meta]) => !meta.dirty);
+  expect(opened).toBeGreaterThanOrEqual(0);
+  expect(onMeta.mock.invocationCallOrder[opened]).toBeLessThan(props.onOpenSettled.mock.invocationCallOrder[0]);
+}, 30_000);
+
 /** The Save Master review loads on first open (#410): wait for its row. */
 const reviewRow = (id: string) => vi.waitFor(() => {
   const row = document.querySelector(`[data-row="${id}"]`);
@@ -300,6 +322,21 @@ it("Save Master with nothing to promote writes the changed master at once", asyn
   expect(master.layers.filter((layer) => layer.id === "name" || layer.id === "logo").map((layer) => layer.id))
     .toEqual(["name", "logo"]);
 });
+
+// #690: Save Master has Save's shape, so an older write could land last.
+it("a second Save Master waits for the write in flight", async () => {
+  const finish: (() => void)[] = [];
+  const { handle, pick } = picker(() => new Promise<void>((resolve) => { finish.push(resolve); }), "Lolev.master");
+  await mount();
+  await reorderName();
+  await act(async () => { menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  await vi.waitFor(() => expect(finish).toHaveLength(1));
+  await act(async () => { menu.actions.find((c) => c.id === "master-save-as")!.run(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(pick).toHaveBeenCalledOnce(); // the second is still waiting its turn
+  await act(async () => { finish[0](); await new Promise((r) => setTimeout(r, 10)); });
+  await vi.waitFor(() => expect(handle.createWritable).toHaveBeenCalledTimes(2));
+  await act(async () => { finish[1](); await new Promise((r) => setTimeout(r, 10)); });
+}, 30_000);
 
 it("Save Master As with nothing to promote goes straight to the save dialog", async () => {
   const { pick } = picker();
@@ -977,6 +1014,25 @@ it("Open Master during a Save Master write keeps the opened master, its baseline
   await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(pick).toHaveBeenCalledOnce();
   expect(other.createWritable).toHaveBeenCalledOnce();
+}, 30_000);
+
+// #696: the save's last await records the master in the library. An Open Master
+// landing there owns the baseline; the save resuming must not move it back.
+it("Open Master while a Save Master records its file keeps the opened master's baseline", async () => {
+  picker();
+  const { onMeta } = await mount();
+  await toggle("warning");
+  let release!: () => void;
+  menu.holdRemember = new Promise<void>((resolve) => { release = resolve; });
+  await promoteWarning();
+  await vi.waitFor(() => expect(menu.remembering).toBe(true), { timeout: 5_000 });
+  openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
+  await run("master-open");
+  await act(async () => { release(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: false });
+  // Nothing to save: it is not diffed against the master the save just wrote.
+  expect(menu.actions.find((c) => c.id === "master-save")!.disabled).toBe(true);
 }, 30_000);
 
 it("the benched-values toast survives the master's texture loading (#11)", async () => {
