@@ -35,6 +35,8 @@ that section to the new version (see .agents/release-steward.md).
 - **⌘Z during a drag no longer costs the edit before it.** Pressing Esc after ⌘Z mid-drag used to undo your previous edit too.
 - **Late changes keep their own undo step.** A master switch, Save Master or loaded image landing right after an edit no longer folds into that edit, so ⌘Z takes back one or the other. The edit straight after a drag no longer folds into the drag either.
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
+- **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
+- **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
 
 ### Changed
 - **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
