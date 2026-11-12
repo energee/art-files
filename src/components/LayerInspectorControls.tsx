@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { Layer, Symbology } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
-import type { DeepPartial } from "@/model/merge";
+import { deepEqual, type DeepPartial } from "@/model/merge";
 import { cn } from "@/lib/utils";
 import type { Anchor } from "@/model/position";
 import { Button } from "@/components/ui/button";
@@ -348,7 +348,8 @@ export function SelectField<T extends string>(props: {
 }
 
 /** What every section receives: the layer, the one write, the badge
- *  factory bound to this layer's overridden set, and the More state. */
+ *  factory bound to this layer's overridden set, and the More state. The
+ *  functions keep their identity across renders (see sameProps). */
 export interface Ctx {
   unit: LengthUnit;
   set: (patch: Patch) => void;
@@ -363,6 +364,27 @@ export interface Ctx {
    *  `more[section] || overridden(paths)`, so a reset badge is never hidden. */
   overridden: (paths: readonly string[]) => boolean;
 }
+
+/** Layer keys no section reads: the content the parent's editor owns. */
+const CONTENT = ["lines", "value", "format"];
+/** Where the layer sits: read only by Position, rewritten by every drag move. */
+const PLACEMENT = ["x", "y", "anchor", "vAnchor", "guideX", "guideY", "binding"];
+
+/** A memo comparator for a section: same props, by value, apart from `ignored`
+ *  keys of the layer. By value because App re-resolves every layer on every
+ *  edit, so `layer` is a new object even when none of it changed (#715).
+ *  Functions compare by identity, so LayerInspector hands the sections stable
+ *  ones; a Set or Map would always compare equal, so none is passed. A section
+ *  must never read a key it ignores, handlers included: it would keep the value
+ *  from its last render. */
+const sameProps = (ignored: string[]) => {
+  const blank = Object.fromEntries(ignored.map((key) => [key, undefined]));
+  return <P extends { layer: Layer }>(a: P, b: P) =>
+    deepEqual({ ...a, layer: { ...a.layer, ...blank } }, { ...b, layer: { ...b.layer, ...blank } });
+};
+export const ignoringContent = sameProps(CONTENT);
+export const ignoringPlacement = sameProps(PLACEMENT);
+export const ignoringContentAndPlacement = sameProps([...CONTENT, ...PLACEMENT]);
 
 /** A REQUIRED text box: one parseMaster refuses to leave empty (a choice's
  *  value; the layer name box commits on Enter instead, LayerInspector.tsx).

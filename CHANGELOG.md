@@ -7,22 +7,55 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Smoother edits in the Can view.** Each edit now redoes only what changed: the can's shaders stay built, and foil and corner shapes are kept unless they changed, so typing with the can in view pauses less.
+- **Less work returning to the Can view.** The can model and studio lighting are read once per session instead of every time you switch to the Can view.
+- **The Can view stops drawing when nothing moves.** A can left at 100%, or zoomed all the way in or out, could keep redrawing at full frame rate while idle, costing GPU and battery.
+- **Saving no longer erases changes made elsewhere.** On desktop, if a `.master` or `.label` changed after you opened it, in another tab or another app, Save now stops and offers Save As, Overwrite or Cancel. Before, the file was overwritten without warning.
+- **A newer Save can no longer be replaced by an older one.** Saves of a label or master now run one at a time, so a Save made while another is writing keeps your latest edits on disk, even if you close the tab right after.
+- **Opening a label during a Save keeps it tied to its own file.** If a label opened into the tab while the Save dialog was up, finishing the Save used to point the tab at the file just saved, so the next ⌘S wrote to the wrong file.
+- **A label that just opened stays open.** A second file opening at that same moment could land in its tab and replace it. It now gets its own tab.
+- **A master opened during Save Master no longer reads as unsaved.** The finishing save used to compare the new master against the old one, so it showed changes it didn't have and prompted on close.
+- **The browser no longer opens one file in two tabs.** Picking a label a tab already has focuses that tab, as the desktop app does, instead of letting the two tabs overwrite each other.
+- **Work you discard on quit stays discarded.** Quitting now waits for the tab's recovery copy to be deleted, so the next launch doesn't offer it back.
+- **Escape no longer interrupts the close prompt's Save.** It used to dismiss the prompt and cancel a quit while the Save carried on and closed the tab anyway.
+- **Opening a label keeps its own art.** A texture, mask or image still loading in a fresh tab no longer replaces the art of a label opened into that tab, and saving no longer writes the wrong art into the file.
+- **The last file dropped stays.** Dropping a second texture or mask while the first is still loading keeps the second, and the well's X now stops a file that is still loading.
+- **A master's art no longer lands over yours.** While a master's texture or mask loads, art you drop keeps the slot, and switching to another master drops the first one's art instead of saving it under the new master.
+- **Old labels keep the master's images at launch.** A v1 label opened by launching the app no longer loses the master's template images.
 - **Changing Bleed during an export no longer tears the file.** A PDF or PSD now builds at the Bleed and PSD resolution it started with, so the file matches a normal export of those settings. Before, a change mid-export could write a print PDF whose page, trim box and art disagreed, or stop a PSD with an error. The Saved toast is held back, as it is after an edit, because the file no longer matches Settings.
 - **Export again from a background tab uses the current Settings.** A PSD exported from a tab that was hidden while Bleed or PSD resolution changed came out at the old size with a composite of the new one.
 - **Browser downloads keep their file until they have started.** A plain download's link now lasts a minute on its own, instead of ending at the next save, which could cut a large download short, or never ending if its tab had closed during the export.
 - **A PSD built without its worker keeps its Bleed and resolution.** If the background build fails to start, the build on the main thread now uses the export's settings too.
 - **Quitting waits for a running export.** Quit, Dock Quit and Restart Now now hold until the PDF or PSD finishes, then close by themselves. Before, the export was lost or the print file could be left cut off. If the export fails, the app stays open so you can read the error.
-- **Saving from inside a field keeps what you typed.** ⌘S, ⌘E, ⌘W, the menus and closing the window now commit the text in a Style, layer name, variant name or hex box first. Before, the file could keep the old value while the field showed the new one, or the tab could close with no prompt.
+- **View settings stay put across tabs.** The unit, rulers, guides, Lighting angle and More rows are now one set for every tab, so a change in one tab shows in the others and another tab can no longer undo it at the next launch.
+- **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
+- **Menu shortcuts can't reach the tab you just left.** A shortcut pressed right after switching tabs, such as ⌘W, no longer acts on the tab that was just hidden.
+- **Full screen spacing settles correctly on macOS.** Entering or leaving full screen no longer risks leaving the room for the window buttons wrong until the next resize.
+- **Dragging no longer erases what lands mid-drag.** An image that finished loading, a Save Master or a master switch arriving during a drag or resize used to vanish on the next move. It now stays, and the rest of the drag is its own undo step.
+- **⌘Z during a drag no longer costs the edit before it.** Pressing Esc after ⌘Z mid-drag used to undo your previous edit too.
+- **Late changes keep their own undo step.** A master switch, Save Master or loaded image landing right after an edit no longer folds into that edit, so ⌘Z takes back one or the other. The edit straight after a drag no longer folds into the drag either.
+- **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 
 ### Changed
 - **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
 - **Print PSD export holds up the app less.** Each image now decodes once instead of twice, and the images move to the background build instead of being copied. If the background build dies partway, which should be rare, the export now fails with an error instead of finishing on the main thread. The exported file is unchanged.
 - **Exports read only the fonts a label uses.** An export used to parse every bundled family to measure text. It now parses the label's own families, and the exported file is unchanged.
 - **White Ink for transparent art builds faster.** The plate's solid colour under art with alpha is now laid down in large blocks instead of one byte at a time. The exported file is unchanged.
+- **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
+- **Guides stay put when the rulers toggle.** Showing or hiding the rulers no longer leaves guides off the label until the next zoom.
+
+## [0.1.119] - 2026-11-12
+
+### Fixed
+- **Opening a label keeps its own art.** A texture, mask or image still loading in a fresh tab no longer replaces the art of a label opened into that tab, and saving no longer writes the wrong art into the file.
+- **Saving from inside a field keeps what you typed.** ⌘S, ⌘E, ⌘W, the menus and closing the window now commit the text in a Style, layer name, variant name or hex box first. Before, the file could keep the old value while the field showed the new one, or the tab could close with no prompt.
+
+### Changed
 - **Master picker lines up with the tabs.** On macOS the Master select now sits level with the document tabs beside it.
 - **Add layer is no longer pink.** The button and its menu of layer kinds now match the Changed filter next to it.
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
+- **Lighter typing and dragging.** A keystroke or a drag now redraws only the inspector rows it changes and leaves the Layers list alone. Zooming and panning no longer re-measure character height.
 
 ## [0.1.118] - 2026-11-04
 
