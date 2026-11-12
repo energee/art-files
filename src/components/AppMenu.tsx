@@ -16,7 +16,7 @@ import {
   ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
-import { dialogOpen, isTypingTarget } from "@/keys";
+import { commitFieldDraft, dialogOpen, isTypingTarget } from "@/keys";
 import { clearRecent, openRecent, recentLabels, recentTitles, subscribeRecent } from "@/recent";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
@@ -622,8 +622,13 @@ function useNativeMenu(
         const api = await import("@tauri-apps/api/menu");
         const tag = `#${++nativeMenuBuilds}`;
         const run = (id: string) => {
+          // Before the lookup, as in App's key handler; ⌘Z below is the
+          // field's own undo, so it leaves the draft alone.
+          if (id !== "undo" && id !== "redo" && !dialogOpen()) commitFieldDraft();
           const command = commandsRef.current[id];
-          if (!command || command.disabled) return;
+          // Torn down: this menu stays the app's until the next one installs,
+          // and on a tab switch its commands now belong to the hidden tab.
+          if (!live || !command || command.disabled) return;
           // Re-assert the check even when nothing runs below.
           if (CHECK_IDS.has(id)) {
             appliedState.current.delete(id);

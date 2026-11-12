@@ -37,6 +37,7 @@ In the desktop app:
 - **Export … As…** asks again, opening on the current file, and remembers the new place. Cancelling keeps the old destination.
 - For paired exports, the mask goes beside the art file as `{chosen name}-mask.pdf` or `.psd`, without a second desktop dialog. Confirming the art file confirms replacing the pair.
 - The combined PDF already carries the white ink. If an older `{chosen name}-mask.pdf` from a two-file export sits beside it, the **Saved …** toast becomes a warning so only one file goes to the printer. Label Lab never deletes the old mask.
+- An export builds the label, **Bleed** and **PSD resolution** as they were when it started. If you edit the label or change either setting while it runs, the file keeps the starting values and no **Saved …** toast appears. Export again to pick up the change.
 
 The one-file PDF, one-file PSD, PDF pair and PSD pair destinations are each remembered separately until the tab closes, quits, opens another label, or the label is saved under a new name (Save Label As…). In a browser each output file has its own save dialog or download.
 
