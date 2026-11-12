@@ -1,6 +1,7 @@
 // TabsShell.tsx — the workspace: a tab strip over one mounted DocumentEditor
 // per open .label project, inactive ones hidden (display:none), their state
-// intact but their rendered previews dropped (see App.tsx's active gating).
+// intact but their rendered previews dropped: empty plates, and decoded
+// bitmaps only on the last tab shown (see App.tsx's active gating).
 // The shell owns everything that outlives or spans documents: the tab list
 // (src/tabs.ts), OS file-open and dropped-.label routing, the File → Open
 // picker (an open must be able to target a new tab), File → Open Recent
@@ -22,8 +23,8 @@ import {
 import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
-import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
-import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
+import { canRebind, dropRecovery, earlierSnapshots, noteDiscard, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
+import { loadRenderSettings, RENDER_KEY, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { isFieldDrop } from "@/components/AssetDropOverlay";
@@ -45,12 +46,16 @@ const currentWindow = () =>
 const OPEN_ERROR_TOAST = "shell:open-error";
 const reportOpenError = (text: string) => { notify.error(text, { id: OPEN_ERROR_TOAST }); };
 
+/** The notice that a quit is waiting on an export, dismissed when the wait ends. */
+const EXIT_WAIT_TOAST = "shell:exit-wait";
+
 /** The shell-side per-tab objects that must stay identity-stable for the
  *  editor's memo bail to hold (see DocumentEditor): the save slots its
  *  editor assigns into, and the callbacks that close over the tab id. */
 type TabExtras = {
   saveSlot: { current: (() => Promise<boolean>) | null };
   masterSaveSlot: { current: (() => Promise<boolean>) | null };
+  fileHandleSlot: { current: (() => FileSystemFileHandle | null) | null };
   onMeta: (meta: DocumentMeta) => void;
   onCloseTab: () => void;
   onOpenSettled: (seq: number, cancelled: boolean) => void;
@@ -104,6 +109,7 @@ export default function TabsShell() {
     if (!e) extras.current.set(id, (e = {
       saveSlot: { current: null },
       masterSaveSlot: { current: null },
+      fileHandleSlot: { current: null },
       onMeta: (meta) => {
         // A tab bound to a new path (an open, or a Save As) goes to the top
         // of File → Open Recent; repeat reports of the same path don't.
@@ -150,6 +156,9 @@ export default function TabsShell() {
   // so that render reads it for the quit wording (#552), and doClose reads it
   // to move the sweep on.
   const sweep = useRef<((finished: boolean) => void) | null>(null);
+  /** A quit is waiting on an export (exportsFinished); `exportsIdle` resumes it. */
+  const exiting = useRef(false);
+  const exportsIdle = useRef<(() => void)[]>([]);
   // How many tabs the one-time prompt before a sweep names (more than one
   // unsaved tab only), or 0 while it is down.
   const [sweepCount, setSweepCount] = useState(0);
@@ -160,6 +169,7 @@ export default function TabsShell() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const anyUnsaved = state.tabs.some(unsaved);
+  const anyExporting = state.tabs.some((t) => t.exporting);
   const activeTab = state.tabs.find((t) => t.id === state.active)!;
 
   // ---- shared, formerly per-document surfaces (moved from App.tsx) ----
@@ -181,6 +191,13 @@ export default function TabsShell() {
   // App.tsx's RenderSettings note).
   const [render, setRender] = useState<RenderSettings>(loadRenderSettings);
   useEffect(() => { saveRenderSettings(render); }, [render]);
+  // A browser window sharing this storage: take its change, so this window's
+  // next write can't put its stale copy back over it (#701).
+  useEffect(() => {
+    const adopt = (e: StorageEvent) => { if (e.key === RENDER_KEY) setRender(loadRenderSettings()); };
+    window.addEventListener("storage", adopt);
+    return () => window.removeEventListener("storage", adopt);
+  }, []);
 
   // ---- crash recovery (#394) ----
 
@@ -209,7 +226,7 @@ export default function TabsShell() {
           ]),
         } : undefined;
         if (recoveredPath?.rebind) rebound.push(recoveredPath.path);
-        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath });
+        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath, recoveredMaster: r.master });
       }
     })();
   };
@@ -319,18 +336,30 @@ export default function TabsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** The tab already saving to the file a browser picker returned. A handle
+   *  has no path for routeFileOpen to compare, and the browser has no
+   *  changed-on-disk check, so two tabs on one file would overwrite each other
+   *  unasked (#695). */
+  async function tabHolding(handle: FileSystemFileHandle) {
+    for (const [id, e] of extras.current)
+      if (await e.fileHandleSlot.current?.()?.isSameEntry(handle)) return id;
+  }
+
   /** File → Open Label…: native dialog on desktop (a real path, routed
    *  exactly like an OS open, so the tab records filePath and ⌘S saves in
    *  place — WKWebView has no FS-Access picker), FS-Access picker in the
    *  browser (yields a writable handle, so Save rewrites the picked file),
-   *  hidden-input fallback elsewhere. The editor runs the actual open (see
+   *  hidden-input fallback elsewhere. A browser pick of a file a tab already
+   *  holds focuses that tab. The editor runs the actual open (see
    *  fileToOpen in App.tsx). */
   async function openProjectPicker() {
     try {
       const target = await openThrough({ filter: labelFilter(), types: labelTypes() });
       if (target === undefined) { fileInput.current?.click(); return; }
       if (target === null) return;
-      openRouted(target);
+      const holder = "handle" in target ? await tabHolding(target.handle) : undefined;
+      if (holder !== undefined) apply((s) => activateTab(s, holder));
+      else openRouted(target);
     } catch (err) {
       // Failures AFTER a tab is chosen surface in that editor's own toast;
       // this is the picker itself failing, before any tab exists.
@@ -384,7 +413,9 @@ export default function TabsShell() {
   const endSweep = (finished: boolean) => {
     const done = sweep.current;
     sweep.current = null;
-    done?.(finished);
+    // The app may be about to go: let a discarded tab's snapshot drop land, or
+    // the next launch offers that work back (#697).
+    void recoveryWritten().then(() => done?.(finished));
   };
 
   /** Walk every unsaved tab through the close prompt before the app goes
@@ -403,10 +434,36 @@ export default function TabsShell() {
     } else promptNext(dirty);
   });
 
+  /** Resolves when no export is running: true, unless one failed meanwhile.
+   *  The app then stays open, because its error is the only sign the print
+   *  file wasn't written, and it would quit along with the toast (#683). */
+  const exportsFinished = () => new Promise<boolean>((done) => {
+    if (!stateRef.current.tabs.some((t) => t.exporting)) { done(true); return; }
+    const failures = () => stateRef.current.tabs.reduce((n, t) => n + t.exportFailures, 0);
+    const before = failures();
+    notify.warning(translate("Closing when the export finishes"), { id: EXIT_WAIT_TOAST });
+    exportsIdle.current.push(() => {
+      notify.dismiss(EXIT_WAIT_TOAST);
+      done(failures() === before);
+    });
+  });
+
+  /** Everything between "quit" and the app going away: unsaved tabs first,
+   *  then any export still running. A close arriving during that wait is
+   *  held too: a repeated ⌘Q must not cut a print file off mid-write. */
+  const readyToExit = async () => {
+    if (!await sweepUnsaved()) return false;
+    exiting.current = true;
+    const ready = await exportsFinished();
+    exiting.current = false;
+    return ready;
+  };
+
   /** The one-time prompt's Discard All: nothing to recover from any tab,
    *  and the sweep is over. */
   const discardAll = async () => {
     setSweepCount(0);
+    noteDiscard();
     await Promise.all(stateRef.current.tabs.filter(unsaved).map((t) => dropRecovery(recoveryKey(t.id))));
     endSweep(true);
   };
@@ -466,37 +523,46 @@ export default function TabsShell() {
   const closeReq = useCallback((id: number) => api.current.requestClose(id), []);
 
   // Desktop window close: intercept, sweep unsaved tabs through the dialog,
-  // and close for real once the sweep finishes.
-  const sweepRef = useRef(sweepUnsaved);
-  sweepRef.current = sweepUnsaved;
+  // wait out any running export, and close for real once both are done.
+  const exitRef = useRef(readyToExit);
+  exitRef.current = readyToExit;
   useEffect(() => {
     if (!isTauri()) return;
     const stopping = currentWindow().then((w) =>
       w.onCloseRequested((event) => {
         commitFieldDraft(); // a draft in a focused field counts as unsaved work
-        if (!stateRef.current.tabs.some(unsaved)) return; // the close proceeds
+        const { tabs } = stateRef.current;
+        if (!tabs.some(unsaved) && !tabs.some((t) => t.exporting)) return; // the close proceeds
         event.preventDefault();
-        void sweepRef.current().then((finished) => { if (finished) void w.destroy(); });
+        if (exiting.current) return;
+        void exitRef.current().then((ready) => { if (ready) void w.destroy(); });
       }));
     return () => void stopping.then((stop) => stop());
   }, []);
 
-  // Browser window close: the generic prompt is all a page may show.
+  // A quit held by exportsFinished resumes when the last export ends.
   useEffect(() => {
-    if (isTauri() || !anyUnsaved) return;
+    if (!anyExporting) for (const resume of exportsIdle.current.splice(0)) resume();
+  }, [anyExporting]);
+
+  // Browser window close: the generic prompt is all a page may show.
+  const losesWork = anyUnsaved || anyExporting;
+  useEffect(() => {
+    if (isTauri() || !losesWork) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [anyUnsaved]);
+  }, [losesWork]);
 
   // Desktop app quit (#151): macOS Dock → Quit, logout and AppleScript
   // `quit` terminate the app without a window close, so the Rust side asks
-  // this flag whether to cancel and route the quit through the close sweep
-  // above, or let it through (see src-tauri/src/terminate.rs).
+  // this flag whether to cancel and route the quit through the close above,
+  // or let it through (see src-tauri/src/terminate.rs). A running export
+  // counts: quitting would lose it, or truncate the print file.
   useEffect(() => {
     if (!isTauri()) return;
-    void invoke("set_unsaved", { unsaved: anyUnsaved });
-  }, [anyUnsaved]);
+    void invoke("set_unsaved", { unsaved: losesWork });
+  }, [losesWork]);
 
   // Desktop window title tracks the active tab; • marks unsaved work.
   // Derived first so the effect deps on exactly the string it writes. Each
@@ -676,11 +742,13 @@ export default function TabsShell() {
                 tabStripHost={tabStripHost}
                 updateStatusHost={setUpdateStatusHost}
                 active={isActive}
+                keepSource={t.id === state.previous}
                 fileToOpen={pending[t.id] ?? null}
                 onOpenSettled={e.onOpenSettled}
                 onMeta={e.onMeta}
                 saveSlot={e.saveSlot}
                 masterSaveSlot={e.masterSaveSlot}
+                fileHandleSlot={e.fileHandleSlot}
                 render={render}
                 onRenderChange={setRender}
                 onOpenProject={openProject}
@@ -705,8 +773,9 @@ export default function TabsShell() {
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
           editor's own save flows (dialog cancel keeps the tab). Hidden, not
-          dismissed, while Save has the master review up. */}
-      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
+          dismissed, while Save has the master review up. Escape can't dismiss
+          it mid-Save: that Save would still close the tab (#705). */}
+      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && !saving && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             {/* A window close or quit (⌘Q, Dock → Quit) ends the app, so the
@@ -764,7 +833,7 @@ export default function TabsShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <DesktopUpdater beforeRestart={sweepUnsaved} checkRequest={checkRequest} statusHost={updateStatusHost}
+      <DesktopUpdater beforeRestart={readyToExit} checkRequest={checkRequest} statusHost={updateStatusHost}
         onInstalled={() => setUpdateInstalled(true)} />
     </>
   );

@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "@/i18n";
 import { CanScene, type CanSceneMode } from "@/three/canScene";
-import { drawPlates, buildLabelTextures } from "@/three/labelTextures";
+import { drawPlates, buildLabelTextures, type LabelTextures } from "@/three/labelTextures";
 import type { CanvasRenderSource } from "@/canvas/draw";
 import { planLayers } from "@/planLayers";
 import type { Layer } from "@/model/layers";
@@ -108,6 +108,9 @@ export const CanView = forwardRef<CanViewHandle, {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The last textures applied, so a rebuild can tell an unchanged mask.
+  const lastTextures = useRef<LabelTextures | null>(null);
+
   // Texture rebuilds are debounced: each one is a synchronous two-plate draw
   // plus a per-pixel mask pass over ~3.4M px (run in a worker — see
   // metalnessMask.ts) — fine per pause, too heavy per keystroke. A superseded
@@ -120,8 +123,11 @@ export const CanView = forwardRef<CanViewHandle, {
     const timer = setTimeout(async () => {
       try {
         const plan = planLayers(layers, source.m, source.planAssets, { skip: source.skip });
-        const textures = await buildLabelTextures(drawPlates(plan, source.drawAssets, source.fontCss));
+        const textures = await buildLabelTextures(
+          drawPlates(plan, source.drawAssets, source.fontCss), lastTextures.current,
+        );
         if (stale) return;
+        lastTextures.current = textures;
         sceneRef.current?.applyTextures(textures);
         onRenderError("");
       } catch (err) {

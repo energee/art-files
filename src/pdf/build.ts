@@ -76,6 +76,11 @@ export interface Assets {
   maskPixels?: { data: Uint8ClampedArray; width: number; height: number };
   /** The label's display name for the PDF's document title. */
   title?: string;
+  /** The bleed the build runs at: the app's export snapshot (layout.ts
+   *  withGeometry). Absent, it reads the live layout, which only the CLI
+   *  and tests can rely on, since nothing moves it there. A worker's layout
+   *  never saw Settings, so offThread.ts's PdfJob requires it. */
+  geometry?: L.Geometry;
 }
 
 interface Fonts {
@@ -286,7 +291,10 @@ async function alphaFootprints(
     const smask = doc.context.lookup(image.ref, PDFStream).dict.get(PDFName.of("SMask"));
     if (!smask) continue;
     const samples = new Uint8Array(image.width * image.height * sample.length);
-    for (let i = 0; i < samples.length; i++) samples[i] = sample[i % sample.length];
+    // Repeat the pixel by doubling the filled prefix: a block copy per step,
+    // not a JS write per byte of a print-size image (#739).
+    samples.set(sample);
+    for (let filled = sample.length; filled < samples.length; filled *= 2) samples.copyWithin(filled, 0, filled);
     out.set(r.asset, doc.context.register(doc.context.flateStream(samples, {
       Type: "XObject", Subtype: "Image", Width: image.width, Height: image.height,
       ColorSpace: colorSpace, BitsPerComponent: 8, SMask: smask,
@@ -410,6 +418,12 @@ export async function pdfMeasureFace(
   };
 }
 
+/** Run one synchronous stretch of a build at `assets.geometry`. Every layout
+ *  read in this file sits inside one: the awaits between stretches are where
+ *  the live layout can move (#688). */
+const atGeometry = <T>(assets: Assets, read: () => T): T =>
+  assets.geometry ? L.withGeometry(assets.geometry, read) : read();
+
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
   const doc = await PDFDocument.create();
   doc.setCreationDate(PDF_EPOCH);
@@ -423,13 +437,16 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
   // Provenance for the printer's preflight: the release version, never a
   // build time, so identical input still builds identical bytes.
   doc.setProducer(`Label Lab ${version}`);
-  const page = doc.addPage([L.PAGE.w, L.PAGE.h]);
-  // Printer boxes: the 8x5in die (ART, the trim inside the bleed) and the
-  // whole page as the bleed. Without them, RIPs and preflight tools assume
-  // trim = page. ART is inset equally on all sides, so its top-left y is
-  // also its bottom-left y.
-  page.setBleedBox(0, 0, L.PAGE.w, L.PAGE.h);
-  page.setTrimBox(L.ART.x, L.ART.y, L.ART.w, L.ART.h);
+  const page = atGeometry(assets, () => {
+    const added = doc.addPage([L.PAGE.w, L.PAGE.h]);
+    // Printer boxes: the 8x5in die (ART, the trim inside the bleed) and the
+    // whole page as the bleed. Without them, RIPs and preflight tools assume
+    // trim = page. ART is inset equally on all sides, so its top-left y is
+    // also its bottom-left y.
+    added.setBleedBox(0, 0, L.PAGE.w, L.PAGE.h);
+    added.setTrimBox(L.ART.x, L.ART.y, L.ART.w, L.ART.h);
+    return added;
+  });
   // Round every stroke join and cap for the whole page. pdf-lib has no
   // per-draw option for this, so it goes in as a graphics-state operator up
   // front; PDF's default is a MITER join, which shoots long spikes off any
@@ -473,8 +490,10 @@ const hasPage = (items: readonly PlacedLayer[], embedded: Embedded, role: Placed
 export async function buildArtPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
   const embedded = await embedRasters(doc, items, assets, "art");
-  shiftForBleed(page);
-  drawItems(page, fonts, items, embedded, "art");
+  atGeometry(assets, () => {
+    shiftForBleed(page);
+    drawItems(page, fonts, items, embedded, "art");
+  });
   doc.setTitle(`${assets.title ?? "Label"} label art`);
   return doc.save();
 }
@@ -488,13 +507,17 @@ export async function buildArtPdf(items: readonly PlacedLayer[], assets: Assets)
 export async function buildMaskPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
   const embedded = await embedRasters(doc, items, assets, "mask");
-  page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: rgb(1, 1, 1) });
-  if (!hasPage(items, embedded, "mask"))
-    page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
+  atGeometry(assets, () => {
+    page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: rgb(1, 1, 1) });
+    if (!hasPage(items, embedded, "mask"))
+      page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
+  });
   const blue = [L.COLORS.maskBlue.r, L.COLORS.maskBlue.g, L.COLORS.maskBlue.b].map((c) => Math.round(c * 255));
   const footprints = await alphaFootprints(doc, items, embedded, PDFName.of("DeviceRGB"), blue);
-  shiftForBleed(page);
-  drawItems(page, fonts, items, embedded, "mask", footprints);
+  atGeometry(assets, () => {
+    shiftForBleed(page);
+    drawItems(page, fonts, items, embedded, "mask", footprints);
+  });
   doc.setTitle(`${assets.title ?? "Label"} white-ink layer`);
   return doc.save();
 }
@@ -577,8 +600,10 @@ function drawWhiteInk(
 export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
   const embedded = await embedRasters(doc, items, assets, "art");
-  shiftForBleed(page);
-  drawItems(page, fonts, items, embedded, "art");
+  atGeometry(assets, () => {
+    shiftForBleed(page);
+    drawItems(page, fonts, items, embedded, "art");
+  });
   const white = registerWhiteInk(doc, page);
   const uploaded = items.some((r) => r.kind === "page" && r.role === "mask" && assets.images?.[r.asset]);
   let mask: PDFRef | undefined;
@@ -589,7 +614,7 @@ export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Asset
   }
   const footprints = await alphaFootprints(doc, items, embedded, whiteInkColorSpace(doc), [255]);
   page.pushOperators(...white.begin);
-  drawWhiteInk(page, items, assets, embedded, mask, footprints);
+  atGeometry(assets, () => drawWhiteInk(page, items, assets, embedded, mask, footprints));
   page.pushOperators(...white.end);
   doc.setTitle(`${assets.title ?? "Label"} label`);
   return doc.save({ objectsPerTick: Infinity });
