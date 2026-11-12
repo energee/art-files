@@ -7,6 +7,10 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Opening a label keeps its own art.** A texture, mask or image still loading in a fresh tab no longer replaces the art of a label opened into that tab, and saving no longer writes the wrong art into the file.
+- **The last file dropped stays.** Dropping a second texture or mask while the first is still loading keeps the second, and the well's X now stops a file that is still loading.
+- **A master's art no longer lands over yours.** While a master's texture or mask loads, art you drop keeps the slot, and switching to another master drops the first one's art instead of saving it under the new master.
+- **Old labels keep the master's images at launch.** A v1 label opened by launching the app no longer loses the master's template images.
 - **Saving no longer erases changes made elsewhere.** On desktop, if a `.master` or `.label` changed after you opened it, in another tab or another app, Save now stops and offers Save As, Overwrite or Cancel. Before, the file was overwritten without warning.
 - **Changing Bleed during an export no longer tears the file.** A PDF or PSD now builds at the Bleed and PSD resolution it started with, so the file matches a normal export of those settings. Before, a change mid-export could write a print PDF whose page, trim box and art disagreed, or stop a PSD with an error. The Saved toast is held back, as it is after an edit, because the file no longer matches Settings.
 - **Export again from a background tab uses the current Settings.** A PSD exported from a tab that was hidden while Bleed or PSD resolution changed came out at the old size with a composite of the new one.
