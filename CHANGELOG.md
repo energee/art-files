@@ -13,7 +13,10 @@ that section to the new version (see .agents/release-steward.md).
 - **Browser downloads keep their file until they have started.** A plain download's link now lasts a minute on its own, instead of ending at the next save, which could cut a large download short, or never ending if its tab had closed during the export.
 - **A PSD built without its worker keeps its Bleed and resolution.** If the background build fails to start, the build on the main thread now uses the export's settings too.
 - **Quitting waits for a running export.** Quit, Dock Quit and Restart Now now hold until the PDF or PSD finishes, then close by themselves. Before, the export was lost or the print file could be left cut off. If the export fails, the app stays open so you can read the error.
-- **Quitting waits for a running export.** Quit, Dock Quit and Restart Now now hold until the PDF or PSD finishes, then close by themselves. Before, the export was lost or the print file could be left cut off. If the export fails, the app stays open so you can read the error.
+- **View settings stay put across tabs.** The unit, rulers, guides, Lighting angle and More rows are now one set for every tab, so a change in one tab shows in the others and another tab can no longer undo it at the next launch.
+- **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
+- **Menu shortcuts can't reach the tab you just left.** A shortcut pressed right after switching tabs, such as ⌘W, no longer acts on the tab that was just hidden.
+- **Full screen spacing settles correctly on macOS.** Entering or leaving full screen no longer risks leaving the room for the window buttons wrong until the next resize.
 
 ### Changed
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
@@ -31,12 +34,6 @@ that section to the new version (see .agents/release-steward.md).
 - **A tighter inspector.** X and Y share a row, as do the horizontal and vertical guides; Bind to layer is a link button beside Rotation. The Text box starts one line tall and grows as you type.
 - **Even inspector edges.** Reset badges now sit left of their control, so controls end the same distance from the panel's right edge as the labels start from its left.
 - **Lighter typing and dragging.** A keystroke or a drag now redraws only the inspector rows it changes and leaves the Layers list alone. Zooming and panning no longer re-measure character height.
-
-### Fixed
-- **View settings stay put across tabs.** The unit, rulers, guides, Lighting angle and More rows are now one set for every tab, so a change in one tab shows in the others and another tab can no longer undo it at the next launch.
-- **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
-- **Menu shortcuts can't reach the tab you just left.** A shortcut pressed right after switching tabs, such as ⌘W, no longer acts on the tab that was just hidden.
-- **Full screen spacing settles correctly on macOS.** Entering or leaving full screen no longer risks leaving the room for the window buttons wrong until the next resize.
 
 ## [0.1.118] - 2026-11-04
 
