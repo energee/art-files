@@ -7,8 +7,8 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
 import {
-  AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical,
-  ArrowDownToLine, ArrowUpToLine, ChevronDown, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart,
+  AlignCenterHorizontal, AlignCenterVertical,
+  ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, ArrowUpToLine, ChevronDown, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart,
   type LucideIcon,
 } from "lucide-react";
 import type { Layer, Symbology } from "@/model/layers";
@@ -297,9 +297,9 @@ export function useInspectorOptions() {
     // the guide (offset 0). Empty selection = a legacy layer placed by an
     // absolute x/y; choosing any guide converts it.
     hGuides: [
-      { value: "left" as const, label: t("Anchor to left guide"), icon: AlignStartVertical },
+      { value: "left" as const, label: t("Anchor to left guide"), icon: ArrowLeftToLine },
       { value: "center" as const, label: t("Anchor to center guide"), icon: AlignCenterVertical },
-      { value: "right" as const, label: t("Anchor to right guide"), icon: AlignEndVertical },
+      { value: "right" as const, label: t("Anchor to right guide"), icon: ArrowRightToLine },
     ] satisfies readonly { value: Anchor; label: string; icon: LucideIcon }[],
     vGuides: [
       { value: "top" as const, label: t("Anchor to top guide"), icon: ArrowUpToLine },

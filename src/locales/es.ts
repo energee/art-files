@@ -207,7 +207,7 @@ const es: Record<keyof typeof en, string> = {
   "Turn on this layer": "Activar esta capa",
   "Locked": "Bloqueada",
   "Close inspector": "Cerrar inspector",
-  "Editing {{name}} only ({{count}} selected)": "Editando solo {{name}} ({{count}} elementos seleccionados)",
+  "Selected layers differ. Click to set {{label}} on all of them.": "Las capas seleccionadas difieren. Haz clic para aplicar {{label}} a todas.",
   "From {{variant}}. Turn on this variant to edit the layer.": "De {{variant}}. Activa esta variante para editar la capa.",
   "Unused position override": "Anulación de posición sin usar",
   "Template field settings": "Ajustes del campo de plantilla",

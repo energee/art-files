@@ -170,18 +170,49 @@ describe("LayerInspector header", () => {
     expect(byLabel("Locked")).toBeNull();
   });
 
-  // #1: the inspector edits the last-picked layer only, while drag, reorder
-  // and delete act on the whole selection — so it says so, without taking focus.
-  it("names the one layer it edits when several are selected", () => {
-    render(text(), { selectionCount: 3 });
-    const note = $("#name-selection-note")!;
-    expect(note.textContent).toBe("Editing Name only (3 selected)");
-    expect(note.getAttribute("tabindex")).toBeNull();
-    // The name input points at the note so it is announced with the field.
-    expect($("#name-name")!.getAttribute("aria-describedby")).toBe("name-selection-note");
-    render(text(), { selectionCount: 1 });
-    expect($("#name-selection-note")).toBeNull();
-    expect($("#name-name")!.getAttribute("aria-describedby")).toBeNull();
+  // With several layers selected the sheet shows only what they share, and
+  // every control it shows writes to all of them (src/model/multiEdit.ts).
+  it("heads a multi-selection with its count, in place of the rename box", () => {
+    render(text(), { others: [{ layer: image() }, { layer: qr() }] });
+    const heading = $("#name-name")!;
+    expect(heading.tagName).toBe("H2");
+    expect(heading.textContent).toBe("3 layers");
+    expect(byLabel("Layer name")).toBeNull();
+    render(text());
+    expect(($("#name-name") as HTMLInputElement).value).toBe("Name");
+  });
+
+  it("hides what belongs to one layer: content, binding and template settings", () => {
+    const bound = text({ y: { below: "logo", gap: 4 } });
+    render(bound, { content: createElement("p", { id: "content" }, "content"), others: [{ layer: text({ id: "tagline" }) }] });
+    expect($("#content")).toBeNull();
+    expect(container.textContent).not.toContain("Template field settings");
+    expect(container.textContent).not.toContain("Unbind");
+    expect(byLabel("Bind to layer…")).toBeNull();
+    // Same kind, so Typography stays.
+    expect(container.textContent).toContain("Typography");
+    expect(container.textContent).toContain("Color");
+  });
+
+  it("shows a kind's section only when every selected layer is that kind", () => {
+    render(text(), { others: [{ layer: barcode() }] });
+    expect(container.textContent).not.toContain("Typography");
+    expect(container.textContent).toContain("Position");
+    expect(container.textContent).toContain("Color");
+  });
+
+  it("marks a control the selected layers differ on, and a click matches them", () => {
+    const other = text({ id: "tagline", size: 9 });
+    const { onChange } = render(text(), { others: [{ layer: other }] });
+    const marks = [...container.querySelectorAll("[data-mixed]")];
+    expect(marks.map((m) => m.getAttribute("aria-label")))
+      .toEqual(["Selected layers differ. Click to set Size on all of them."]);
+    click(marks[0]);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({ size: 15.83 });
+    // One layer selected: nothing to differ from.
+    render(text());
+    expect($("[data-mixed]")).toBeNull();
   });
 
   // #2: a layer only an OFF variant adds is not drawn, and edits to it are

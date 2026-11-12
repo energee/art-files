@@ -207,7 +207,7 @@ const fr: Record<keyof typeof en, string> = {
   "Turn on this layer": "Activer ce calque",
   "Locked": "Verrouillé",
   "Close inspector": "Fermer l’inspecteur",
-  "Editing {{name}} only ({{count}} selected)": "Modification de {{name}} uniquement ({{count}} éléments sélectionnés)",
+  "Selected layers differ. Click to set {{label}} on all of them.": "Les calques sélectionnés diffèrent. Cliquez pour appliquer {{label}} à tous.",
   "From {{variant}}. Turn on this variant to edit the layer.": "Depuis {{variant}}. Activez cette variante pour modifier le calque.",
   "Unused position override": "Remplacement de position inutilisé",
   "Template field settings": "Paramètres du champ de modèle",

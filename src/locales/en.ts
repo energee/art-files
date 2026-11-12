@@ -206,7 +206,7 @@ const en = {
   "Turn on this layer": "Turn on this layer",
   "Locked": "Locked",
   "Close inspector": "Close inspector",
-  "Editing {{name}} only ({{count}} selected)": "Editing {{name}} only ({{count}} selected)",
+  "Selected layers differ. Click to set {{label}} on all of them.": "Selected layers differ. Click to set {{label}} on all of them.",
   "From {{variant}}. Turn on this variant to edit the layer.": "From {{variant}}. Turn on this variant to edit the layer.",
   "Unused position override": "Unused position override",
   "Template field settings": "Template field settings",

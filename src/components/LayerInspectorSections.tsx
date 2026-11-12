@@ -40,6 +40,9 @@ import {
 
 export const Position = memo(function Position(props: Ctx & {
   layer: Layer; layerNames: readonly { id: string; name: string }[]; onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
+  /** Several layers are selected: a binding is one layer's, so its rows and
+   *  the Bind button are hidden. */
+  multi?: boolean;
 }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
@@ -111,7 +114,7 @@ export const Position = memo(function Position(props: Ctx & {
   );
   // Unbound, Bind is an icon button on Rotation's row; bound, the binding's
   // own rows (Bound to, Side, Gap, Unbind) replace it.
-  const bind = !binding && (
+  const bind = !binding && !props.multi && (
     <DropdownMenu>
       <DropdownMenuTrigger render={
         <Button variant="outline" size="icon-xs" aria-label={t("Bind to layer…")} title={t("Bind to layer…")}
@@ -141,7 +144,7 @@ export const Position = memo(function Position(props: Ctx & {
       <Heading>{t("Position")}</Heading>
       {pair(xField, yField)}
       {hGuide && vGuide ? pair(stacked(hGuide), stacked(vGuide)) : hGuide || vGuide}
-      {binding && (
+      {binding && !props.multi && (
         <>
           <Field label={t("Bound to")} badge={badge(["binding", "y"], t("Binding"))}>
             <span className="flex items-center gap-1 text-xs font-medium">

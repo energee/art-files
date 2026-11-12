@@ -207,7 +207,7 @@ const de: Record<keyof typeof en, string> = {
   "Turn on this layer": "Diese Ebene aktivieren",
   "Locked": "Gesperrt",
   "Close inspector": "Inspektor schließen",
-  "Editing {{name}} only ({{count}} selected)": "Nur {{name}} wird bearbeitet ({{count}} Elemente ausgewählt)",
+  "Selected layers differ. Click to set {{label}} on all of them.": "Die ausgewählten Ebenen unterscheiden sich. Klicke, um {{label}} auf alle anzuwenden.",
   "From {{variant}}. Turn on this variant to edit the layer.": "Aus {{variant}}. Aktivieren Sie diese Variante, um die Ebene zu bearbeiten.",
   "Unused position override": "Unbenutzte Positionsüberschreibung",
   "Template field settings": "Einstellungen für Vorlagenfelder",

@@ -6,6 +6,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **Edit several layers at once.** With several layers selected, a change in the inspector now applies to every selected layer that has that control: power, lock, position and colour to all of them, and Typography, Image, Barcode or QR settings when they are all that kind. The header shows the count ("3 layers"), and each change is one undo step. Before, the inspector changed only the last layer you picked. A typed X or Y gives every layer the same value, so layers on the same guide line up. The name, content, bindings and Template field settings are hidden until you select one layer.
+- **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
+
 ### Fixed
 - **Smoother edits in the Can view.** Each edit now redoes only what changed: the can's shaders stay built, and foil and corner shapes are kept unless they changed, so typing with the can in view pauses less.
 - **Less work returning to the Can view.** The can model and studio lighting are read once per session instead of every time you switch to the Can view.
@@ -37,6 +41,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 
 ### Changed
+- **Power and lock on a selected Layers row act on the whole selection.** Clicking either on one of several selected rows, or Lock in its right-click menu, now changes all of them, as drag, reorder and Delete already did.
+- **Horizontal guide buttons match Vertical guide.** Left and right are now arrows pointing at a line, like top and bottom.
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
 - **Guides stay put when the rulers toggle.** Showing or hiding the rulers no longer leaves guides off the label until the next zoom.
 
