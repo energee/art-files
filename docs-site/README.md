@@ -15,4 +15,6 @@ npm run dev
 
 Open http://localhost:3000; it redirects to the guide at /docs.
 
+Set `SITE_URL` to the public origin when hosting; OG images, `/sitemap.xml` and `/robots.txt` use it, and it defaults to `http://localhost:3000`.
+
 Pages live in [`content/docs`](content/docs). The root README keeps the small technical bits: install, generate, CMYK, layout.
