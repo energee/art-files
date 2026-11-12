@@ -1,8 +1,10 @@
 # dependabot.yml — weekly dependency PRs, grouped so one PR carries all the
 # minor/patch bumps for each ecosystem; majors arrive one PR each. ci.yml
-# gates them like any PR. A root npm or cargo bump changes a lockfile the
-# app is built from, so release-metadata.yml fails it until someone adds an
-# `## [Unreleased]` CHANGELOG bullet (.agents/release-steward.md).
+# gates them like any PR. check-release.mjs needs no CHANGELOG bullet for a
+# diff of only manifests and lockfiles, so a bump can merge as it arrives.
+# fumadocs-* stays out of docs-site's updates: fumadocs-ui is an npm alias
+# pinned to an exact fumadocs-core, and Dependabot cannot bump an alias, so
+# its PRs fail `npm ci`. Bump the three together by hand.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -14,6 +16,8 @@ updates:
   - package-ecosystem: npm
     directory: /docs-site
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "fumadocs-*"
     groups:
       minor-and-patch:
         update-types: [minor, patch]

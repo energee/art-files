@@ -66,7 +66,7 @@ afterEach(async () => {
 });
 
 const meta = (filePath: string | null): DocumentMeta =>
-  ({ title: "Beer", dirty: false, edited: false, masterUnsaved: false, filePath });
+  ({ title: "Beer", dirty: false, edited: false, masterUnsaved: false, filePath, exporting: false, exportFailures: 0 });
 
 it("remembers a path once a tab binds to it, and again when it changes", async () => {
   await act(async () => { mocks.editors[0].onMeta(meta(null)); });

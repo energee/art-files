@@ -16,6 +16,7 @@
     "core:window:allow-destroy",
     "dialog:allow-save",
     "dialog:allow-open",
+    "dialog:allow-message",
     "opener:allow-reveal-item-in-dir",
     {
       "identifier": "fs:allow-read-file",

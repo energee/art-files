@@ -2,8 +2,8 @@
 // the one length unit (rulers, inspector lengths, drag readout, margin
 // inset), the 3D light angle and which inspector sections have their More
 // rows open. View state, not label content: none of it enters history or
-// exports. Moved out of App.tsx with no behavior change.
-import { useEffect, useState } from "react";
+// exports.
+import { useSyncExternalStore, type SetStateAction } from "react";
 import { LENGTH_UNITS, type LengthUnit } from "@/rulers";
 
 /** Where the preferences persist: localStorage, like every other
@@ -38,28 +38,65 @@ export function loadViewPrefs(): ViewPrefs {
   return prefs;
 }
 
+// One shared set for every tab, like the swatches in settings.ts: a per-editor
+// copy let a tab write its stale values over another tab's choice (#700).
+// `raw` is the entry the copy was parsed from, so an entry changed behind it
+// (another browser window, a test) is picked up on the next read. After a
+// failed write `raw` still names the old entry and `prefs` holds the new value.
+let shared: { raw: string | null; prefs: ViewPrefs } | null = null;
+const listeners = new Set<() => void>();
+
+function storedRaw(): string | null {
+  try {
+    return localStorage.getItem(VIEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function currentPrefs(): ViewPrefs {
+  const raw = storedRaw();
+  if (shared?.raw !== raw) shared = { raw, prefs: loadViewPrefs() };
+  return shared.prefs;
+}
+
+function subscribePrefs(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+const skipSubscribe = () => () => {};
+
+/** A stable setter for one preference, taking a value or an updater like
+ *  useState's. */
+const setterFor = <K extends keyof ViewPrefs>(key: K) => (value: SetStateAction<ViewPrefs[K]>) => {
+  const prefs = currentPrefs();
+  const next = {
+    ...prefs,
+    [key]: typeof value === "function" ? (value as (old: ViewPrefs[K]) => ViewPrefs[K])(prefs[key]) : value,
+  };
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(next));
+  } catch {
+    // full or missing storage: the preference lasts this session only
+  }
+  shared = { raw: storedRaw(), prefs: next };
+  for (const listener of listeners) listener();
+};
+
+const setters = {
+  setShowRulers: setterFor("showRulers"), setShowGuides: setterFor("showGuides"), setUnit: setterFor("unit"),
+  setLightDeg: setterFor("lightDeg"), setMoreTypography: setterFor("moreTypography"),
+  setMorePosition: setterFor("morePosition"),
+};
+
 /** The preferences as state, written back on every change. `lightDeg` is
  *  the 3D light rig's angle in degrees (0 = the default rig): set in the Can
  *  view, it lights the Rendered view too. `moreTypography`/`morePosition`
  *  open the inspector's Typography and Position More rows, one setting per
- *  section for every layer (not per layer). */
-export function useViewPrefs() {
-  const [initial] = useState(loadViewPrefs);
-  const [showRulers, setShowRulers] = useState(initial.showRulers);
-  const [unit, setUnit] = useState(initial.unit);
-  const [showGuides, setShowGuides] = useState(initial.showGuides);
-  const [lightDeg, setLightDeg] = useState(initial.lightDeg);
-  const [moreTypography, setMoreTypography] = useState(initial.moreTypography);
-  const [morePosition, setMorePosition] = useState(initial.morePosition);
-  useEffect(() => {
-    try {
-      localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, unit, lightDeg, moreTypography, morePosition }));
-    } catch {
-      // full or missing storage: the preference lasts this session only
-    }
-  }, [showRulers, showGuides, unit, lightDeg, moreTypography, morePosition]);
-  return {
-    showRulers, setShowRulers, showGuides, setShowGuides, unit, setUnit, lightDeg, setLightDeg,
-    moreTypography, setMoreTypography, morePosition, setMorePosition,
-  };
+ *  section for every layer (not per layer). A hidden tab does not subscribe,
+ *  so a slider drag never re-runs it; it reads the current set on activation. */
+export function useViewPrefs(active: boolean) {
+  const prefs = useSyncExternalStore(active ? subscribePrefs : skipSubscribe, currentPrefs);
+  return { ...prefs, ...setters };
 }

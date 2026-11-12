@@ -47,7 +47,7 @@ let root: ReturnType<typeof createRoot>;
 afterEach(async () => { await act(async () => { root.unmount(); }); });
 
 const meta = (edited: boolean): DocumentMeta =>
-  ({ title: "Labradorite", dirty: edited, edited, masterUnsaved: false, filePath: null });
+  ({ title: "Labradorite", dirty: edited, edited, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0 });
 
 it("reports unsaved work to the Rust side as it comes and goes", async () => {
   root = createRoot(document.createElement("div"));

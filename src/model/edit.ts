@@ -25,7 +25,7 @@
 export type { Doc } from "./editRecords";
 export {
   addLayer, adoptMaster, clearOverride, labelOverriddenPaths, masterAssetIds, mintLayerId,
-  moveLayers, overriddenPaths, overrideBadges, patchLayer, patchLayerIn, referencedAssetIds,
+  heldAssetIds, moveLayers, overriddenPaths, overrideBadges, patchLayer, patchLayerIn, referencedAssetIds,
   removeLayer, removeLayerIn, setLayer, setLayerIn, unsetLayerKeys, whereLayerLives,
   type OverrideBadges,
 } from "./editLayers";

@@ -160,6 +160,7 @@ export function ColorField(props: {
         aria-label={t("{{label}} color", { label: props.label })}
         value={none ? "none" : (text ?? props.value)}
         disabled={none}
+        data-draft={text !== null ? "" : undefined}
         // A full #rrggbb or cmyk(…) applies as it is typed; a 3-digit hex
         // only on commit (blur / Enter) — every 6-digit entry passes through
         // a valid 3-digit prefix, which must not flash onto the layer mid-typing.

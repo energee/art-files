@@ -174,3 +174,24 @@ describe("parseLogo attribute syntax", () => {
     expect(() => fit(`<rect stroke-width="5" height="10"/>`)).toThrow();
   });
 });
+
+// #735: a resize drag asks for a new width per step; the cache keeps the last
+// few, not every one, for each of the last few SVGs.
+describe("parseLogo cache", () => {
+  const svg = (d: number) => `<svg viewBox="0 0 10 10"><path d="M 0 0 L ${d} 0 L ${d} 2 Z"/></svg>`;
+
+  it("hands back the same array for a repeat size, and forgets old sizes", () => {
+    const first = parseLogo(CORNER_SQUARE, 100).paths;
+    expect(parseLogo(CORNER_SQUARE, 100).paths).toBe(first);
+    for (let w = 101; w < 400; w++) parseLogo(CORNER_SQUARE, w);
+    const last = parseLogo(CORNER_SQUARE, 399).paths;
+    expect(parseLogo(CORNER_SQUARE, 399).paths).toBe(last);
+    expect(parseLogo(CORNER_SQUARE, 100).paths).not.toBe(first);
+  });
+
+  it("forgets SVGs it has not been asked for lately", () => {
+    const first = parseLogo(svg(1), 36).paths;
+    for (let d = 2; d < 300; d++) parseLogo(svg(d), 36);
+    expect(parseLogo(svg(1), 36).paths).not.toBe(first);
+  });
+});

@@ -193,6 +193,12 @@ export function packLabel(l: LabelFile, assets: LabelAssets): Uint8Array {
   return zipSync(zip);
 }
 
+/** The .label with `art`'s assets and `label`'s label.json: a crash-recovery
+ *  snapshot put back together (recovery.ts). Both are .label ZIPs. */
+export function joinLabel(art: Uint8Array, label: Uint8Array): Uint8Array {
+  return zipSync({ ...unpackArchive(art), ...unpackArchive(label) }, { level: 0 });
+}
+
 /** Unpack a .label ZIP of any generation: exactly one of `label` (v3),
  *  `v2` (label.json v2) or `legacy` (the raw config.json v1 string, or a
  *  label.json with no formatVersion or formatVersion 1), plus whatever assets
