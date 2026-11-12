@@ -1,16 +1,19 @@
 // CharacterHeight.tsx — editable minimum and maximum printed character heights,
 // characters per inch, and a
-// warning naming any character the layer's font cannot print.
-import { useEffect, useState } from "react";
+// warning naming any character the layer's font cannot print. Rendering shapes
+// the text with fontkit, so it is memoized on what the shaping reads (#731):
+// the layer's text and type, never where it sits.
+import { memo, useEffect, useState } from "react";
 import type { TextLayer } from "@/model/layers";
 import type { FontFamilyId } from "@/fontCatalog";
 import type * as Heights from "@/textheight";
 import { errMsg } from "@/lib/utils";
+import { ignoringPlacement } from "./LayerInspectorControls";
 import { ScrubField } from "./ScrubField";
 import { useTranslation } from "@/i18n";
 
 
-export function CharacterHeight({ layer, family, onChange }: {
+export const CharacterHeight = memo(function CharacterHeight({ layer, family, onChange }: {
   layer: TextLayer; family: FontFamilyId; onChange: (size: number) => void;
 }) {
   const { t } = useTranslation();
@@ -59,4 +62,4 @@ export function CharacterHeight({ layer, family, onChange }: {
     </p>
     <p className="text-[11px] text-muted-foreground">{t("Characters per inch:")} {range.cpi.toFixed(1)}</p>
   </div>;
-}
+}, ignoringPlacement);
