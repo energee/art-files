@@ -90,14 +90,31 @@ vi.mock("../src/psd/build", () => ({
 vi.mock("../src/canvas/draw", () => ({ drawPlate: () => undefined }));
 // A desktop save names the file by the path the dialog returned; browsers return a
 // bare name. With `path` set, saveThrough answers as the desktop does.
-const desktopSave = vi.hoisted(() => ({ path: null as string | null }));
+const desktopSave = vi.hoisted(() => ({
+  path: null as string | null,
+  /** Each save's target, in order: null means it went through the dialog. */
+  targets: [] as unknown[],
+  /** The bound file's mtime on disk, and the overwrite alert's answer (#682). */
+  mtime: 1,
+  answer: "Cancel",
+}));
+vi.mock("@tauri-apps/plugin-fs", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@tauri-apps/plugin-fs")>(),
+  exists: async () => true,
+  stat: async () => ({ mtime: new Date(desktopSave.mtime) }),
+}));
+vi.mock("@tauri-apps/plugin-dialog", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@tauri-apps/plugin-dialog")>(),
+  message: async () => desktopSave.answer,
+}));
 vi.mock("../src/files", async (importOriginal) => {
   const files = await importOriginal<typeof import("../src/files")>();
   return {
     ...files,
     saveThrough: async (...args: Parameters<typeof files.saveThrough>) => {
       if (!desktopSave.path) return files.saveThrough(...args);
-      const [content] = args;
+      const [content, options] = args;
+      desktopSave.targets.push(options.target ?? null);
       const bytes = typeof content === "function" ? content(desktopSave.path) : content;
       return { name: desktopSave.path, bytes, target: { path: desktopSave.path } };
     },
@@ -119,6 +136,9 @@ afterEach(async () => {
   vi.restoreAllMocks();
   localStorage.clear();
   desktopSave.path = null;
+  desktopSave.targets = [];
+  desktopSave.mtime = 1;
+  desktopSave.answer = "Cancel";
   menu.fontError = "";
   menu.promoteError = "";
   menu.restoreError = "";
@@ -1032,6 +1052,87 @@ it("Open Master over hidden values binds Save Master to the opened file", async 
   const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
   await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(other.createWritable).toHaveBeenCalledOnce();
+});
+
+// #682: a bound file changed since this tab last saw it (another tab's Save
+// Master, a cloud sync) stops for the alert instead of being overwritten.
+const settled = () => act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+async function savedLabelThenChangedOnDisk() {
+  desktopSave.path = "/Users/ted/labels/Beer.label";
+  const { saveSlot } = await mount();
+  await act(async () => { await saveSlot.current!(); });
+  await settled(); // the bind's stat lands
+  expect(desktopSave.targets).toEqual([null]);
+  desktopSave.mtime = 2;
+  await toggle("warning");
+  return saveSlot;
+}
+async function savedMasterThenChangedOnDisk() {
+  desktopSave.path = "/Users/ted/masters/Lolev.master";
+  await mount();
+  await reorderName();
+  await run("master-save");
+  await settled();
+  expect(desktopSave.targets).toEqual([null]);
+  desktopSave.mtime = 2;
+  await reorderName();
+}
+
+it("a label changed on disk stays unwritten when the alert is cancelled (#682)", async () => {
+  const saveSlot = await savedLabelThenChangedOnDisk();
+  let saved: boolean | undefined;
+  await act(async () => { saved = await saveSlot.current!(); });
+  expect(saved).toBe(false);
+  expect(desktopSave.targets).toHaveLength(1);
+});
+
+it("a label changed on disk is rewritten only on Overwrite, then saves quietly (#682)", async () => {
+  const saveSlot = await savedLabelThenChangedOnDisk();
+  desktopSave.answer = "Overwrite";
+  await act(async () => { await saveSlot.current!(); });
+  await settled();
+  expect(desktopSave.targets).toEqual([null, { path: "/Users/ted/labels/Beer.label" }]);
+  desktopSave.answer = "Cancel"; // the new mtime is the baseline now: no alert
+  await toggle("warning");
+  await act(async () => { await saveSlot.current!(); });
+  expect(desktopSave.targets).toHaveLength(3);
+});
+
+it("Save As from the alert takes a label through the dialog (#682)", async () => {
+  const saveSlot = await savedLabelThenChangedOnDisk();
+  desktopSave.answer = "Save As…";
+  await act(async () => { await saveSlot.current!(); });
+  expect(desktopSave.targets).toEqual([null, null]);
+});
+
+it("an unchanged label saves with no alert (#682)", async () => {
+  desktopSave.path = "/Users/ted/labels/Beer.label";
+  const { saveSlot } = await mount();
+  await act(async () => { await saveSlot.current!(); });
+  await settled();
+  await toggle("warning");
+  await act(async () => { await saveSlot.current!(); }); // answer stays Cancel
+  expect(desktopSave.targets).toHaveLength(2);
+});
+
+it("a master changed on disk stays unwritten when the alert is cancelled (#682)", async () => {
+  await savedMasterThenChangedOnDisk();
+  await run("master-save");
+  expect(desktopSave.targets).toHaveLength(1);
+});
+
+it("a master changed on disk is rewritten on Overwrite (#682)", async () => {
+  await savedMasterThenChangedOnDisk();
+  desktopSave.answer = "Overwrite";
+  await run("master-save");
+  expect(desktopSave.targets).toEqual([null, { path: "/Users/ted/masters/Lolev.master" }]);
+});
+
+it("Save As from the alert forks the master through the dialog (#682)", async () => {
+  await savedMasterThenChangedOnDisk();
+  desktopSave.answer = "Save As…";
+  await run("master-save");
+  expect(desktopSave.targets).toEqual([null, null]);
 });
 
 // The master's art only fills slots the label left empty, so art the label

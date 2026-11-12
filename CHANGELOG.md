@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Saving no longer erases changes made elsewhere.** On desktop, if a `.master` or `.label` changed after you opened it, in another tab or another app, Save now stops and offers Save As, Overwrite or Cancel. Before, the file was overwritten without warning.
 - **Changing Bleed during an export no longer tears the file.** A PDF or PSD now builds at the Bleed and PSD resolution it started with, so the file matches a normal export of those settings. Before, a change mid-export could write a print PDF whose page, trim box and art disagreed, or stop a PSD with an error. The Saved toast is held back, as it is after an edit, because the file no longer matches Settings.
 - **Export again from a background tab uses the current Settings.** A PSD exported from a tab that was hidden while Bleed or PSD resolution changed came out at the old size with a composite of the new one.
 - **Browser downloads keep their file until they have started.** A plain download's link now lasts a minute on its own, instead of ending at the next save, which could cut a large download short, or never ending if its tab had closed during the export.

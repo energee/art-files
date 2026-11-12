@@ -41,7 +41,7 @@ import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
 import { LABEL_EXT, type LabelAsset } from "@/labelfile";
 import { masterFilter, masterTypes, isAbort } from "@/filePickers";
-import { openThrough, readNativeFile, saveThrough } from "@/files";
+import { confirmOverwrite, openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
@@ -77,7 +77,7 @@ import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
-import { useProjectSave } from "@/useProjectSave";
+import { useFileBaseline, useProjectSave } from "@/useProjectSave";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
@@ -1292,6 +1292,12 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  them only through saveTargetFor (#78). */
   const masterFileHandle = useRef<MasterSaveTarget<FileSystemFileHandle> | null>(null);
   const masterFilePath = useRef<MasterSaveTarget<string> | null>(null);
+  const masterBaseline = useFileBaseline();
+  /** Bind Save Master to a desktop file (or to none), starting its baseline. */
+  const bindMasterPath = (id: string, path?: string | null) => {
+    masterFilePath.current = path ? { id, target: path } : null;
+    masterBaseline.record(path ?? null);
+  };
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
@@ -1304,8 +1310,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     forgetExportPaths();
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
-    masterFilePath.current = bound ? { id: next.master.id, target: bound } : null;
+    bindMasterPath(next.master.id, isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined);
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1443,6 +1448,14 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
+    // Another tab's Save Master may have moved the file: nothing pushes that
+    // into this tab's copy, so writing it blind would erase those edits (#682).
+    const boundPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
+    if (boundPath) {
+      const choice = await confirmOverwrite(boundPath, masterBaseline.at());
+      if (choice === "cancel") return false;
+      as = choice === "save-as";
+    }
     // A promotion re-validates through parseMaster; surface a rejection as an
     // error toast like the write failures below instead of an unhandled
     // rejection from the `void saveMaster(...)` caller (#92).
@@ -1509,7 +1522,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       }, saveBytes);
       if (!saved) return false;
       const ours = docRef.current.master.id === master.id;
-      if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
+      if (ours && saved.target && "path" in saved.target) bindMasterPath(forked.id, saved.target.path);
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
       if (ours) {
@@ -1610,7 +1623,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Bind Save Master only once the doc is on this master (#81).
     const id = r.master.id;
     masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
-    masterFilePath.current = src.path ? { id, target: src.path } : null;
+    bindMasterPath(id, src.path);
     await adoptMasterAssets(r.assets);
   }
 
@@ -1622,7 +1635,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     await rememberMaster(target, path);
     refreshLibrary();
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
+    bindMasterPath(target.id, isTauri() ? path : null);
     commitRebind(target);
     await adoptMasterAssets(assets);
   }
@@ -1714,7 +1727,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           resetDocument({ master: nextMaster, label: newLabel(nextMaster) });
           // Untitled restore is not an Open/Save of this document — do not
           // bind Save Master to the last file's path or a restart overwrites it.
-          masterFilePath.current = null;
+          bindMasterPath(nextMaster.id, null);
         } finally {
           restoringRef.current = false;
         }
