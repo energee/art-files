@@ -52,9 +52,10 @@ const DEFAULTS = {
   cornerRadiusPct: DEFAULT_RENDER.cornerRadius,
   edgeSoftnessRatio: DEFAULT_RENDER.edgeSoftness / 100,
 };
-/** Per-pixel roughness endpoints: matte white-ink areas vs bare foil. */
-const MATTE_ROUGHNESS = 0.8;
-const METALLIC_ROUGHNESS = 0.33;
+/** Per-pixel roughness endpoints: matte white-ink areas vs bare foil, as the
+ *  8-bit levels nearest 0.8 and 0.33. */
+const MATTE_ROUGHNESS = 204 / 255;
+const METALLIC_ROUGHNESS = 84 / 255;
 /** Bump height of the foil layer (soft mask as bumpMap). */
 const LAYER_DEPTH = 0.02;
 // The stage has no scene.background of its own: the renderer clears
@@ -70,6 +71,30 @@ const LAYER_DEPTH = 0.02;
  *  only flatten it. The flat label is a single plane that catches the key only
  *  at a grazing angle, so without more fill it reads grey. */
 const AMBIENT = { can: 0.4, flat: 1.5 };
+
+/** Relative gap kept from OrbitControls' distance limits at rest: thousands of
+ *  rounding errors wide, and far under anything visible. See holdInsideLimits. */
+const LIMIT_GAP = 1e-12;
+
+/** Remember a load's result for later callers. A failure is forgotten, so the
+ *  next caller tries again. */
+function cached<T>(load: () => Promise<T>): () => Promise<T> {
+  let asset: Promise<T> | null = null;
+  return () => asset ??= load().catch((err) => { asset = null; throw err; });
+}
+
+/** The parsed can, shared across scenes: CanView builds a new one on every
+ *  2D to 3D entry, and the file is 4MB. Read-only; each scene clones it. */
+const loadCanModel = cached(() => new Promise<THREE.Group>((resolve, reject) => {
+  new GLTFLoader().load(
+    `${import.meta.env.BASE_URL}Can.gltf`, (gltf) => resolve(gltf.scene), undefined, reject,
+  );
+}));
+
+/** The parsed studio.hdr, shared the same way. */
+const loadStudioHdr = cached(() => new Promise<THREE.DataTexture>((resolve, reject) => {
+  new HDRLoader().load(`${import.meta.env.BASE_URL}studio.hdr`, resolve, undefined, reject);
+}));
 
 /** Same-size copy of a canvas with one CSS filter applied during the blit. */
 function filteredCopy(canvas: HTMLCanvasElement, filter: string): HTMLCanvasElement {
@@ -98,26 +123,16 @@ export function bendPlane(geometry: THREE.PlaneGeometry, radius: number): THREE.
   return geometry;
 }
 
-/** Per-pixel lerp of the soft mask into a roughness map: matte 0.8 where the
- *  mask is black (white ink) down to 0.33 where it's white (foil). */
-function roughnessCanvas(softMask: HTMLCanvasElement): HTMLCanvasElement {
-  const { width, height } = softMask;
-  const out = document.createElement("canvas");
-  out.width = width;
-  out.height = height;
-  const ctx = out.getContext("2d")!;
-  const src = softMask.getContext("2d")!.getImageData(0, 0, width, height);
-  const dst = ctx.createImageData(width, height);
-  const matte = Math.round(MATTE_ROUGHNESS * 255);
-  const metallic = Math.round(METALLIC_ROUGHNESS * 255);
-  for (let i = 0; i < src.data.length; i += 4) {
-    const m = src.data[i] / 255;
-    const r = Math.round(matte + (metallic - matte) * m);
-    dst.data[i] = dst.data[i + 1] = dst.data[i + 2] = r;
-    dst.data[i + 3] = 255;
-  }
-  ctx.putImageData(dst, 0, 0);
-  return out;
+/** The label material's roughness, read from the soft mask in the shader:
+ *  matte where the mask is black (white ink) down to foil where it's white.
+ *  A separate roughness map cost a main-thread readback, a per-pixel loop and
+ *  another upload on every rebuild, for a straight line through the same
+ *  texels (#718). */
+function foilRoughness(shader: { fragmentShader: string }) {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    "#include <roughnessmap_fragment>",
+    `float roughnessFactor = mix(${MATTE_ROUGHNESS.toFixed(6)}, ${METALLIC_ROUGHNESS.toFixed(6)}, texture2D( metalnessMap, vMetalnessMapUv ).b);`,
+  );
 }
 
 type FlatMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
@@ -164,9 +179,6 @@ export class CanScene {
    *  pack without re-framing, so the fresh angle spun the whole block around a
    *  stationary camera. Only frameCamera moves this. */
   private framedAzimuth = DEFAULT_FRONT_AZIMUTH;
-  /** Whether the camera has been aimed at a real (built) label yet. After
-   *  that the view belongs to the operator — see frameCamera. */
-  private framed = false;
 
   private mode: CanSceneMode = "can";
   /** Camera distance the current mode frames at — the denominator getZoom
@@ -286,15 +298,15 @@ export class CanScene {
   /** studio.hdr as scene.environment only — background stays the flat theme
    *  color; the HDRI exists for the metal's reflections. */
   private loadEnvironment() {
-    new HDRLoader().load(
-      `${import.meta.env.BASE_URL}studio.hdr`,
-      (texture) => {
-        if (this.disposed) { texture.dispose(); return; }
+    loadStudioHdr().then(
+      (hdr) => {
+        if (this.disposed) return;
+        // A clone shares the parsed pixels but is this scene's to dispose.
+        const texture = hdr.clone();
         texture.mapping = THREE.EquirectangularReflectionMapping;
         this.scene.environment = texture;
         this.requestRender();
       },
-      undefined,
       (err) => console.warn("Failed to load HDR environment:", err),
     );
   }
@@ -302,12 +314,13 @@ export class CanScene {
   /** Load /Can.gltf, orient upright, normalize to SCENE_SCALE height,
    *  center at origin, and give every mesh the brushed-aluminum material. */
   private async loadCan() {
-    const gltf = await new Promise<{ scene: THREE.Group }>((resolve, reject) => {
-      new GLTFLoader().load(`${import.meta.env.BASE_URL}Can.gltf`, resolve, undefined, reject);
-    }).catch((err) => { console.warn("Failed to load can model:", err); return null; });
-    if (!gltf || this.disposed) return;
+    const loaded = await loadCanModel()
+      .catch((err) => { console.warn("Failed to load can model:", err); return null; });
+    if (!loaded || this.disposed) return;
 
-    const model = gltf.scene;
+    // Everything below re-materials and moves the model, so it works on a
+    // clone. The clone shares the geometry; see dispose().
+    const model = loaded.clone();
     // Matched to a studio photo of a printed can, where the bare top and
     // bottom read bright silver: a darker colour or a smoother finish mirrors
     // the HDRI's dark regions and turns the shoulder near-black (#570).
@@ -394,9 +407,7 @@ export class CanScene {
 
   private disposeMaterialMaps(material: THREE.MeshStandardMaterial) {
     material.map?.dispose();
-    material.metalnessMap?.dispose();
-    material.roughnessMap?.dispose();
-    material.bumpMap?.dispose();
+    material.metalnessMap?.dispose(); // bumpMap is the same texture
     material.alphaMap?.dispose();
   }
 
@@ -418,11 +429,19 @@ export class CanScene {
     this.flat = null;
   }
 
-  /** Blurred copy of the metalness plate — the source for the metalness,
-   *  roughness and bump maps (see DEFAULTS for why the blur exists). */
+  /** Blurred copy of the metalness plate — the source for the metalness and
+   *  bump maps, and through them the roughness (see DEFAULTS for why the blur
+   *  exists, foilRoughness for the roughness). */
   private softMask(tex: LabelTextures): HTMLCanvasElement {
     const blur = this.edgeSoftnessRatio * tex.metalness.width;
     return filteredCopy(tex.metalness, blur > 0 ? `blur(${blur}px)` : "none");
+  }
+
+  /** Point the metalness and bump maps at a fresh soft mask: one texture, one
+   *  upload, since the two read the same pixels. */
+  private replaceMaskMap(material: THREE.MeshStandardMaterial, tex: LabelTextures) {
+    material.metalnessMap?.dispose();
+    material.metalnessMap = material.bumpMap = this.createTexture(this.softMask(tex));
   }
 
   /** The die-cut silhouette as an alphaMap source: a white rounded rect on
@@ -456,9 +475,9 @@ export class CanScene {
    *
    *  Each knob is a scrub field emitting a change per dragged pixel, so this
    *  redoes only what that knob feeds: the radius is one canvas redraw,
-   *  and only the blur touches the three mask-derived
-   *  maps. A full applyTextures would re-blur, re-lerp and re-upload five
-   *  full-resolution textures per pixel of drag. */
+   *  and only the blur touches the mask-derived maps. A full applyTextures
+   *  would re-blur and re-upload every full-resolution texture per pixel of
+   *  drag. */
   setLabelOptions(opts: {
     cornerRadiusPct?: number;
     edgeSoftnessRatio?: number;
@@ -480,15 +499,7 @@ export class CanScene {
     if (!this.labelMaterial) { this.applyTextures(tex); return; }
 
     if (softness) {
-      const soft = this.softMask(tex);
-      const m = this.labelMaterial;
-      m.metalnessMap?.dispose();
-      m.roughnessMap?.dispose();
-      m.bumpMap?.dispose();
-      m.metalnessMap = this.createTexture(soft);
-      m.roughnessMap = this.createTexture(roughnessCanvas(soft));
-      m.bumpMap = this.createTexture(soft);
-      m.needsUpdate = true;
+      this.replaceMaskMap(this.labelMaterial, tex);
     }
     if (radius) {
       this.labelMaterial.alphaMap?.dispose();
@@ -512,36 +523,51 @@ export class CanScene {
     return this.canHeight * LABEL_HEIGHT_RATIO;
   }
 
+  /** New art or mask. The first call builds the label; after that only the
+   *  maps that changed are replaced, on the same material and meshes. Disposing
+   *  a material releases its shader programs before the next render can reuse
+   *  them, so a fresh one per edit relinked both of the double-sided label's
+   *  programs every time. The silhouette stays: it depends only on the corner
+   *  radius, which setLabelOptions owns. An unchanged mask arrives as the same
+   *  canvas (see buildLabelTextures). */
   applyTextures(tex: LabelTextures) {
+    const sameMask = tex.metalness === this.pendingTextures?.metalness;
     this.pendingTextures = tex;
     if (!this.canModel) return; // replayed by loadCan on arrival
 
-    const soft = this.softMask(tex);
-    const oldMaterial = this.labelMaterial;
+    const map = this.createTexture(tex.art, true);
+    if (this.labelMaterial) {
+      this.labelMaterial.map?.dispose();
+      this.labelMaterial.map = map;
+      if (!sameMask) this.replaceMaskMap(this.labelMaterial, tex);
+      this.requestRender();
+      return;
+    }
     this.labelMaterial = new THREE.MeshStandardMaterial({
-      transparent: true, side: THREE.DoubleSide, metalness: 1.0, roughness: 1.0,
-      map: this.createTexture(tex.art, true),
-      metalnessMap: this.createTexture(soft),
-      roughnessMap: this.createTexture(roughnessCanvas(soft)),
-      bumpMap: this.createTexture(soft),
-      bumpScale: LAYER_DEPTH,
+      transparent: true, side: THREE.DoubleSide, metalness: 1.0,
+      bumpScale: LAYER_DEPTH, alphaTest: 0.5, map,
       alphaMap: this.createTexture(this.alphaCanvas(tex)),
-      alphaTest: 0.5,
     });
-    if (oldMaterial) { this.disposeMaterialMaps(oldMaterial); oldMaterial.dispose(); }
+    this.replaceMaskMap(this.labelMaterial, tex);
+    this.labelMaterial.onBeforeCompile = foilRoughness;
+    this.buildLabelMeshes(this.labelMaterial);
+  }
 
+  /** The label's surfaces, once the can's real size is known: the cylinder and
+   *  the Rendered view's plane. Nothing later resizes the cylinder, and setCurve
+   *  rebuilds the plane's geometry itself. */
+  private buildLabelMeshes(material: THREE.MeshStandardMaterial) {
     const labelRadius = this.canRadius * 1.005;
     // No clamp: the wrap is the trim's width over the can's circumference,
     // which is 97.9% — short of meeting itself by construction, so there is
     // no seam to protect against and nothing for an operator to overshoot.
     const wrapAngle = LABEL_WRAP_RATIO * Math.PI * 2;
 
-    this.disposeLabelMesh();
     this.labelMesh = new THREE.Mesh(
       new THREE.CylinderGeometry(
         labelRadius, labelRadius, this.labelHeight(), 64, 1, true, 0, wrapAngle,
       ),
-      this.labelMaterial!,
+      material,
     );
     this.labelMesh.position.y = this.canHeight * LABEL_OFFSET_RATIO;
     // wrapAngle/2 positions the cylinder's center seam at the back; the
@@ -550,9 +576,8 @@ export class CanScene {
     this.frontAzimuth = wrapAngle + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
     this.scene.add(this.labelMesh);
 
-    this.disposeFlatMesh();
     const flatGeometry = this.flatGeometry();
-    const front = new THREE.Mesh(flatGeometry, this.labelMaterial);
+    const front = new THREE.Mesh(flatGeometry, material);
     // The back face of the same surface: BackSide, so it only draws from
     // behind, and pulled toward the camera so it wins over the label's own
     // (DoubleSide) back face there. Shares the geometry, so a bend moves both.
@@ -560,18 +585,17 @@ export class CanScene {
     // label ever needs its back judged.
     const back = new THREE.Mesh(flatGeometry, new THREE.MeshStandardMaterial({
       color: 0xffffff, metalness: 0, roughness: 0.9, side: THREE.BackSide,
-      transparent: true, alphaTest: 0.5, alphaMap: this.labelMaterial.alphaMap,
+      transparent: true, alphaTest: 0.5, alphaMap: material.alphaMap,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
     }));
     this.flat = { front, back };
     this.scene.add(front, back);
 
-    // The opening view, once. frontAzimuth only becomes real after the first
-    // cylinder exists, so the constructor's guess needs correcting — but only
-    // that first time: later art changes must not yank a camera the operator
-    // has since moved. Ahead of applyMode, which lays the 4-pack out against
-    // whatever azimuth the camera ends up framed at.
-    if (!this.framed) { this.framed = true; this.frameCamera(); }
+    // The opening view. frontAzimuth only becomes real once the cylinder
+    // exists, so the constructor's guess needs correcting. Ahead of applyMode,
+    // which lays the 4-pack out against whatever azimuth the camera ends up
+    // framed at.
+    this.frameCamera();
     this.applyMode(); // rebuild the pack against the new meshes
   }
 
@@ -612,13 +636,9 @@ export class CanScene {
     this.applyMode();
   }
 
-  /** Show the meshes this mode uses, and rebuild the 4-pack (its clones hold
-   *  the label mesh by reference, so a rebuilt cylinder needs new ones).
-   *
-   *  Deliberately does NOT move the camera. This runs on every geometry
-   *  rebuild — each pixel of a size scrub, and every debounced preview
-   *  render — and re-aiming there dragged the view back to front-on while
-   *  the operator was mid-orbit. Framing is frameCamera's job. */
+  /** Show the meshes this mode uses, and rebuild the 4-pack. Its clones share
+   *  the label's material, so a new set of maps reaches them with no rebuild.
+   *  Framing is frameCamera's job, not this one's. */
   private applyMode() {
     const mode = this.mode;
     // Tear down the previous pack; clones share geometry/materials with the
@@ -639,8 +659,8 @@ export class CanScene {
   }
 
   /** Aim the camera at the current mode's subject. Called when the operator
-   *  asks for a different view — never on a rebuild, so an orbit survives
-   *  every size change and every re-render of the art. */
+   *  asks for a different view and once for the first label — never on a
+   *  rebuild, so an orbit survives every re-render of the art. */
   private frameCamera() {
     // The whole of framing is our own camera move: the zeroed target and the
     // 1x distance below are scaffolding, not where the operator is, so nothing
@@ -921,6 +941,23 @@ export class CanScene {
     this.requestRender();
   }
 
+  /** Step a camera resting on a distance limit just inside it. OrbitControls
+   *  reports a change whenever its clamp bites, and a camera on the limit can
+   *  sit a rounding error past it on every call, so update() would never
+   *  settle and the view would render at full frame rate while idle. Whether
+   *  it happens depends on the pane and the orbit (#721). Padding the limits
+   *  doesn't do it: a wheel lands on the padded limit and is back in the same
+   *  place. */
+  private holdInsideLimits() {
+    const { controls, camera } = this;
+    const distance = controls.getDistance();
+    const inside = THREE.MathUtils.clamp(
+      distance, controls.minDistance * (1 + LIMIT_GAP), controls.maxDistance * (1 - LIMIT_GAP),
+    );
+    if (inside === distance) return;
+    camera.position.sub(controls.target).multiplyScalar(inside / distance).add(controls.target);
+  }
+
   /** Coalesce renders to one per animation frame (on-demand rendering). */
   private requestRender() {
     if (this.renderRequested || this.disposed) return;
@@ -928,6 +965,7 @@ export class CanScene {
     this.raf = requestAnimationFrame(() => {
       this.renderRequested = false;
       this.raf = null;
+      if (this.controlsSettling) this.holdInsideLimits();
       if (this.controlsSettling && !this.controls.update()) {
         // update() can stop reporting changes while retaining angular/pan
         // inertia. One undamped update consumes and clears that remainder via
@@ -958,6 +996,8 @@ export class CanScene {
       m.map?.dispose();
       m.dispose();
     }
+    // The geometry outlives this scene in the shared model. Disposing it drops
+    // this renderer's buffers and listeners, and the next scene uploads afresh.
     this.canModel?.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) (child as THREE.Mesh).geometry.dispose();
     });

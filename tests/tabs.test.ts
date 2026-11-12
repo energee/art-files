@@ -33,6 +33,17 @@ describe("tab transitions", () => {
     expect(s.tabs[0].title).toBe("Untitled");
   });
 
+  test("previous is the tab shown before the active one", () => {
+    const one = initialTabs();
+    const two = addTab(one);
+    expect(two.previous).toBe(one.active);
+    const three = addTab(two);
+    expect(three.previous).toBe(two.active);
+    expect(activateTab(three, one.active).previous).toBe(three.active);
+    // Re-activating the front tab is no switch, so it can't evict the kept one.
+    expect(activateTab(three, three.active)).toBe(three);
+  });
+
   test("addTab appends and activates, ids never repeat", () => {
     let s = initialTabs();
     const first = s.active;

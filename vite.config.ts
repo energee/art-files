@@ -11,8 +11,8 @@ export default defineConfig({
   // loading whatever other Vite app holds 5173. `vitest run` opens no server,
   // and an explicit `--port` flag still overrides this for a browser-only copy.
   server: { port: 5173, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
-  // Both workers are module workers ({ type: "module" }); ES output lets the
-  // PSD worker leave i18n's on-demand catalogs in chunks it never fetches
+  // Every worker is a module worker ({ type: "module" }); ES output lets the
+  // export workers leave i18n's on-demand catalogs in chunks they never fetch
   // (the worker realm always runs in English), where the default iife format
   // inlines every dynamic import.
   worker: { format: "es" },

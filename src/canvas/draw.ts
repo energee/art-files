@@ -65,11 +65,10 @@ export interface CanvasRenderSource {
  *  they hand the plan, so the same array comes back plan after plan and
  *  re-parsing it was the repaint's fixed cost. Keyed by the array itself so
  *  each entry lives exactly as long as the upstream cache keeps the array:
- *  qrPaths drops a resize drag's intermediate sizes, but parseLogo's cache is
- *  unbounded (its ponytail note), so each logo width it keeps pins its
- *  Path2Ds too. A plan whose arrays are built fresh (not memoized upstream —
- *  e.g. two QR layers alternating through qrShapes' one-slot memo) just
- *  misses, as before this cache. */
+ *  qrPaths and parseLogo both drop a resize drag's intermediate sizes, and
+ *  their Path2Ds go with them. A plan whose arrays are built fresh (not
+ *  memoized upstream — e.g. two QR layers alternating through qrShapes'
+ *  one-slot memo) just misses, as before this cache. */
 const path2dCache = new WeakMap<readonly string[], Path2D[]>();
 const path2ds = (paths: readonly string[]): Path2D[] => {
   let p = path2dCache.get(paths);

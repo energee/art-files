@@ -2,8 +2,9 @@
 // (guides, binding, rotation), the text/image/barcode/QR geometry and
 // typography, and the Style stack (fill, plate, stroke). Each writes only
 // through `set` with a minimal patch (LayerInspector.tsx's header). Split out
-// of LayerInspector.tsx (#433).
-import type { ReactNode } from "react";
+// of LayerInspector.tsx (#433). Each is memoized on the part of the layer it
+// reads, so typing or dragging re-renders only the sections it changes (#715).
+import { memo, useCallback, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
 import { Link2, Link2Off, RotateCcw } from "lucide-react";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
@@ -34,10 +35,10 @@ import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import {
   BlankableField, DimensionField, Field, FieldPair, Heading, PT, Segmented, SelectField, SwitchRow,
-  useInspectorOptions, type Ctx,
+  ignoringContent, ignoringContentAndPlacement, useInspectorOptions, type Ctx,
 } from "./LayerInspectorControls";
 
-export function Position(props: Ctx & {
+export const Position = memo(function Position(props: Ctx & {
   layer: Layer; layerNames: readonly { id: string; name: string }[]; onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
 }) {
   const { layer, set, badge } = props;
@@ -176,15 +177,32 @@ export function Position(props: Ctx & {
       )}
     </div>
   );
-}
+}, ignoringContent);
 
-export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
-  const { layer, set, badge } = props;
-  const { t } = useTranslation();
-  const { aligns } = useInspectorOptions();
-  const id = layer.id;
+type TextProps = Ctx & { layer: TextLayer; fontFamily?: string };
+
+/** Typography's rows around CharacterHeight, the one row that follows the
+ *  text being typed: it stays out of the memoized halves so they can skip. */
+export function TextGeometry(props: TextProps) {
+  const { layer, set } = props;
+  const setSize = useCallback((size: number) => set({ size }), [set]);
   return (
     <div className="space-y-1.5">
+      <TextFace {...props} />
+      <CharacterHeight key={layer.fontFamily ?? props.fontFamily} layer={layer}
+        family={fontFamilyOf({ fontFamily: layer.fontFamily ?? props.fontFamily })}
+        onChange={setSize} />
+      <TextSetting {...props} />
+    </div>
+  );
+}
+
+const TextFace = memo(function TextFace(props: TextProps) {
+  const { layer, set, badge } = props;
+  const { t } = useTranslation();
+  const id = layer.id;
+  return (
+    <>
       <Heading>{t("Typography")}</Heading>
       <Field label={t("Font")} badge={badge(["fontFamily"], t("Font"))}>
         <Select value={layer.fontFamily ?? "inherit"}
@@ -205,9 +223,17 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
         min={1} max={300} {...PT}
         onChange={(size) => set({ size })}
       />
-      <CharacterHeight key={layer.fontFamily ?? props.fontFamily} layer={layer}
-        family={fontFamilyOf({ fontFamily: layer.fontFamily ?? props.fontFamily })}
-        onChange={(size) => set({ size })} />
+    </>
+  );
+}, ignoringContentAndPlacement);
+
+const TextSetting = memo(function TextSetting(props: TextProps) {
+  const { layer, set, badge } = props;
+  const { t } = useTranslation();
+  const { aligns } = useInspectorOptions();
+  const id = layer.id;
+  return (
+    <>
       <Segmented
         label={t("Align")} value={layer.align} options={aligns}
         badge={badge(["align"], t("Align"))}
@@ -245,12 +271,11 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
         badge={badge(["style.uppercase", "uppercase"], t("Uppercase"))}
         onChange={(uppercase) => set({ style: { uppercase } })}
       />
-
-    </div>
+    </>
   );
-}
+}, ignoringContentAndPlacement);
 
-export function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: boolean }) {
+export const ImageGeometry = memo(function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: boolean }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const { fits } = useInspectorOptions();
@@ -289,9 +314,9 @@ export function ImageGeometry(props: Ctx & { layer: ImageLayer; rasterArt?: bool
       )}
     </div>
   );
-}
+}, ignoringContentAndPlacement);
 
-export function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
+export const BarcodeGeometry = memo(function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const { symbologies } = useInspectorOptions();
@@ -322,9 +347,9 @@ export function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
       />
     </div>
   );
-}
+}, ignoringContentAndPlacement);
 
-export function QrGeometry(props: Ctx & { layer: QrLayer }) {
+export const QrGeometry = memo(function QrGeometry(props: Ctx & { layer: QrLayer }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const { qrStyles, ecLevels } = useInspectorOptions();
@@ -344,12 +369,12 @@ export function QrGeometry(props: Ctx & { layer: QrLayer }) {
         items={ecLevels} value={layer.ecLevel ?? DEFAULT_EC_LEVEL} onChange={(v) => set({ ecLevel: v as QrLayer["ecLevel"] })} />
     </div>
   );
-}
+}, ignoringContentAndPlacement);
 
 /** Fill + plate, tracking (text only), and the stroke stack — the same
  *  controls StyleProperties' ElementStyle offered, written as `style.*`
  *  patches. */
-export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean }) {
+export const StyleSection = memo(function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const id = layer.id;
@@ -440,4 +465,4 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
       </div>
     </div>
   );
-}
+}, ignoringContentAndPlacement);
