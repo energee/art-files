@@ -4,8 +4,8 @@
 // the main thread set on layout.ts, and its bytes must match a main-thread
 // build exactly. With no Worker (Node, a constructor that throws, or a
 // worker script that fails to load) the build falls back to the main
-// thread; a build that throws inside the worker still rejects with its own
-// message.
+// thread, still at the job's geometry; a build that throws inside the worker
+// still rejects with its own message.
 import { afterEach, describe, expect, it } from "vitest";
 import { readPsd } from "ag-psd";
 import * as L from "../src/layout";
@@ -98,6 +98,24 @@ describe("PSD build off the main thread (#415)", () => {
     const off = await buildPsdOffThread(j, () => w);
     expect(size(off)).toEqual([L.PSD_DOC.w, L.PSD_DOC.h]);
     expect(w.terminated).toBe(true);
+  });
+
+  it("a fallback builds at the job's geometry, and leaves the live layout alone (#710)", async () => {
+    const j = await job({ bleedIn: 0.125, dpi: 300 });
+    const inWorker = await runPsdJob(j);
+    L.setBleed(0.25);
+    L.setOutputDpi(150);
+    const live = { ...L.PSD_DOC };
+    const w: FakeWorker = {
+      onmessage: null, onerror: null, terminated: false,
+      postMessage() { queueMicrotask(() => w.onerror?.(new Event("error"))); },
+      terminate() { w.terminated = true; },
+    };
+    for (const create of [() => null, () => w]) {
+      const off = await buildPsdOffThread(j, create);
+      expect(Buffer.from(off).equals(Buffer.from(inWorker))).toBe(true);
+      expect(L.PSD_DOC).toEqual(live);
+    }
   });
 
   it("rejects with the worker's own message when the build throws", async () => {

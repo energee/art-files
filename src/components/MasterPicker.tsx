@@ -342,6 +342,7 @@ export function MasterPicker(props: {
       {naming !== null && (
         <input
           autoFocus
+          data-draft=""
           aria-label={translate("Variant name")}
           className="mt-1 w-full rounded-sm border border-sidebar-border bg-transparent px-2 py-1 text-xs"
           defaultValue={props.master.variants.find((v) => v.id === naming)?.name ?? ""}

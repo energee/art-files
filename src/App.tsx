@@ -32,9 +32,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
-import { useTranslation } from "@/i18n";
-import { t as translate } from "@/i18n";
-import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
+import { t as translate, useCachedT } from "@/i18n";
+import { commitFieldDraft, dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -42,7 +41,7 @@ import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
 import { LABEL_EXT, type LabelAsset } from "@/labelfile";
 import { masterFilter, masterTypes, isAbort } from "@/filePickers";
-import { openThrough, readNativeFile, saveThrough } from "@/files";
+import { confirmOverwrite, openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
@@ -69,7 +68,7 @@ import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
 import {
-  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, slotAsset,
+  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, saveBytes, slotAsset,
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
@@ -78,7 +77,7 @@ import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
-import { useProjectSave } from "@/useProjectSave";
+import { useFileBaseline, useProjectSave } from "@/useProjectSave";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
@@ -331,7 +330,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
-  const { t } = useTranslation();
+  const t = useCachedT();
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
@@ -770,16 +769,20 @@ export const DocumentEditor = memo(function DocumentEditor({
       }
       // ⌘+ is Zoom In as well as ⌘=: "+" is Shift+= on a US keyboard (so it
       // arrives as ⇧⌘) and a key of its own on many others.
-      const cmd = e.key === "+" && mods
+      const lookup = () => e.key === "+" && mods
         ? commandsRef.current.find((c) => c.id === "zoom-in")
         : commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
-      if (!cmd) return;
+      if (!lookup()) return;
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
       if (dialogOpen()) return;
-      if (!cmd.disabled) cmd.run();
+      // Looked up again after the commit: a draft can dirty the document and
+      // enable the command, and it must run against the committed doc.
+      commitFieldDraft();
+      const cmd = lookup();
+      if (cmd && !cmd.disabled) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -1018,10 +1021,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
   const {
-    exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths,
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
-    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
+    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase,
     // A cancelled pair's warning offers Export again. It runs the menu's own
     // Export … As… command, so the label as it is now applies, and so does the
     // gate: no second export while one runs, and a blocked label shows the
@@ -1285,7 +1288,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The assets this tab holds right now, read by the unmount cleanup: a
    *  closed tab releases their thumbnails, or each one pins its file's bytes
-   *  for the rest of the session (#85). useExport releases its export URLs.
+   *  for the rest of the session (#85).
    *  `alive` goes false with it, so a decode that lands after the tab closed
    *  commits nothing: React 19 still runs a setState updater on an unmounted
    *  component, and the updater is where the thumbnail is minted (#432). */
@@ -1306,6 +1309,12 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  them only through saveTargetFor (#78). */
   const masterFileHandle = useRef<MasterSaveTarget<FileSystemFileHandle> | null>(null);
   const masterFilePath = useRef<MasterSaveTarget<string> | null>(null);
+  const masterBaseline = useFileBaseline();
+  /** Bind Save Master to a desktop file (or to none), starting its baseline. */
+  const bindMasterPath = (id: string, path?: string | null) => {
+    masterFilePath.current = path ? { id, target: path } : null;
+    masterBaseline.record(path ?? null);
+  };
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
@@ -1318,8 +1327,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     forgetExportPaths();
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
-    masterFilePath.current = bound ? { id: next.master.id, target: bound } : null;
+    bindMasterPath(next.master.id, isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined);
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1358,14 +1366,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     return unchanged;
   };
   const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
   useEffect(() => {
-    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
+    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath, exporting: exportBusy, exportFailures });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited, templateMoved, filePath]);
+  }, [title, dirty, edited, templateMoved, filePath, exportBusy, exportFailures]);
   saveSlot.current = () => saveProject();
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
@@ -1457,6 +1465,14 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
+    // Another tab's Save Master may have moved the file: nothing pushes that
+    // into this tab's copy, so writing it blind would erase those edits (#682).
+    const boundPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
+    if (boundPath) {
+      const choice = await confirmOverwrite(boundPath, masterBaseline.at());
+      if (choice === "cancel") return false;
+      as = choice === "save-as";
+    }
     // A promotion re-validates through parseMaster; surface a rejection as an
     // error toast like the write failures below instead of an unhandled
     // rejection from the `void saveMaster(...)` caller (#92).
@@ -1515,7 +1531,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       repaintMasterDirty((n) => n + 1);
     };
     try {
-      startSaveBatch();
       const path = as ? null : saveTargetFor(masterFilePath.current, master.id);
       const handle = as ? null : saveTargetFor(masterFileHandle.current, master.id);
       const saved = await saveThrough((name) => packMaster(titled(name), assets), {
@@ -1524,7 +1539,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       }, saveBytes);
       if (!saved) return false;
       const ours = docRef.current.master.id === master.id;
-      if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
+      if (ours && saved.target && "path" in saved.target) bindMasterPath(forked.id, saved.target.path);
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
       if (ours) {
@@ -1629,7 +1644,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Bind Save Master only once the doc is on this master (#81).
     const id = r.master.id;
     masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
-    masterFilePath.current = src.path ? { id, target: src.path } : null;
+    bindMasterPath(id, src.path);
     await adoptMasterAssets(r.assets);
   }
 
@@ -1641,7 +1656,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     await rememberMaster(target, path);
     refreshLibrary();
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
+    bindMasterPath(target.id, isTauri() ? path : null);
     commitRebind(target);
     await adoptMasterAssets(assets);
   }
@@ -1733,7 +1748,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           resetDocument({ master: nextMaster, label: newLabel(nextMaster) });
           // Untitled restore is not an Open/Save of this document — do not
           // bind Save Master to the last file's path or a restart overwrites it.
-          masterFilePath.current = null;
+          bindMasterPath(nextMaster.id, null);
         } finally {
           restoringRef.current = false;
         }
