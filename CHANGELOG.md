@@ -37,6 +37,10 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 
 ### Changed
+- **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
+- **Print PSD export holds up the app less.** Each image now decodes once instead of twice, and the images move to the background build instead of being copied. If the background build dies partway, which should be rare, the export now fails with an error instead of finishing on the main thread. The exported file is unchanged.
+- **Exports read only the fonts a label uses.** An export used to parse every bundled family to measure text. It now parses the label's own families, and the exported file is unchanged.
+- **White Ink for transparent art builds faster.** The plate's solid colour under art with alpha is now laid down in large blocks instead of one byte at a time. The exported file is unchanged.
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
 - **Guides stay put when the rulers toggle.** Showing or hiding the rulers no longer leaves guides off the label until the next zoom.
 
