@@ -265,6 +265,7 @@ describe("added layers", () => {
   // plate left the group, and for #143 (autoKerning: false).
   // re-pinned 2026-11-02: the laurel is an SVG image asset, fitted by its
   // ink box rather than builtin:logo's viewBox (collab-variant-goldens.test.ts).
+  // re-pinned 2026-11-07: ag-psd 33 (same file, collab-variant-goldens.test.ts).
   it("builds byte-identical output for the shipped label", async () => {
     const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
     const items = await lolevPlan();
@@ -272,8 +273,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "4fe3b1b28b2822389ee437c48aaee81fbd73fdd4046220a7fc5925c724f782f4", artLen: 1169316,
-      mask: "bf53414efad788e5f78e25e2e868d89916c0f338a69da4f47c99cc5cf89695a8", maskLen: 1169838,
+      art: "991cfa88a897ffc74866467a2aee658ec0cedfd2cbd7ee664db1350c914b0703", artLen: 1169316,
+      mask: "0b1e24bb5956a44a37608035a4a41945cc76ff6d9e1051164cb55107d1fc1ed0", maskLen: 1169838,
     });
   });
 
