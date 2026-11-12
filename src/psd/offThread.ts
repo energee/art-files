@@ -4,17 +4,17 @@
 // worker runs the very same code; this file is only the hand-off.
 //
 // The worker is a separate realm with its own copy of layout.ts, so the job
-// carries the document geometry (bleed, output DPI) the main thread set, and
-// runPsdJob applies it before building. Anything else module-level that
-// buildPsd reads must travel the same way.
+// carries the document geometry (bleed, output DPI) the export started with,
+// and runPsdJob builds at it. Anything else module-level that buildPsd reads
+// must travel the same way.
 //
 // No Worker (Node, tests), a Worker constructor that throws (WebKit throws a
 // SecurityError for a worker CSP blocks) or a worker script that fails to
-// load falls back to building on the main thread — slower, never broken. A build that throws
-// inside the worker rejects with its own message, like the in-thread call.
+// load falls back to runPsdJob on the main thread — slower, never broken. A build
+// that throws inside the worker rejects with its own message, like the in-thread call.
 import { buildPsd, type PsdAssets, type PsdMode, type PsdOpts } from "./build";
 import type { PlacedLayer } from "../planLayers";
-import { setBleed, setOutputDpi } from "../layout";
+import { withGeometry, type Geometry } from "../layout";
 
 /** One buildPsd call, as plain structured-cloneable data. */
 export interface PsdJob {
@@ -22,8 +22,8 @@ export interface PsdJob {
   assets: PsdAssets;
   mode: PsdMode;
   opts: PsdOpts;
-  /** The main thread's render settings (render.bleedIn / render.dpi). */
-  geometry: { bleedIn: number; dpi: number };
+  /** The export's snapshot of the bleed and DPI (useExport's startRun). */
+  geometry: Geometry;
 }
 
 /** What the worker posts back: the file, or the build's error message. */
@@ -37,12 +37,13 @@ export interface PsdWorkerLike {
   terminate(): void;
 }
 
-/** Apply the job's geometry to THIS realm's layout.ts, then build. Runs in
- *  the worker (see worker.ts). */
+/** Build at the job's geometry, in whichever realm this runs: the worker
+ *  (see worker.ts) or, on a fallback, the main thread, whose live layout may
+ *  have moved since the export started (#710). withGeometry needs a
+ *  synchronous read, and buildPsd is: async only in its signature, with no
+ *  await in its body. */
 export function runPsdJob(job: PsdJob): Promise<Uint8Array> {
-  setBleed(job.geometry.bleedIn);
-  setOutputDpi(job.geometry.dpi);
-  return buildPsd(job.items, job.assets, job.mode, job.opts);
+  return withGeometry(job.geometry, () => buildPsd(job.items, job.assets, job.mode, job.opts));
 }
 
 const spawn = (): PsdWorkerLike | null => typeof Worker === "undefined" ? null
@@ -54,7 +55,7 @@ const spawn = (): PsdWorkerLike | null => typeof Worker === "undefined" ? null
 export function buildPsdOffThread(
   job: PsdJob, create: () => PsdWorkerLike | null = spawn,
 ): Promise<Uint8Array> {
-  const inThread = () => buildPsd(job.items, job.assets, job.mode, job.opts);
+  const inThread = () => runPsdJob(job);
   let worker: PsdWorkerLike | null = null;
   try { worker = create(); } catch { /* blocked worker: build in-thread */ }
   if (!worker) return inThread();

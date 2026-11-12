@@ -28,7 +28,6 @@ const en = {
   "Reloading opens a fresh window. Files already saved to disk are untouched; unsaved tabs are offered back after the reload (changes from the last couple of seconds may be missing).": "Reloading opens a fresh window. Files already saved to disk are untouched; unsaved tabs are offered back after the reload (changes from the last couple of seconds may be missing).",
   "Building PDF…": "Building PDF…",
   "Building PSD…": "Building PSD…",
-  "Bleed or PSD resolution changed during the export. Export again.": "Bleed or PSD resolution changed during the export. Export again.",
   "No canvas to draw the White Ink plate.": "No canvas to draw the White Ink plate.",
   "Building PDFs…": "Building PDFs…",
   "Building PSDs…": "Building PSDs…",
