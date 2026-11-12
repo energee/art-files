@@ -56,8 +56,7 @@ function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
     onReorder: vi.fn(),
     onAdd: vi.fn(),
     onRemove: vi.fn(),
-    changedOnly: false,
-    onChangedOnly: vi.fn(),
+    onReset: vi.fn(),
     ...over,
   };
 }
@@ -102,11 +101,18 @@ describe("LayerList", () => {
     expect(container.textContent).not.toContain("Document");
   });
 
-  it("Changed hides every row this label has not touched", () => {
-    const base = baseProps();
-    const rows = base.rows.map((r) => (r.layer.id === "name" ? { ...r, changed: true } : r));
-    render({ ...base, rows, changedOnly: true });
-    expect(rowIds()).toEqual(["name"]);
+  // The list is for building a label: it does not report what the label
+  // changed from its master (that is the Save Master review's job).
+  it("carries no changed or variant-override mark, and no Changed filter", () => {
+    const collab = { id: "collab", name: "Collab", enabled: true };
+    const props = baseProps();
+    props.rows = props.rows.map((r) =>
+      r.layer.id === "logo" ? { ...r, variantOverridden: collab }
+        : r.layer.id === "name" ? { ...r, overridden: true } : r);
+    render(props);
+    expect(container.querySelectorAll('[role="img"]')).toHaveLength(0);
+    const header = container.querySelector('[data-slot="sidebar-group-label"]')!;
+    expect(Array.from(header.querySelectorAll("button")).map((b) => b.textContent?.trim())).toEqual(["Add layer"]);
   });
 
   it("the power switch reports onToggle enabled, and a disabled layer renders dimmed", () => {
@@ -147,22 +153,27 @@ describe("LayerList", () => {
     expect(button.className).not.toMatch(/active:text-sidebar-accent-foreground/);
   });
 
-  it("keeps keyboard focus on the lock through locking and unlocking", () => {
+  // A lock is a state mark: only a locked row shows one. Locking is in the
+  // row menu and the inspector header.
+  it("shows a lock only on a locked row; clicking it unlocks and keeps focus on the row", () => {
     const props = baseProps();
-    props.onToggle = (id, prop, value) => {
+    props.rows = props.rows.map((row) => row.layer.id === "wordmark"
+      ? { ...row, layer: { ...row.layer, locked: true } } : row.layer.id === "name"
+        ? { ...row, layer: { ...row.layer, locked: false } } : row);
+    props.onToggle = vi.fn((id, prop, value) => {
       props.rows = props.rows.map((row) => row.layer.id === id
         ? { ...row, layer: { ...row.layer, [prop]: value } } : row);
       render(props);
-    };
+    });
     render(props);
+    expect(byLabel("Name: locked")).toBeNull();
     const lock = byLabel("Brand: locked");
+    expect(lock.getAttribute("aria-pressed")).toBe("true");
     lock.focus();
     click(lock);
-    expect(byLabel("Brand: locked").getAttribute("aria-pressed")).toBe("true");
-    expect(document.activeElement).toBe(lock);
-    click(lock);
-    expect(byLabel("Brand: locked").getAttribute("aria-pressed")).toBe("false");
-    expect(document.activeElement).toBe(lock);
+    expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", false);
+    expect(byLabel("Brand: locked")).toBeNull();
+    expect(document.activeElement).toBe(rowFor("wordmark").querySelector('[data-slot="sidebar-menu-button"]'));
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
@@ -303,30 +314,12 @@ describe("LayerList", () => {
     expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
-  it("the selected row's Remove button calls onRemove", () => {
-    const props = render(baseProps({ selected: ["wordmark"] }));
-    click(byLabel("Brand: remove"));
-    expect(props.onRemove).toHaveBeenCalledWith("wordmark");
-    expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
-  it("colours Remove destructive, not a solid fill (docs/plans/template-switch.md, Task 3)", () => {
-    render(baseProps({ selected: ["wordmark"] }));
-    expect(byLabel("Brand: remove").className).toContain("hover:text-destructive-text");
-  });
-
-  it("colours the overridden/changed marks info, not primary (docs/plans/template-switch.md, Task 3)", () => {
-    const collab = { id: "collab", name: "Collab", enabled: true };
-    const props = baseProps();
-    props.rows = props.rows.map((r) =>
-      r.layer.id === "logo" ? { ...r, variantOverridden: collab }
-        : r.layer.id === "name" ? { ...r, changed: true } : r);
-    render(props);
-    const marks = Array.from(container.querySelectorAll('[role="img"]')) as HTMLElement[];
-    const overridden = marks.find((el) => el.getAttribute("aria-label") === "Collab changes this layer")!;
-    const changed = marks.find((el) => el.getAttribute("aria-label") === "Changed in this label")!;
-    expect(overridden.className).toContain("text-info-text");
-    expect(changed.className).toContain("text-info-text");
+  // Remove is one button for the whole selection, in the inspector header
+  // (plus Delete and the row menu), not a trash on every selected row.
+  it("has no Remove button on a selected row", () => {
+    render(baseProps({ selected: ["wordmark", "name"] }));
+    expect(byLabel("Brand: remove")).toBeNull();
+    expect(container.querySelector('[aria-label$=": remove"]')).toBeNull();
   });
 
   // Message-toasts row 13: with the header pill gone, the invalid layer's row
@@ -448,27 +441,15 @@ describe("LayerList", () => {
     expect(props.onReorder).toHaveBeenCalledTimes(2);
   });
 
-  it("header chips: Changed and one toggle per variant", () => {
-    const props = render(baseProps());
-    const filter = Array.from(container.querySelectorAll("button"))
-      .find((b) => b.textContent?.trim() === "Changed")!;
-    expect(filter.getAttribute("aria-pressed")).toBe("false");
-    click(filter);
-    expect(props.onChangedOnly).toHaveBeenCalledWith(true);
-
-    // The variant chips are gone: the master Select names the version, and
-    // what it names is what the canvas draws.
+  it("has no variant chips in the header", () => {
+    render(baseProps());
+    // The master Select names the version, and what it names is what the
+    // canvas draws.
     expect(byLabel("Collab variant")).toBeNull();
   });
 
   it("every interactive control has an accessible name (a11y lens)", () => {
-    // A selected row shows the most controls (reorder arrows included); a row
-    // a variant changes and one this label changed add their two marks.
     const props = baseProps({ selected: ["wordmark"] });
-    const collab = { id: "collab", name: "Collab", enabled: true };
-    props.rows = props.rows.map((r) =>
-      r.layer.id === "logo" ? { ...r, variantOverridden: collab }
-        : r.layer.id === "name" ? { ...r, changed: true } : r);
     render(props);
     const controls = Array.from(container.querySelectorAll('button, input, [role="img"]'));
     expect(controls.length).toBeGreaterThan(20);
@@ -477,12 +458,6 @@ describe("LayerList", () => {
         ?? el.textContent?.trim();
       expect(name, `${el.tagName} ${el.className}`).toBeTruthy();
     }
-    // The two provenance marks name their source; the old single dot claimed
-    // "Overridden by a variant" for a label edit too.
-    const marks = Array.from(container.querySelectorAll('[role="img"]'))
-      .map((el) => el.getAttribute("aria-label"));
-    expect(marks).toContain("Collab changes this layer");
-    expect(marks).toContain("Changed in this label");
   });
 });
 
@@ -490,11 +465,8 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   const rowBox = (id: string) => rowFor(id).firstElementChild as HTMLElement;
 
 
-  it("puts the Changed filter in the Layers header and drops the multi-select hint", () => {
+  it("keeps the multi-select hint out of the list", () => {
     render(baseProps({ selected: ["name"] }));
-    const header = container.querySelector('[data-slot="sidebar-group-label"]')!;
-    expect(Array.from(header.querySelectorAll("button")).map((b) => b.textContent?.trim()))
-      .toContain("Changed");
     expect(container.textContent).not.toMatch(/click for a range|Shift-click/);
   });
 
@@ -514,15 +486,65 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   });
 
 
-  it("opens Rename / Remove on right-click", async () => {
+  const rightClick = (id: string) => act(async () => {
+    rowBox(id).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    await Promise.resolve();
+  });
+  const menuItems = () => Array.from(document.querySelectorAll('[role="menuitem"]'))
+    .map((el) => el.textContent?.trim());
+  const pick = (text: string) => act(async () => {
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim().startsWith(text))!.click();
+    await Promise.resolve();
+  });
+
+  // The row menu is the complete list of what you can do to a layer.
+  it("right-click selects the row and lists every layer action", async () => {
     const props = render(baseProps());
-    await act(async () => {
-      rowBox("wordmark").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
-      await Promise.resolve();
-    });
-    expect(menuItem("Rename")).toBeDefined();
-    await act(async () => { menuItem("Remove").click(); await Promise.resolve(); });
+    await rightClick("wordmark");
+    expect(props.onSelect).toHaveBeenCalledWith("wordmark", {});
+    expect(menuItems()).toEqual([
+      "Rename", "Hide", "Lock", "Bring Forward⌥↑", "Send Backward⌥↓", "Reset to Master", "Remove⌫",
+    ]);
+    await pick("Remove");
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
+  });
+
+  it("the row menu hides, locks, reorders and resets", async () => {
+    const base = baseProps({ selected: ["name"] });
+    const props = render({ ...base, rows: base.rows.map((r) =>
+      r.layer.id === "name" ? { layer: { ...r.layer, locked: false }, overridden: true } : r) });
+    await rightClick("name");
+    await pick("Hide");
+    expect(props.onToggle).toHaveBeenLastCalledWith("name", "enabled", false);
+    await rightClick("name");
+    await pick("Lock");
+    expect(props.onToggle).toHaveBeenLastCalledWith("name", "locked", true);
+    await rightClick("name");
+    await pick("Bring Forward");
+    expect(props.onReorder).toHaveBeenLastCalledWith("name", 1);
+    await rightClick("name");
+    await pick("Reset to Master");
+    expect(props.onReset).toHaveBeenCalledWith("name");
+  });
+
+  it("Reset to Master is off for a layer this label has not restyled", async () => {
+    const props = render(baseProps({ selected: ["name"] }));
+    await rightClick("name");
+    const reset = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim() === "Reset to Master")!;
+    expect(reset.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => { reset.click(); await Promise.resolve(); });
+    expect(props.onReset).not.toHaveBeenCalled();
+  });
+
+  // A right-click inside a multi-selection keeps it, and a name is one
+  // layer's, so Rename is not offered.
+  it("right-click on one of several selected rows keeps the selection and offers no Rename", async () => {
+    const props = render(baseProps({ selected: ["wordmark", "name"] }));
+    await rightClick("name");
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(menuItems()).not.toContain("Rename");
   });
 
   // Light theme: muted on primary/20 is 4.29:1, under #440's 4.5:1 floor.
@@ -534,19 +556,6 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     expect(rowBox("wordmark").className).toContain("hover:bg-sidebar-primary/15");
     expect(rowBox("wordmark").className).not.toContain("hover:bg-sidebar-primary/20");
     expect(rowBox("name").className).toContain("hover:bg-sidebar-primary/20");
-  });
-
-  it("the Remove button hands focus on like the Delete key, not to the page", async () => {
-    const { rows } = lolevRows();
-    const two = rows.slice(0, 2);
-    const props = baseProps({ rows: two, selected: [two[1].layer.id] });
-    props.onRemove = vi.fn(() => render({ ...props, rows: [two[0]], selected: [] }));
-    render(props);
-    const remove = byLabel(`${two[1].layer.name}: remove`);
-    remove.focus();
-    click(remove);
-    await act(async () => { await Promise.resolve(); });
-    expect(document.activeElement).toBe(rowFor(two[0].layer.id).querySelector('[data-slot="sidebar-menu-button"]'));
   });
 
   it("right-click in the rename field keeps editing; no row menu opens over it", async () => {
@@ -610,7 +619,7 @@ describe("what re-renders the list (#716)", () => {
     ["kind", layer({ kind: "qr" })], ["role", layer({ kind: "image", role: "mask" })],
     ["variant chip", (row) => ({ ...row, variant: chip })],
     ["variant override", (row) => ({ ...row, variantOverridden: chip })],
-    ["changed mark", (row) => ({ ...row, changed: true })],
+    ["label override", (row) => ({ ...row, overridden: true })],
   ])("redraws for the row's %s", (_name, change) => {
     expect(compare(props, editing(change))).toBe(false);
   });

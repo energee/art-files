@@ -1,6 +1,6 @@
 ---
 title: Layers
-description: The Layers list, visibility, lock, Changed, and adding layers.
+description: The Layers list, visibility, lock, the right-click menu, and adding layers.
 ---
 
 Left list is every layer on the resolved label, **front to back**. Background texture and metallic mask sit at the bottom like any other image. No special Document group.
@@ -10,12 +10,22 @@ Each row:
 - Kind icon (text, image, barcode, QR; texture and mask have their own)
 - Name. Double-click it to rename (or use the inspector's name box, or right-click → Rename)
 - A **variant badge** when a variant *adds* this layer, or when an enabled variant changes this master layer. Hover it: "Added by the Collab variant" or "Changed by the Collab variant". A row the variant adds turns grey while that variant is off, and its Show eye is crossed out
-- A **provenance mark** when an enabled variant overrides part of a master layer
-- **Show**, an eye in a fixed column. A crossed-out eye means the layer is hidden from both preview and exports; its name stays readable in grey. This is the saved, undoable `enabled` setting, not a session-only hide. Showing a layer whose variant is off also enables that variant; the tooltip names it
-- **Lock**, an open or closed padlock in the next fixed column. Click to lock or unlock on the canvas: drag, resize and nudge are prevented, but typed inspector values still apply. Page art (Background, Metallic mask) leaves this cell empty because it can't be dragged
-- **Remove** (trash), separated from the toggles in its own column, available only on selected rows. Undo restores removed layers
+- A **lock** on a locked layer. Click it to unlock. Locking is in the right-click menu and the inspector header. A locked layer can't be dragged, resized or nudged on the canvas, but typed inspector values still apply. Page art (Background, Metallic mask) has no lock because it can't be dragged
+- **Show**, an eye at the right edge of every row. A crossed-out eye means the layer is hidden from both preview and exports; its name stays readable in grey. This is the saved, undoable `enabled` setting, not a session-only hide. Showing a layer whose variant is off also enables that variant; the tooltip names it
 
-Show and Lock stay visible without hovering, in a compact group at the right edge. Hover a control for its action and scope; there are no column headings. Each control keeps a 24px target, and positions stay fixed when you select, hide or lock a layer. Right-click any row for Rename, Lock (or Unlock; not on page art) and Remove.
+The list is for building the label, so it doesn't mark what this label changed from its master. The Save Master review lists that.
+
+## Right-click menu
+
+Right-click a row for everything you can do to a layer. It selects the row first, unless the row is already part of the selection, and each action applies to the whole selection.
+
+- **Rename** (one layer only)
+- **Hide** or **Show**, and **Lock** or **Unlock** (not on page art)
+- **Bring Forward** (`⌥↑`) and **Send Backward** (`⌥↓`)
+- **Reset to Master** puts the layer's position, type and colour back to the master's and keeps what you typed into it. It is greyed out on a layer this label hasn't restyled
+- **Remove** (Delete or Backspace). Undo restores removed layers
+
+Remove is also the trash button in the inspector header.
 
 Drag a row to reorder. Up the list is toward the front. Delete or Backspace on a selected row removes it.
 
@@ -23,9 +33,8 @@ Click a row to select it (inspector opens). The selected row is tinted blue. `�
 
 ## Header
 
-One line: the title, then the filter, then Add layer.
+One line: the title, then Add layer.
 
-- **Changed.** Only the layers you actually filled or overrode on this beer. Everything is fillable, so this is "what did I touch?"
 - **Variants.** Switch them on or off for this label in the Master picker above the list. See [Variants](/docs/variants).
 - **Add layer.** Text, Image, Barcode, or QR (also in the menu bar: Layer → Add Text Layer, and the Image, Barcode and QR rows under it). It lands on the version the master picker names (the base master, or a variant you switched to).
 

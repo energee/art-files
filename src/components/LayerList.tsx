@@ -5,22 +5,25 @@ import { isMacOS } from "@/keys";
 // caller hands rows in draw order, back to front, and this component
 // reverses them), no Document group — background and mask are the two
 // bottom rows like any other. Each row: kind icon, name (double-click or the
-// row menu to rename inline), a variant badge when a variant ADDS the layer
-// (its row dimmed while that variant is off), a provenance mark when an
-// enabled variant overrides part of it, then fixed Show, Lock and Remove
-// columns. Visibility and canvas-lock controls are always visible; Remove
-// is available only on selected rows. Right-click any row for Rename,
-// Lock (not on page art) and Remove.
-// The header carries the title, the "Changed" filter that replaced Fill mode,
-// and the "Add layer" menu.
+// row menu to rename inline), a variant badge when a variant adds or changes
+// the layer (its row dimmed while that variant is off), a lock on a locked
+// row (click to unlock), then the Show eye. The list is for building a
+// label, so it carries no mark for what the label changed from its master;
+// the Save Master review lists that.
+// Right-click a row for the complete list of layer actions: Rename, Hide,
+// Lock (not on page art), Bring Forward, Send Backward, Reset to Master and
+// Remove. It selects the row first, unless the row is part of the selection,
+// and the caller applies each action to the whole selection. Remove is also
+// the Delete key and the inspector header's button.
+// The header carries the title and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
 // out through a callback — the caller decides where it lands (master or the
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Eye, EyeOff, Image, Wallpaper, ListFilter, Lock, LockOpen, Plus,
-  QrCode, Scan, Trash2, Type, type LucideIcon,
+  Barcode, Eye, EyeOff, Image, Wallpaper, Lock, Plus,
+  QrCode, Scan, Type, type LucideIcon,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
@@ -28,7 +31,8 @@ import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/i18n";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 // No shadcn wrapper for it; its Popup/Item parts are the Menu ones, so the
 // dropdown's content and items render inside it unchanged.
@@ -58,14 +62,11 @@ export interface LayerListProps {
    *  switched to, the base master otherwise. It used to offer a submenu per
    *  variant; the Select decides now, so there is one Add layer. */
   onAdd: (kind: LayerKind) => void;
-  /** The selected row's Remove button, the row menu's Remove, and the
-   *  Delete/Backspace key on a selected row. */
+  /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
-  /** The header filter: show only layers THIS label has changed — a fill
-   *  value or an override. Every layer is fillable now, so "what did I
-   *  change?" is the question worth filtering on. */
-  changedOnly: boolean;
-  onChangedOnly: (v: boolean) => void;
+  /** The row menu's Reset to Master: drop this label's design overrides on
+   *  the layer (and the rest of the selection), keeping its content. */
+  onReset: (id: string) => void;
   /** Layers whose filled value is invalid (it blocks export), layer id →
    *  the reason. Each such row is tinted red with an error dot, and its
    *  tooltips name the reason. */
@@ -98,20 +99,9 @@ const control = cn(
   "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3.5",
 );
 
-/** Header chip — the Changed filter's look: a small pill, filled while
- *  pressed. */
-const chip = (pressed: boolean) => cn(
-  "inline-flex h-5 shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] leading-none",
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-  pressed
-    ? "border-sidebar-primary bg-sidebar-primary text-sidebar-primary-foreground"
-    : "border-sidebar-border text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-  "[&>svg]:size-3",
-);
-
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, ...p }: {
+function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, ...p }: {
   dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
   /** Why its filled value is invalid (it blocks export); unset when valid. */
   invalid?: string;
@@ -121,11 +111,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   lifted?: boolean;
   row: LayerRow;
   isSelected: boolean;
+  /** This row is one of several selected: the menu offers no Rename. */
+  multi: boolean;
   /** Ends of the DRAW order, computed by the list over every row (not the
    *  filtered view), so keyboard reordering stops at the owning container’s ends. */
   atFront: boolean;
   atBack: boolean;
-} & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove">) {
+} & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove" | "onReset">) {
   const { t } = useTranslation();
   const hintId = useId();
   const { layer } = row;
@@ -164,9 +156,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
     setRenaming(false);
   };
 
-  /** The selected row's Remove (its button, or Delete/Backspace), then focus
-   *  to the next unselected row's name, else this list's Add layer — never
-   *  dropped to the page. */
+  /** Delete/Backspace on the selected row, then focus to the next unselected
+   *  row's name, else this list's Add layer — never dropped to the page. */
   const removeSelected = () => {
     const current = itemRef.current!.querySelector<HTMLElement>('[data-slot="sidebar-menu-button"]')!;
     const list = current.closest('[data-slot="sidebar-menu"]');
@@ -184,9 +175,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
     });
   };
 
-  // Keys on the row's name button: Delete/Backspace = the Remove button,
-  // ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so the keys
-  // act on exactly the row its Remove button is showing for.
+  // Keys on the row's name button: Delete/Backspace removes, ⌥↑/⌥↓ = one
+  // reorder step. Gated on the row being selected, so a key never acts on a
+  // row that is merely focused.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isSelected) return;
     if (e.key === "Delete" || e.key === "Backspace") {
@@ -207,11 +198,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
       {/* The whole row is the select target and carries the hover/selected
           highlight end to end; every control inside stops propagation so
           toggling a switch never changes the selection. Enter on the name
-          button fires a click that bubbles here the same way. Right-click opens Rename / Lock /
-          Remove at the pointer. */}
+          button fires a click that bubbles here the same way. Right-click
+          opens the row menu at the pointer, selecting the row first unless
+          it is already part of the selection. */}
       <ContextMenu.Root>
         <ContextMenu.Trigger
           onClick={(e) => p.onSelect(id, modsOf(e))}
+          onContextMenu={() => { if (!isSelected) p.onSelect(id, {}); }}
           className={cn(
             "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             // Selected is a primary tint, not the hover grey: the accent sat at
@@ -306,27 +299,6 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
                 {row.variant.name}
               </span>
             )}
-            {/* Two provenance marks, deliberately different shapes: a FILLED
-                dot for a variant (it lives in the master file and applies to
-                every label with that variant on) and a RING for this label's own
-                change. Same glyph for both is what made the old single dot
-                unreadable — and its title claimed "variant" either way. */}
-            {row.variantOverridden && (
-              <span
-                role="img"
-                aria-label={t("{{name}} changes this layer", { name: row.variantOverridden.name })}
-                title={t("{{name}} changes this layer. Resetting changes the master file.", { name: row.variantOverridden.name })}
-                className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
-              />
-            )}
-            {row.changed && (
-              <span
-                role="img"
-                aria-label={t("Changed in this label")}
-                title={t("Changed in this label")}
-                className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
-              />
-            )}
             {invalid && (
               <span role="img" aria-label={t("Invalid value")} title={invalid}
                 className="size-1.5 shrink-0 rounded-full bg-destructive" />
@@ -336,7 +308,26 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               the button without also becoming part of its name. */}
           {invalid && <span id={hintId} className="sr-only">{hint}</span>}
 
-          <div className="grid shrink-0 grid-cols-[24px_24px_32px] items-center" onClick={stop}>
+          <div className="flex shrink-0 items-center" onClick={stop}>
+            {/* A state mark, not a column of buttons: only a locked row shows
+                it (and gives up the 24px), so the eyes stay in one column.
+                Locking is in the row menu and the inspector. */}
+            {locked && !page && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // The button unmounts with the lock, so focus moves to the row first.
+                    itemRef.current?.querySelector<HTMLElement>('[data-slot="sidebar-menu-button"]')?.focus();
+                    p.onToggle(id, "locked", false);
+                  }}
+                  aria-label={t("{{name}}: locked", { name })}
+                  aria-pressed
+                  title={`${t("Unlock on canvas.")} ${t("Locked on canvas: drag, resize and nudge are off. Typed values still apply.")}`}
+                  className={cn(control, "text-sidebar-foreground")}
+                >
+                  <Lock />
+                </button>
+            )}
             <button
               type="button"
               onClick={() => p.onToggle(id, "enabled", inactive)}
@@ -353,39 +344,28 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             >
               {inactive ? <EyeOff /> : <Eye />}
             </button>
-            <div>
-              {!page && (
-                <button
-                  type="button"
-                  onClick={() => p.onToggle(id, "locked", !locked)}
-                  aria-label={t("{{name}}: locked", { name })}
-                  aria-pressed={locked}
-                  title={`${locked ? t("Unlock on canvas.") : t("Lock on canvas.")} ${t("Locked on canvas: drag, resize and nudge are off. Typed values still apply.")}`}
-                  className={cn(control, locked && "text-sidebar-foreground")}
-                >
-                  {locked ? <Lock /> : <LockOpen />}
-                </button>
-              )}
-            </div>
-            <div className="pl-[8px]">
-              {isSelected && (
-                <button
-                  type="button"
-                  onClick={removeSelected}
-                  aria-label={t("{{name}}: remove", { name })}
-                  title={t("Remove layer")}
-                  className={cn(control, "hover:text-destructive-text")}
-                >
-                  <Trash2 />
-                </button>
-              )}
-            </div>
           </div>
         </ContextMenu.Trigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => setRenaming(true)}>{t("Rename")}</DropdownMenuItem>
+        {/* Wide enough that "Send Backward" and its shortcut share a line. */}
+        <DropdownMenuContent className="min-w-48">
+          {!multi && <DropdownMenuItem onClick={() => setRenaming(true)}>{t("Rename")}</DropdownMenuItem>}
+          <DropdownMenuItem onClick={() => p.onToggle(id, "enabled", inactive)}>{inactive ? t("Show") : t("Hide")}</DropdownMenuItem>
           {!page && <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? t("Unlock") : t("Lock")}</DropdownMenuItem>}
-          <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>{t("Remove")}</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={atFront} onClick={() => p.onReorder(id, 1)}>
+            {t("Bring Forward")}<DropdownMenuShortcut>⌥↑</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={atBack} onClick={() => p.onReorder(id, -1)}>
+            {t("Send Backward")}<DropdownMenuShortcut>⌥↓</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {/* ponytail: enabled by the clicked row's own override; a selection
+              whose other rows hold one resets through one of those rows. */}
+          <DropdownMenuItem disabled={!row.overridden} onClick={() => p.onReset(id)}>{t("Reset to Master")}</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>
+            {t("Remove")}<DropdownMenuShortcut>⌫</DropdownMenuShortcut>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </ContextMenu.Root>
     </SidebarMenuItem>
@@ -494,26 +474,15 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
     const byId = new Map(rows.map((r) => [r.layer.id, build(r)]));
     return (row: LayerRow) => byId.get(row.layer.id)!;
   }, [rows, peersOf, reorder]);
-  const shown = (props.changedOnly ? rows.filter((r) => !!r.changed) : rows)
-    .slice().reverse();
+  const shown = rows.slice().reverse();
   return (
     <SidebarGroup>
       <span role="status" aria-live="polite" className="sr-only">{announcement}</span>
-      {/* Title, the one filter, then Add layer — on one line, so the list
-          starts a row higher. Variants used to sit here as toggle chips; they
-          live in the master Select now, which names the version the canvas
-          is drawing. */}
+      {/* Title, then Add layer. Variants used to sit here as toggle chips;
+          they live in the master Select now, which names the version the
+          canvas is drawing. */}
       <SidebarGroupLabel className="gap-1.5">
         <span className="flex-1">{t("Layers")}</span>
-        <button
-          type="button"
-          aria-pressed={props.changedOnly}
-          onClick={() => props.onChangedOnly(!props.changedOnly)}
-          title={t("Show only layers changed in this label")}
-          className={chip(props.changedOnly)}
-        >
-          <ListFilter /> {t("Changed")}
-        </button>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -543,6 +512,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               key={row.layer.id}
               row={row}
               isSelected={selected.includes(row.layer.id)}
+              multi={selected.length > 1 && selected.includes(row.layer.id)}
               atFront={peersOf(row)[0] === row}
               atBack={peersOf(row).at(-1) === row}
               dragHandlers={dragHandlers(row)}
@@ -554,12 +524,13 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               onRename={props.onRename}
               onReorder={reorder}
               onRemove={props.onRemove}
+              onReset={props.onReset}
             />
           ))}
         </SidebarMenu>
         {shown.length === 0 && (
           <p className="px-2 py-2 text-[11px] text-sidebar-foreground/50">
-            {props.changedOnly ? "Nothing changed in this label yet." : "No layers."}
+            No layers.
           </p>
         )}
       </SidebarGroupContent>
@@ -567,15 +538,15 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
   );
 }
 
-/** The rows as the list draws them: name, icon, power, lock, chips and marks,
- *  in order. layerRows re-resolves every layer on each edit, so a keystroke, a
+/** The rows as the list draws them: name, icon, power, lock, chips and what
+ *  the row menu enables, in order. layerRows re-resolves every layer on each edit, so a keystroke, a
  *  drag or a scrub hands the list all-new row objects whose only change is
  *  content or geometry it never shows. Everything the list reads off a row
  *  belongs here, or it goes stale until something listed changes. */
 const shownRows = (rows: LayerRow[]) =>
-  JSON.stringify(rows.map(({ layer, variant, variantOverridden, changed }) => [
+  JSON.stringify(rows.map(({ layer, variant, variantOverridden, overridden }) => [
     layer.id, layer.name, layer.kind, layer.kind === "image" && layer.role, layer.enabled, layer.locked,
-    variant, variantOverridden, changed,
+    variant, variantOverridden, overridden,
   ]));
 const shownInvalid = (invalid?: ReadonlyMap<string, string>) => JSON.stringify(invalid ? [...invalid] : null);
 

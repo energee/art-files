@@ -173,7 +173,7 @@ export const Position = memo(function Position(props: Ctx & {
         </>
       )}
       {(rotation || bind) && (
-        <div className="flex items-center justify-between gap-2">
+        <div className="group/reset flex items-center justify-between gap-2">
           {rotation && <Label className="text-xs text-muted-foreground">{t("Rotation")}</Label>}
           <span className="flex items-center gap-1.5">{bind}{rotation}</span>
         </div>
@@ -389,7 +389,7 @@ export const StyleSection = memo(function StyleSection(props: Ctx & { layer: Lay
     <div className="space-y-3">
       <div className="space-y-1">
         <Heading>{t("Color")}</Heading>
-        <div className="flex items-center gap-1.5">
+        <div className="group/reset flex items-center gap-1.5">
           <div className="min-w-0 flex-1">
             {/* "No ink" is only offered where it can't break the layer: a
                 code with no fill cannot scan. */}
@@ -433,7 +433,7 @@ export const StyleSection = memo(function StyleSection(props: Ctx & { layer: Lay
         }>{t("Stroke")}</Heading>
         {strokeOn && (
           <>
-            <div className="flex items-center gap-1.5">
+            <div className="group/reset flex items-center gap-1.5">
               <div className="min-w-0 flex-1">
                 <ColorField
                   id={`${id}-stroke-color`} label={t("Stroke")} value={style.stroke!} allowNone={false}

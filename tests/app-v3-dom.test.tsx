@@ -772,3 +772,34 @@ it("an inspector change and a row's power reach every selected layer, one undo s
   });
 }, 60_000);
 
+// The row menu's Reset to Master puts a layer's design back and keeps its
+// content, and the inspector header's Remove takes the whole selection.
+it("Reset to Master clears a layer's overrides, and the header's Remove removes the selection", async () => {
+  await withCanvasEditor(async (p, container) => {
+    const rowButton = (id: string) =>
+      container.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`) as HTMLButtonElement;
+    const menuItem = (text: string) => Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim().startsWith(text))!;
+    await act(async () => rowButton("name").click());
+    await act(async () => (document.querySelector('[aria-label="Locked"]') as HTMLButtonElement).click());
+    expect(layerOf(p(), "name").locked).toBe(true);
+    // Right-click another row: it becomes the selection, and has nothing to reset.
+    await act(async () => {
+      rowButton("barcode").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+      await Promise.resolve();
+    });
+    expect(document.querySelector("#barcode-name")).not.toBeNull();
+    expect(menuItem("Reset to Master").getAttribute("aria-disabled")).toBe("true");
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    await act(async () => {
+      rowButton("name").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+      await Promise.resolve();
+    });
+    await act(async () => { menuItem("Reset to Master").click(); await Promise.resolve(); });
+    expect(layerOf(p(), "name").locked).toBeFalsy();
+
+    await act(async () => rowButton("barcode").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
+    await act(async () => (document.querySelector('[aria-label="Remove layer"]') as HTMLButtonElement).click());
+    expect(p().layers.some((l) => l.id === "name" || l.id === "barcode")).toBe(false);
+  });
+}, 60_000);
