@@ -5,8 +5,8 @@
 // an available update, the download, a restart to finish, a failed install.
 // "Up to date" answers a manual check in the dialog and nowhere else.
 // Before anything closes the app it runs the shell's beforeRestart — the
-// same walk through unsaved tabs a quit gets — and stops if that is
-// cancelled.
+// same walk through unsaved tabs and wait for running exports a quit gets —
+// and stops if that is cancelled or an export fails.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/i18n";
 import { createPortal } from "react-dom";

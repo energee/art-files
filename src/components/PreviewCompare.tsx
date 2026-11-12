@@ -144,7 +144,8 @@ export const PreviewCompare = forwardRef<
     bleed?: boolean;
     /** Die-cut corner radius, % of the label's short side. */
     cornerRadiusPct: number;
-    /** Current CSS zoom. Rasterization follows it after a short debounce. */
+    /** The settled CSS zoom: it trails a gesture, so nothing here should
+     *  position against it. Rasterization follows it after a short debounce. */
     zoom: number;
     /** Repaint trigger only: the paint effect reads geometry from the live
      *  PAGE, which App's render already updated via setLayoutBleed. */

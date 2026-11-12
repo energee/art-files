@@ -1,5 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
+import { t } from "@/i18n";
+import { baseName } from "@/lib/utils";
 // files.ts — native desktop file-dialog and file I/O boundary. All
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
@@ -26,6 +28,36 @@ export async function nativeModifiedAt(path: string): Promise<number | null> {
   const { exists, stat } = await import("@tauri-apps/plugin-fs");
   if (!await exists(path)) return null;
   return (await stat(path)).mtime?.getTime() ?? null;
+}
+
+/** What a Save does with a bound file that may have changed under it. */
+type OverwriteChoice = "overwrite" | "save-as" | "cancel";
+
+/** Before a Save rewrites `path` in place, compare it with `seen`, the mtime
+ *  this tab last read or wrote. Tabs hold their own copy of a master, and a
+ *  sync tool can rewrite a label, so a blind write would erase that work
+ *  (#682). With no baseline, a missing file or a failed stat there is nothing
+ *  to protect, and any real problem surfaces in the write.
+ *
+ *  A native alert, so it can sit over the close prompt's Save without two
+ *  modals fighting for focus. NSAlert's first button answers Return, so that
+ *  is Save As; Overwrite is never the accidental choice. A custom button
+ *  returns its label, and anything else means cancel. */
+export async function confirmOverwrite(path: string, seen: number | undefined): Promise<OverwriteChoice> {
+  if (seen === undefined) return "overwrite";
+  const now = await nativeModifiedAt(path).catch(() => null);
+  if (now === null || now === seen) return "overwrite";
+  const saveAs = t("Save As…");
+  const overwrite = t("Overwrite");
+  const answer = await (await import("@tauri-apps/plugin-dialog")).message(
+    t("Another tab or app changed it after you opened it. Overwriting replaces those changes."),
+    {
+      title: t("{{file}} has changed", { file: baseName(path) }), kind: "warning",
+      buttons: { yes: saveAs, no: overwrite, cancel: t("Cancel") },
+    },
+  );
+  if (answer === overwrite) return "overwrite";
+  return answer === saveAs ? "save-as" : "cancel";
 }
 
 /** Whether a desktop file exists. Scoped by fs:allow-exists (.label, .master
