@@ -80,6 +80,9 @@ const write = <T>(act: (s: IDBObjectStore) => IDBRequest<T>) => {
   return done;
 };
 
+/** Resolves once every write issued so far has landed. */
+export const recoveryWritten = () => writes;
+
 /** Store a snapshot; false when it could not be written. */
 export async function keepRecovery(key: string, snap: RecoverySnapshot, art?: SnapshotArt): Promise<boolean> {
   const held = heldArt.get(key);

@@ -3,7 +3,7 @@
 // order. Deterministic fake metrics throughout (0.5pt per char per size
 // unit; semibold 10% and bold 20% wider), so every expected number here is
 // arithmetic, not a font fact.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   planLayers, planLayerScene, layerBoxes, facesOf, type PlacedPage,
 } from "../src/planLayers";
@@ -480,5 +480,50 @@ describe("planLayers text: the block's Fill and Metallic drive every line", () =
     const items = planLayers([text({ id: "t", x: 0, y: 0, style: { fill: "#123456", layer: "white" },
       lines: [line("A"), line("B", { layer: "white" })] })], m, assets);
     expect(pairs(items, "t")).toEqual([["A", "#123456", "white"], ["B", "#123456", "white"]]);
+  });
+});
+
+// App's past-the-die check and the preview's plan run on the same draw list in
+// one render; each keystroke used to measure every layer for both (#730).
+describe("the measuring pass", () => {
+  const list = () => [text({ id: "a", x: 0, y: 0 }), text({ id: "b", x: 0, y: 40 })];
+
+  it("runs once for boxes and a plan of the same list", () => {
+    const alone = vi.fn(m);
+    const expected = planLayerScene(list(), alone, assets);
+    const both = vi.fn(m);
+    const layers = list();
+    const boxes = layerBoxes(layers, both, assets);
+    const scene = planLayerScene(layers, both, assets);
+    // Emitting text measures too, so the plan alone is the count to match.
+    expect(both.mock.calls.length).toBe(alone.mock.calls.length);
+    expect(scene).toEqual(expected);
+    expect(scene.boxes).toEqual(boxes);
+  });
+
+  it("runs again for a new list, a new measure or new assets", () => {
+    const counted = vi.fn(m);
+    const layers = list();
+    layerBoxes(layers, counted, assets);
+    const pass = counted.mock.calls.length;
+    layerBoxes(list(), counted, assets);
+    expect(counted.mock.calls.length).toBe(pass * 2);
+    const other = vi.fn(m);
+    const fresh = list();
+    layerBoxes(fresh, counted, assets);
+    layerBoxes(fresh, other, assets);
+    expect(other).toHaveBeenCalled();
+    const before = counted.mock.calls.length;
+    layerBoxes(fresh, counted, { ...assets });
+    expect(counted.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it("still honours each plan's own options on a shared pass", () => {
+    const layers = list();
+    layerBoxes(layers, m, assets);
+    const { items, boxes } = planLayerScene(layers, m, assets, { skip: new Set(["a"]) });
+    expect(texts(items, "a")).toEqual([]);
+    expect(texts(items, "b").length).toBeGreaterThan(0);
+    expect(boxes.has("a")).toBe(true);
   });
 });
