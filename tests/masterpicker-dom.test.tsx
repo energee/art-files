@@ -176,6 +176,7 @@ describe("MasterPicker", () => {
     act(() => { itemStarting("Rename Variant")!.click(); });
     const input = container.querySelector('input[aria-label="Variant name"]') as HTMLInputElement;
     expect(input.value).toBe("Collab");
+    expect(input.matches("[data-draft]")).toBe(true); // commitFieldDraft can reach it (#684)
     input.value = "Guest";
     act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
     expect(onRenameVersion).toHaveBeenCalledWith("collab", "Guest");

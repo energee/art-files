@@ -59,7 +59,7 @@ afterEach(async () => {
 
 /** A touched tab (edited); `dirty` = unsaved .label, `masterUnsaved` = master edits. */
 const meta = (title: string, dirty: boolean, masterUnsaved: boolean): DocumentMeta =>
-  ({ title, dirty, edited: true, masterUnsaved, filePath: null });
+  ({ title, dirty, edited: true, masterUnsaved, filePath: null, exporting: false, exportFailures: 0 });
 
 const openDialogs = () =>
   Array.from(document.querySelectorAll('[data-slot="dialog-content"]:not([data-closed])'));

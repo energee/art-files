@@ -32,9 +32,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
-import { useTranslation } from "@/i18n";
-import { t as translate } from "@/i18n";
-import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
+import { t as translate, useCachedT } from "@/i18n";
+import { commitFieldDraft, dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -69,7 +68,7 @@ import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
 import {
-  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, slotAsset,
+  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, saveBytes, slotAsset,
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
@@ -329,7 +328,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
-  const { t } = useTranslation();
+  const t = useCachedT();
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
@@ -768,16 +767,20 @@ export const DocumentEditor = memo(function DocumentEditor({
       }
       // ⌘+ is Zoom In as well as ⌘=: "+" is Shift+= on a US keyboard (so it
       // arrives as ⇧⌘) and a key of its own on many others.
-      const cmd = e.key === "+" && mods
+      const lookup = () => e.key === "+" && mods
         ? commandsRef.current.find((c) => c.id === "zoom-in")
         : commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
-      if (!cmd) return;
+      if (!lookup()) return;
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
       if (dialogOpen()) return;
-      if (!cmd.disabled) cmd.run();
+      // Looked up again after the commit: a draft can dirty the document and
+      // enable the command, and it must run against the committed doc.
+      commitFieldDraft();
+      const cmd = lookup();
+      if (cmd && !cmd.disabled) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -914,13 +917,33 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  both at once). */
   const textureError = useOwnedToast(active);
   const maskError = useOwnedToast(active);
+  /** Bumped when an open installs another document. A tab stays pristine while
+   *  its first drop decodes, so an open can reuse it; a decode started before
+   *  that belongs to the replaced document and must not commit (#685). Boot
+   *  restore doesn't bump it: that is the same untitled document, so art
+   *  dropped during it still lands. */
+  const docRun = useRef(0);
+  const sameDocument = () => {
+    const run = docRun.current;
+    return () => run === docRun.current;
+  };
   async function onTexture(f: File) {
-    try { swapLoaded(setTexture, previewOnce(await readRaster(f), f)); textureError.clear(); }
-    catch (err) { textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
+    const current = sameDocument();
+    try {
+      const mint = previewOnce(await readRaster(f), f);
+      if (current()) { swapLoaded(setTexture, mint); textureError.clear(); }
+    } catch (err) {
+      if (current()) textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
+    }
   }
   async function onMask(f: File) {
-    try { swapLoaded(setMask, previewOnce(await readRaster(f), f)); maskError.clear(); }
-    catch (err) { maskError.set(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
+    const current = sameDocument();
+    try {
+      const mint = previewOnce(await readRaster(f), f);
+      if (current()) { swapLoaded(setMask, mint); maskError.clear(); }
+    } catch (err) {
+      if (current()) maskError.set(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
+    }
   }
 
   /** An image layer's well: read the dropped file into the per-id store
@@ -931,8 +954,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const imageError = useOwnedToast(active);
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
+    const current = sameDocument();
     const mint = previewOnce(await readCustomImage(f), f);
-    if (!alive.current) return;
+    if (!alive.current || !current()) return;
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
     setContent(layer, assetId);
   }
@@ -980,10 +1004,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
   const {
-    exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths,
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
-    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
+    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase,
     // A cancelled pair's warning offers Export again. It runs the menu's own
     // Export … As… command, so the label as it is now applies, and so does the
     // gate: no second export while one runs, and a blocked label shows the
@@ -1247,7 +1271,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The assets this tab holds right now, read by the unmount cleanup: a
    *  closed tab releases their thumbnails, or each one pins its file's bytes
-   *  for the rest of the session (#85). useExport releases its export URLs.
+   *  for the rest of the session (#85).
    *  `alive` goes false with it, so a decode that lands after the tab closed
    *  commits nothing: React 19 still runs a setState updater on an unmounted
    *  component, and the updater is where the thumbnail is minted (#432). */
@@ -1325,14 +1349,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     return unchanged;
   };
   const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
   useEffect(() => {
-    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
+    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath, exporting: exportBusy, exportFailures });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited, templateMoved, filePath]);
+  }, [title, dirty, edited, templateMoved, filePath, exportBusy, exportFailures]);
   saveSlot.current = () => saveProject();
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
@@ -1490,7 +1514,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       repaintMasterDirty((n) => n + 1);
     };
     try {
-      startSaveBatch();
       const path = as ? null : saveTargetFor(masterFilePath.current, master.id);
       const handle = as ? null : saveTargetFor(masterFileHandle.current, master.id);
       const saved = await saveThrough((name) => packMaster(titled(name), assets), {
@@ -1902,6 +1925,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         Promise.all(Object.entries(ci).map(async ([id, a]) => [id, await readPacked(a, readCustomImage)] as const)),
       ]);
       if (!alive.current) return "cancelled"; // the tab closed: no retry
+      docRun.current++;
       resetDocument(next, masterPath);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);

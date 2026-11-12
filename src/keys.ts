@@ -1,7 +1,9 @@
 // keys.ts — who owns a key press before the app's shortcuts see it (#225):
 // keyOwner says which focused element claims a key, and dialogOpen whether
 // a modal blocks the tab behind it wherever focus is (#244). Every key
-// listener that acts on the tab checks both.
+// listener that acts on the tab checks both. commitFieldDraft lands a focused
+// field's typing before a command reads the document (#684).
+import { flushSync } from "react-dom";
 
 /** A modal dialog (shadcn's DialogContent: Settings, the Save Master review,
  *  the unsaved-tab prompt, the updater, the command palette). It blocks the
@@ -43,6 +45,17 @@ export const isTypingTarget = (target: EventTarget | null): boolean => {
 export const dialogOpen = (): boolean =>
   // A closing dialog stays mounted, marked data-closed, while it animates out.
   !!document.querySelector(`${DIALOG}:not([data-closed])`);
+
+/** Commit the focused field's draft before a ⌘ command reads the document.
+ *  A few fields (ChoiceBox, the layer name, a hex box) hold typing until Enter
+ *  or blur and mark themselves `data-draft` meanwhile; ⌘ commands stay live
+ *  inside them and move no focus, so without this ⌘S saves the old value and
+ *  ⌘W closes with no prompt (#684). Synchronous, so the caller then reads the
+ *  committed document. A field with no draft keeps its focus. */
+export const commitFieldDraft = () => {
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el.matches("[data-draft]")) flushSync(() => el.blur());
+};
 
 /** Who a key aimed at `target` belongs to, narrowest claim first; null when
  *  it is the app's. */
