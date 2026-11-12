@@ -23,7 +23,7 @@ import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
 import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
-import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
+import { loadRenderSettings, RENDER_KEY, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { isFieldDrop } from "@/components/AssetDropOverlay";
@@ -188,6 +188,13 @@ export default function TabsShell() {
   // App.tsx's RenderSettings note).
   const [render, setRender] = useState<RenderSettings>(loadRenderSettings);
   useEffect(() => { saveRenderSettings(render); }, [render]);
+  // A browser window sharing this storage: take its change, so this window's
+  // next write can't put its stale copy back over it (#701).
+  useEffect(() => {
+    const adopt = (e: StorageEvent) => { if (e.key === RENDER_KEY) setRender(loadRenderSettings()); };
+    window.addEventListener("storage", adopt);
+    return () => window.removeEventListener("storage", adopt);
+  }, []);
 
   // ---- crash recovery (#394) ----
 
