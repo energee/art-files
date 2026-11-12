@@ -3,6 +3,7 @@
 // use it without importing the PDF renderer.
 import svgpath from "svgpath";
 import { t } from "@/i18n";
+import { lruGet } from "@/lib/lru";
 
 /** Extract the logo's paths (basic shapes converted — see shapeToPath)
  *  pre-scaled to `width` points. Transforms are applied — each shape's own
@@ -23,18 +24,16 @@ export function parseLogo(
 ): { paths: string[]; w: number; h: number } {
   // Memoized: the preview builds re-parse the same laurel (and any dropped
   // SVG collab logo) twice per rebuild with identical inputs, and the
-  // svgpath transform/unarc pipeline is the cost. The handful of live SVG
-  // strings makes a plain Map fine.
-  // ponytail: unbounded cache keyed by whole-SVG strings — add eviction only
-  // if a session ever cycles through many distinct logos.
-  const key = `${width}|${maxH ?? ""}`;
-  let bySize = logoCache.get(svg);
-  if (!bySize) logoCache.set(svg, (bySize = new Map()));
-  let hit = bySize.get(key);
-  if (!hit) bySize.set(key, (hit = parseLogoUncached(svg, width, maxH)));
-  return hit;
+  // svgpath transform/unarc pipeline is the cost. A resize drag still parses
+  // each new size once, but only the last few stay (#735).
+  const bySize = lruGet(logoCache, svg, LOGO_SVGS, () => new Map());
+  return lruGet(bySize, `${width}|${maxH ?? ""}`, LOGO_SIZES, () => parseLogoUncached(svg, width, maxH));
 }
 
+/** How many SVGs the cache holds, and how many sizes of each: room for every
+ *  logo a document draws, and for one SVG placed at a few sizes. */
+const LOGO_SVGS = 32;
+const LOGO_SIZES = 4;
 const logoCache = new Map<string, Map<string, { paths: string[]; w: number; h: number }>>();
 
 /** An SVG's intrinsic aspect (w/h) as the collab slots see it: its ink box,

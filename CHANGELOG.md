@@ -7,6 +7,11 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
+- **Replaced images are released.** An image you replaced is freed once undo and redo can no longer reach it, instead of staying in memory until the tab closes.
+- **Resizing an SVG layer no longer builds up memory.** Only the last few sizes stay cached instead of every size the drag passed through.
+- **Hidden tabs use less memory.** A tab you are not looking at no longer holds its rendered preview.
+- **Faster tab switching.** Going back to the last tab you were on shows the label straight away, and any other tab no longer waits before it starts rendering.
 - **Smoother edits in the Can view.** Each edit now redoes only what changed: the can's shaders stay built, and foil and corner shapes are kept unless they changed, so typing with the can in view pauses less.
 - **Less work returning to the Can view.** The can model and studio lighting are read once per session instead of every time you switch to the Can view.
 - **The Can view stops drawing when nothing moves.** A can left at 100%, or zoomed all the way in or out, could keep redrawing at full frame rate while idle, costing GPU and battery.

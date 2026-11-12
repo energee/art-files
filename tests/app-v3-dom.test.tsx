@@ -46,6 +46,30 @@ async function mountEditor() {
   return { container, onMeta, unmount };
 }
 
+// #734: the last tab keeps its decoded source (#724), but a hidden tab still
+// hands its preview none, so the plates empty and an in-place session ends.
+it("gives a hidden tab's preview no render source, even one that keeps its source", async () => {
+  perf.source = null;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const props = {
+    fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+    saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+    onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+    onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+  } as unknown as import("react").ComponentProps<typeof DocumentEditor>;
+  try {
+    await act(async () => { root.render(createElement(DocumentEditor, { ...props, active: true })); });
+    await vi.waitFor(() => expect(perf.source).not.toBeNull());
+    await act(async () => { root.render(createElement(DocumentEditor, { ...props, active: false, keepSource: true })); });
+    expect(perf.source).toBeNull();
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
 const pressUndo = () => act(async () => {
   document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
 });

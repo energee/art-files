@@ -372,7 +372,7 @@ describe("masterDiff", () => {
 });
 
 // --- App write-path helpers -------------------------------------------------
-import { referencedAssetIds, labelOverriddenPaths, masterAssetIds, patchLayer, patchLayerIn, unsetLayerKeys } from "../src/model/edit";
+import { heldAssetIds, referencedAssetIds, labelOverriddenPaths, masterAssetIds, patchLayer, patchLayerIn, unsetLayerKeys } from "../src/model/edit";
 
 describe("patchLayer (inspector write path)", () => {
   it("merges defined keys and DELETES own-property undefineds", () => {
@@ -387,6 +387,15 @@ describe("patchLayer (inspector write path)", () => {
   it("unsetLayerKeys reaches a variant-added layer's diff entry", () => {
     const m = unsetLayerKeys(lolevMaster(), "collabLeft", ["h"]);
     expect("h" in m.variants[0].layers.collabLeft).toBe(false);
+  });
+});
+
+describe("heldAssetIds", () => {
+  it("adds what a master switch benched, which liveImages must not draw", () => {
+    const m = lolevMaster();
+    const benched = label({ dormant: { values: { gone: "benched" }, variants: [] } });
+    expect(referencedAssetIds(m, benched).has("benched")).toBe(false);
+    expect(heldAssetIds(m, benched).has("benched")).toBe(true);
   });
 });
 
