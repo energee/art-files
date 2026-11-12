@@ -7,6 +7,9 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Smoother edits in the Can view.** Each edit now redoes only what changed: the can's shaders stay built, and foil and corner shapes are kept unless they changed, so typing with the can in view pauses less.
+- **Less work returning to the Can view.** The can model and studio lighting are read once per session instead of every time you switch to the Can view.
+- **The Can view stops drawing when nothing moves.** A can left at 100%, or zoomed all the way in or out, could keep redrawing at full frame rate while idle, costing GPU and battery.
 - **Saving no longer erases changes made elsewhere.** On desktop, if a `.master` or `.label` changed after you opened it, in another tab or another app, Save now stops and offers Save As, Overwrite or Cancel. Before, the file was overwritten without warning.
 - **A newer Save can no longer be replaced by an older one.** Saves of a label or master now run one at a time, so a Save made while another is writing keeps your latest edits on disk, even if you close the tab right after.
 - **Opening a label during a Save keeps it tied to its own file.** If a label opened into the tab while the Save dialog was up, finishing the Save used to point the tab at the file just saved, so the next ⌘S wrote to the wrong file.
