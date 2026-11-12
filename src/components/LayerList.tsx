@@ -270,6 +270,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             {renaming ? (
               <input
                 autoFocus
+                data-draft=""
                 defaultValue={name}
                 aria-label={t("Rename {{name}}", { name })}
                 onClick={stop}
@@ -566,17 +567,21 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
   );
 }
 
-/** The rows as the list draws them: everything but content (a text layer's
- *  lines, a code's value). layerRows re-resolves every layer on each
- *  keystroke, so typing hands the list all-new row objects whose only change
- *  is content it never shows. */
+/** The rows as the list draws them: name, icon, power, lock, chips and marks,
+ *  in order. layerRows re-resolves every layer on each edit, so a keystroke, a
+ *  drag or a scrub hands the list all-new row objects whose only change is
+ *  content or geometry it never shows. Everything the list reads off a row
+ *  belongs here, or it goes stale until something listed changes. */
 const shownRows = (rows: LayerRow[]) =>
-  JSON.stringify(rows, (key, value) => (key === "lines" || key === "value" ? undefined : value));
+  JSON.stringify(rows.map(({ layer, variant, variantOverridden, changed }) => [
+    layer.id, layer.name, layer.kind, layer.kind === "image" && layer.role, layer.enabled, layer.locked,
+    variant, variantOverridden, changed,
+  ]));
 const shownInvalid = (invalid?: ReadonlyMap<string, string>) => JSON.stringify(invalid ? [...invalid] : null);
 
 /** Re-renders only when something it draws changes, so typing in the
- *  inspector skips it (#605). Callers pass stable callbacks: one that is new
- *  every render re-renders the list as before. */
+ *  inspector (#605) and moving a layer (#716) skip it. Callers pass stable
+ *  callbacks: one that is new every render re-renders the list as before. */
 export const LayerList = memo(LayerListView, (a, b) => {
   const keys = Object.keys(a) as (keyof LayerListProps)[];
   return keys.length === Object.keys(b).length && keys.every((k) => {

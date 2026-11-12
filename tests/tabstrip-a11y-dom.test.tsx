@@ -157,7 +157,7 @@ it("keeps keyboard focus on the strip when Enter on + adds a tab", async () => {
 it("refocuses the strip once the unsaved-close dialog is cancelled", async () => {
   await act(async () => { mocks.newTab?.(); });
   await act(async () => {
-    mocks.onMeta?.({ title: "Draft", dirty: true, edited: true, masterUnsaved: false, filePath: null });
+    mocks.onMeta?.({ title: "Draft", dirty: true, edited: true, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0 });
   });
   expect(tabs()[1].getAttribute("aria-label")).toBe("Draft (unsaved changes)");
   await act(async () => { pressOn(tabs()[1], "Delete"); });

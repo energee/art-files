@@ -207,3 +207,30 @@ it("an editor that unmounts mid-review resolves the close prompt's review as not
   root = null;
   expect(result).toBe(false);
 });
+
+// #684: ⌘W reads the tab's unsaved state, so a draft in a ChoiceBox has to
+// commit first or the tab closes with no prompt and the typing is lost.
+it("⌘W from a ChoiceBox with a draft prompts rather than closing the tab", async () => {
+  await render(createElement(TabsShell));
+  const row = await vi.waitFor(() => {
+    const el = document.querySelector('[data-layer-id="styleLine"] [data-slot="sidebar-menu-button"]') as HTMLElement | null;
+    expect(el).not.toBeNull();
+    return el!;
+  });
+  await act(async () => row.click());
+  const box = await vi.waitFor(() => {
+    const el = document.querySelector('input[role="combobox"]') as HTMLInputElement | null;
+    expect(el).not.toBeNull();
+    return el!;
+  });
+  await act(async () => {
+    box.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(box, "Hazy IPA");
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "w", metaKey: true, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 10));
+  });
+  expect(closePrompt()).not.toBeNull();
+});

@@ -5,16 +5,32 @@
 // quit leaves it behind, and the next launch offers it back (TabsShell).
 // A desktop snapshot also records the file its tab was bound to, and that
 // file's mtime when the tab bound or saved it, which canRebind checks before
-// the restored tab may take the file back.
+// the restored tab may take the file back. A tab with unsaved master edits
+// also keeps its master, since a .label only names one (#692).
+// A snapshot written with SnapshotArt holds only label.json; its art sits in a
+// record of its own under `<key>:art`, written when the art changes, so a pause
+// after typing neither re-zips nor rewrites it (#717). Older snapshots are one
+// record holding a whole .label; earlierSnapshots hands back either as that.
 // Best-effort like masterCache: a failed write just means nothing to offer.
 import { RECOVERY_STORE, run } from "@/masterCache";
+import { joinLabel } from "@/model/files";
+
+/** A tab's unsaved master edits as packMaster bytes: `edited` is the master
+ *  the tab held, `base` the one it was last opened or saved as, which keeps
+ *  the edits unsaved after a restore. Neither carries art: the snapshot's label
+ *  packs every image the master names. */
+export type RecoveredMaster = { edited: Uint8Array; base: Uint8Array };
 
 /** `filePath`: the desktop file the tab was bound to, if any. Optional
  *  because snapshots written before it, and every browser snapshot, have none.
  *  `fileModifiedAt`: that file's mtime when the tab last bound or saved it —
- *  the baseline canRebind compares against. */
+ *  the baseline canRebind compares against.
+ *  `master`: set while the master has unsaved edits; absent, and on snapshots
+ *  from before it, the master reopens from disk.
+ *  `splitArt`: `bytes` is label.json alone, its art in the record at artKey. */
 export type RecoverySnapshot = {
   name: string; bytes: Uint8Array; savedAt: number; filePath?: string; fileModifiedAt?: number;
+  master?: RecoveredMaster; splitArt?: boolean;
 };
 /** A snapshot an earlier launch left, with the key that drops it. */
 export type Recoverable = RecoverySnapshot & { key: string };
@@ -43,6 +59,17 @@ async function liveLaunches(): Promise<string[]> {
     l.name?.startsWith(LOCK_PREFIX) ? [l.name.slice(LOCK_PREFIX.length)] : [])];
 }
 
+/** The art behind a snapshot: `ids` are compared by identity to spot a change,
+ *  and `pack` builds the whole .label that is stored when they differ. */
+export type SnapshotArt = { ids: readonly unknown[]; pack: () => Uint8Array };
+
+const ART_SUFFIX = ":art";
+const artKey = (key: string) => key + ART_SUFFIX;
+
+/** Each key's stored art, by SnapshotArt ids. Set and cleared at call time, so
+ *  a keep issued after a drop can't count on art the drop is deleting. */
+const heldArt = new Map<string, readonly unknown[]>();
+
 // Writes run one at a time, in call order: each opens its own connection,
 // so without this a snapshot still in flight could land after the drop a
 // save just issued and be offered back as unsaved work.
@@ -53,22 +80,54 @@ const write = <T>(act: (s: IDBObjectStore) => IDBRequest<T>) => {
   return done;
 };
 
+/** Resolves once every write issued so far has landed. */
+export const recoveryWritten = () => writes;
+
 /** Store a snapshot; false when it could not be written. */
-export async function keepRecovery(key: string, snap: RecoverySnapshot): Promise<boolean> {
-  return (await write((s) => s.put(snap, key))) !== null;
+export async function keepRecovery(key: string, snap: RecoverySnapshot, art?: SnapshotArt): Promise<boolean> {
+  const held = heldArt.get(key);
+  let packed: Uint8Array | undefined;
+  if (art && !(held?.length === art.ids.length && art.ids.every((id, i) => id === held[i]))) {
+    try { packed = art.pack(); } catch { return false; } // over the size caps: nothing Save could write either
+    heldArt.set(key, art.ids);
+  }
+  const kept = await write((s) => { // one transaction: a snapshot never lands without its art
+    if (packed) s.put(packed, artKey(key));
+    return s.put(art ? { ...snap, splitArt: true } : snap, key);
+  });
+  if (kept === null && packed) heldArt.delete(key);
+  return kept !== null;
 }
 
+/** Discard All bumps this: a snapshot timer armed before it must skip its
+ *  write, or a tab that stays mounted until the app goes brings the discarded
+ *  work back (#697). A later edit arms a fresh timer, so a quit that gets
+ *  abandoned (a failed export, a failed update) keeps its crash protection. */
+let discards = 0;
+export const discardCount = () => discards;
+export const noteDiscard = () => { discards += 1; };
+
 export async function dropRecovery(key: string): Promise<void> {
-  await write((s) => s.delete(key));
+  heldArt.delete(key);
+  await write((s) => {
+    s.delete(artKey(key));
+    return s.delete(key);
+  });
 }
 
 /** Snapshots an earlier launch left behind, oldest first. */
 export async function earlierSnapshots(): Promise<Recoverable[]> {
   const keys = (await run("readonly", (s) => s.getAllKeys(), RECOVERY_STORE)) ?? [];
   const live = await liveLaunches();
-  const snaps = await Promise.all(fromEarlierLaunch(keys.map(String), live).map(async (key) => {
+  const offered = fromEarlierLaunch(keys.map(String), live).filter((k) => !k.endsWith(ART_SUFFIX));
+  const snaps = await Promise.all(offered.map(async (key) => {
     const snap = await run<RecoverySnapshot>("readonly", (s) => s.get(key), RECOVERY_STORE);
-    return snap?.bytes ? { ...snap, key } : null;
+    if (!snap?.bytes) return null;
+    const art = snap.splitArt ? await run<Uint8Array>("readonly", (s) => s.get(artKey(key)), RECOVERY_STORE) : null;
+    // A write that aborted can leave the label without its art record; a label
+    // missing its art is not worth offering. The record stays for a later launch.
+    if (snap.splitArt && !art) return null;
+    return { ...snap, key, bytes: art ? joinLabel(art, snap.bytes) : snap.bytes };
   }));
   return snaps.filter((s) => s !== null).sort((a, b) => a.savedAt - b.savedAt);
 }
