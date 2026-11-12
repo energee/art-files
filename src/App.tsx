@@ -1004,7 +1004,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
   const {
-    exporting, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
     drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
@@ -1349,9 +1349,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
   useEffect(() => {
-    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
+    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath, exporting: exportBusy, exportFailures });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited, templateMoved, filePath]);
+  }, [title, dirty, edited, templateMoved, filePath, exportBusy, exportFailures]);
   saveSlot.current = () => saveProject();
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
