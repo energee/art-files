@@ -8,9 +8,11 @@
 // a master switch, and the error paths of opening and saving (a promotion and a
 // boot restore that fail are simulated by mocks: no user action reaches them).
 // @vitest-environment happy-dom
+import { strToU8, zipSync } from "fflate";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { defaultConfig } from "../src/defaults";
 import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
 import { headerMessages, mountToaster, removedFlags, settle, shown, toastTitles, unmountToaster } from "./real-timer-toaster";
@@ -29,6 +31,8 @@ const menu = vi.hoisted(() => ({
   /** When set, the next rememberMaster waits for this, and `remembering` says it got there. */
   holdRemember: null as Promise<void> | null,
   remembering: false,
+  /** When set, a new tab's boot restore resolves with this instead. */
+  restored: null as null | Promise<unknown>,
 }));
 // Written against the Lolev layers and its "lolev" id (barcode, QR, Collab),
 // so the shipped master is swapped for the Lolev fixture here. Its laurel's
@@ -85,6 +89,7 @@ vi.mock("../src/masters", async (importOriginal) => {
     },
     resolveDefaultMaster: async () => {
       if (menu.restoreError) throw new Error(menu.restoreError);
+      if (menu.restored) return menu.restored as ReturnType<typeof masters.resolveDefaultMaster>;
       return masters.resolveDefaultMaster();
     },
   };
@@ -129,8 +134,8 @@ vi.mock("../src/files", async (importOriginal) => {
 import { DocumentEditor, type FileToOpen } from "../src/App";
 import { buildPsd } from "../src/psd/build";
 import { lolevMaster } from "./fixtures/lolevMaster";
-import { packLabel, packMaster, unpackMaster } from "../src/model/files";
-import type { Master } from "../src/model/layers";
+import { packLabel, packMaster, unpackLabel, unpackMaster } from "../src/model/files";
+import type { ImageLayer, Master } from "../src/model/layers";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -150,6 +155,7 @@ afterEach(async () => {
   menu.restoreError = "";
   menu.holdRemember = null;
   menu.remembering = false;
+  menu.restored = null;
 });
 async function mount(fileToOpen: FileToOpen | null = null, twoFilePdfExport = false) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -458,6 +464,219 @@ it("a texture that fails to decode keeps an error toast until a good texture rep
   await dropArt(textureFile("art.png"));
   await vi.waitFor(() => expect(toastTitles()).toEqual([]), { timeout: 5_000 });
 }, 30_000);
+
+// #685: a tab stays pristine while its first drop decodes, so an open can reuse
+// it. The late decode belongs to the document that was replaced.
+/** The decode of `slow` waits for release(). A layer image decodes from a bare
+ *  Blob, which has no name: pass null for that. */
+function gateDecoding(slow: string | null, fail = false) {
+  stubDecoding([]);
+  class FakeBitmap { width = 10; height = 10; close() {} }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  vi.stubGlobal("createImageBitmap", async (f: Blob) => {
+    if (((f as File).name ?? null) === slow) { await gate; if (fail) throw new Error("Invalid image"); }
+    return new FakeBitmap();
+  });
+  return () => act(async () => { release(); await new Promise((r) => setTimeout(r, 50)); });
+}
+const ownAsset = (name: string) => ({ name, bytes: new Uint8Array([1, 2, 3, 4]) });
+async function openLabel(props: Awaited<ReturnType<typeof mount>>["props"], assets: Parameters<typeof packLabel>[1]) {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} }, assets);
+  await act(async () => root.render(createElement(DocumentEditor, {
+    ...props, fileToOpen: { seq: 1, file: new File([label as unknown as BlobPart], "beer.label") },
+  })));
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
+}
+async function savedAssets(saveSlot: { current: (() => Promise<boolean>) | null }) {
+  let written: Uint8Array | undefined;
+  picker(async (bytes) => { written = bytes as unknown as Uint8Array; });
+  await act(async () => { await saveSlot.current!(); });
+  return unpackLabel(written!);
+}
+
+it("a texture still decoding does not replace the label opened into its tab (#685)", async () => {
+  const release = gateDecoding("dropped.png");
+  const { props, onMeta, saveSlot } = await mount();
+  await dropArt(textureFile("dropped.png"));
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: false });
+  await openLabel(props, { texture: ownAsset("label-own.png") });
+  await release();
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: false });
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("label-own.png");
+});
+
+it("a mask still decoding does not replace the label opened into its tab (#685)", async () => {
+  const release = gateDecoding("dropped.png");
+  const { props, saveSlot } = await mount();
+  await dropArt(textureFile("dropped.png"), 10_000); // past the split: the mask side
+  await openLabel(props, { mask: ownAsset("label-mask.png") });
+  await release();
+  expect((await savedAssets(saveSlot)).assets.mask?.name).toBe("label-mask.png");
+});
+
+it("an image still decoding does not write into the label opened into its tab (#685)", async () => {
+  const release = gateDecoding(null);
+  const { props, saveSlot, onMeta } = await mount();
+  await act(async () => (document.querySelector('[data-layer-id="logo"] [data-slot="sidebar-menu-button"]') as HTMLElement).click());
+  const well = await vi.waitFor(() => {
+    const el = document.querySelector('input[type="file"][accept*="image"]:not(header input)') as HTMLInputElement | null;
+    expect(el).not.toBeNull();
+    return el!;
+  });
+  Object.defineProperty(well, "files", { value: [textureFile("dropped.png")], configurable: true });
+  await act(async () => { well.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: false }); // still decoding
+  await openLabel(props, {});
+  await release();
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: false });
+  const { assets } = await savedAssets(saveSlot);
+  expect(Object.keys(assets.customImages ?? {})).toEqual([]);
+});
+
+// Boot restore swaps in the last master on the same untitled document, so art
+// dropped while it runs is still this document's and must land.
+it("art dropped during the boot restore survives it", async () => {
+  const release = gateDecoding("dropped.png");
+  let restore!: (r: unknown) => void;
+  menu.restored = new Promise((r) => { restore = r; });
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("dropped.png"));
+  const last = lolevMaster();
+  await act(async () => {
+    restore({ master: { ...last, layers: last.layers.map((l) => l.id === "name" ? { ...l, name: "Beer name" } : l) }, assets: {} });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  expect(document.querySelector('[data-layer-id="name"]')?.textContent).toContain("Beer name");
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("dropped.png");
+});
+
+it("a decode that fails after the open reports nothing over the opened label (#685)", async () => {
+  const release = gateDecoding("dropped.png", true);
+  const { props } = await mount();
+  await dropArt(textureFile("dropped.png"));
+  await openLabel(props, {});
+  await release();
+  expect(toastTitles()).toEqual([]);
+});
+
+// #686: two drops on one slot. The last file dropped stays, whichever decode
+// finishes last, and the well's X stops a decode still running.
+it("a slower, older texture does not replace the newer drop (#686)", async () => {
+  const release = gateDecoding("big.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("big.png"));
+  await dropArt(textureFile("small.png"));
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("small.png");
+});
+
+it("a slower, older mask does not replace the newer drop (#686)", async () => {
+  const release = gateDecoding("big.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("big.png"), 10_000); // past the split: the mask side
+  await dropArt(textureFile("small.png"), 10_000);
+  await release();
+  expect((await savedAssets(saveSlot)).assets.mask?.name).toBe("small.png");
+});
+
+it("an older decode that fails reports nothing over the newer drop (#686)", async () => {
+  const release = gateDecoding("big.png", true);
+  await mount();
+  await dropArt(textureFile("big.png"));
+  await dropArt(textureFile("small.png"));
+  await release();
+  expect(toastTitles()).toEqual([]);
+});
+
+it("the well's X stops a decode still running (#686)", async () => {
+  const release = gateDecoding("big.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("art.png"));
+  await textureShown("art.png");
+  await dropArt(textureFile("big.png"));
+  await act(async () => (document.querySelector('button[aria-label="Remove Texture"]') as HTMLElement).click());
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture).toBeUndefined();
+});
+
+// #687: a master's template art fills a slot only if the slot is still empty
+// when the decode lands, and only for the master that asked.
+const templateArt = (name: string) => ({ texture: ownAsset(name) });
+const otherMaster = (id: string): Master => ({ ...lolevMaster(), id, name: id });
+
+it("art dropped while the master's texture decodes keeps the slot (#687)", async () => {
+  const release = gateDecoding("template.png");
+  const { saveSlot } = await mount();
+  openMasterFile(otherMaster("master-a"), templateArt("template.png"));
+  await run("master-open");
+  await dropArt(textureFile("mine.png"));
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("mine.png");
+});
+
+// The adopt must not take the turn of a drop that started before it.
+it("a drop still decoding when the master arrives lands over its art (#687)", async () => {
+  const release = gateDecoding("mine.png");
+  const { saveSlot } = await mount();
+  await dropArt(textureFile("mine.png"));
+  openMasterFile(otherMaster("master-a"), templateArt("template.png"));
+  await run("master-open");
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("mine.png");
+});
+
+it("master A's texture does not land on master B when B has none (#687)", async () => {
+  const release = gateDecoding("template-a.png");
+  const { saveSlot } = await mount();
+  openMasterFile(otherMaster("master-a"), templateArt("template-a.png"));
+  await run("master-open");
+  openMasterFile(otherMaster("master-b"));
+  await run("master-open");
+  await release();
+  const { label, assets } = await savedAssets(saveSlot);
+  expect(label?.masterId).toBe("master-b");
+  expect(assets.texture).toBeUndefined();
+});
+
+it("master A's slower texture does not replace master B's (#687)", async () => {
+  const release = gateDecoding("template-a.png");
+  const { saveSlot } = await mount();
+  openMasterFile(otherMaster("master-a"), templateArt("template-a.png"));
+  await run("master-open");
+  openMasterFile(otherMaster("master-b"), templateArt("template-b.png"));
+  await run("master-open");
+  await release();
+  expect((await savedAssets(saveSlot)).assets.texture?.name).toBe("template-b.png");
+});
+
+// #706: the open's effect ran in a render from before the restore's images
+// landed, and it runs after them on the chain. Its read is held until they
+// have rendered, as a real file read outlasts React's commit.
+it("a v1 label opened during the boot restore keeps the master's images (#706)", async () => {
+  const release = gateDecoding(null);
+  let restore!: (r: unknown) => void;
+  menu.restored = new Promise((r) => { restore = r; });
+  const { props, saveSlot } = await mount();
+  const master = lolevMaster();
+  const logo = master.layers.find((l) => l.id === "logo") as ImageLayer;
+  await act(async () => {
+    restore({ master, assets: { customImages: { [logo.asset]: ownAsset("logo.png") } } });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  const v1 = zipSync({ "config.json": strToU8(JSON.stringify({ version: 1, ...defaultConfig() })) });
+  const file = new File([v1 as unknown as BlobPart], "old.label");
+  let read!: () => void;
+  const held = new Promise<void>((r) => { read = r; });
+  file.arrayBuffer = async () => { await held; return v1.buffer as ArrayBuffer; };
+  await act(async () => root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 1, file } })));
+  await release();
+  await act(async () => read());
+  await vi.waitFor(() => expect(props.onOpenSettled).toHaveBeenCalledWith(1, false), { timeout: 15000 });
+  expect(Object.keys((await savedAssets(saveSlot)).assets.customImages ?? {})).toEqual([logo.asset]);
+});
 
 // Opening a label swaps the texture and mask out with the old label, so a load
 // error for the one it replaced must not stay over the new label.
@@ -1416,3 +1635,96 @@ it("a render error the user closed stays closed until the message changes", asyn
   await shown("Preview failed: other");
   expect(toastTitles()).toEqual(["Preview failed: other"]);
 }, 30_000);
+
+// #684: three fields hold typing until Enter or blur, and ⌘ commands stay live
+// inside them, so a command must commit the draft before it reads the document.
+const typeInto = (el: HTMLInputElement, text: string) => act(async () => {
+  el.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, text);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+});
+const pressSave = (from: Element) => act(async () => {
+  from.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 10));
+});
+const selectLayer = async (id: string) => {
+  await act(async () => (document.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`) as HTMLElement).click());
+};
+const field = (selector: string) => vi.waitFor(() => {
+  const el = document.querySelector(selector) as HTMLInputElement | null;
+  expect(el).not.toBeNull();
+  return el!;
+});
+const recordingPicker = () => {
+  const written: Uint8Array[] = [];
+  picker(async (bytes) => { written.push(bytes as unknown as Uint8Array); });
+  return written;
+};
+const savedLabel = (written: Uint8Array[]) => JSON.stringify(unpackLabel(written.at(-1)!).label);
+
+it("⌘S from a ChoiceBox saves what the field shows (#684)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const box = await field('input[role="combobox"]');
+  await typeInto(box, "Hazy IPA");
+  await pressSave(box);
+  expect(savedLabel(written)).toContain("Hazy IPA");
+});
+
+it("⌘S with a draft on a clean tab saves it, though the command started disabled (#684)", async () => {
+  const written = recordingPicker();
+  const { onMeta } = await mount();
+  await selectLayer("styleLine");
+  const box = await field('input[role="combobox"]');
+  await pressSave(document.body);
+  await vi.waitFor(() => expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false }));
+  await typeInto(box, "Hazy IPA");
+  await pressSave(box);
+  expect(written).toHaveLength(2);
+  expect(savedLabel(written)).toContain("Hazy IPA");
+});
+
+it("⌘S from the layer name box saves the typed name (#684)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const name = await field('input[id="styleLine-name"]');
+  await typeInto(name, "Renamed layer");
+  await pressSave(name);
+  expect(savedLabel(written)).toContain("Renamed layer");
+});
+
+it("⌘S from a hex box saves a 3-digit colour that only commits on blur (#684)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const hex = await field('input[aria-label$=" color"]:not([disabled])');
+  await typeInto(hex, "#abc");
+  await pressSave(hex);
+  expect(savedLabel(written).toLowerCase()).toContain("#aabbcc");
+});
+
+// The Style section skips the render the first edit causes (#715); the hex
+// box's commit must still land on top of that edit.
+it("⌘S from a hex box keeps an edit made after the box last rendered (#684, #715)", async () => {
+  const written = recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  await typeInto(await field('input[role="combobox"]'), "Hazy IPA");
+  const hex = await field('input[aria-label$=" color"]:not([disabled])');
+  await typeInto(hex, "#abc");
+  await pressSave(hex);
+  expect(savedLabel(written)).toContain("Hazy IPA");
+  expect(savedLabel(written).toLowerCase()).toContain("#aabbcc");
+});
+
+it("⌘S leaves focus in a field with nothing to commit (#684)", async () => {
+  recordingPicker();
+  await mount();
+  await selectLayer("styleLine");
+  const box = await field('input[role="combobox"]');
+  await act(async () => box.focus());
+  await pressSave(box);
+  expect(document.activeElement).toBe(box);
+});

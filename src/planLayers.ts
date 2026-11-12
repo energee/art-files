@@ -425,10 +425,20 @@ function prepare(l: Layer, m: MeasureFace, assets: PlanAssets): Prepared | null 
   }
 }
 
+/** The last pass, by identity of its inputs: App's past-the-die check and the
+ *  preview's plan ask for the same draw list in one render, so the second one
+ *  measures nothing (#730). Callers only read what comes back. */
+let lastLayout: {
+  layers: Layer[]; m: MeasureFace; assets: PlanAssets;
+  prepared: Map<string, Prepared | null>; boxes: Map<string, Box>;
+} | undefined;
+
 function layout(layers: Layer[], m: MeasureFace, assets: PlanAssets) {
+  if (lastLayout?.layers === layers && lastLayout.m === m && lastLayout.assets === assets) return lastLayout;
   const prepared = new Map(layers.map((l) => [l.id, prepare(l, m, assets)]));
   const boxes = placeLayers(layers, (l) => prepared.get(l.id)?.size ?? { w: 0, h: 0 }, assets.guides);
-  return { prepared, boxes };
+  lastLayout = { layers, m, assets, prepared, boxes };
+  return lastLayout;
 }
 
 /** Every layer's resolved box, keyed by id — what hittestLayers.ts draws its

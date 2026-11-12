@@ -32,7 +32,9 @@
 // conversion and the override Badge in LayerInspectorControls.tsx; Position,
 // per-kind geometry and Style in LayerInspectorSections.tsx; the template
 // field settings (fill contract, vocabulary) in LayerInspectorTemplate.tsx.
-import { useState, type ReactNode } from "react";
+// Those sections are memoized (#715), so this file hands them stable
+// callbacks; the header and `content` here still render with every edit.
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   Barcode, Image, Lock, LockOpen, Power, PowerOff, QrCode, Type, XIcon, type LucideIcon,
 } from "lucide-react";
@@ -50,6 +52,7 @@ import {
 } from "./LayerInspectorSections";
 import { FillContract, Vocabulary } from "./LayerInspectorTemplate";
 import { useTranslation } from "@/i18n";
+import { useStableCallback } from "@/useStableCallback";
 
 /** One icon per kind — the same four the Layers list rows use, so the
  *  header and the row never disagree about what a kind looks like. */
@@ -116,15 +119,28 @@ export function LayerInspector(props: {
 }) {
   const { layer } = props;
   const { t } = useTranslation();
-  const set = props.onChange;
-  const badge = (paths: readonly string[], label: string) => (
-    <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
-  );
-  const overridden = (paths: readonly string[]) =>
-    paths.some((p) => props.overridden.variant.has(p) || props.overridden.label.has(p));
+  // One identity each, so the sections' memo holds, while a call runs this
+  // instance's latest closure. App keys the inspector by layer, so these can
+  // never reach the next selection's layer, even from a late blur.
+  const set = useStableCallback(props.onChange);
+  const onReset = useStableCallback(props.onReset);
+  const onUnbind = useStableCallback(props.onUnbind);
+  const onBind = useStableCallback((to: string, side: BindingSide) => props.onBind?.(to, side));
+  const onMore = useStableCallback((section: Parameters<Ctx["onMore"]>[0]) => props.onMore?.(section));
+  // App builds new Sets with every edit; only new contents should reach `badge`.
+  const overriddenKey = JSON.stringify([
+    [...props.overridden.variant], [...props.overridden.label], props.overridden.variantName,
+  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- overriddenKey is props.overridden's contents
+  const sets = useMemo(() => props.overridden, [overriddenKey]);
+  const badge = useCallback((paths: readonly string[], label: string) => (
+    <Badge paths={paths} overridden={sets} label={label} onReset={onReset} />
+  ), [sets, onReset]);
+  const overridden = useCallback((paths: readonly string[]) =>
+    paths.some((p) => sets.variant.has(p) || sets.label.has(p)), [sets]);
   const ctx: Ctx = {
     set, badge, unit: props.unit ?? "pt", overridden,
-    more: props.more ?? COLLAPSED, onMore: props.onMore ?? (() => {}),
+    more: props.more ?? COLLAPSED, onMore,
   };
   // The name box commits like the Layers row's rename (LayerList's
   // commitRename): on Enter or blur, trimmed, and only when non-empty and
@@ -155,6 +171,7 @@ export function LayerInspector(props: {
           aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
           className="h-7 flex-1 text-xs font-medium"
           value={nameDraft ?? layer.name}
+          data-draft={nameDraft !== null ? "" : undefined}
           aria-invalid={(nameDraft !== null && !nameDraft.trim()) || undefined}
           onChange={(e) => setNameDraft(e.target.value)}
           onBlur={commitName}
@@ -224,7 +241,7 @@ export function LayerInspector(props: {
           </span>
         </div>
       )}
-      {!page && <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />}
+      {!page && <Position layer={layer} layerNames={props.layerNames} onUnbind={onUnbind} onBind={props.onBind && onBind} {...ctx} />}
 
       {/* Nor ink of its own to colour or stroke — the texture IS the colour
           and the mask IS the plate — so like the old Document layers it

@@ -37,7 +37,7 @@ const handle = (name: string): Handle => {
   const self: Handle = { name, isSameEntry: async (other) => other.name === self.name };
   return self;
 };
-const touched: DocumentMeta = { title: "A", dirty: false, edited: true, masterUnsaved: false, filePath: null };
+const touched: DocumentMeta = { title: "A", dirty: false, edited: true, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0 };
 
 let root: Root;
 beforeEach(async () => {

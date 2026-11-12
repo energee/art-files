@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deepMerge } from "../src/model/merge";
+import { deepEqual, deepMerge } from "../src/model/merge";
 
 describe("deepMerge", () => {
   const base = { a: 1, style: { fill: "#fff", layer: "white" }, list: [1, 2] };
@@ -27,5 +27,18 @@ describe("deepMerge", () => {
     const merged = deepMerge(noStyle, patch);
     merged.extra!.fill = "#fff";
     expect(patch.extra.fill).toBe("#000");
+  });
+});
+
+describe("deepEqual", () => {
+  it("never calls two different Sets or Maps equal: they have no keys to compare", () => {
+    expect(deepEqual(new Set([1]), new Set([2]))).toBe(false);
+    expect(deepEqual(new Map([[1, 2]]), new Map([[1, 3]]))).toBe(false);
+    expect(deepEqual(new Set(), {})).toBe(false);
+  });
+
+  it("still calls one Set equal to itself", () => {
+    const same = new Set([1]);
+    expect(deepEqual({ same }, { same })).toBe(true);
   });
 });

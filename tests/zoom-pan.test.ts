@@ -24,3 +24,8 @@ it("zooms about a point without moving what is under it", () => {
   // must still draw at (400, 300): 400 = x + 2 * 400.
   expect(v).toEqual({ z: 2, x: -400, y: -300 });
 });
+
+it("leaves the offset exactly where it was when the zoom does not change", () => {
+  const v = { z: 2, x: -123.456, y: -77.7 };
+  expect(zoomAbout(pane, v, 2, 333.3, 400.1)).toEqual(v);
+});

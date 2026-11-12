@@ -15,7 +15,6 @@ it("saveProject resolves false and reports the error when packing throws", async
     save = useProjectSave({
       pack: () => { throw new Error("Archive is too large"); },
       exportBase: "x", onSaved: () => true, onError,
-      startSaveBatch: () => undefined, saveBytes: () => undefined,
     }).saveProject;
     return null;
   }
@@ -45,7 +44,6 @@ it("saveProject packs for the path the label is written to", async () => {
     api = hook({
       pack: (p) => { packedFor.push(p); return new Uint8Array([1]); },
       exportBase: "x", onSaved: () => true, onError: vi.fn(),
-      startSaveBatch: () => undefined, saveBytes: () => undefined,
     });
     return null;
   }
@@ -86,7 +84,6 @@ it("saveProject fails an oversized label before the dialog, and repacks for Save
         return new Uint8Array([1]);
       },
       exportBase: "x", onSaved: () => true, onError: vi.fn(),
-      startSaveBatch: () => undefined, saveBytes: () => undefined,
     });
     return null;
   }
@@ -124,7 +121,6 @@ it("bindPath and a save record the bound file's mtime as the recovery baseline",
     api = hook({
       pack: () => new Uint8Array([1]),
       exportBase: "x", onSaved: () => true, onError: vi.fn(),
-      startSaveBatch: () => undefined, saveBytes: () => undefined,
     });
     return null;
   }
@@ -173,7 +169,6 @@ async function heldSave(fail = (_n: number) => false) {
     api = hook({
       pack: () => new Uint8Array([doc]),
       exportBase: "x", onSaved, onError,
-      startSaveBatch: () => undefined, saveBytes: () => undefined,
     });
     return null;
   }
