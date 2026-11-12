@@ -41,6 +41,10 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 
 ### Changed
+- **A quieter Layers list.** The list no longer marks which layers a label changed from its master, and the Changed filter is gone: the list is for building the label, and the Save Master review still lists what changed. Each row is its name, an eye, and a lock only when the layer is locked (click it to unlock). The trash column is gone, so long names have more room.
+- **Right-click a layer for everything you can do to it.** The menu now holds Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove, with their shortcuts. It selects the row first and acts on the whole selection. Reset to Master puts a layer's position, type and colour back and keeps what you typed into it.
+- **Remove moved to the inspector header,** beside Show and Lock, where one button acts on every selected layer. The header's power icon is now the same eye the list uses. Delete and Backspace still remove.
+- **Reset appears when you point at a field.** The dots beside changed fields are gone, along with the gap that was kept for them. Point at a field this label changed, or tab into it, and a reset arrow appears.
 - **Power and lock on a selected Layers row act on the whole selection.** Clicking either on one of several selected rows, or Lock in its right-click menu, now changes all of them, as drag, reorder and Delete already did.
 - **Horizontal guide buttons match Vertical guide.** Left and right are now arrows pointing at a line, like top and bottom.
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.

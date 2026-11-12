@@ -24,7 +24,7 @@
 //   editSave     — dirty check, Untitled restore, Save Master review
 export type { Doc } from "./editRecords";
 export {
-  addLayer, adoptMaster, clearOverride, labelOverriddenPaths, masterAssetIds, mintLayerId,
+  addLayer, adoptMaster, clearOverride, isLabelOnly, labelOverriddenPaths, masterAssetIds, mintLayerId,
   moveLayers, overriddenPaths, overrideBadges, patchLayer, patchLayerIn, referencedAssetIds,
   removeLayer, removeLayerIn, setLayer, setLayerIn, unsetLayerKeys, whereLayerLives,
   type OverrideBadges,

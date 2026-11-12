@@ -161,6 +161,25 @@ describe("LayerInspector header", () => {
     expect(byLabel("Fillable")).toBeNull();
   });
 
+  // The header is the selection's action bar: Show (the list's eye, not a
+  // second icon for the same setting), Lock and Remove.
+  it("shows the list's eye for power, and removes from a header button", () => {
+    const { onRemove } = render(text(), { onRemove: vi.fn() });
+    const power = byLabel("Enabled")!;
+    expect(power.getAttribute("title")).toBe("Hide from preview and exports");
+    expect(power.querySelector("svg")!.getAttribute("class")).toContain("lucide-eye");
+    render(text({ enabled: false }), { onRemove });
+    expect(byLabel("Enabled")!.getAttribute("title")).toBe("Show in preview and exports");
+    expect(byLabel("Enabled")!.querySelector("svg")!.getAttribute("class")).toContain("lucide-eye-off");
+    const remove = byLabel("Remove layer")!;
+    expect(remove.parentElement).toBe($("#name-name")!.parentElement);
+    click(remove);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    // No handler, no button.
+    render(text());
+    expect(byLabel("Remove layer")).toBeNull();
+  });
+
   // Page art can't be dragged, so a lock would do nothing there.
   it("offers no lock on page art", () => {
     render(image({ id: "background", name: "Background", role: "background", fit: "cover", locked: true }));
@@ -593,6 +612,30 @@ describe("LayerInspector override badges", () => {
     expect(badge).not.toBeNull();
     click(badge!);
     expect(onReset).toHaveBeenCalledWith("style.fill", "variant");
+  });
+
+  // A reset is offered on demand, not as a standing mark: it shows while its
+  // row is hovered or holds focus, and an unchanged field reserves no slot.
+  it("hides a reset until its row is hovered or focused, and names the field", () => {
+    render(text(), { overridden: from([], ["size"]) });
+    const reset = byLabel("Reset Size to this label's master value")!;
+    expect(reset.getAttribute("title")).toBe("Reset Size");
+    expect(reset.className).toContain("opacity-0");
+    expect(reset.className).toContain("group-hover/reset:opacity-100");
+    expect(reset.className).toContain("group-focus-within/reset:opacity-100");
+    expect(reset.closest(".group\\/reset")).not.toBeNull();
+    // Every reset sits in a row that reveals it.
+    render(text({ style: { ...STYLE, stroke: "#000000" } }), { overridden: from([], [
+      "enabled", "locked", "x", "y", "guideX", "guideY", "rotation", "fontFamily", "size", "align", "width",
+      "leading", "headerScale", "style.letterSpacing", "style.uppercase", "style.fill", "style.layer",
+      "style.stroke", "style.strokeLayer", "style.strokeWidth",
+    ]) });
+    const resets = [...container.querySelectorAll('[aria-label^="Reset "]')];
+    expect(resets.length).toBeGreaterThanOrEqual(20);
+    for (const el of resets) expect(el.closest(".group\\/reset"), el.getAttribute("aria-label")!).not.toBeNull();
+    // The slot beside an unchanged full-width field holds no width open.
+    render(text());
+    expect($("#name-size")!.closest(".group\\/reset")!.innerHTML).not.toContain("min-w-6");
   });
 
   it("colours the override mark info, not primary (docs/plans/template-switch.md, Task 3)", () => {

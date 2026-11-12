@@ -2,10 +2,11 @@
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
 // inline rename (commits on Enter or blur, Escape cancels, like the Layers
-// row's), power and lock icon toggles (no lock on page art), close
-// button, an off-variant note), the parent's content editor (no heading: its
-// caption names it), kind-specific geometry/typography, Position (not on
-// page art), Style, and expandable template field settings.
+// row's), Show (the list's eye), Lock (not on page art) and Remove buttons
+// that act on the whole selection, close button, an off-variant note), the
+// parent's content editor (no heading: its caption names it), kind-specific
+// geometry/typography, Position (not on page art), Style, and expandable
+// template field settings.
 //
 // With several layers selected (`others`) it still shows `layer`, the
 // last-picked one, but only the controls the selection shares: the header
@@ -44,7 +45,7 @@
 // callbacks; the header and `content` here still render with every edit.
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
-  Barcode, EqualNot, Image, Lock, LockOpen, Power, PowerOff, QrCode, Type, XIcon, type LucideIcon,
+  Barcode, EqualNot, Eye, EyeOff, Image, Lock, LockOpen, QrCode, Trash2, Type, XIcon, type LucideIcon,
 } from "lucide-react";
 import { isMixed, pickPaths, type Peer } from "@/model/multiEdit";
 import type { BindingSide, Layer, LayerKind } from "@/model/layers";
@@ -108,6 +109,9 @@ export function LayerInspector(props: {
    *  white ink, so Style offers no plate toggle, and only raster art offers
    *  Tint raster (an SVG already takes the fill). */
   rasterArt?: boolean;
+  /** The header's Remove button: removes the layer and the rest of the
+   *  selection. Absent = no button. */
+  onRemove?: () => void;
   /** Shows the header's visible close button. It is a SheetClose, so it
    *  needs the parent Sheet (whose close-press clears the selection, as
    *  Escape does) and returns focus on a keyboard close like Escape. */
@@ -182,7 +186,7 @@ export function LayerInspector(props: {
 
   return (
     <div className="space-y-1 px-4 py-3">
-      <div className="flex items-center gap-2">
+      <div className="group/reset flex items-center gap-2">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         {multi ? (
           // A name is one layer's: the count stands in, and names the dialog.
@@ -204,13 +208,13 @@ export function LayerInspector(props: {
             else if (e.key === "Escape") setNameDraft(null);
           }}
         />}
-        {/* Power and lock as icon toggles, the Layers row's icons: they stay
+        {/* The selection's actions, with the Layers row's icons: they stay
             reachable with the sidebar hidden (⌘B). Page art has no lock — it
             can't be dragged, so locking it would do nothing. */}
         <Button variant="ghost" size="icon-sm" aria-label={t("Enabled")} aria-pressed={enabled}
-          title={enabled ? t("Turn off this layer") : t("Turn on this layer")}
+          title={enabled ? t("Hide from preview and exports") : t("Show in preview and exports")}
           onClick={() => set({ enabled: !enabled })}>
-          {enabled ? <Power aria-hidden="true" /> : <PowerOff aria-hidden="true" />}
+          {enabled ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
         </Button>
         {badge(["enabled"], "Enabled")}
         {!page && <>
@@ -221,6 +225,12 @@ export function LayerInspector(props: {
           </Button>
           {badge(["locked"], "Locked")}
         </>}
+        {props.onRemove && (
+          <Button variant="ghost" size="icon-sm" aria-label={t("Remove layer")} title={t("Remove layer")}
+            className="hover:text-destructive-text" onClick={props.onRemove}>
+            <Trash2 aria-hidden="true" />
+          </Button>
+        )}
         {props.showCloseButton && (
           <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label={t("Close inspector")} />}>
             <XIcon className="size-4.5" aria-hidden="true" />
@@ -248,7 +258,7 @@ export function LayerInspector(props: {
           page and ignores x/y (planLayers), so the fields would change nothing.
           A position override still left on it keeps its reset badges here. */}
       {stalePosition && (
-        <div className="flex items-center justify-between gap-2 pt-2">
+        <div className="group/reset flex items-center justify-between gap-2 pt-2">
           <p className="text-[11px] text-muted-foreground">{t("Unused position override")}</p>
           <span className="flex items-center">
             {STALE_POSITION.map(([paths, label]) =>

@@ -13,9 +13,9 @@
 // assets/io.ts; the .label Save/Save As binding is useProjectSave.ts.
 //
 // There is ONE mode (spec 2026-09-04: Removed): the Layers list (LayerList)
-// with its Changed filter replaces Fill mode, and the inspector
-// (LayerInspector) edits the selected layer. Every edit lands in the LABEL —
-// a property edit as an override, a text/image/code edit as a fill value
+// replaces Fill mode, and the inspector (LayerInspector) edits the selected
+// layers. Every edit lands in the LABEL — a property edit as an override, a
+// text/image/code edit as a fill value
 // (model/edit.ts's patchLayers / setContentIn). The master is the template
 // and changes only through the reviewed Save Master, so it never drifts
 // under an operator filling a label. Master and label edits share one undo
@@ -51,7 +51,7 @@ import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } 
 import { getPath, type DeepPartial } from "@/model/merge";
 import { isPage, sharedPatch, sharesPath, type Peer } from "@/model/multiEdit";
 import {
-  addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, isLabelOnly,
   applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -419,7 +419,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // resolve per master/label change; the inspector reads the same rows.
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
-  const [changedOnly, setChangedOnly] = useState(false);
   /** Controlled so View → Layers and the palette can toggle and check it;
    *  ⌘B stays the provider's guarded listener. */
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -2335,7 +2334,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Stable identities for the memoized panels, so a keystroke re-renders only
   // the inspector and the canvas (#605).
   const listSelect = useStableCallback(pick);
-  // Power and lock on a selected row act on the whole selection, as its
+  // Show and lock on a selected row act on the whole selection, as its
   // drag, reorder and Delete do.
   const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) => {
     const row = rowById.get(id);
@@ -2346,6 +2345,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta)));
   const listAdd = useStableCallback(onAddLayer);
   const listRemove = useStableCallback(onRemoveLayer);
+  /** The row menu's Reset to Master: drops this label's design overrides on
+   *  the layer and the rest of the selection, as one undo step. Content
+   *  (label.values) stays. A label-only layer is skipped: its override is its
+   *  only definition, so clearing it would delete the layer. */
+  const listReset = useStableCallback((id: string) =>
+    editLabel((l) => gestureIds(selected, id).reduce((next, k) =>
+      next.overrides?.[k] && !isLabelOnly(master, next, k) ? clearLabelOverride(next, k) : next, l)));
   const rulerMargin = useStableCallback((margin: number) =>
     editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } })));
   const rulerAdd = useStableCallback(addManualGuide);
@@ -2438,7 +2444,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onRename={listRename}
               onReorder={listReorder}
               onAdd={listAdd} onRemove={listRemove} invalid={flaggedLayers}
-              changedOnly={changedOnly} onChangedOnly={setChangedOnly}
+              onReset={listReset}
               />
           </SidebarContent>
         </Sidebar>
@@ -2727,6 +2733,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 fontFamily={family}
                 others={peersOf(inspected.layer.id)}
                 offVariant={inspected.variant && !inspected.variant.enabled ? inspected.variant.name : undefined}
+                onRemove={() => onRemoveLayer(inspected.layer.id)}
                 showCloseButton />
             )}
           </SheetContent>
