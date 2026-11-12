@@ -12,21 +12,23 @@ import { useCallback, useRef, useState } from "react";
 // Consecutive edits closer together than this collapse into one undo step, so
 // a drag on a ScrubField is one ⌘Z rather than sixty.
 const COALESCE_MS = 500;
-// Cap on stack depth. Each entry is a full LabelConfig clone; a hundred of
-// them is nothing next to the embedded fonts, and it bounds a long session.
+// Cap on stack depth, which bounds a long session. Edits are copy-on-write, so
+// an entry holds only what its edit changed and shares the rest with its
+// neighbours.
 const LIMIT = 100;
 
 export type Stacks<T> = { past: T[]; present: T; future: T[] };
 /** How `useHistory`'s setter groups an edit into undo steps, overriding its
  *  timing window:
  *  - boolean — the caller tracks its own session: the preview's inline text
- *    editor and canvas drags pass false on the first update (open a step)
- *    and true on the rest (fold in).
- *  - string — a field session key (an inspector field's id): folds only into
- *    a step the SAME key opened with the immediately preceding edit, so a
- *    field's typing is one step however slowly the user types, yet never
- *    merges into an unrelated earlier edit (#73). An unkeyed edit straight
- *    after a field session opens its own step too, whatever the timing. */
+ *    editor passes false on the first update (open a step) and true on the
+ *    rest (fold in). False alone keeps an edit out of the step before it.
+ *  - string — a session key (an inspector field's id, a canvas gesture's key):
+ *    folds only into a step the SAME key opened with the immediately preceding
+ *    edit, so a field's typing is one step however slowly the user types, yet
+ *    never merges into an unrelated earlier edit (#73). An unkeyed edit
+ *    straight after a keyed session opens its own step too, whatever the
+ *    timing. */
 export type Coalesce = boolean | string;
 
 /** Establish a new document boundary: the value becomes current and neither
@@ -107,6 +109,10 @@ export function useHistory<T>(initial: T | (() => T)) {
     setH(redone);
   }, []);
 
+  /** Whether the latest step is still `key`'s: false once any other edit, an
+   *  undo, a redo or a reset came after it, or if `key` never opened one. */
+  const ownsStep = useCallback((key: string) => lastKey.current === key, []);
+
   const reset = useCallback((value: T) => {
     lastEdit.current = 0;
     lastKey.current = null;
@@ -123,6 +129,7 @@ export function useHistory<T>(initial: T | (() => T)) {
     undo,
     redo,
     reset,
+    ownsStep,
     canUndo: h.past.length > 0,
     canRedo: h.future.length > 0,
   };

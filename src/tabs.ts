@@ -10,6 +10,8 @@ export type TabMeta = {
   edited: boolean;          // any user mutation since mount/open — gates close prompts
   masterUnsaved: boolean;   // the master differs from its last open/save — ⌘S doesn't write it
   filePath: string | null;  // Tauri path identity, for OS-open dedupe
+  exporting: boolean;       // an export is running — holds a quit until it ends
+  exportFailures: number;   // failed exports so far, so a held quit can tell its export failed
 };
 export type Tab = TabMeta & { id: number };
 /** `previous`: the tab shown before `active`, which alone among the hidden
@@ -21,7 +23,7 @@ export type TabsState = { tabs: Tab[]; active: number; previous?: number; nextId
 // `untitled` is its title until the editor reports one: the shell passes the
 // UI language's word, so the window isn't titled in English first.
 const fresh = (id: number, untitled: string): Tab => ({
-  id, title: untitled, dirty: true, edited: false, masterUnsaved: false, filePath: null,
+  id, title: untitled, dirty: true, edited: false, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0,
 });
 
 export function initialTabs(untitled = "Untitled"): TabsState {

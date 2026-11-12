@@ -105,6 +105,23 @@ describe("the platform gate", () => {
     expect(root.hasAttribute("data-fullscreen")).toBe(false);
   });
 
+  it("keeps the newest full screen reading when replies land out of order (#711)", async () => {
+    const root = html();
+    initTitlebar(root);
+    await vi.waitFor(() => expect(win.isFullscreen).toHaveBeenCalled()); // the boot read
+    const onResized = win.onResized.mock.calls[0][0] as () => Promise<void>;
+    let older = (_: boolean) => {};
+    let newer = (_: boolean) => {};
+    win.isFullscreen
+      .mockReturnValueOnce(new Promise<boolean>((resolve) => { older = resolve; }))
+      .mockReturnValueOnce(new Promise<boolean>((resolve) => { newer = resolve; }));
+    const syncs = [onResized(), onResized()];
+    newer(true);
+    older(false);
+    await Promise.all(syncs);
+    expect(root.hasAttribute("data-fullscreen")).toBe(true);
+  });
+
   // The `titlebar:` classes only apply while the attributes src/titlebar.ts
   // sets are on <html>, outside full screen; the two files name them alike.
   it("is the selector index.css's titlebar: variant keys on", () => {
