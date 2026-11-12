@@ -24,16 +24,15 @@
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
 // listeners or renders a singleton surface (the native menu) MUST honor the
-// `active` prop — and per-document renders are dropped while inactive (see
-// the deactivation effect). The editor reports its DocumentMeta upward
-// through onMeta; the shell owns tabs, file-open routing, render settings,
-// and the updater.
+// `active` prop — and per-document renders are dropped while inactive
+// (canvasRender below; useRenderSource for the decoded source). The editor
+// reports its DocumentMeta upward through onMeta; the shell owns tabs,
+// file-open routing, render settings, and the updater.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
-import { useTranslation } from "@/i18n";
-import { t as translate } from "@/i18n";
+import { t as translate, useCachedT } from "@/i18n";
 import { commitFieldDraft, dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
 import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
@@ -42,7 +41,7 @@ import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
 import { LABEL_EXT, type LabelAsset } from "@/labelfile";
 import { masterFilter, masterTypes, isAbort } from "@/filePickers";
-import { openThrough, readNativeFile, saveThrough } from "@/files";
+import { confirmOverwrite, openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
@@ -51,7 +50,7 @@ import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
   applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -67,18 +66,19 @@ import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterInde
 import { layerBoxes, outsideGuides } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
-import { discardCount, dropRecovery, keepRecovery } from "@/recovery";
+import { discardCount, dropRecovery, keepRecovery, type RecoveredMaster } from "@/recovery";
 import {
-  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, slotAsset,
+  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, saveBytes, slotAsset,
   type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
 import { useViewPrefs } from "@/useViewPrefs";
 import { useZoomPan, ZOOM_FACTOR } from "@/useZoomPan";
 import { useRenderSource } from "@/useRenderSource";
+import { useSettledQr } from "@/useSettledQr";
 import { usePreviewToastAnchor } from "@/toastAnchor";
 import { overlayTitlebar } from "@/titlebar";
-import { useProjectSave } from "@/useProjectSave";
+import { useFileBaseline, useProjectSave, useSaveTurns } from "@/useProjectSave";
 import { useOwnedToast } from "@/useOwnedToast";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
@@ -232,8 +232,11 @@ function focusContentField(layerId: string, stillActive: () => boolean) {
  *  to this shape itself (fileSource for picked Files), so the shared
  *  pipeline never branches on where the bytes came from. The one exception
  *  is `path`, set only when the label came off disk (desktop): its folder
- *  is where the label's masterHint may be read from (masters.ts hintTrusted). */
-type LabelSource = { name: string; bytes: Uint8Array; path?: string };
+ *  is where the label's masterHint may be read from (masters.ts hintTrusted).
+ *  `master` is a crash-recovery snapshot's own master (FileToOpen). */
+type LabelSource = { name: string; bytes: Uint8Array; path?: string; master?: RecoveredMaster };
+/** A texture or mask slot's state setter, or fillEmpty's wrapper of one. */
+type SetSlot = (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void;
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
 
@@ -269,7 +272,9 @@ const VIEWS = [
  *  `recoveredPath` is the file that tab was bound to (desktop): Save binds
  *  back to it when the shell found that safe (recovery.ts canRebind), and
  *  otherwise a note names it while Save asks where. Its `modifiedAt` is the
- *  snapshot's baseline mtime, carried into the rebound tab's snapshots. */
+ *  snapshot's baseline mtime, carried into the rebound tab's snapshots.
+ *  `recoveredMaster` is the snapshot's unsaved master, opened in place of the
+ *  one on disk. */
 export type FileToOpen = {
   seq: number;
   path?: string;
@@ -277,6 +282,7 @@ export type FileToOpen = {
   file?: File;
   recovered?: string;
   recoveredPath?: { path: string; rebind: boolean; modifiedAt?: number };
+  recoveredMaster?: RecoveredMaster;
 };
 
 /** What the tab strip shows for this document (src/tabs.ts TabMeta — one
@@ -286,11 +292,14 @@ export type DocumentMeta = TabMeta;
 
 type DocumentEditorProps = {
   active: boolean;
+  /** Hidden, but the last tab shown: see useRenderSource's keepSource. */
+  keepSource?: boolean;
   fileToOpen: FileToOpen | null;
   /** Reports fileToOpen's attempt finished (success or failure), so the
-   *  shell can drop the queued entry. `cancelled`: the operator backed out
-   *  (the different-master prompt's Cancel, or its Locate picker's), so a
-   *  tab made only for this open can go again (#553). */
+   *  shell can drop the queued entry. Called after onMeta has reported the
+   *  open, so the tab's meta claims it from then on. `cancelled`: the
+   *  operator backed out (the different-master prompt's Cancel, or its Locate
+   *  picker's), so a tab made only for this open can go again (#553). */
   onOpenSettled: (seq: number, cancelled: boolean) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its save fn into on every render;
@@ -302,6 +311,9 @@ type DocumentEditorProps = {
    *  once the master file is written (false on Cancel or a failed save).
    *  Omitted by tests mounting a lone editor. */
   masterSaveSlot?: { current: (() => Promise<boolean>) | null };
+  /** Shell-owned slot reading the browser file this tab saves to, so the
+   *  shell can spot a second pick of it. Omitted by tests mounting a lone editor. */
+  fileHandleSlot?: { current: (() => FileSystemFileHandle | null) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
   onRenderChange: (render: RenderSettings) => void;
@@ -325,15 +337,15 @@ type DocumentEditorProps = {
 // body would re-run per keystroke. It only holds if the shell passes
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
+  active, keepSource, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, fileHandleSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
-  const { t } = useTranslation();
+  const t = useCachedT();
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
   // alike. Swapped wholesale on Open through resetDocument.
-  const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
+  const { value: doc, past, future, set: setDoc, reset: resetDoc, undo, redo, ownsStep, canUndo, canRedo } =
     useHistory<Doc>(() => { const m = starterMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   const docRef = useRef(doc);
@@ -348,6 +360,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // fileToOpen attempt and reported through onOpenSettled.
   const openCancelled = useRef(false);
   const openChain = useRef<Promise<void>>(Promise.resolve());
+  /** A finished fileToOpen attempt, until the effect below reports it. */
+  const [openSettled, setOpenSettled] = useState<{ seq: number; cancelled: boolean } | null>(null);
   // The master as of the last open/save — the baseline the "unsaved master
   // edits" dot (Save Master) compares against, itemised by masterChanges.
   const pristineMaster = useRef(doc.master);
@@ -430,8 +444,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const savedAssetsRef = useRef({ texture, mask, customImages });
   savedAssetsRef.current = { texture, mask, customImages };
   // The layers that DRAW: enabled, values applied, page art bound to the
-  // loaded slots. What the preview, the hit boxes, the drag targets and the
-  // exports all plan from.
+  // loaded slots. What the preview (through useSettledQr), the hit boxes, the
+  // drag targets and the exports all plan from.
   const drawLayers = useMemo(() => withPageArt(
     rows.filter((r) => r.layer.enabled && (!r.variant || r.variant.enabled)).map((r) => r.layer),
     !!texture, !!mask,
@@ -509,13 +523,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   usePreviewToastAnchor(previewPane, active);
   const canView = useRef<CanViewHandle>(null);
   const {
-    zoom, camZoomPct, carried, onCameraChange, zoomDraft, setZoomDraft, zoomTo, applyTypedZoom,
-    panning, onPanStart, onPanMove, onPanEnd,
+    zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
+    zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
   } = useZoomPan(viewMode === "2d", previewPane, canView);
   // The 3D scene's mode: Rendered shows the flat label, Can its count.
   let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
   if (viewMode === "rendered") canSceneMode = "flat";
-  const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
+  const shownZoomPct = viewMode === "2d" ? Math.round(zoom * 100) : camZoomPct;
   const view = viewState(viewMode, split);
   // The status bar's "Compare" note, which the view group points at so a
   // screen reader hears the state too. useId: each open tab has its own.
@@ -546,7 +560,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const {
     showRulers, setShowRulers, unit, setUnit, showGuides, setShowGuides, lightDeg, setLightDeg,
     moreTypography, setMoreTypography, morePosition, setMorePosition,
-  } = useViewPrefs();
+  } = useViewPrefs(active);
   const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
@@ -639,6 +653,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The selection can hold an id that no longer exists (an undone add, a
     // deleted variant's layer); removing it would throw and delete nothing.
     const ids = gestureIds(selected, id).filter((k) => rows.some((r) => r.layer.id === k));
+    // Just after a tab switch the render source is still assembling, and a
+    // layer others bind to can't go without their boxes: wait it out (#708).
+    // A failed assembly never brings them, so the edit's refusal says why.
+    const bound = rows.some(({ layer }) => layer.binding && ids.includes(layer.binding.to));
+    if (bound && !canvasAssets && !assetsFailed) return;
     const boxes = rowBoxes();
     if (edit((d) => ids.reduce((next, key) => removeLayerIn(next, key, boxes), d)))
       setSelection((s) => ({ ids: s.ids.filter((x) => !ids.includes(x)),
@@ -903,8 +922,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  the well's Undo instead (#426). It restores the value the clear actually
    *  removed (read in the updater, not a render's closure, so a decode landing
    *  in between can't swap in an older file), keeping its bytes and minting a
-   *  fresh thumbnail URL, since the clear revoked the old one. */
-  const clearLoaded = (set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
+   *  fresh thumbnail URL, since the clear revoked the old one. A drop still
+   *  decoding for the slot is dropped with it (#686). */
+  const clearLoaded = (slot: "texture" | "mask", set: SetSlot) => {
+    runs.current[slot]++;
     let gone: LoadedRaster | null = null;
     swapLoaded<LoadedRaster>((fn) => set((old) => { gone = old; return fn(old); }), null);
     return () => {
@@ -918,28 +939,80 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  both at once). */
   const textureError = useOwnedToast(active);
   const maskError = useOwnedToast(active);
-  async function onTexture(f: File) {
-    try { swapLoaded(setTexture, previewOnce(await readRaster(f), f)); textureError.clear(); }
-    catch (err) { textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
+  /** Bumped when an open installs another document. A tab stays pristine while
+   *  its first drop decodes, so an open can reuse it; a decode started before
+   *  that belongs to the replaced document and must not commit (#685). Boot
+   *  restore doesn't bump it: that is the same untitled document, so art
+   *  dropped during it still lands. */
+  const docRun = useRef(0);
+  const sameDocument = () => {
+    const run = docRun.current;
+    return () => run === docRun.current;
+  };
+  /** Bumped by every drop on a slot and by its X (`texture`, `mask`), and by
+   *  every master's adopt (`adopt`). */
+  const runs = useRef({ texture: 0, mask: 0, adopt: 0 });
+  /** sameDocument that also takes the newest run of `kind`: of two drops on a
+   *  slot, or two masters' adopts, only the newer commits, whichever decode
+   *  finishes last (#686, #687). */
+  const newestRun = (kind: "texture" | "mask" | "adopt") => {
+    const run = ++runs.current[kind];
+    const sameDoc = sameDocument();
+    return () => sameDoc() && run === runs.current[kind];
+  };
+  /** swapLoaded's `set` for a master's template art: only a slot still empty
+   *  when the decode lands takes it (#687). */
+  const fillEmpty = (set: SetSlot): SetSlot => (fn) => set((old) => old ?? fn(null));
+  /** A drop by default; adoptMasterAssets passes its own `current` and `set`. */
+  async function onTexture(f: File, current = newestRun("texture"), set: SetSlot = setTexture) {
+    try {
+      const mint = previewOnce(await readRaster(f), f);
+      if (current()) { swapLoaded(set, mint); textureError.clear(); }
+    } catch (err) {
+      if (current()) textureError.set(t('Could not load texture "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
+    }
   }
-  async function onMask(f: File) {
-    try { swapLoaded(setMask, previewOnce(await readRaster(f), f)); maskError.clear(); }
-    catch (err) { maskError.set(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) })); }
+  async function onMask(f: File, current = newestRun("mask"), set: SetSlot = setMask) {
+    try {
+      const mint = previewOnce(await readRaster(f), f);
+      if (current()) { swapLoaded(set, mint); maskError.clear(); }
+    } catch (err) {
+      if (current()) maskError.set(t('Could not load mask "{{name}}": {{error}}', { name: f.name, error: errMsg(err) }));
+    }
   }
 
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
-   *  point the layer back at it (#75); see liveImages. */
+   *  point the layer back at it (#75), until no history step can (#737). */
   // A good image clears only the load error a bad one set (#511).
   const imageError = useOwnedToast(active);
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
+    const current = sameDocument();
     const mint = previewOnce(await readCustomImage(f), f);
-    if (!alive.current) return;
+    if (!alive.current || !current()) return;
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
-    setContent(layer, assetId);
+    // Its own undo step: the decode lands whenever it lands, so the timing
+    // window would fold it into whatever the user did last (#702).
+    setContent(layer, assetId, false);
   }
+
+  // Replaced art stays only while undo, redo or the bench can reach it: once
+  // the stack trims it, or a new edit ends its redo, nothing can (#737). Runs
+  // per undo step, not per keystroke: folded edits keep `past` and an empty
+  // `future`. `gone` comes from this render's store, so art added since, whose
+  // doc this render hasn't seen, is never in it. A history with no past has
+  // replaced nothing yet, so an open leaves everything it unpacked.
+  useEffect(() => {
+    if (!past.length) return;
+    const held = new Set([...past, doc, ...future].flatMap((d) => [...heldAssetIds(d.master, d.label)]));
+    const gone = Object.keys(customImages).filter((id) => !held.has(id));
+    if (!gone.length) return;
+    for (const id of gone) URL.revokeObjectURL(customImages[id].previewUrl);
+    setCustomImages((old) => Object.fromEntries(Object.entries(old).filter(([id]) => !gone.includes(id))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above; doc and customImages are this render's
+  }, [past, future.length]);
 
   /** The images the doc still names. The store also keeps replaced/cleared
    *  art so undo can bring it back (#75); the preview, the exports and Save
@@ -984,10 +1057,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // exportStale runs from markDirty and edit above, which only fire from
   // handlers, after this render has declared it.
   const {
-    exporting, exportFailures, exportStale, forgetExportPaths, startSaveBatch, saveBytes,
+    exporting, exportFailures, exportStale, forgetExportPaths,
     buildFull, exportPdfPlate, exportPsd,
   } = useExport({
-    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render,
+    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase,
     // A cancelled pair's warning offers Export again. It runs the menu's own
     // Export … As… command, so the label as it is now applies, and so does the
     // gate: no second export while one runs, and a blocked label shows the
@@ -1006,26 +1079,36 @@ export const DocumentEditor = memo(function DocumentEditor({
   // (useRenderSource.ts): what the preview draws with, and the font metrics
   // and plan assets the hit boxes and the die check measure with.
   const { canvasAssets, canvasSource, previewReady, assetsFailed } = useRenderSource({
-    active, family, fontOverrides, liveImages, texture, mask,
+    active, keepSource, family, fontOverrides, liveImages, texture, mask,
     bgOn: pageOn("background"), maskOn: pageOn("mask"), guides, editSession,
     pageArt, planAssets: planAssetsOf, assetError,
   });
 
-  /** The doc before the in-flight canvas drag or resize opened its undo
-   *  step; null until a move actually patches something (a first move that
-   *  snapped to zero opens nothing, so the next can't fold into the edit
-   *  before it — #74). Every move is applied to this base, not to the last
-   *  move's result, so an axis whose delta is back at 0 returns to where the
-   *  drag began (#164). Escape undoes only a step that exists. */
-  const gestureBase = useRef<Doc | null>(null);
-  const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
-    const real = entries.filter(([, p]) => Object.keys(p).length);
-    const opened = gestureBase.current;
-    if (!opened && !real.length) return;
-    if (edit((d) => patchLayers(opened ?? d, real), !!opened)) gestureBase.current ??= doc;
+  /** The in-flight canvas drag or resize; null until its first move. `key` is
+   *  its history session, fresh per gesture: the moves fold into one undo step,
+   *  and anything else reaching history mid-gesture (a late image decode, ⌘Z)
+   *  closes that step, so the next move opens another. `written` holds each
+   *  layer's start value for every key a move has written. A move patches the
+   *  LIVE doc, never a copy from the gesture's start, so a change landing
+   *  mid-gesture survives (#689); restating `written` under each patch returns
+   *  an axis whose delta is back at 0 to where the gesture began (#164). */
+  const gestureBase = useRef<{ key: string; written: Map<string, DeepPartial<Layer>> } | null>(null);
+  const gestureCount = useRef(0);
+  const gesturePatch = (moves: [Layer, DeepPartial<Layer>][]) => {
+    const gesture = gestureBase.current ??= { key: `gesture-${++gestureCount.current}`, written: new Map() };
+    const entries = moves.map(([layer, p]): [string, DeepPartial<Layer>] => {
+      const start = Object.fromEntries(Object.keys(p).map((k) => [k, layer[k as keyof Layer]]));
+      const written = { ...start, ...gesture.written.get(layer.id) };
+      gesture.written.set(layer.id, written);
+      return [layer.id, { ...written, ...p }];
+    }).filter(([, p]) => Object.keys(p).length);
+    // A first move that snapped to zero opens no step (#74).
+    if (entries.length) edit((d) => patchLayers(d, entries), gesture.key);
   };
+  /** Escape: undo the gesture's step, but only while it is the latest one.
+   *  After ⌘Z or an outside edit the top step belongs to something else. */
   const cancelGesture = () => {
-    if (gestureBase.current) mutating(undo)();
+    if (gestureBase.current && ownsStep(gestureBase.current.key)) mutating(undo)();
     gestureBase.current = null;
   };
 
@@ -1036,19 +1119,27 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  `gestureBase`). Horizontal snapping to the master's guides is moveBy's.
    *  When the grabbed layer is selected, every selected unlocked layer moves
    *  with it. */
+  /** The draw layers with each QR held at its last settled value, so typing
+   *  into a QR-fed field doesn't re-encode the QR per keystroke (#722). The
+   *  2D preview, the boxes below and the die check plan from these. */
+  const previewLayers = useSettledQr(drawLayers);
   /** Every layer's resolved box for the current draw list — one full place
-   *  pass, wanted only at gesture starts and unbinds, never per move. */
-  const boxesNow = (layers: Layer[] = drawLayers) =>
-    canvasAssets ? layerBoxes(layers, canvasAssets.m, canvasAssets.planAssets) : undefined;
+   *  pass per draw-list change, shared so a gesture's moves pay for none.
+   *  Positions are live; only a QR's payload lags (useSettledQr). */
+  const drawBoxes = useMemo(() => canvasAssets
+    ? layerBoxes(previewLayers, canvasAssets.m, canvasAssets.planAssets)
+    : undefined, [canvasAssets, previewLayers]);
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
-  const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
+  const rowBoxes = () => canvasAssets
+    ? layerBoxes(rows.map((r) => r.layer), canvasAssets.m, canvasAssets.planAssets)
+    : undefined;
   /** Layers drawn past the die (#607): dotted in Layers like an invalid value,
    *  with a line in the inspector, but they do NOT block export. */
-  const pastDie = useMemo(() => canvasAssets
-    ? outsideGuides(layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets),
+  const pastDie = useMemo(() => drawBoxes
+    ? outsideGuides(drawBoxes,
       guideLines({ physical: master.physical, guides: { left: null, center: null, right: null, top: null, bottom: null } }))
-    : new Set<string>(), [canvasAssets, drawLayers, master.physical]);
+    : new Set<string>(), [drawBoxes, master.physical]);
   // Keyed on the ids, not the Set: pastDie is rebuilt on every keystroke, and a
   // new Map each time would re-render the memoized LayerList per key (#605).
   const pastDieKey = [...pastDie].join("\0");
@@ -1124,17 +1215,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   const onDrag = (id: string, dx: number, dy: number, first: boolean): SnapLines => {
     if (first) gestureBase.current = null;
     if (first || dragBase.current?.id !== id) {
-      const boxes = boxesNow();
-      if (!boxes) return { x: null, y: null, dx, dy };
+      if (!drawBoxes) return { x: null, y: null, dx, dy };
       const ids = new Set(gestureIds(selected, id));
       const bases = drawLayers.filter((l) => ids.has(l.id) && !l.locked)
-        .map((layer) => ({ layer, w: boxes.get(layer.id)?.w ?? 0 }));
+        .map((layer) => ({ layer, w: drawBoxes.get(layer.id)?.w ?? 0 }));
       if (!bases.length) return { x: null, y: null, dx, dy };
       // The selection's own box, in the guides' space: layerBoxes measures in
       // page space, which BLEED_SHIFT offsets from the coordinates layer.x and
       // the guides are written in.
       const span = bases.reduce((acc, { layer }) => {
-        const box = boxes.get(layer.id);
+        const box = drawBoxes.get(layer.id);
         const left = (box?.x ?? layer.x) - BLEED_SHIFT;
         const top = (box?.y ?? 0) - BLEED_SHIFT;
         return {
@@ -1142,7 +1232,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           y: Math.min(acc.y, top), bottom: Math.max(acc.bottom, top + (box?.h ?? 0)),
         };
       }, { x: Infinity, right: -Infinity, y: Infinity, bottom: -Infinity });
-        const lines = snapTargets(ids, boxes);
+        const lines = snapTargets(ids, drawBoxes);
       dragBase.current = {
         id, bases, lines,
         bounds: { x: span.x, w: span.right - span.x, y: span.y, h: span.bottom - span.y },
@@ -1159,7 +1249,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x, SNAP_PT);
     const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y, SNAP_PT);
     const entries = dragBase.current.bases
-      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)]);
+      .map(({ layer }): [Layer, DeepPartial<Layer>] => [layer, moveBy(layer, sx.delta, sy.delta, moving)]);
     gesturePatch(entries);
     // The indicator spans the moved selection AND whatever it lined up with.
     const top = bounds.y + sy.delta;
@@ -1175,9 +1265,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  edges and middle — so "line this guide up with that logo" is a drag, not
    *  arithmetic. Rulers speaks page space; the lines are in guide space. */
   const snapGuidePoint = (axis: GuideAxis, point: number, id?: number) => {
-    const boxes = boxesNow();
-    if (!boxes) return point;
-    const line = nearestLine(point - BLEED_SHIFT, snapTargets(new Set(), boxes, id)[axis], SNAP_PT);
+    if (!drawBoxes) return point;
+    const line = nearestLine(point - BLEED_SHIFT, snapTargets(new Set(), drawBoxes, id)[axis], SNAP_PT);
     return line ? line.at + BLEED_SHIFT : point;
   };
 
@@ -1208,11 +1297,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   ): SnapLines => {
     if (first) {
       gestureBase.current = null;
-      const boxes = boxesNow();
       const layer = drawLayers.find((l) => l.id === id);
-      const box = boxes?.get(id);
-      resizeBase.current = layer && box && boxes
-        ? { layer, box, lines: snapTargets(new Set([id]), boxes) } : null;
+      const box = drawBoxes?.get(id);
+      resizeBase.current = layer && box && drawBoxes
+        ? { layer, box, lines: snapTargets(new Set([id]), drawBoxes) } : null;
     }
     const base = resizeBase.current;
     if (!base) return { x: null, y: null, dx, dy };
@@ -1226,13 +1314,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sy = handle.hy === 0 ? { delta: dy, line: null }
       : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y, SNAP_PT);
     const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
-    gesturePatch([[id, p]]);
+    gesturePatch([[base.layer, p]]);
     // The indicator spans the resized box and whatever the grabbed edge lined
-    // up with. `patch` is a state update, so boxesNow() here still measures
-    // the PREVIOUS frame's layers — the segment's cross-axis extent trails the
+    // up with. `patch` is a state update, so drawBoxes here still holds the
+    // PREVIOUS frame's layers — the segment's cross-axis extent trails the
     // pointer by one move, which is invisible at pointer rates and is not
     // worth re-planning the scene for.
-    const now = boxesNow()?.get(id) ?? base.box;
+    const now = drawBoxes?.get(id) ?? base.box;
     const top = now.y - BLEED_SHIFT;
     const left = now.x - BLEED_SHIFT;
     return {
@@ -1251,7 +1339,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The assets this tab holds right now, read by the unmount cleanup: a
    *  closed tab releases their thumbnails, or each one pins its file's bytes
-   *  for the rest of the session (#85). useExport releases its export URLs.
+   *  for the rest of the session (#85).
    *  `alive` goes false with it, so a decode that lands after the tab closed
    *  commits nothing: React 19 still runs a setState updater on an unmounted
    *  component, and the updater is where the thumbnail is minted (#432). */
@@ -1272,6 +1360,12 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  them only through saveTargetFor (#78). */
   const masterFileHandle = useRef<MasterSaveTarget<FileSystemFileHandle> | null>(null);
   const masterFilePath = useRef<MasterSaveTarget<string> | null>(null);
+  const masterBaseline = useFileBaseline();
+  /** Bind Save Master to a desktop file (or to none), starting its baseline. */
+  const bindMasterPath = (id: string, path?: string | null) => {
+    masterFilePath.current = path ? { id, target: path } : null;
+    masterBaseline.record(path ?? null);
+  };
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
@@ -1284,8 +1378,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     forgetExportPaths();
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
-    masterFilePath.current = bound ? { id: next.master.id, target: bound } : null;
+    bindMasterPath(next.master.id, isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined);
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1295,20 +1388,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   }
 
-  /** This document as .label bytes: the v3 label plus its embedded art —
-   *  what Save writes and what a crash-recovery snapshot keeps. The hint names
-   *  this tab's own master file: another tab may have opened a different file
-   *  with the same id since (#405). Saved to `labelPath`, it is written
-   *  relative to that label, so a shared .label carries no absolute path
-   *  (#428); a snapshot (no labelPath) stays on this machine and keeps it. */
-  const packProject = (labelPath?: string) => {
-    const masterHint = labelRelativeHint(
-      saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path, labelPath);
-    return packLabel({ ...label, masterHint }, {
-      texture: slotAsset(texture), mask: slotAsset(mask),
-      customImages: imageBundle(customImages, Object.keys(liveImages)),
-    });
-  };
+  /** This document's label with its master hint. The hint names this tab's
+   *  own master file: another tab may have opened a different file with the
+   *  same id since (#405). Saved to `labelPath`, it is written relative to that
+   *  label, so a shared .label carries no absolute path (#428); a snapshot (no
+   *  labelPath) stays on this machine and keeps it. */
+  const hintedLabel = (labelPath?: string) => ({
+    ...label,
+    masterHint: labelRelativeHint(
+      saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path, labelPath),
+  });
+  /** This document as .label bytes: the v3 label plus its embedded art — what
+   *  Save writes and what a crash-recovery snapshot stores as its art. */
+  const packProject = (labelPath?: string) => packLabel(hintedLabel(labelPath), {
+    texture: slotAsset(texture), mask: slotAsset(mask),
+    customImages: imageBundle(customImages, Object.keys(liveImages)),
+  });
 
   /** What a completed Save means here: the document reads saved unless it
    *  changed during the write. */
@@ -1323,8 +1418,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
-  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
-    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError, startSaveBatch, saveBytes,
+  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt, boundHandle } = useProjectSave({
+    pack: packProject, exportBase, onSaved: onProjectSaved, onError: reportSaveError,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
   // label overrides ride in the .label, so ⌘S already saves them.
@@ -1333,6 +1428,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, dirty, edited, templateMoved, filePath, exportBusy, exportFailures]);
   saveSlot.current = () => saveProject();
+  if (fileHandleSlot) fileHandleSlot.current = boundHandle;
   if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
     settleReview(false);
     reviewDone.current = done;
@@ -1350,7 +1446,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => () => settleReview(false), []);
 
   // Crash recovery (#394): while this tab holds unsaved work, keep a packed
-  // .label of it a moment after each change; drop it once the work is saved.
+  // label of it, and any unsaved master, a moment after each change; drop it
+  // once the work is saved. The art is packed apart, only when it changes
+  // (recovery.ts): an edit keeps these objects, so typing never re-zips it.
   // Never dropped on unmount — a render crash unmounts too, and that is the
   // snapshot the next launch must find. The shell drops it on a tab close.
   const hasUnsaved = unsaved({ dirty, edited, masterUnsaved: templateMoved });
@@ -1361,15 +1459,20 @@ export const DocumentEditor = memo(function DocumentEditor({
     const timer = setTimeout(() => {
       if (discardCount() !== armedAt) return; // Discard All landed while this was armed (#697)
       let bytes: Uint8Array;
-      try { bytes = packProject(); } catch { return; } // over the size caps: nothing Save could write either
+      let edits: RecoveredMaster | undefined;
+      try {
+        bytes = packLabel(hintedLabel(), {});
+        if (templateMoved) edits = { edited: packMaster(master, {}), base: packMaster(pristineMaster.current, {}) };
+      } catch { return; } // over the size caps: nothing Save could write either
       void keepRecovery(recoveryKey, {
         name: exportBase + LABEL_EXT, bytes, savedAt: Date.now(),
         filePath: filePath ?? undefined, fileModifiedAt: filePath ? boundModifiedAt() : undefined,
-      });
+        master: edits,
+      }, { ids: [texture, mask, liveImages], pack: packProject });
     }, 2000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
-  }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey, filePath]);
+  }, [hasUnsaved, templateMoved, doc, texture, mask, customImages, recoveryKey, filePath]);
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
@@ -1398,7 +1501,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const report = (saved: boolean) => {
       if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
     };
-    void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
+    void saveMasterInTurn(as, promote).then(report, (err: unknown) => { report(false); throw err; });
   }
 
   /** File → Save Master… / Save Master As…, the picker's button and the
@@ -1423,11 +1526,20 @@ export const DocumentEditor = memo(function DocumentEditor({
    *
    *  packMaster goes through the same three-way platform save path as
    *  saveProject, then registers the file in the library index and moves the
-   *  master-dirty baseline. */
+   *  master-dirty baseline. Called through saveMasterInTurn, so writes can't
+   *  finish out of order. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
+    // Another tab's Save Master may have moved the file: nothing pushes that
+    // into this tab's copy, so writing it blind would erase those edits (#682).
+    const boundPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
+    if (boundPath) {
+      const choice = await confirmOverwrite(boundPath, masterBaseline.at());
+      if (choice === "cancel") return false;
+      as = choice === "save-as";
+    }
     // A promotion re-validates through parseMaster; surface a rejection as an
     // error toast like the write failures below instead of an unhandled
-    // rejection from the `void saveMaster(...)` caller (#92).
+    // rejection from the `void saveMasterInTurn(...)` caller (#92).
     let promoted: ReturnType<typeof applyPromotions>;
     try {
       promoted = applyPromotions(master, label, promote, version ?? undefined);
@@ -1476,14 +1588,15 @@ export const DocumentEditor = memo(function DocumentEditor({
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
         return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : pinPromoted(d.label, promote), liveMaster) };
-      });
+      }, false); // the write ends whenever it ends: never fold into a nearby edit (#702)
+      const baseline = pristineMaster.current;
       await rememberMaster(m, where, bytes);
       refreshLibrary();
-      if (ours) pristineMaster.current = m;
+      // An Open Master during that await set its own baseline: it stays (#696).
+      if (ours && pristineMaster.current === baseline) pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
     try {
-      startSaveBatch();
       const path = as ? null : saveTargetFor(masterFilePath.current, master.id);
       const handle = as ? null : saveTargetFor(masterFileHandle.current, master.id);
       const saved = await saveThrough((name) => packMaster(titled(name), assets), {
@@ -1492,7 +1605,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       }, saveBytes);
       if (!saved) return false;
       const ours = docRef.current.master.id === master.id;
-      if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
+      if (ours && saved.target && "path" in saved.target) bindMasterPath(forked.id, saved.target.path);
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
       if (ours) {
@@ -1508,6 +1621,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       return false;
     }
   }
+
+  const saveMasterInTurn = useSaveTurns(saveMaster);
 
   /** Parse a candidate .master file (ZIP or legacy JSON; a v1 file is
    *  refused), reporting a clear error and leaving the document untouched
@@ -1527,12 +1642,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  again as they commit, so an id filled meanwhile mints no thumbnail).
    *  Slots are read from savedAssetsRef, not this render's state: a switch
    *  adopts only after its awaits (the library write), so art dropped in
-   *  that window must still win (#516). */
+   *  that window must still win (#516). Texture and mask are checked again
+   *  as they commit too, and a newer adopt or open drops them, so they land
+   *  only on the master that asked (#687). A late image needs no such check:
+   *  it lands under its own id, which only a master naming that id reads. */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
     const { texture, mask, customImages } = savedAssetsRef.current;
+    const current = newestRun("adopt");
     await Promise.all([
-      !texture && a.texture ? onTexture(assetToFile(a.texture)) : null,
-      !mask && a.mask ? onMask(assetToFile(a.mask)) : null,
+      !texture && a.texture ? onTexture(assetToFile(a.texture), current, fillEmpty(setTexture)) : null,
+      !mask && a.mask ? onMask(assetToFile(a.mask), current, fillEmpty(setMask)) : null,
       (async () => {
         const missing = Object.entries(a.customImages ?? {}).filter(([id]) => !customImages[id]);
         if (!missing.length) return;
@@ -1560,7 +1679,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { label: next, dropped } = rebindLabel(current, from, target);
     const switched: Doc = { master: target, label: next };
     markDirty();
-    setDoc(switched);
+    setDoc(switched, false); // async callers: never fold into a nearby edit (#702)
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     // The texture and mask survive a master switch, and so do their load errors.
@@ -1593,7 +1712,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Bind Save Master only once the doc is on this master (#81).
     const id = r.master.id;
     masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
-    masterFilePath.current = src.path ? { id, target: src.path } : null;
+    bindMasterPath(id, src.path);
     await adoptMasterAssets(r.assets);
   }
 
@@ -1605,7 +1724,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     await rememberMaster(target, path);
     refreshLibrary();
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
+    bindMasterPath(target.id, isTauri() ? path : null);
     commitRebind(target);
     await adoptMasterAssets(assets);
   }
@@ -1697,7 +1816,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           resetDocument({ master: nextMaster, label: newLabel(nextMaster) });
           // Untitled restore is not an Open/Save of this document — do not
           // bind Save Master to the last file's path or a restart overwrites it.
-          masterFilePath.current = null;
+          bindMasterPath(nextMaster.id, null);
         } finally {
           restoringRef.current = false;
         }
@@ -1790,6 +1909,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean | "cancelled"> {
     try {
       const unpacked = unpackLabel(f.bytes);
+      const recovered = f.master
+        && { edited: unpackMaster(f.master.edited).master, base: unpackMaster(f.master.base).master };
       let notes: string[] = [];
       let masterAssets: MasterAssets = {};
       let masterPath: string | undefined;
@@ -1818,14 +1939,19 @@ export const DocumentEditor = memo(function DocumentEditor({
         const cfg = parseConfigFile(unpacked.legacy);
         const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy), current);
         notes = r.warnings;
-        masterAssets = { customImages: imageBundle(customImages, masterAssetIds(current)) };
+        // From the ref: this open's render can predate a boot restore's images (#706).
+        masterAssets = { customImages: imageBundle(savedAssetsRef.current.customImages, masterAssetIds(current)) };
         masterPath = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
         next = { master: current, label: adoptLegacyCollab(r.label) };
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
         const hint = ref.masterHint;
-        const resolved = await resolveLabelMaster(ref.masterId, hint, f.path)
-          ?? await missingMasterChoice(ref.masterId, hint, f.path);
+        // A recovered master needs no file: one found only supplies the Save
+        // Master target and the template art the label doesn't embed.
+        const resolved = recovered
+          ? { assets: {}, ...await resolveMasterById(ref.masterId, hint, f.path), master: recovered.edited }
+          : await resolveLabelMaster(ref.masterId, hint, f.path)
+            ?? await missingMasterChoice(ref.masterId, hint, f.path);
         refreshLibrary(); // resolving (or the missing-master prompt) can remember or retire library rows
         if (!resolved) return "cancelled";
         masterAssets = resolved.assets;
@@ -1895,7 +2021,9 @@ export const DocumentEditor = memo(function DocumentEditor({
         Promise.all(Object.entries(ci).map(async ([id, a]) => [id, await readPacked(a, readCustomImage)] as const)),
       ]);
       if (!alive.current) return "cancelled"; // the tab closed: no retry
+      docRun.current++;
       resetDocument(next, masterPath);
+      if (recovered) pristineMaster.current = recovered.base; // the edits stay unsaved
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(() => Object.fromEntries(images.map(([id, mint]) => [id, mint()])));
@@ -1921,7 +2049,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
     const mySeq = fileToOpen.seq;
-    const { path, handle, file, recovered, recoveredPath } = fileToOpen;
+    const { path, handle, file, recovered, recoveredPath, recoveredMaster } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
       openCancelled.current = false;
@@ -1934,7 +2062,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           if (await openWithRetry(async () => fileSource(await handle.getFile())))
             bindHandle(handle);
         } else if (file) {
-          if (await openWithRetry(() => fileSource(file))) {
+          if (await openWithRetry(async () => ({ ...await fileSource(file), master: recoveredMaster }))) {
             forgetProjectFile();
             if (recovered) {
               // Still unsaved work: Save stays live, a close prompts, and the
@@ -1954,7 +2082,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               const rebound = recoveredPath?.rebind ? recoveredPath : undefined;
               if (!recoveryKey || await keepRecovery(recoveryKey, {
                 name: file.name, bytes, savedAt: Date.now(),
-                filePath: rebound?.path, fileModifiedAt: rebound?.modifiedAt,
+                filePath: rebound?.path, fileModifiedAt: rebound?.modifiedAt, master: recoveredMaster,
               }))
                 void dropRecovery(recovered);
             }
@@ -1963,11 +2091,19 @@ export const DocumentEditor = memo(function DocumentEditor({
       } catch (err) {
         reportOpenError(err);
       } finally {
-        onOpenSettled(mySeq, openCancelled.current);
+        setOpenSettled({ seq: mySeq, cancelled: openCancelled.current });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
+  // Declared after the onMeta effect, so in a shared commit it runs second:
+  // the queued open keeps claiming the tab until its meta has taken over (#694).
+  useEffect(() => {
+    if (!openSettled) return;
+    onOpenSettled(openSettled.seq, openSettled.cancelled);
+    setOpenSettled(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSettled]);
 
   /** Every command the app exposes, once. The palette and AppMenu read this
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires
@@ -2116,12 +2252,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (layer.role === "background") {
         return <FileDrop label={t("Texture")} accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] }}
           fileName={texture?.name} previewUrl={texture?.previewUrl}
-          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded(setTexture)} />;
+          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded("texture", setTexture)} />;
       }
       if (layer.role === "mask") {
         return <FileDrop label={t("Metallic mask")} accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
-          onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
+          onFile={(f) => void onMask(f)} onClear={() => clearLoaded("mask", setMask)} />;
       }
       const file = customImages[layer.asset];
       return <FileDrop label={t("Image")} accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
@@ -2395,18 +2531,18 @@ export const DocumentEditor = memo(function DocumentEditor({
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
                 their own camera. Padded, not offset, by the rulers so Fit
                 keeps the label clear of them while the transform's origin
-                stays the pane's top-left. */}
+                stays the pane's top-left. useZoomPan writes the transform. */}
             <div
+              ref={zoomLayer}
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
-                transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
                 ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}
-              canvasRender={viewMode === "2d" ? canvasSource : null}
+              canvasRender={active && viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
-              layers={drawLayers}
+              layers={previewLayers}
               editLayerOf={shownLayer}
               selected={selected}
               onPick={pick}
@@ -2425,7 +2561,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onSplit={setSplit}
               bleed={showGuides}
               cornerRadiusPct={render.cornerRadius}
-              zoom={zoom.z}
+              zoom={zoom}
               onRenderError={setRenderError} />
             </div>
             {active && viewMode !== "2d" && (
@@ -2441,7 +2577,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             )}
             </div>
             {viewMode === "2d" && (
-              <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
+              <Rulers paneRef={previewPane} previewRef={previewRef} view={liveView}
                 showRulers={showRulers} unit={unit} onUnitChange={setUnit}
                 showGuides={showGuides} marginPt={marginPt}
                 onMarginChange={rulerMargin} manual={manualGuides}
@@ -2480,6 +2616,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
+              ref={zoomField}
               value={zoomDraft ?? String(shownZoomPct)}
               onChange={(e) => setZoomDraft(e.target.value)}
               onFocus={(e) => e.currentTarget.select()}

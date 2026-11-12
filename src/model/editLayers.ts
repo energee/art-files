@@ -445,3 +445,12 @@ export function referencedAssetIds(master: Master, label: LabelFile): Set<string
   for (const v of Object.values(label.values)) if (typeof v === "string") ids.add(v);
   return ids;
 }
+
+/** referencedAssetIds plus what a master switch benched on `dormant`: art this
+ *  document doesn't draw but can bring back (A→B→A loses nothing), so the
+ *  in-memory store must keep it. */
+export function heldAssetIds(master: Master, label: LabelFile): Set<string> {
+  const ids = referencedAssetIds(master, label);
+  for (const v of Object.values(label.dormant?.values ?? {})) if (typeof v === "string") ids.add(v);
+  return ids;
+}

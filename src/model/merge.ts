@@ -43,6 +43,8 @@ export function deepEqual(a: unknown, b: unknown): boolean {
       && a.every((x, i) => deepEqual(x, b[i]));
   }
   if (!isPlain(a) || !isPlain(b)) return false;
+  // isPlain lets these through, and with no keys any two would compare equal.
+  if (a instanceof Set || b instanceof Set || a instanceof Map || b instanceof Map) return false;
   const ka = Object.keys(a).filter((k) => a[k] !== undefined);
   const kb = Object.keys(b).filter((k) => b[k] !== undefined);
   return ka.length === kb.length && ka.every((k) => deepEqual(a[k], b[k]));

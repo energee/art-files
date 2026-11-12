@@ -42,6 +42,9 @@ export const SHIPPED_BLEED_IN = MEASURED_BLEED / 72;
  *  Exporting the raw bleed as well would invite a fourth boundary to re-derive
  *  its own shift from it, which is exactly the drift this design avoids. */
 let BLEED = MEASURED_BLEED;
+/** The same bleed as given, in inches: what liveGeometry hands back, so a
+ *  snapshot restores it exactly rather than through a points round trip. */
+let BLEED_IN = SHIPPED_BLEED_IN;
 
 /** How far a measured position has to move to keep its distance from the TRIM
  *  once the page grows or shrinks around it. Zero at the shipped bleed, which
@@ -309,7 +312,7 @@ export const PX = 72 / DESIGN_DPI;
  *  readout. Live-bound, so importers see the current value.
  *
  *  ponytail: one module-level output resolution, because the app edits one
- *  document at a time. The PSD worker (psd/offThread.ts) has its own copy of
+ *  document at a time. An export worker (offThread.ts) has its own copy of
  *  this module, so its job carries the DPI and bleed and re-applies them
  *  there. If two documents open at once, pass it as a parameter instead. */
 export let OUTPUT_DPI = 0; // set by setOutputDpi(DESIGN_DPI) below
@@ -345,13 +348,14 @@ setOutputDpi(DESIGN_DPI);
  *  one label at a time. If it ever opens two, thread a Geometry through the
  *  renderers instead of reading module state.
  *
- *  NOTE for callers: this affects only the current JS realm. The PSD worker
- *  has its own copy and re-applies the bleed from its job (psd/offThread.ts).
+ *  NOTE for callers: this affects only the current JS realm. An export worker
+ *  has its own copy and re-applies the bleed from its job (offThread.ts).
  *  `npm run
  *  generate`'s Node harness (scripts/generate.ts) imports this module in a
  *  separate process with its own state. It calls setBleed with the master’s
  *  physical.bleedIn and does not read the app’s local Settings. */
 export function setBleed(inches: number) {
+  BLEED_IN = inches;
   BLEED = inches * 72;
   BLEED_SHIFT = BLEED - MEASURED_BLEED;
   PAGE.w = TRIM.w + 2 * BLEED;
@@ -363,6 +367,31 @@ export function setBleed(inches: number) {
   TRIM_UV.w = ART.w / PAGE.w;
   TRIM_UV.h = ART.h / PAGE.h;
   publishPsdDoc();
+}
+
+/** The Settings values every geometry above derives from. */
+export type Geometry = { bleedIn: number; dpi: number };
+
+/** The bleed and DPI in force now: what an export snapshots when it starts. */
+export const liveGeometry = (): Geometry => ({ bleedIn: BLEED_IN, dpi: OUTPUT_DPI });
+
+/** Run `read` at `geometry`, then put the live geometry back. An export reads
+ *  this module for seconds across awaits, while App's render moves it whenever
+ *  Settings changes (#688), so every read an export makes on this thread goes
+ *  through here with the export's snapshot.
+ *
+ *  `read` must be synchronous: nothing else can run during it, so neither the
+ *  preview nor a second tab's export ever sees the swap. */
+export function withGeometry<T>(geometry: Geometry, read: () => T): T {
+  const live = liveGeometry();
+  setBleed(geometry.bleedIn);
+  setOutputDpi(geometry.dpi);
+  try {
+    return read();
+  } finally {
+    setBleed(live.bleedIn);
+    setOutputDpi(live.dpi);
+  }
 }
 
 /** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */

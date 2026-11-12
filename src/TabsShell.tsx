@@ -1,6 +1,7 @@
 // TabsShell.tsx — the workspace: a tab strip over one mounted DocumentEditor
 // per open .label project, inactive ones hidden (display:none), their state
-// intact but their rendered previews dropped (see App.tsx's active gating).
+// intact but their rendered previews dropped: empty plates, and decoded
+// bitmaps only on the last tab shown (see App.tsx's active gating).
 // The shell owns everything that outlives or spans documents: the tab list
 // (src/tabs.ts), OS file-open and dropped-.label routing, the File → Open
 // picker (an open must be able to target a new tab), File → Open Recent
@@ -22,8 +23,8 @@ import {
 import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
-import { canRebind, dropRecovery, earlierSnapshots, noteDiscard, recoveryKey, type Recoverable } from "@/recovery";
-import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
+import { canRebind, dropRecovery, earlierSnapshots, noteDiscard, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
+import { loadRenderSettings, RENDER_KEY, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { isFieldDrop } from "@/components/AssetDropOverlay";
@@ -54,6 +55,7 @@ const EXIT_WAIT_TOAST = "shell:exit-wait";
 type TabExtras = {
   saveSlot: { current: (() => Promise<boolean>) | null };
   masterSaveSlot: { current: (() => Promise<boolean>) | null };
+  fileHandleSlot: { current: (() => FileSystemFileHandle | null) | null };
   onMeta: (meta: DocumentMeta) => void;
   onCloseTab: () => void;
   onOpenSettled: (seq: number, cancelled: boolean) => void;
@@ -107,6 +109,7 @@ export default function TabsShell() {
     if (!e) extras.current.set(id, (e = {
       saveSlot: { current: null },
       masterSaveSlot: { current: null },
+      fileHandleSlot: { current: null },
       onMeta: (meta) => {
         // A tab bound to a new path (an open, or a Save As) goes to the top
         // of File → Open Recent; repeat reports of the same path don't.
@@ -188,6 +191,13 @@ export default function TabsShell() {
   // App.tsx's RenderSettings note).
   const [render, setRender] = useState<RenderSettings>(loadRenderSettings);
   useEffect(() => { saveRenderSettings(render); }, [render]);
+  // A browser window sharing this storage: take its change, so this window's
+  // next write can't put its stale copy back over it (#701).
+  useEffect(() => {
+    const adopt = (e: StorageEvent) => { if (e.key === RENDER_KEY) setRender(loadRenderSettings()); };
+    window.addEventListener("storage", adopt);
+    return () => window.removeEventListener("storage", adopt);
+  }, []);
 
   // ---- crash recovery (#394) ----
 
@@ -216,7 +226,7 @@ export default function TabsShell() {
           ]),
         } : undefined;
         if (recoveredPath?.rebind) rebound.push(recoveredPath.path);
-        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath });
+        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath, recoveredMaster: r.master });
       }
     })();
   };
@@ -326,18 +336,30 @@ export default function TabsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** The tab already saving to the file a browser picker returned. A handle
+   *  has no path for routeFileOpen to compare, and the browser has no
+   *  changed-on-disk check, so two tabs on one file would overwrite each other
+   *  unasked (#695). */
+  async function tabHolding(handle: FileSystemFileHandle) {
+    for (const [id, e] of extras.current)
+      if (await e.fileHandleSlot.current?.()?.isSameEntry(handle)) return id;
+  }
+
   /** File → Open Label…: native dialog on desktop (a real path, routed
    *  exactly like an OS open, so the tab records filePath and ⌘S saves in
    *  place — WKWebView has no FS-Access picker), FS-Access picker in the
    *  browser (yields a writable handle, so Save rewrites the picked file),
-   *  hidden-input fallback elsewhere. The editor runs the actual open (see
+   *  hidden-input fallback elsewhere. A browser pick of a file a tab already
+   *  holds focuses that tab. The editor runs the actual open (see
    *  fileToOpen in App.tsx). */
   async function openProjectPicker() {
     try {
       const target = await openThrough({ filter: labelFilter(), types: labelTypes() });
       if (target === undefined) { fileInput.current?.click(); return; }
       if (target === null) return;
-      openRouted(target);
+      const holder = "handle" in target ? await tabHolding(target.handle) : undefined;
+      if (holder !== undefined) apply((s) => activateTab(s, holder));
+      else openRouted(target);
     } catch (err) {
       // Failures AFTER a tab is chosen surface in that editor's own toast;
       // this is the picker itself failing, before any tab exists.
@@ -391,7 +413,9 @@ export default function TabsShell() {
   const endSweep = (finished: boolean) => {
     const done = sweep.current;
     sweep.current = null;
-    done?.(finished);
+    // The app may be about to go: let a discarded tab's snapshot drop land, or
+    // the next launch offers that work back (#697).
+    void recoveryWritten().then(() => done?.(finished));
   };
 
   /** Walk every unsaved tab through the close prompt before the app goes
@@ -718,11 +742,13 @@ export default function TabsShell() {
                 tabStripHost={tabStripHost}
                 updateStatusHost={setUpdateStatusHost}
                 active={isActive}
+                keepSource={t.id === state.previous}
                 fileToOpen={pending[t.id] ?? null}
                 onOpenSettled={e.onOpenSettled}
                 onMeta={e.onMeta}
                 saveSlot={e.saveSlot}
                 masterSaveSlot={e.masterSaveSlot}
+                fileHandleSlot={e.fileHandleSlot}
                 render={render}
                 onRenderChange={setRender}
                 onOpenProject={openProject}
@@ -747,8 +773,9 @@ export default function TabsShell() {
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
           editor's own save flows (dialog cancel keeps the tab). Hidden, not
-          dismissed, while Save has the master review up. */}
-      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
+          dismissed, while Save has the master review up. Escape can't dismiss
+          it mid-Save: that Save would still close the tab (#705). */}
+      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && !saving && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             {/* A window close or quit (⌘Q, Dock → Quit) ends the app, so the
