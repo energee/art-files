@@ -3,9 +3,10 @@
 // and "Relative position"). Sections, top to bottom: header (kind icon,
 // inline rename (commits on Enter or blur, Escape cancels, like the Layers
 // row's), Show (the list's eye), Lock (not on page art) and Remove buttons
-// that act on the whole selection, close button, an off-variant note), the parent's content editor (no heading: its
-// caption names it), kind-specific geometry/typography, Position (not on
-// page art), Style, and expandable template field settings.
+// that act on the whole selection, close button, an off-variant note), the
+// parent's content editor (no heading: its caption names it), kind-specific
+// geometry/typography, Position (not on page art), Style, and expandable
+// template field settings.
 //
 // With several layers selected (`others`) it still shows `layer`, the
 // last-picked one, but only the controls the selection shares: the header

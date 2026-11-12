@@ -100,6 +100,8 @@ const control = cn(
 );
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+/** A row's name button: what a row's keys act on and where its focus rests. */
+const NAME_BUTTON = '[data-slot="sidebar-menu-button"]';
 
 function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, ...p }: {
   dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
@@ -159,9 +161,9 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
   /** Delete/Backspace on the selected row, then focus to the next unselected
    *  row's name, else this list's Add layer — never dropped to the page. */
   const removeSelected = () => {
-    const current = itemRef.current!.querySelector<HTMLElement>('[data-slot="sidebar-menu-button"]')!;
+    const current = itemRef.current!.querySelector<HTMLElement>(NAME_BUTTON)!;
     const list = current.closest('[data-slot="sidebar-menu"]');
-    const buttons = [...(list?.querySelectorAll<HTMLElement>('[data-slot="sidebar-menu-button"]') ?? [])];
+    const buttons = [...(list?.querySelectorAll<HTMLElement>(NAME_BUTTON) ?? [])];
     const at = buttons.indexOf(current);
     const keep = (button: HTMLElement) => button.getAttribute("aria-pressed") !== "true";
     const next = buttons.slice(at + 1).find(keep) ?? buttons.slice(0, at).reverse().find(keep);
@@ -313,20 +315,20 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
                 it (and gives up the 24px), so the eyes stay in one column.
                 Locking is in the row menu and the inspector. */}
             {locked && !page && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    // The button unmounts with the lock, so focus moves to the row first.
-                    itemRef.current?.querySelector<HTMLElement>('[data-slot="sidebar-menu-button"]')?.focus();
-                    p.onToggle(id, "locked", false);
-                  }}
-                  aria-label={t("{{name}}: locked", { name })}
-                  aria-pressed
-                  title={`${t("Unlock on canvas.")} ${t("Locked on canvas: drag, resize and nudge are off. Typed values still apply.")}`}
-                  className={cn(control, "text-sidebar-foreground")}
-                >
-                  <Lock />
-                </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // The button unmounts with the lock, so focus moves to the row first.
+                  itemRef.current?.querySelector<HTMLElement>(NAME_BUTTON)?.focus();
+                  p.onToggle(id, "locked", false);
+                }}
+                aria-label={t("{{name}}: locked", { name })}
+                aria-pressed
+                title={`${t("Unlock on canvas.")} ${t("Locked on canvas: drag, resize and nudge are off. Typed values still apply.")}`}
+                className={cn(control, "text-sidebar-foreground")}
+              >
+                <Lock />
+              </button>
             )}
             <button
               type="button"
@@ -528,21 +530,18 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
             />
           ))}
         </SidebarMenu>
-        {shown.length === 0 && (
-          <p className="px-2 py-2 text-[11px] text-sidebar-foreground/50">
-            No layers.
-          </p>
-        )}
+        {shown.length === 0 && <p className="px-2 py-2 text-[11px] text-sidebar-foreground/50">No layers.</p>}
       </SidebarGroupContent>
     </SidebarGroup>
   );
 }
 
-/** The rows as the list draws them: name, icon, power, lock, chips and what
- *  the row menu enables, in order. layerRows re-resolves every layer on each edit, so a keystroke, a
- *  drag or a scrub hands the list all-new row objects whose only change is
- *  content or geometry it never shows. Everything the list reads off a row
- *  belongs here, or it goes stale until something listed changes. */
+/** The rows as the list draws them: name, icon, eye, lock, chips and what
+ *  the row menu enables, in order. layerRows re-resolves every layer on each
+ *  edit, so a keystroke, a drag or a scrub hands the list all-new row objects
+ *  whose only change is content or geometry it never shows. Everything the
+ *  list reads off a row belongs here, or it goes stale until something listed
+ *  changes. */
 const shownRows = (rows: LayerRow[]) =>
   JSON.stringify(rows.map(({ layer, variant, variantOverridden, overridden }) => [
     layer.id, layer.name, layer.kind, layer.kind === "image" && layer.role, layer.enabled, layer.locked,

@@ -14,8 +14,8 @@
 //
 // There is ONE mode (spec 2026-09-04: Removed): the Layers list (LayerList)
 // replaces Fill mode, and the inspector (LayerInspector) edits the selected
-// layers. Every edit lands in the LABEL —
-// a property edit as an override, a text/image/code edit as a fill value
+// layers. Every edit lands in the LABEL — a property edit as an override, a
+// text/image/code edit as a fill value
 // (model/edit.ts's patchLayers / setContentIn). The master is the template
 // and changes only through the reviewed Save Master, so it never drifts
 // under an operator filling a label. Master and label edits share one undo
