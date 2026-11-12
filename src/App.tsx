@@ -66,7 +66,7 @@ import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterInde
 import { layerBoxes, outsideGuides } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
-import { dropRecovery, keepRecovery, type RecoveredMaster } from "@/recovery";
+import { discardCount, dropRecovery, keepRecovery, type RecoveredMaster } from "@/recovery";
 import {
   assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, saveBytes, slotAsset,
   type CustomFile, type LoadedRaster,
@@ -1455,7 +1455,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => {
     if (!recoveryKey) return;
     if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
+    const armedAt = discardCount();
     const timer = setTimeout(() => {
+      if (discardCount() !== armedAt) return; // Discard All landed while this was armed (#697)
       let bytes: Uint8Array;
       let edits: RecoveredMaster | undefined;
       try {

@@ -23,7 +23,7 @@ import {
 import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
-import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
+import { canRebind, dropRecovery, earlierSnapshots, noteDiscard, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
 import { loadRenderSettings, RENDER_KEY, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
@@ -463,6 +463,7 @@ export default function TabsShell() {
    *  and the sweep is over. */
   const discardAll = async () => {
     setSweepCount(0);
+    noteDiscard();
     await Promise.all(stateRef.current.tabs.filter(unsaved).map((t) => dropRecovery(recoveryKey(t.id))));
     endSweep(true);
   };
