@@ -32,8 +32,11 @@ function DropdownMenuContent({
   >) {
   return (
     <MenuPrimitive.Portal>
+      {/* Under 768px wide toasts sit at the top (sonner.tsx), where the ☰ menu
+          opens: the menu stacks above Sonner's z-index (999999999) there, so
+          a toast never covers or swallows a tap on its rows. */}
       <MenuPrimitive.Positioner
-        className="isolate z-50 outline-none"
+        className="isolate z-50 outline-none max-md:z-[1000000000]"
         align={align}
         alignOffset={alignOffset}
         side={side}
