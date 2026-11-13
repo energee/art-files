@@ -266,12 +266,12 @@ export const PreviewCompare = forwardRef<
     return hitTestBoxes(p.xPt, p.yPt, hitBoxes);
   }
 
-  // A finished drag still fires a click at pointerup; swallow it so moving a
-  // multi-selection can't collapse the selection to the grabbed layer.
-  // (LayerList's suppressClick is the same guard for row reorders.)
-  const swallowClick = useRef(false);
+  // A finished drag still fires a click; swallow it so moving a multi-selection can't collapse
+  // it to the grabbed layer (LayerList's suppressClick, the same guard). A tap's click goes too
+  // (tapPicked): the tap picked where the finger lifted (onPointerUp), Chrome aims its click elsewhere.
+  const swallowClick = useRef(false), tapPicked = useRef(false);
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (swallowClick.current) { swallowClick.current = false; return; }
+    if (swallowClick.current || tapPicked.current) { swallowClick.current = tapPicked.current = false; return; }
     const id = hitOf(e);
     if (id !== undefined) onPick(id, modsOf(e));
   }
@@ -396,10 +396,10 @@ export const PreviewCompare = forwardRef<
     if (extraFinger(e)) return; // an ignored finger's lift ends nothing
     if (e.pointerType === "touch") {
       const from = tapFrom.current; tapFrom.current = null;
-      const tapped = from && !drag.current?.started && isTap(from, { x: e.clientX, y: e.clientY });
-      const id = tapped ? hitOf(e) ?? null : null;
-      const { open, last } = foldTap(lastTap.current, id, e.timeStamp); lastTap.current = last;
-      if (open && id) { tapOpened.current = true; startEditing(e, id); }
+      const hit = from && !drag.current?.started && isTap(from, { x: e.clientX, y: e.clientY }) ? hitOf(e) : undefined;
+      if (hit !== undefined) { onPick(hit, {}); tapPicked.current = true; } // under the finger, not the click
+      const { open, last } = foldTap(lastTap.current, hit ?? null, e.timeStamp); lastTap.current = last;
+      if (open && hit) { tapOpened.current = true; startEditing(e, hit); }
     }
     swallowClick.current ||= !!drag.current?.started;
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
@@ -555,7 +555,7 @@ export const PreviewCompare = forwardRef<
       // came (a moved touch sends none) eats its click; a first finger starts a
       // tap unless a session is open (an extra one cancels it: cancelLayerGesture).
       onPointerDownCapture={(e) => {
-        swallowClick.current = false; tapOpened.current = false;
+        swallowClick.current = tapOpened.current = tapPicked.current = false;
         if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
       }}
       onPointerUp={onPointerUp}

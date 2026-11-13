@@ -629,3 +629,53 @@ it("a mouse that moves 6px still drags, as before", async () => {
   expect(box("name").x).toBeGreaterThan(start.x);
   expect(canUndo()).toBe(true);
 }, 60_000);
+
+// A tap picks the layer under the finger's lift. Chrome aims the follow-up
+// click at a nearby tick (here Name's bottom one), whose position can lie
+// over another layer (here styleLine): that click must not pick again.
+const touchClickAt = (el: Element, x: number, y: number) => act(() => {
+  el.dispatchEvent(new PointerEvent("click", { pointerType: "touch", bubbles: true, clientX: x, clientY: y }));
+});
+
+it("a tap whose click Chrome aims at a tick over another layer selects the layer under the finger", async () => {
+  select("name");
+  const a = centre("name"), b = centre("styleLine");
+  finger(sheet, "pointerdown", 1, a.x, a.y);
+  finger(sheet, "pointerup", 1, a.x, a.y);
+  touchClickAt(tick("0,1"), b.x, b.y);
+  expect(probe.preview!.selected).toEqual(["name"]);
+}, 60_000);
+
+it("after such a double-tap the layer under the finger is both edited and selected", async () => {
+  select("name");
+  const a = centre("name"), b = centre("styleLine");
+  for (const at of [1000, 1200]) {
+    for (const type of ["pointerdown", "pointerup"]) act(() => {
+      const e = new PointerEvent(type, { pointerType: "touch", pointerId: 1, isPrimary: true, button: 0, clientX: a.x, clientY: a.y, bubbles: true });
+      Object.defineProperty(e, "timeStamp", { value: at });
+      sheet.dispatchEvent(e);
+    });
+    const t = tick("0,1");
+    if (t) touchClickAt(t, b.x, b.y);
+  }
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+  expect(probe.preview!.selected).toEqual(["name"]);
+}, 60_000);
+
+it("a tap on bare sheet deselects", async () => {
+  select("name");
+  finger(sheet, "pointerdown", 1, 1, 1);
+  finger(sheet, "pointerup", 1, 1, 1);
+  touchClickAt(sheet, 1, 1);
+  expect(probe.preview!.selected).toEqual([]);
+}, 60_000);
+
+it("a mouse click still picks from the click's own position", async () => {
+  const a = centre("name"), b = centre("description");
+  const mouse = (type: string) => act(() => {
+    sheet.dispatchEvent(new PointerEvent(type, { pointerType: "mouse", pointerId: 1, isPrimary: true, button: 0, clientX: a.x, clientY: a.y, bubbles: true }));
+  });
+  mouse("pointerdown"); mouse("pointerup");
+  act(() => { sheet.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: b.x, clientY: b.y })); });
+  expect(probe.preview!.selected).toEqual(["description"]);
+}, 60_000);
