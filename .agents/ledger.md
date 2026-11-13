@@ -1124,8 +1124,8 @@ no status, no attempts, no delta.
 - release: non-binary-impacting (agent ledger only); no bullet queued.
 ## 2026-11-13 phone-touch-paths
 - finding: [user request] touch paths for hover, right-click, double-click and keyboard actions (phone layout plan, Phase 4)
-- status: in-progress
-- attempted-in: .agents/worktrees/web-app-pages @ feat/phone-touch-paths, measured at 0b65513c
+- status: done (Task 4.7 measured the finished phase at 3f17a084; app code as 66e1bbe4)
+- attempted-in: .agents/worktrees/web-app-pages @ feat/phone-touch-paths, measured at 0b65513c (baseline) and 3f17a084 (after)
 - delta: baseline. `npm run dev -- --port 5191 --strictPort`, then `node .agents/mockups/phone-touch-paths/probe.mjs http://localhost:5191/ .agents/mockups/phone-touch-paths before` (and again with label `before-2`). The probe is the plan's Task 4.1 Step 2 script verbatim, assembled from phone-gestures/probe.mjs lines 1–233 (first five comment lines replaced) and 643–681; headless Chrome over CDP on port 9333, real Input.dispatchTouchEvent at 390x844 (844x390 where named), mouse and keys at 1280x800. Each run took 102s. Outputs in .agents/mockups/phone-touch-paths/ (gitignored).
 - evidence (longPress, 800ms hold on Name): during.menu the seven items (Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master, Remove); during.selected [] (not ["name"] as predicted); during.overlay "expanded", click 1, contextmenu 0; after the lift: selected ["name"], overlay "collapsed", click 2, menu still open.
 - evidence (longPressDrag, hold then +100px): moved.menu the seven items; order unchanged; reordered false (predicted true); undo 0.
@@ -1165,3 +1165,59 @@ no status, no attempts, no delta.
 - evidence (phone master picker, one library entry): library ✕ 44x44 inside a 236.5x50.5 option row, hit box 44x44.5, the option row on all four sides.
 - evidence (desktop 1280x800 mouse; coarse false), unchanged from the baseline: guide × at rest 11.4x11.4, opacity 0, pointer-events none; hovered opacity 1, hit box 11.5x12, no ::after. Inactive tab × 13x13 with ::after 26x26, opacity 0, none; hovered opacity 1, hit box 26x26. Active tab × 13x13, opacity 0.4, hit box 26x26. Inactive unsaved tab control 13x13, hit box 26x26; a click on it opens the close dialog. Toast close 20x20 with no ::after; action 35.5x24. Library ✕ 14.6x14.6.
 - not measured (needs a real phone): real finger radius against Chrome's touch adjustment near the toast close and the guide ×; the toast close at the screen corner under a real hand.
+- delta (Task 4.7, the finished phase): `npm run dev -- --port 5201 --strictPort` on 3f17a084, then `PROBE_CDP=9351 node .agents/mockups/phone-touch-paths/probe.mjs http://localhost:5201/ .agents/mockups/phone-touch-paths after`. The probe was fixed first: `inspectorScroll.byInput`, `metallic` and `inspectorActions` now scroll their control into view before the finger lands (they aimed off-screen at the baseline), and `suggestion` caps the 2-option list at 60px so the swipe really scrolls it. Desktop gained resetClick, gripsShown, altDown, mouseDrag, scrubName and bgTabClose. The fixed probe also ran against the baseline commit 32684f1f in a scratch worktree (dev server :5202) → before-fixed.json; every scenario the fix did not touch reads exactly as before.json there. Extra readings: `.agents/mockups/phone-touch-paths/t47-probe.mjs` (same harness) → t47.json, t47-bold.json. All gitignored.
+- delta (phone 390x844 touch, baseline → after; verdict):
+  - longPress: selected during the hold [] → [name]; after the lift overlay collapsed → expanded, click 2 stopped at the row; menu 7 items → 8 (Select first). Changed as intended (click guard; Select).
+  - longPressDrag: menu open, reordered false, undo 0 → same (pointercancel 0 → 1). Same.
+  - dragReorder (finger on the name, +100px): reordered true, undo 1 → false, undo 0. Changed as intended (the name scrolls on touch; the grip reorders).
+  - gripReorder: no grip → reordered true (name two places down), undo 1. Changed as intended.
+  - listScroll (844x390): byName scrolled 0 → 76 (all the travel there is), reordered false; byEye 76 → 76. Changed as intended.
+  - rename: renameFocused false, overlay collapsed → renameFocused true, overlay expanded, typed name "NameX". Changed as intended.
+  - selectMode: no Select → two [name, description] expanded; one [description] expanded; none [] expanded; plain [name] collapsed. Changed as intended.
+  - masterRemove: [] → [] (no library entries in a fresh browser; Task 4.3 measured the ✕ at 44x44). Same.
+  - inspectorScroll: byLabel 0 → 192, undo 1 → 0, label pointer-events auto → none (touchAction stays "none"; the brief's pan-y was replaced by option C in Task 4.2). byInput corrected before 190 → 197. Changed as intended / same.
+  - reset: X and Y resets 20x20, opacity 0, pointer-events none, the tap did nothing (x 1 → 1) → 44x44, opacity 1, hitsItself true, overlaps [], the tap reset X to the master's 4.0633. Changed as intended.
+  - fieldPair-390x844: X and Y side by side (124 wide) → stacked, X 284 wide, Y below at 683; reset 44. fieldPair-844x390: 79 wide → 194 wide, stacked; sheet 300/300 both. Changed as intended.
+  - guideRemove: × opacity 0, none, tap 12px off kept the guide → opacity 1, ::after 17.4x45.4, the tap removed it (1 → 0). Changed as intended.
+  - metallic (corrected before): 44x44, hitsItself true, tap toggles true → false; after the same. Same.
+  - tabClose: active × 13x13 (26px ::after) → 44x44; rightOf null → "presentation" (not a tab); the tap 10px right closed the tab both times (2 → 1), no dialog. Changed as intended.
+  - toast: Close 20x20 → 20x20 with 44x44 ::after, Act 35.5x24 → 44x44; closedByNearTap false → true. Changed as intended.
+  - suggestion (corrected before): the list scrolled 33px → 32px from an option and nothing was committed both times ("", focused, open); the tap committed "Hazy Pale Ale", focused, closed both times. The event log lost the compatibility mousedown (pointerup, mousedown, mouseup → pointerup, click). Same (so no changelog bullet, as Task 4.1 decided).
+  - toolbar: focused true, Bold applied → same. Same.
+  - inspectorActions (corrected before): X moved 186.9 → 71.1, Remove removed the layer; after the same. Same.
+  - tabOrder (40 Tabs, Layers open): outside 20 → 0. Changed as intended (inert).
+  - layout-fresh / layout-selected: identical except the Layers overlay 256 → 332 wide (85vw). Changed as intended.
+- delta (desktop 1280x800 mouse, corrected before → after): coarse false; resetHidden opacity 0 / resetHover 1, both 19.5x19.5; resetClick X back to 4.0633, reset gone; rightClick the seven items without Select, selected [name]; gripsShown 0 (8 grip elements exist, display none); menuRename and dblRename renaming + focused; shiftClick [warning, styleLine, name]; metaClick + description; altUp name one up, altDown back; Delete removes name; mouseDrag of the row by its name reorders (name two places down); scrubName: the mouse drag on the Size name hits the LABEL and changes Size 15.83 → 30.83; bgTabClose: hover shows the background tab's × (opacity 1), a click closes it (2 → 1), no dialog; nudge 308.4 → 309.6; suggestion committed, focused, closed. Every reading identical before and after; the only DOM difference is the hidden grips.
+- delta (desktop screenshots, before vs before-2 = noise floor, then before vs after): fresh 0 / 0, selected 0 / 0, reset-hover 0 / 0, menu 21 / 5. before vs before-fixed: 0, 0, 0, 0.
+- done list by finger, Starter master (t47.json, t47-bold.json):
+
+  | Step | 390x844 | 844x390 |
+  |---|---|---|
+  | Select: tap in Layers | worked: [description], Layers closed, inspector open | worked: same |
+  | Select: tap on the label | worked: cleared by a tap away, then [description] | worked (cleared with the inspector's ✕; no bare pasteboard shows) |
+  | Edit: double-tap on the label | worked: in-place editor focused, typed Z landed, a tap away finished | worked: same |
+  | Edit: in the inspector | worked: field focused, typed Q landed | not in scope |
+  | Move on the label | worked: +29.8, +20.3 | worked: +29.8, +19.3 |
+  | Resize on the label (corner tick +20) | worked: 37.3 → 57.2 wide | not in scope |
+  | Font size by typing 20 | worked: Size 20, outline 21.8 → 25.5 tall | not in scope |
+  | Bold from the sheet toolbar | worked: aria-pressed false → true, data-bold on HOPS, field kept focus | not in scope |
+  | Uppercase from the pill toolbar (the sheet's toolbar has none) | worked: false → true, pill field kept focus | not in scope |
+  | Colour by typing in the Fill field | worked: #F3CD80 → #c0392b (the swatch button is reachable too) | not in scope |
+  | Multi-select: Select, tap two more | worked: [name, description, abv], Layers open, header "3 layers" | worked: same |
+  | Shared field once, one undo | worked: X typed 0.5; one header Undo disables Undo; Redo gives all three X 0.5 | worked: same |
+  | Reorder: grip drag one row | worked: name one place down; header Undo puts it back, Redo again | worked: name one place down |
+  | Reorder: Bring Forward from the menu | worked: description one place up | not in scope |
+  | Undo and Redo (header) after a move | worked: back to start, then moved again | not in scope |
+
+  Open, save and export are Phase 5 and were not tested.
+- tap targets (390x844 and 320x568, touch; visible, not inert, hit at their centre; a control counts as under 44 only if its real hit box, scanned with elementFromPoint along its centre lines, is under 44 either way): Layers open 0; row menu open 0; selected with the inspector at top 0, middle 1, bottom 1; a field with an override 1 (0 at 320x568, the switch is off screen there); multi-selection with Layers open 0, with the inspector 1 (≠ marks 44x44); toast with an action 1. The ones that remain:
+  - the inspector switches (Uppercase, Outer stroke; the same class everywhere): drawn 26x14.9, ::after 42 x 42.9, hit box 42.8 x 43.8. UNEXPECTED, from Phase 2 (switch.tsx `touch:after:-inset-x-[9px] -inset-y-[15px]` is placed against the padding box inside the 1px border, as the toast close was before Task 4.3); not fixed here.
+  - the toast's Close: 20x20 with a 44x44 ::after, hit box 42x42 on screen because its reach runs off the screen's top-left corner (known since Task 4.3).
+  - not in these states, known: the compare divider and guide handles, the ruler corner's 24px, "Remove choice" ✕ about 20px.
+- sideways scroll: scrollWidth = clientWidth in every state above, 390/390 and 320/320.
+- tablet 1024x768 touch (desktop layout): Layers docked (expanded, no backdrop, 256 wide) and stays open after a row tap; inspector on the right; the long-press menu offers Select first; X and Y resets 44x44, opacity 1, hitting themselves; page 1024/1024; no visible input clipped (with -12.5 and 4800.25 typed into X; the only scrollWidth > clientWidth inputs are Base UI's 1px hidden inputs); tap-target audit 57 controls, 1 under 44 (the Uppercase switch as above).
+- unexpected: the switch reach above (Phase 2 defect, 42 x 42.9). Nothing else.
+- not built (open): the compare divider and the ruler guide handles stay small on touch; the ruler corner covers the first 24px of each ruler on touch; a second finger's tap while another rests does not select; dragging by the grip does not auto-scroll a long list; "Remove choice" ✕ is still about 20px on touch; in a stacked field the input narrows by 44px when its first reset appears; if a field had focus when Layers opens on a phone layout, focus drops to the page; selection mode has no visible sign beyond the selected rows (announced to screen readers only).
+- not measured (needs a real phone): the iOS keyboard appearing when Rename is chosen from the menu; long-press on iOS (the system callout and text selection) and the 500ms timing with a real finger; grip drag with a real finger, and whether a real finger's first move scrolls the list or reaches the grip; that focus is kept in the text editor on WebKit (iPhone and the macOS app), including a suggestion tap with the keyboard up; `inert` with VoiceOver and TalkBack while Layers is open; whether Safari's toolbars change the 85% panel; the reset buttons and ≠ marks under a real finger in both sheets; real finger radius against Chrome's touch adjustment near the toast close and the guide ×; plus the earlier lists in this entry (long-press timing and the OS callout, real touch slop on rows, iOS Safari's click after a long-press) and the phone-gestures entries above.
+- release: binary-impacting (src/App.tsx, src/TabsShell.tsx, src/components/LayerInspector.tsx, LayerInspectorControls.tsx, LayerInspectorSections.tsx, LayerList.tsx, MasterPicker.tsx, Rulers.tsx, ScrubField.tsx, TextEditor.tsx, ui/sheet.tsx, ui/sidebar.tsx, src/index.css, src/locales/*, src/usePhoneLayout.ts); six bullets queued under [Unreleased] in 3f17a084 (two Added, four Fixed), one edited; no version bump. `node scripts/check-release.mjs feat/phone-gestures` passes.
+- checks at 66e1bbe4 (app code) / 3f17a084 (docs): `npx tsc --noEmit`, `npm run lint`, `npx --yes knip@6.38.0` clean; `npm test` 215 files, 2433 tests passed; docs-site `types:check` and `build` pass.
