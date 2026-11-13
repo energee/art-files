@@ -657,9 +657,12 @@ export default function TabsShell() {
           tabs[(i + step + tabs.length) % tabs.length].focus();
         }}>
         {state.tabs.map((t, i) => (
+          // A tap on the chip's own box (its padding, or an inactive tab's
+          // control spot, which takes no taps on touch) switches to the tab.
           <div
             key={t.id}
             role="presentation"
+            onClick={(e) => { if (e.target === e.currentTarget) activate(t.id); }}
             className={cn(
               "group flex h-6.5 touch:h-auto min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
               t.id === state.active
@@ -683,7 +686,8 @@ export default function TabsShell() {
             </button>
             {/* Mouse only (see the tablist above). An unsaved tab opens
                 the close dialog first. The after: box widens the hit area
-                to 26 px without growing the drawn button. */}
+                to 26 px without growing the drawn button (with a mouse; on
+                touch the button itself grows, below). */}
             <button
               aria-hidden="true"
               tabIndex={-1}
@@ -701,12 +705,20 @@ export default function TabsShell() {
                 !unsaved(t) && ["group-hover:opacity-100", t.id === state.active
                   ? "opacity-40"
                   : "pointer-events-none opacity-0 group-hover:pointer-events-auto"],
+                // On touch only the active tab's control takes a tap, as a
+                // 44px box, so a tap anywhere on an inactive tab (an unsaved
+                // one's • included) switches to it: two taps close any other
+                // tab. Touch has no hover to swap the • for the ×, so the
+                // active unsaved tab shows both, side by side.
+                t.id === state.active
+                  ? "touch:flex touch:size-tap touch:items-center touch:justify-center touch:gap-0.5 touch:p-0 touch:after:hidden"
+                  : "touch:pointer-events-none",
               )}>
               {unsaved(t) ? (
                 <>
                   <span className="block size-3 text-center leading-3 group-hover:hidden"
                     aria-hidden="true">•</span>
-                  <X className="hidden size-3 group-hover:block" />
+                  <X className={cn("hidden size-3 group-hover:block", t.id === state.active && "touch:block")} />
                 </>
               ) : <X className="size-3" />}
             </button>

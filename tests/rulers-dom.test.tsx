@@ -105,6 +105,19 @@ describe("Rulers manual-guide removal", () => {
     expect(props.onRemoveManual).toHaveBeenCalledWith(7);
   });
 
+  it("shows a guide's remove button on touch, reaching 44px along its ruler", () => {
+    renderRulers();
+    const v = container.querySelector('[aria-label="Remove vertical manual guide"]')!.className;
+    const h = container.querySelector('[aria-label="Remove horizontal manual guide"]')!.className;
+    for (const cls of [v, h]) {
+      expect(cls).toContain("touch:opacity-100");
+      expect(cls).toContain("touch:pointer-events-auto");
+      expect(cls).toContain("opacity-0"); // a mouse still waits for hover or focus
+    }
+    expect(v).toContain("touch:after:-inset-x-[17px] touch:after:-inset-y-[3px]");
+    expect(h).toContain("touch:after:-inset-y-[17px] touch:after:-inset-x-[3px]");
+  });
+
   it("hides every manual guide, handle and × when Guides is off", () => {
     renderRulers({ showGuides: false });
     expect(container.querySelector('[aria-label*="manual guide;"]')).toBeNull();

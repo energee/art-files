@@ -16,7 +16,11 @@ import { setViewport } from "./viewport";
 // Same mounting as inspector-escape-dom.test.tsx: the Lolev fixture master,
 // with the canvas-heavy views stubbed out.
 vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
-vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
+/** The preview's onPick, so a test can pick a layer as a canvas tap does. */
+const preview = vi.hoisted(() => ({ pick: (_id: string | null, _mods: object) => {} }));
+vi.mock("../src/components/PreviewCompare", () => ({
+  PreviewCompare: (p: { onPick: typeof preview.pick }) => { preview.pick = p.onPick; return null; },
+}));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/fonts", () => ({
@@ -48,6 +52,7 @@ afterEach(async () => {
   container.remove();
   localStorage.clear();
   setViewport(1024, 768);
+  vi.restoreAllMocks();
 });
 
 const sidebar = () => container.querySelector('[data-slot="sidebar"]')!;
@@ -57,6 +62,10 @@ const rowButton = (id = "barcode") =>
 const tap = (el: Element | null) => act(async () => { (el as HTMLElement).click(); });
 const openLayers = () => tap(slot("sidebar-trigger"));
 const headerButton = (name: string) => container.querySelector(`header button[aria-label="${name}"]`) as HTMLButtonElement | null;
+const realMatchMedia = window.matchMedia.bind(window);
+/** A finger is the primary pointer: (pointer: coarse) matches. */
+const coarse = () => vi.spyOn(window, "matchMedia").mockImplementation(
+  (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
 const power = () => container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
 
 it("starts with Layers closed on a phone", async () => {
@@ -123,9 +132,185 @@ it("a long-press (contextmenu) on a row keeps Layers open", async () => {
   expect(sidebar().getAttribute("data-state")).toBe("expanded");
 });
 
+const pressed = (id: string) => rowButton(id).getAttribute("aria-pressed") === "true";
+const startSelecting = (id: string) => act(async () => {
+  rowButton(id).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+  await Promise.resolve();
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Select")!.click();
+  await Promise.resolve();
+});
+
+it("Select in a row's menu starts selection mode: taps toggle rows and Layers stays open", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([true, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await tap(rowButton("barcode"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([false, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("clearing the selection ends selection mode", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("barcode")); // the last selected row: the selection empties
+  expect(pressed("barcode")).toBe(false);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await tap(rowButton("name"));
+  expect(pressed("name")).toBe(true);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+// Review Focus 3
+it("closing Layers ends selection mode; the next tap picks one layer and closes Layers", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await tap(slot("sidebar-backdrop"));
+  await openLayers();
+  await tap(rowButton("description"));
+  expect([pressed("barcode"), pressed("name"), pressed("description")]).toEqual([false, false, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+// Review Focus 5
+it("rotating the phone keeps selection mode, the selection and Layers open", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await act(async () => { setViewport(844, 390); });
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(pressed("barcode")).toBe(true);
+  await tap(rowButton("name"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([true, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+const rowIds = () => [...container.querySelectorAll<HTMLElement>("[data-layer-id]")].map((r) => r.dataset.layerId!);
+const pickedIds = () => rowIds().filter(pressed);
+const addLayer = async () => {
+  const trigger = container.querySelector('[aria-label="Add layer"]') as HTMLElement;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    trigger.click();
+    await Promise.resolve();
+  });
+  await tap([...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Text")!);
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+};
+
+it("undoing the add of the only selected layer ends selection mode", async () => {
+  coarse();
+  await mount(1024, 768);
+  await addLayer();
+  const [added] = pickedIds();
+  await startSelecting(added);
+  await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true })); });
+  expect(rowIds()).not.toContain(added);
+  await tap(rowButton("name"));
+  await tap(rowButton("description"));
+  expect(pickedIds()).toEqual(["description"]);
+});
+
+it("removing the whole selection from the row menu ends selection mode", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await act(async () => {
+    rowButton("name").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    await Promise.resolve();
+  });
+  await tap([...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim().startsWith("Remove"))!);
+  expect(rowIds()).not.toContain("barcode");
+  await tap(rowButton("description"));
+  expect(pickedIds()).toEqual(["description"]);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+it("Add layer in selection mode ends it", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await addLayer();
+  await openLayers();
+  await tap(rowButton("name"));
+  expect(pickedIds()).toEqual(["name"]);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+it("on a touch tablet, Select works with Layers docked, and a canvas pick ends the mode", async () => {
+  coarse();
+  await mount(1024, 768);
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await tap(rowButton("description"));
+  expect(pickedIds().sort()).toEqual(["barcode", "description", "name"]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await act(async () => { preview.pick("name", {}); });
+  expect(pickedIds()).toEqual(["name"]);
+  await tap(rowButton("barcode"));
+  expect(pickedIds()).toEqual(["barcode"]);
+});
+
+it("a Shift-click in selection mode still selects a range", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  const ids = rowIds();
+  await startSelecting(ids[1]);
+  await act(async () => { rowButton(ids[3]).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true })); });
+  expect(pickedIds()).toEqual(ids.slice(1, 4));
+});
+
+it("in selection mode a long-press on an unselected row picks it alone and the mode stays; Select is announced", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  expect(container.querySelector('[data-add-layer]')!.closest('[data-slot="sidebar-group"]')!.querySelector('[role="status"]')!.textContent).toBe("Selecting layers. Tap a layer to add or remove it.");
+  await tap(rowButton("name"));
+  await act(async () => {
+    rowButton("description").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    await Promise.resolve();
+  });
+  expect(pickedIds()).toEqual(["description"]);
+  await act(async () => { document.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  await tap(rowButton("name"));
+  expect(pickedIds().sort()).toEqual(["description", "name"]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("a mouse's row menu on a phone-sized window offers no Select", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await act(async () => {
+    rowButton("barcode").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+  });
+  expect([...document.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent?.trim())).not.toContain("Select");
+});
+
 it("tapping the backdrop closes Layers", async () => {
   await mount(390, 844);
   await openLayers();
+  // A real tap's mousedown would move focus to the page before the click
+  // closes Layers; held off, closeLayers can hand it to the toggle.
+  const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  slot("sidebar-backdrop")!.dispatchEvent(press);
+  expect(press.defaultPrevented).toBe(true);
   await tap(slot("sidebar-backdrop"));
   expect(sidebar().getAttribute("data-state")).toBe("collapsed");
   expect(slot("sidebar-backdrop")).toBeNull();
@@ -137,17 +322,18 @@ it("keeps a desktop's Layers beside the preview, resizable, and open after a pic
   expect(slot("sidebar-resize-handle")).not.toBeNull();
   expect(slot("sidebar-backdrop")).toBeNull();
   expect(slot("sidebar-container")!.className).not.toContain("z-40");
-  expect(slot("sidebar-container")!.className).not.toContain("max-w-[85vw]");
+  expect(slot("sidebar-container")!.className).not.toContain("[--sidebar-width:85vw]");
   await tap(rowButton());
   expect(sidebar().getAttribute("data-state")).toBe("expanded");
 });
 
-// Review Focus 5: a width saved on a desktop browser never makes the overlay wider than the phone.
-it("caps the overlay at 85% of the screen whatever width was saved", async () => {
-  localStorage.setItem("sidebar_width", "520");
+// Review Focus 5: a width saved on a desktop browser, wide or narrow, never sizes the overlay.
+it.each(["520", "180", null])("makes the overlay 85vw wide whatever width was saved (saved: %s)", async (saved) => {
+  if (saved) localStorage.setItem("sidebar_width", saved);
   await mount(390, 844);
   await openLayers();
-  expect(slot("sidebar-container")!.className).toContain("max-w-[85vw]");
+  expect(slot("sidebar-container")!.className).toContain("[--sidebar-width:85vw]");
+  expect(localStorage.getItem("sidebar_width")).toBe(saved);
 });
 
 it("gives a phone header Undo and Redo buttons that run the history", async () => {
@@ -459,4 +645,160 @@ it("Escape with a modal dialog open leaves Layers open", async () => {
     await escapeOn(document.body);
     expect(sidebar().getAttribute("data-state")).toBe("expanded");
   } finally { dialog.remove(); }
+});
+
+// Open Layers on a phone covers the editor: what it covers goes inert, so the
+// keyboard and the screen reader stay in Layers. Its toggle stays reachable.
+const inert = (el: Element | null | undefined) => !!el?.closest("[inert]");
+const menuButton = () => [...container.querySelectorAll("header button")].find((b) => b.textContent?.trim() === "Menu");
+/** Every element this change made inert. (A collapsed sidebar's own panel is
+ *  inert by design, sidebar.tsx; that one is not counted.) */
+const inertLeft = () => [...document.querySelectorAll("[inert]")].filter((el) => el.getAttribute("data-slot") !== "sidebar-container");
+/** What Tab can land on, in document order: focusable, not disabled, not
+ *  tabindex -1, not hidden, not inside anything inert. */
+const tabStops = () => [...document.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex], [contenteditable='true']")]
+  .filter((el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && !el.closest("[hidden], [inert]")
+    && !(el instanceof HTMLInputElement && el.type === "hidden"));
+/** Opens Layers with a layer selected, so the inspector is open behind it. */
+const openOverSelection = async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(rowButton()); // selects (inspector opens) and closes Layers
+  await openLayers();
+};
+
+it("with Layers open on a phone, only Layers and its toggle take focus", async () => {
+  await openOverSelection();
+  expect(inert(container.querySelector("section"))).toBe(true);
+  expect(inert(document.querySelector('[data-slot="sheet-content"]'))).toBe(true);
+  expect(inert(headerButton("Undo"))).toBe(true);
+  expect(inert(menuButton())).toBe(true);
+  expect(inert(slot("sidebar-trigger"))).toBe(false);
+  expect(inert(rowButton())).toBe(false);
+  await tap(slot("sidebar-backdrop"));
+  expect(inertLeft()).toEqual([]);
+  expect(inert(document.querySelector('[data-slot="sheet-content"]'))).toBe(false);
+});
+
+it("with Layers open on a phone, Tab from the toggle goes into Layers and never reaches the editor", async () => {
+  await openOverSelection();
+  const toggle = slot("sidebar-trigger") as HTMLElement;
+  const panel = slot("sidebar-container")!;
+  const stops = tabStops();
+  // Only the toggle and the panel's own controls are left in the Tab order...
+  expect(stops.filter((el) => el !== toggle && !panel.contains(el))).toEqual([]);
+  expect(stops.length).toBeGreaterThan(1);
+  // ...so the stop after the toggle, wrapping round, is in the panel.
+  expect(panel.contains(stops[(stops.indexOf(toggle) + 1) % stops.length])).toBe(true);
+});
+
+it("the Layers toggle stays operable with Layers open on a phone, and closing by it leaves nothing inert", async () => {
+  await openOverSelection();
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await act(async () => { (slot("sidebar-trigger") as HTMLElement).focus(); });
+  expect(document.activeElement).toBe(slot("sidebar-trigger"));
+  await openLayers();
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(inertLeft()).toEqual([]);
+});
+
+it("closing Layers by Escape leaves nothing inert", async () => {
+  await openOverSelection();
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await act(async () => { (slot("sidebar-trigger") as HTMLElement).focus(); });
+  await escapeOn(slot("sidebar-trigger")!);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(inertLeft()).toEqual([]);
+});
+
+it("closing Layers by a row tap leaves nothing inert", async () => {
+  await openOverSelection();
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await tap(rowButton("collabLead"));
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(inertLeft()).toEqual([]);
+});
+
+it("Layers left open as the window grows past a phone leaves nothing inert", async () => {
+  await openOverSelection();
+  // Turned sideways first: still a phone, so still inert. (happy-dom's
+  // matchMedia misses the direct jump from 390x844 to 1280x800; with the
+  // sideways step between, it reports the change as a browser does.)
+  await act(async () => setViewport(844, 390));
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await act(async () => setViewport(1280, 800));
+  expect(slot("sidebar-backdrop")).toBeNull();
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+});
+
+it("leaves nothing inert on a desktop with Layers open", async () => {
+  await mount(1280, 800);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+});
+
+// Every way of closing Layers runs App's closeLayers, so focus inside the
+// panel moves to the Layers toggle instead of falling to the page as the
+// panel goes inert.
+const cmdB = () => act(async () => {
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true }));
+});
+it.each([
+  ["the backdrop", () => tap(slot("sidebar-backdrop"))],
+  ["the Layers toggle", () => openLayers()],
+  ["⌘B", cmdB],
+])("closing Layers on a phone by %s moves focus from a row to the Layers toggle", async (_how, close) => {
+  await mount(390, 844);
+  await openLayers();
+  await act(async () => { rowButton().focus(); });
+  await close();
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(document.activeElement).toBe(slot("sidebar-trigger"));
+});
+
+it("⌘B still collapses and reopens a desktop's docked Layers", async () => {
+  await mount(1280, 800);
+  await act(async () => { rowButton().focus(); });
+  await cmdB();
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(slot("sidebar-gap")).not.toBeNull();
+  expect(slot("sidebar-backdrop")).toBeNull();
+  expect(document.activeElement).not.toBe(document.body);
+  await cmdB();
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+// One slightly-off finger must not lose a selection built tap by tap.
+const titleOfLayers = () => container.querySelector('[data-add-layer]')!.closest('[data-slot="sidebar-group"]')!;
+it("in selection mode a tap on the panel's background keeps the selection and the mode", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await tap(titleOfLayers());
+  expect(pickedIds().sort()).toEqual(["barcode", "name"]);
+  await tap(rowButton("description"));
+  expect(pickedIds().sort()).toEqual(["barcode", "description", "name"]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("outside selection mode a tap on the panel's background deselects", async () => {
+  await mount(1280, 800);
+  await tap(rowButton("barcode"));
+  expect(pickedIds()).toEqual(["barcode"]);
+  await tap(titleOfLayers());
+  expect(pickedIds()).toEqual([]);
+});
+
+it("announces when selection mode ends", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  const status = titleOfLayers().querySelector('[role="status"]')!;
+  expect(status.textContent).toBe("Selecting layers. Tap a layer to add or remove it.");
+  await act(async () => { preview.pick("name", {}); });
+  expect(status.textContent).toBe("Selection finished.");
 });

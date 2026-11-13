@@ -205,6 +205,47 @@ it("shows the active tab's close button without hover", async () => {
   expect(closeBtns[1].classList.contains("pointer-events-none")).toBe(false);
 });
 
+it("gives a × that takes taps a 44px box on touch, and leaves an inactive tab's × alone", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  const [inactive, active] = closeButtons(); // the new tab is active
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
+  expect(active.className).toContain("touch:size-tap");
+  expect(active.className).toContain("touch:after:hidden");
+  expect(inactive.className).not.toContain("touch:size-tap");
+  expect(inactive.className).toContain("pointer-events-none opacity-0");
+  expect(inactive.className).toContain("touch:pointer-events-none");
+});
+
+it("on touch, an inactive unsaved tab's • takes no taps; once active its control shows the × beside the •", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  await act(async () => {
+    mocks.onMeta?.({ title: "Draft", dirty: true, edited: true, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0 });
+  });
+  await act(async () => { mocks.newTab?.(); }); // the unsaved Draft is now inactive
+  const draft = () => closeButtons()[1];
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("false");
+  expect(draft().className).toContain("touch:pointer-events-none");
+  expect(draft().className).not.toContain("touch:size-tap");
+  expect(draft().querySelector("svg")!.getAttribute("class")).not.toContain("touch:block");
+  // a tap on the chip's title switches to the tab
+  await act(async () => { tabs()[1].click(); });
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
+  expect(draft().className).toContain("touch:size-tap");
+  expect(draft().className).not.toContain("touch:pointer-events-none");
+  expect(draft().querySelector("svg")!.getAttribute("class")).toContain("touch:block");
+  expect(draft().querySelector("span")!.className).not.toContain("touch:hidden");
+});
+
+// On touch an inactive tab's control takes no taps, so a tap on its spot
+// (or the chip's padding) lands on the chip itself, which switches to it.
+it("a tap on an inactive tab's chip, off its title, switches to it and closes nothing", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  expect(tabs()[0].getAttribute("aria-selected")).toBe("false");
+  await act(async () => { tabs()[0].parentElement!.click(); });
+  expect(tabs()).toHaveLength(2);
+  expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
+});
+
 it("names the platform's New Tab shortcut on the + button", () => {
   // happy-dom's user agent is not a Mac's.
   expect(document.querySelector('[aria-label="New tab"]')?.getAttribute("title")).toBe("New tab (Ctrl+N)");

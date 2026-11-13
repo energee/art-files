@@ -286,3 +286,12 @@ it("runs onDismiss when a toast is closed or dismissed by id, not when it fades 
   expect(acted).not.toHaveBeenCalled();
   expect(faded).not.toHaveBeenCalled();
 });
+
+it("gives a toast's buttons a fingertip on touch screens", () => {
+  const css = readFileSync(join(import.meta.dirname, "..", "src", "index.css"), "utf8");
+  const block = css.match(/@media \(pointer: coarse\)\s*\{\s*\[data-sonner-toast\][\s\S]*?\n\}/)?.[0];
+  expect(block, "index.css has no touch rule for toasts").toBeDefined();
+  expect(block).toMatch(/\[data-sonner-toast\] \[data-button\]\s*\{\s*min-height: 44px;/);
+  expect(block).toMatch(/\[data-sonner-toast\] \[data-button\]\s*\{[^}]*min-width: 44px;/);
+  expect(block).toMatch(/\[data-close-button\]::after\s*\{[^}]*inset: -13px;/);
+});

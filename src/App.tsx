@@ -97,7 +97,7 @@ import { MasterPicker, type LibraryEntry } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
-  EMPTY_SELECTION, gestureIds, resolveSelect, type Selection,
+  EMPTY_SELECTION, gestureIds, resolveSelect, type Selection, type SelectMods,
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
@@ -436,9 +436,25 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  where it covers the preview; later size changes leave it as it is. */
   const [sidebarOpen, setSidebarOpen] = useState(!phone);
   const layersToggle = useRef<HTMLButtonElement>(null);
-  /** Close Layers. Focus inside the panel moves to the Layers toggle: the
-   *  panel goes inert as it closes, and focus would fall to the page. (The
-   *  Add layer menu hands focus to the toggle itself, LayerList's addFocus.) */
+  /** At least one selected id is a layer that exists (undoing an add leaves
+   *  its id selected). */
+  const removable = selected.some((id) => rowById.has(id));
+  /** Selection mode (LayerList): row taps toggle. It holds the selection the
+   *  list last made in the mode, so anything else that sets the selection (a
+   *  canvas pick, Add layer, Remove) ends it; so do no live layer selected
+   *  and Layers closing. A later tap on a row then picks one layer again. */
+  const [modeSelection, setModeSelection] = useState<Selection | null>(null);
+  const selecting = modeSelection === selection && removable && sidebarOpen;
+  if (modeSelection && !selecting) setModeSelection(null);
+  /** Layers is open over the editor on a phone: what it covers leaves the
+   *  Tab order and the screen reader (`inert`). The Layers toggle and the
+   *  panel stay reachable, so Escape, the toggle and the backdrop still close it. */
+  const covered = phone && sidebarOpen;
+  /** Close Layers: every close runs this (Escape, a row tap, Add layer, and
+   *  through the provider's onOpenChange the backdrop, the toggle and ⌘B).
+   *  Focus inside the panel moves to the Layers toggle: the panel goes inert
+   *  as it closes, and focus would fall to the page. (The Add layer menu
+   *  hands focus to the toggle itself, LayerList's addFocus.) */
   const closeLayers = useStableCallback(() => {
     if (document.activeElement?.closest('[data-slot="sidebar-container"]')) layersToggle.current?.focus();
     setSidebarOpen(false);
@@ -503,9 +519,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** A row or canvas click, resolved against the anchor and the list's row
    *  order (front to back). A background click (null) clears everything. */
   const clearSelection = () => setSelection(EMPTY_SELECTION);
+  const listOrder = () => rows.map((r) => r.layer.id).reverse();
   const pick = (id: string | null, mods: { shift?: boolean; toggle?: boolean }) => {
     if (id === null) { clearSelection(); return; }
-    const order = rows.map((r) => r.layer.id).reverse();
+    const order = listOrder();
     setSelection((s) => resolveSelect(s, id, mods, order));
   };
   // The layer the inspector shows: the most recently picked one, passing
@@ -2187,7 +2204,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires
    *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
-  const removable = selected.some((id) => rowById.has(id));
   /** File → Save Master… and the picker's button: the review writes into the
    *  version the picker names, and both say which. */
   const saveLabel = version === null ? t("Save Master…") : t("Save Variant…");
@@ -2437,7 +2453,13 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   // Stable identities for the memoized panels, so a keystroke re-renders only
   // the inspector and the canvas (#605).
-  const listSelect = useStableCallback(pick);
+  // In selection mode the list's own picks keep the mode on (modeSelection).
+  const listSelect = useStableCallback((id: string, mods: SelectMods) => {
+    if (!selecting) { pick(id, mods); return; }
+    const next = resolveSelect(selection, id, mods, listOrder());
+    setSelection(next);
+    setModeSelection(next);
+  });
   // Show and lock on a selected row act on the whole selection, as its
   // drag, reorder and Delete do.
   const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) => {
@@ -2453,6 +2475,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (phone) closeLayers();
   });
   const listRemove = useStableCallback(onRemoveLayer);
+  const listStartSelecting = useStableCallback(() => setModeSelection(selection));
   /** The row menu's Reset to Master: drops this label's design overrides on
    *  the layer and the rest of the selection, as one undo step. Content
    *  (label.values) stays. A label-only layer is skipped: its override is its
@@ -2513,25 +2536,29 @@ export const DocumentEditor = memo(function DocumentEditor({
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. On a phone Layers slides
           over the preview instead of sitting beside it. */}
-      <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
+      <SidebarProvider hotkey={active} open={sidebarOpen}
+        onOpenChange={(open) => (open ? setSidebarOpen(true) : closeLayers())} className="min-h-0 h-full">
         <Sidebar overlay={phone}>
           {/* macOS overlay title bar (src/titlebar.ts): the traffic lights sit
               in the sidebar's top corner, so its content starts below this
               strip, which drags the window. Header height, so the first row
               lines up with the tab strip. Hidden everywhere else. */}
           <div data-tauri-drag-region className="hidden h-10 shrink-0 titlebar:block" />
-          {/* Click on empty sidebar space deselects. React bubbles a
-              PORTALED menu's click (Add layer, the master picker) through
-              here too, so only a target really inside the sidebar counts. */}
+          {/* Click on empty sidebar space deselects, except in selection
+              mode, where a finger that misses a row must not lose a
+              selection built tap by tap. React bubbles a PORTALED menu's
+              click (Add layer, the master picker) through here too, so only
+              a target really inside the sidebar counts. */}
           {/* The Settings page takes the sidebar for its groups. */}
           {settingsOpen ? <SidebarContent><SettingsNav onBack={() => setSettingsOpen(false)} /></SidebarContent> : <SidebarContent onClick={(event) => {
             const target = event.target;
             if (!(target instanceof Element && event.currentTarget.contains(target))) return;
-            if (!target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+            if (!selecting && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
             // Picking a layer on a phone uncovers the preview. Here, not in
             // onSelect: that also runs on a long-press, which opens the row menu.
             // A modifier click is building a multi-selection, so Layers stays.
-            if (phone && target.closest("[data-layer-id]") && !(event.shiftKey || event.metaKey || event.ctrlKey)) closeLayers();
+            // So does any row tap in selection mode.
+            if (phone && !selecting && target.closest("[data-layer-id]") && !(event.shiftKey || event.metaKey || event.ctrlKey)) closeLayers();
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master}
@@ -2548,6 +2575,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onReorder={listReorder}
               onAdd={listAdd} addFocus={phone ? layersToggle : undefined} onRemove={listRemove} invalid={flaggedLayers}
               onReset={listReset}
+              selecting={selecting} onStartSelecting={listStartSelecting}
               />
           </SidebarContent>}
         </Sidebar>
@@ -2567,9 +2595,11 @@ export const DocumentEditor = memo(function DocumentEditor({
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={menuCommands}
-            onNativeError={menuError}
-            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={menuChecked} />}
+          {active && <div className="contents" inert={covered}>
+            <AppMenu actions={menuCommands}
+              onNativeError={menuError}
+              onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={menuChecked} />
+          </div>}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible
               explanation is the toast an export attempt shows. */}
@@ -2591,7 +2621,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               field's held typing first and then run the command as it stands
               after that (runAfterDraft). */}
           {phone && (
-            <div className={cn("flex items-center gap-1", narrow && "ml-auto")}>
+            <div className={cn("flex items-center gap-1", narrow && "ml-auto")} inert={covered}>
               <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("undo").label}
                 disabled={byId("undo").disabled} onClick={() => runAfterDraft("undo")}>
                 <Undo2 />
@@ -2607,12 +2637,12 @@ export const DocumentEditor = memo(function DocumentEditor({
           plain bars (recovery, the updater). The strip is hidden, not
           unmounted, while the Settings page is up: settings belong to the
           app, not to a tab. */}
-      {active && <div className={settingsOpen ? "contents *:data-tab-strip:hidden" : "contents"} ref={tabStripHost} />}
+      {active && <div className={settingsOpen ? "contents *:data-tab-strip:hidden" : "contents"} ref={tabStripHost} inert={covered} />}
       {/* The Settings page covers the workspace, which stays mounted and
           laid out underneath (invisible and inert, not display:none) so the
           label, its view and its canvases are as they were on Back.
           Invisible, because the rulers and guides stack above the page. */}
-      <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1" inert={covered}>
       {settingsOpen && (
         // The dialog-content marker is what dialogOpen() looks for: while the
         // page is up, the ⌘ commands, bare keys and arrow nudge leave the
@@ -2869,7 +2899,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               else clearSelection();
             } else if (details.reason === "close-press") clearSelection();
           }}>
-          <SheetContent side={narrow ? "bottom" : "right"} showOverlay={false} showCloseButton={false}
+          <SheetContent side={narrow ? "bottom" : "right"} showOverlay={false} showCloseButton={false} inert={covered}
             // Opening follows a selection, so focus stays where the user
             // selected: Base UI's default would land in the rename box and
             // turn Backspace/arrows into text edits instead of delete/nudge.

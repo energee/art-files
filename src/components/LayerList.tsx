@@ -12,9 +12,14 @@ import { isMacOS } from "@/keys";
 // the Save Master review lists that.
 // Right-click a row for the complete list of layer actions: Rename, Hide,
 // Lock (not on page art), Bring Forward, Send Backward, Reset to Master and
-// Remove. It selects the row first, unless the row is part of the selection,
-// and the caller applies each action to the whole selection. Remove is also
-// the Delete key and the inspector header's button.
+// Remove. It selects the row as it opens, unless the row is part of the
+// selection, and the caller applies each action to the whole selection.
+// Remove is also the Delete key and the inspector header's button.
+// On a touch screen a long-press opens the same menu, and a row drags by its
+// grip at the right end, so a finger on the rest of the row scrolls the list.
+// On a touch screen the row menu starts with Select, which turns on selection
+// mode (announced, not shown): each row tap then toggles that row (a
+// Shift-click still selects a range), until App ends the mode.
 // The header carries the title and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
@@ -22,7 +27,7 @@ import { isMacOS } from "@/keys";
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Eye, EyeOff, Image, Wallpaper, Lock, Plus,
+  Barcode, Eye, EyeOff, GripVertical, Image, Wallpaper, Lock, Plus,
   QrCode, Scan, Type, type LucideIcon,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -30,6 +35,7 @@ import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/i18n";
+import { useMedia } from "@/usePhoneLayout";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -75,6 +81,13 @@ export interface LayerListProps {
    *  the reason. Each such row is tinted red with an error dot, and its
    *  tooltips name the reason. */
   invalid?: ReadonlyMap<string, string>;
+  /** Selection mode (touch only): every row tap toggles that row, as a
+   *  ⌘/Ctrl-click does. App derives it: it ends when the selection changes
+   *  any other way (cleared, a pick on the label, Add layer, Remove), when no
+   *  live layer is selected, or when Layers closes. */
+  selecting: boolean;
+  /** The row menu's Select (touch only): turn selection mode on. */
+  onStartSelecting: () => void;
 }
 
 /** "Add layer" menu entries — the same icons the rows use for each kind. */
@@ -105,11 +118,14 @@ const control = cn(
 );
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+/** A finger is the primary pointer: rows drag by their grip, not their name. */
+const COARSE = "(pointer: coarse)";
 /** A row's name button: what a row's keys act on and where its focus rests. */
 const NAME_BUTTON = '[data-slot="sidebar-menu-button"]';
 
-function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, ...p }: {
-  dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
+function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, touch, ...p }: {
+  /** On the name button, and on the grip a touch screen shows. */
+  dragHandlers: React.HTMLAttributes<HTMLElement>;
   /** Why its filled value is invalid (it blocks export); unset when valid. */
   invalid?: string;
   dropEdge?: "top" | "bottom";
@@ -124,7 +140,10 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
    *  filtered view), so keyboard reordering stops at the owning container’s ends. */
   atFront: boolean;
   atBack: boolean;
-} & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove" | "onReset">) {
+  /** A finger is the primary pointer: the menu offers Select. */
+  touch: boolean;
+} & Pick<LayerListProps,
+  "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove" | "onReset" | "selecting" | "onStartSelecting">) {
   const { t } = useTranslation();
   const hintId = useId();
   const { layer } = row;
@@ -151,6 +170,15 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
     variantTitle = t(key, { name: row.variant.name });
   }
   const [renaming, setRenaming] = useState(false);
+  // The menu's Rename opens the rename box in the tap itself (so a phone's
+  // keyboard can come up), and tells the closing menu to leave focus there:
+  // the row would take focus back and the blur would close the box.
+  const renamePicked = useRef(false);
+  // Whether the row menu is open; the click a long-press's lift sends
+  // arrives then and is dropped.
+  const [menuOpen, setMenuOpen] = useState(false);
+  // iOS sends no contextmenu, so the row selects itself as its menu opens.
+  const selectOnOpen = (open: boolean) => { if (open && !isSelected) p.onSelect(id, {}); };
   // A row selected from the canvas may sit below the fold of a short window.
   const itemRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -205,13 +233,19 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
       {/* The whole row is the select target and carries the hover/selected
           highlight end to end; every control inside stops propagation so
           toggling a switch never changes the selection. Enter on the name
-          button fires a click that bubbles here the same way. Right-click
-          opens the row menu at the pointer, selecting the row first unless
-          it is already part of the selection. */}
-      <ContextMenu.Root>
+          button fires a click that bubbles here the same way. Right-click or
+          a long-press opens the row menu, and the row selects itself as the
+          menu opens unless it is already part of the selection. The click a
+          long-press's lift sends stops here: it neither selects again nor
+          closes the phone's Layers overlay. */}
+      <ContextMenu.Root
+        onOpenChange={(open) => { setMenuOpen(open); selectOnOpen(open); }}
+      >
         <ContextMenu.Trigger
-          onClick={(e) => p.onSelect(id, modsOf(e))}
-          onContextMenu={() => { if (!isSelected) p.onSelect(id, {}); }}
+          onClick={(e) => {
+            if (menuOpen) { e.stopPropagation(); return; }
+            p.onSelect(id, p.selecting && !e.shiftKey ? { toggle: true } : modsOf(e));
+          }}
           className={cn(
             "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             // Selected is a primary tint, not the hover grey: the accent sat at
@@ -258,7 +292,7 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
               // The row paints hover and selection; its keyboard-focused name
               // keeps the sidebar ring. Focus identifies the next target;
               // selection identifies the active row, so they remain distinct.
-              "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing",
+              "min-w-0 flex-1 touch-none touch:touch-pan-y cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing",
               // The button's own hover/active/selected accent ink would repaint
               // an inactive row's name at full strength; keep it muted (#440).
               inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
@@ -351,11 +385,28 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
             >
               {inactive ? <EyeOff /> : <Eye />}
             </button>
+            {/* Touch only: it carries the drag so the name can scroll the
+                list; a mouse drags the name. A span, not a button, so a tap
+                never focuses it inside its aria-hidden box: the keyboard and
+                assistive tech reorder through the menu and Alt+↑/↓.
+                A held finger here must not start the trigger's long-press
+                (its touchstart; Android's contextmenu), which would open the
+                menu under a drag that paused before moving. */}
+            <span data-grip aria-hidden
+              {...dragHandlers} onTouchStart={stop}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              className={cn(control, "hidden touch:grid touch-none")}>
+              <GripVertical />
+            </span>
           </div>
         </ContextMenu.Trigger>
-        {/* Wide enough that "Send Backward" and its shortcut share a line. */}
-        <DropdownMenuContent className="min-w-48">
-          {!multi && <DropdownMenuItem onClick={() => setRenaming(true)}>{t("Rename")}</DropdownMenuItem>}
+        {/* Wide enough that "Send Backward" and its shortcut share a line.
+            finalFocus as a function returns every other close's focus to the
+            row's name button, even one that had already moved elsewhere. */}
+        <DropdownMenuContent className="min-w-48"
+          finalFocus={() => { const back = !renamePicked.current; renamePicked.current = false; return back; }}>
+          {touch && !p.selecting && <DropdownMenuItem onClick={p.onStartSelecting}>{t("Select")}</DropdownMenuItem>}
+          {!multi && <DropdownMenuItem onClick={() => { renamePicked.current = true; setRenaming(true); }}>{t("Rename")}</DropdownMenuItem>}
           <DropdownMenuItem onClick={() => p.onToggle(id, "enabled", inactive)}>{inactive ? t("Show") : t("Hide")}</DropdownMenuItem>
           {!page && <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? t("Unlock") : t("Lock")}</DropdownMenuItem>}
           <DropdownMenuSeparator />
@@ -382,15 +433,28 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
 function LayerListView(props: LayerListProps): React.JSX.Element {
   const { t } = useTranslation();
   const { rows, selected, onReorder } = props;
+  const touch = useMedia(COARSE);
   const [announcement, setAnnouncement] = useState("");
+  // A live region speaks only when its text changes, so a repeat of the same
+  // text toggles a trailing no-break space to be announced again.
+  const announce = useCallback((text: string) =>
+    setAnnouncement((prev) => prev === text ? text + "\u00a0" : text), []);
   const reorder = useCallback((id: string, delta: number) => {
     onReorder(id, delta);
     const name = rows.find((r) => r.layer.id === id)?.layer.name ?? t("Layer");
-    const text = delta > 0 ? t("{{name}} moved forward.", { name }) : t("{{name}} moved backward.", { name });
-    // A live region speaks only when its text changes, so a repeat of the
-    // same move toggles a trailing no-break space to be announced again.
-    setAnnouncement((prev) => prev === text ? text + "\u00a0" : text);
-  }, [onReorder, rows, t]);
+    announce(delta > 0 ? t("{{name}} moved forward.", { name }) : t("{{name}} moved backward.", { name }));
+  }, [onReorder, rows, t, announce]);
+  const startSelecting = () => {
+    props.onStartSelecting();
+    announce(t("Selecting layers. Tap a layer to add or remove it."));
+  };
+  // The mode ends outside the list (App derives it), so its end is heard
+  // here, as the prop turns off.
+  const [wasSelecting, setWasSelecting] = useState(props.selecting);
+  if (wasSelecting !== props.selecting) {
+    setWasSelecting(props.selecting);
+    if (!props.selecting) announce(t("Selection finished."));
+  }
   // Rows grouped by owning container (master, or the variant that added the
   // layer), in VISIBLE order (front first): a layer only reorders among its
   // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
@@ -423,9 +487,10 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
   // Built once per rows/onReorder change (not per render): the handlers only
   // touch refs and setDrop, so a keystroke elsewhere re-uses the same objects.
   const dragHandlers = useMemo(() => {
-    const build = (row: LayerRow): React.HTMLAttributes<HTMLButtonElement> => ({
+    const build = (row: LayerRow): React.HTMLAttributes<HTMLElement> => ({
     onPointerDown: (e) => {
-      if (e.button !== 0) return;
+      // On touch only the grip drags, so a finger on the name scrolls the list.
+      if (e.button !== 0 || (touch && e.pointerType === "touch" && !e.currentTarget.hasAttribute("data-grip"))) return;
       suppressClick.current = false;
       const peers = peersOf(row);
       drag.current = {
@@ -480,7 +545,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
     });
     const byId = new Map(rows.map((r) => [r.layer.id, build(r)]));
     return (row: LayerRow) => byId.get(row.layer.id)!;
-  }, [rows, peersOf, reorder]);
+  }, [rows, peersOf, reorder, touch]);
   const shown = rows.slice().reverse();
   return (
     <SidebarGroup>
@@ -532,6 +597,9 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               onReorder={reorder}
               onRemove={props.onRemove}
               onReset={props.onReset}
+              touch={touch}
+              selecting={props.selecting}
+              onStartSelecting={startSelecting}
             />
           ))}
         </SidebarMenu>

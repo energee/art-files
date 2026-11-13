@@ -2257,17 +2257,1305 @@ Do not push.
 
 Stop. Report: the commits, the before and after readings, the pixel-compare counts, and the deferred ruler corner. Ask the user to try on a real phone (`npm run dev -- --host`, over Wi-Fi): pan with one finger, pinch, rest one finger and tap with another, drag a small layer, resize from just outside it, double-tap a text layer, drag out a guide, slide the divider, rotate mid-pinch, orbit and pinch the Can view. Then ask whether to push and open the PR, and against which base.
 
-## Phase 4 — Touch paths for hover, right-click, double-click and keyboard actions (outline)
+## Phase 4 — Touch paths for hover, right-click, double-click and keyboard actions
 
-Starts with a mockup of multi-select selection mode for the user to approve.
+Branch `feat/phone-touch-paths`, worktree `.agents/worktrees/web-app-pages` (already created, stacked on `feat/phone-gestures` at `fcaee3d1`). Line numbers below are as of `fcaee3d1`; re-find each by the quoted code if it has moved. Binary-impacting (`src/` changes), so Task 4.7 adds `CHANGELOG.md` bullets; `check-release.mjs` runs against the stack parent, `feat/phone-gestures`.
 
-| Task | Files | Test (written first) | Deliverable |
-|---|---|---|---|
-| 4.1 Hover reveals | `LayerInspectorControls.tsx`, `Rulers.tsx`, `MetallicToggle.tsx` | DOM class assertions | Always visible under `@media (hover: none)`. Inactive tabs' close button is left alone. |
-| 4.2 Row menu on touch | `LayerList.tsx` | measured on a real phone, then DOM test | Long-press opens the row menu. If it fights drag-reorder, a ⋯ button on touch opens it instead. |
-| 4.3 Rename | `LayerList.tsx` | DOM test | A Rename item in the row menu starts the existing rename. |
-| 4.4 Multi-select | `LayerList.tsx`, `App.tsx` (selection) | DOM test | As approved in the mockup. Default proposal: a Select item turns on tap-to-toggle until the selection is cleared. |
-| 4.5 Suggestion taps | `TextEditor.tsx:498, 678, 686` | existing TextEditor tests extended with pointer events | `onMouseDown` → `onPointerDown`. |
+**Order.** Task 4.1 first (the baseline is measured on unchanged code, and Tasks 4.4 and 4.6 read decisions from it). Tasks 4.2, 4.3 and 4.4 touch disjoint files and may run in parallel after it. Task 4.5 follows 4.4 (both edit `src/components/LayerList.tsx`, `tests/layerlist-dom.test.tsx` and the five `src/locales/*.ts`). Task 4.6 follows 4.5 (both edit `src/App.tsx` and `tests/phone-shell-dom.test.tsx`). Task 4.7 is last.
+
+**Module sizes.** `tests/module-size.test.ts` holds 750 lines for the modules it lists. Of this phase's files it lists `LayerInspector.tsx` (307), `LayerInspectorControls.tsx` (438) and `PreviewCompare.tsx` (557, untouched here); each gains under 15 lines. `LayerList.tsx` (567, about +45 here), `TextEditor.tsx` (772, net 0 here) and `App.tsx` (2891, about +15) are not listed; no split is planned.
+
+**The open header question** (whether a phone keeps ☰ and the header Undo/Redo arrows or shows the text menu bar) is the user's. No task here changes the header. Affected by either answer: Task 4.6's `inert` wrappers sit on the header's menu and on the Undo/Redo group (if the arrows go, that `inert` goes with them; the menu wrapper stays around whichever menu is there); the probe's `UNDO_STEPS` (Tasks 4.1, 4.7) presses the header Undo, and reads `null` if the arrows are removed, so its undo counts would then be read through the menu instead; Task 4.7's docs name the ▤ button only.
+
+Found while planning (code read at `fcaee3d1`; these shape the tasks):
+- **A finger on a row cannot scroll the Layers list.** The row's name button is `touch-none` (`LayerList.tsx:261`) and captures the pointer for drag-reorder; it fills most of the row, so a list longer than the overlay (the starter master has 16 layers: 704px of 44px rows, in 390px of height on a sideways phone) scrolls only from the eye column.
+- **Long-press and drag-reorder both run on the same finger.** Base UI's `ContextMenuTrigger` opens the menu from its own 500ms touch timer, cancelled only by more than 10px of movement before it fires (`node_modules/@base-ui/react/context-menu/trigger/ContextMenuTrigger.js:21, 120–152`). The row's drag arms on `pointerdown` and starts after 5px (`LayerList.tsx:427–442`). A finger held 500ms then moved opens the menu and reorders the rows.
+- **Long-press does not select on iOS.** Today the row selects itself in the trigger's `onContextMenu` (`LayerList.tsx:214`). iOS Safari sends no `contextmenu` event; Base UI opens from its timer, so the menu would act on whatever was selected before.
+- **A finger that starts on a field's name cannot scroll the inspector.** Base UI's `NumberField.ScrubArea` sets an inline `touch-action: none` (`node_modules/@base-ui/react/number-field/scrub-area/NumberFieldScrubArea.js:26–30`), and every ScrubField's label is one (`ScrubField.tsx:139–153`).
+- **A hidden reset takes no tap on touch, and a visible one is 19.5px** (`size-6` at the 13px root; `LayerInspectorControls.tsx:201–207`). The stacked Row pins it `absolute right-0 top-0` over the label line (`:136–140`), so any growth covers the input below it. A FieldPair cell (X/Y; about 130px in the 300px right sheet) cannot hold a label, an input and up to three 44px marks (≠, variant reset, label reset).
+- **Other small targets on touch:** the multi-select ≠ mark (`LayerInspector.tsx:296–307`, 19.5px); a guide's × (`Rulers.tsx:422–437`, 14px, hidden until hover or focus); the active tab's × (`TabsShell.tsx:687–711`, about 26px through its `after:-inset-2`); Sonner's action button (24px tall) and close button (20px); the master picker's library ✕ (`MasterPicker.tsx:313–318`, about 15px). Phase 2's measure skipped the tab × (it is `aria-hidden`).
+- **The metallic toggle is not hidden:** unpressed it draws at 40% (`MetallicToggle.tsx:54`) and is already 44px on touch (Toggle `sm`'s `touch:min-h-tap touch:min-w-tap` survive its `size-5 min-w-0`). Its dim means "off", and hover only brightens it.
+- **`MasterPicker.tsx:317`'s `onMouseUp={stop}`** sits beside `onPointerDown`/`onPointerUp` stops: it keeps Base UI's Select from committing on the compatibility `mouseup` a tap also sends. It stays.
+- **Suggestions committed on `pointerdown` would commit when a finger starts to scroll the list** (`max-h-48`, 156px, holds three and a half 44px options). The spec's swap stands (`onMouseDown` → `onPointerDown`) for keeping focus; the commit moves to `onClick`, which a scrolling finger never sends.
+- Every literal `t()` key needs an English entry (`tests/i18n.test.ts:119`); the other four catalogs fall back to English but carry translations by convention.
+- No test stubs `(pointer: coarse)` yet. Tests here stub it by wrapping happy-dom's own `matchMedia`, so `addEventListener` and the width queries keep working:
+
+```ts
+const realMatchMedia = window.matchMedia.bind(window);
+/** A finger is the primary pointer: (pointer: coarse) matches. */
+const coarse = () => vi.spyOn(window, "matchMedia").mockImplementation(
+  (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
+```
+
+Planner's call: the reveal on touch is gated on the existing `touch:` variant (`@media (pointer: coarse)`, `src/index.css:33`), not a new `(hover: none)` variant: a reset must become visible and 44px at the same moment, and two queries that disagree (a pen tablet) would show a 19.5px reset or size an invisible one.
+Planner's call: carried item 3 (compare divider and guide handles under 44px) is not in this phase. Both are canvas drag targets under Phase 3's press rules; the divider already drags by finger (Phase 3 `split` 0 → 28). Every reach considered covers label area where layers sit: the divider rests at the label's left edge at split 0, so even a grip-only 44px reach takes a 22×44px patch of the label in every Label view, and a reach that yields to layers needs a layer hit test the Rulers do not have. The real-phone checkpoint asks whether a finger can drag both.
+Planner's call: carried item 4 (the ruler corner's 44px covers the rulers' first 24px and a 24px square of the preview) is not in this phase: nothing is lost but starting a guide or a pan in that square, both possible a finger-width away, and any fix shrinks a target Phase 2 grew on purpose. Same call as Phase 3.
+Planner's call: carried item 6 (a second finger's tap while another rests selects nothing) is not in this phase: it is Phase 3's finger-ownership rule (`touchPress.ts` `extraFinger`, `useZoomPan.ts` `OWNS_ITS_FINGER`), pinned by its regression tests, and whether a resting thumb even reaches the page (palm rejection) needs a real phone first. It goes on the checkpoint list.
+Planner's call: Delete (the inspector header's Remove layer), reorder (drag, and Bring Forward / Send Backward in the row menu), nudge (the inspector's X and Y) and ⌘B (the ▤ Layers button) already exist on a phone and get no task; Task 4.7's probe confirms Remove and X by finger (`inspectorActions`) and reorder by the grip (`gripReorder`).
+
+### Review Focus
+
+Conditions most likely to bite a real person, each pinned to a test:
+
+1. **A long-press that turns into a drag.** The menu opens and the rows stay in order. Task 4.4, test "a long-press held then dragged opens the menu and reorders nothing".
+2. **A row menu opened while the list is scrolling.** A finger that moves before the long-press delay scrolls and opens nothing. Task 4.4, test "a finger that moves 11px before the long-press delay opens no menu".
+3. **Selection mode left on when the overlay closes.** Closing Layers ends it; the next tap on a row picks that one layer and closes Layers, as before. Task 4.5, test "closing Layers ends selection mode; the next tap picks one layer and closes Layers".
+4. **Tapping a reset by accident while scrolling the inspector.** A reset acts on a click only, and on touch it sits in its own space beside its field, never over it. Task 4.2, tests "a reset acts on a click, never on a press that scrolls away" and "on touch a stacked row's reset sits beside its field, not over it".
+5. **Rotating the phone with selection mode on.** Upright to sideways keeps the mode, the selection and Layers open. Task 4.5, test "rotating the phone keeps selection mode, the selection and Layers open".
+
+### File structure
+
+| File | Responsibility |
+|---|---|
+| `src/components/LayerInspectorControls.tsx` (modify) | Reset badge always shown and 44px on touch; stacked Row puts it beside the field; FieldPair one column on touch |
+| `src/components/ScrubField.tsx` (modify) | BadgeSlot's reserve 44px on touch; scrub label lets a finger scroll vertically |
+| `src/components/LayerInspector.tsx` (modify) | ≠ mark 44px on touch |
+| `src/components/Rulers.tsx` (modify) | Guide × shown on touch, 44px along the ruler |
+| `src/TabsShell.tsx` (modify) | A × that takes taps is 44px on touch |
+| `src/index.css` (modify) | Toast action and close buttons 44px on touch |
+| `src/components/MasterPicker.tsx` (modify) | Library ✕ 44px on touch |
+| `src/usePhoneLayout.ts` (modify) | Export `useMedia` |
+| `src/components/LayerList.tsx` (modify) | Long-press selects through the menu's open; touch grip; Select item and selection mode taps; conditional ⋯, click guard, rename-on-close |
+| `src/App.tsx` (modify) | Selection mode state; Layers stays open in it; `inert` behind the open overlay |
+| `src/components/TextEditor.tsx` (modify) | Suggestions and toolbar toggles cancel `pointerdown`; suggestions commit on click |
+| `src/locales/{en,de,es,fr,pt}.ts` (modify) | "Reorder {{name}}", "Select" (and "More actions for {{name}}" if built) |
+| `tests/layerinspector-dom.test.tsx`, `tests/rulers-dom.test.tsx`, `tests/tabstrip-a11y-dom.test.tsx`, `tests/toaster-dom.test.tsx`, `tests/masterpicker-dom.test.tsx`, `tests/layerlist-dom.test.tsx`, `tests/phone-shell-dom.test.tsx`, `tests/text-editor-dom.test.ts` (modify) | Tests |
+| `.agents/mockups/phone-touch-paths/probe.mjs` (create, gitignored) | The measuring script |
+| `.agents/ledger.md`, `docs-site/content/docs/(authoring)/layers.mdx`, `(authoring)/inspector.mdx`, `(authoring)/editing.mdx`, `(authoring)/preview.mdx`, `workspace.mdx`, `CHANGELOG.md` (modify) | Measurements, docs, release notes |
+
+### Task 4.1: Record the baseline with real touch input
+
+**Files:**
+- Create (gitignored, not committed): `.agents/mockups/phone-touch-paths/probe.mjs`, and its outputs in the same folder
+- Modify: `.agents/ledger.md` (append entry `## 2026-11-13 phone-touch-paths`)
+
+**Interfaces:**
+- Consumes: `.agents/mockups/phone-gestures/probe.mjs` lines 1–233 (the CDP harness: `newTab`, `send`, `page`, `READY`, `READ`, `SELECT`, `POINTS`, `UNDO_STEPS`, `touch`, `moveFingers`, `swipe`, `tap`, `mouse`, `screenshot`, `open`, `run`) and lines 643–681 (`LAYOUT`, `layout-fresh`, `layout-selected`).
+- Produces: `probe.mjs` (Task 4.7 runs it unchanged), `before.json`, `before-2.json`, desktop screenshots `before-desktop-{fresh,selected,reset-hover,menu}.png` and `before-2-…`, and the Step 4 decisions table filled in: Task 4.4 builds from it, Task 4.7 writes the changelog from it, and two rows are stop checks on Tasks 4.2 and 4.4.
+
+Planner's call: a new probe beside the Phase 3 one, starting from its harness, so the Phase 3 probe stays reproducible as recorded; its gesture scenarios are not rerun here.
+Planner's call: the toast is raised by importing `/src/notify.ts` in the page. Vite serves the app's `@/notify` at that same URL, so it is the app's own module and Toaster.
+
+- [ ] **Step 1: Start the dev server**
+
+Run (background): `npm run dev -- --port 5191 --strictPort` (5173 belongs to another session). If 5191 is busy, use the next free port and record it. Port 9333 must be free (`lsof -iTCP:9333 -sTCP:LISTEN` prints nothing). Google Chrome at `/Applications/Google Chrome.app`.
+
+- [ ] **Step 2: Write the probe**
+
+Copy `.agents/mockups/phone-gestures/probe.mjs` lines 1–233 into `.agents/mockups/phone-touch-paths/probe.mjs` and replace its first five comment lines with:
+
+```js
+// probe.mjs — Phase 4 (touch paths) measurement: drives a headless Chrome over
+// CDP with real touch input at phone sizes and real mouse and keyboard input at
+// 1280x800, and prints one JSON object of readings. Harness copied from
+// ../phone-gestures/probe.mjs. Usage: node probe.mjs <app url> <out dir> <label>
+// Writes <out dir>/<label>-desktop-{fresh,selected,reset-hover,menu}.png and <label>.json.
+```
+
+Then append, exactly:
+
+```js
+// ---- Phase 4 in-page helpers
+const OPEN_LAYERS = async () => {
+  if (document.querySelector('[data-slot="sidebar"]').dataset.state === "collapsed") {
+    document.querySelector('[data-slot="sidebar-trigger"]').click();
+    await new Promise((r) => setTimeout(r, 400));
+  }
+};
+/** The Layers list as a finger sees it. */
+const LIST = () => {
+  const content = document.querySelector('[data-slot="sidebar-content"]');
+  const focus = document.activeElement;
+  return {
+    order: [...document.querySelectorAll("[data-layer-id]")].map((r) => r.dataset.layerId),
+    selected: [...document.querySelectorAll('[data-layer-id] [data-slot="sidebar-menu-button"][aria-pressed="true"]')]
+      .map((b) => b.closest("[data-layer-id]").dataset.layerId),
+    overlay: document.querySelector('[data-slot="sidebar"]').dataset.state,
+    menu: [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((el) => el.textContent.trim()),
+    scroll: [content.scrollTop, content.scrollHeight, content.clientHeight].map(Math.round),
+    renaming: !!document.querySelector("[data-layer-id] input"),
+    renameFocused: !!focus?.matches("[data-layer-id] input"),
+    nameWidths: [...document.querySelectorAll('[data-layer-id] [data-slot="sidebar-menu-button"] span.truncate')]
+      .map((s) => Math.round(s.getBoundingClientRect().width)),
+    grips: document.querySelectorAll("[data-layer-id] [data-grip]").length,
+    events: { click: window.__events.click, contextmenu: window.__events.contextmenu, pointercancel: window.__events.pointercancel },
+  };
+};
+const CENTRE = (selector) => {
+  const el = document.querySelector(selector);
+  if (!el) return null;
+  const b = el.getBoundingClientRect();
+  return [b.left + b.width / 2, b.top + b.height / 2];
+};
+const MENU_ITEM = (text) => {
+  const el = [...document.querySelectorAll('[role="menuitem"]')].find((m) => m.textContent.trim() === text);
+  if (!el) return null;
+  const b = el.getBoundingClientRect();
+  return [b.left + b.width / 2, b.top + b.height / 2];
+};
+/** For each match: size, look, its ::after box, and whether a finger at its centre lands on it. */
+const CONTROLS = (selector) => [...document.querySelectorAll(selector)].map((el) => {
+  const b = el.getBoundingClientRect(), s = getComputedStyle(el), after = getComputedStyle(el, "::after");
+  const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+  return {
+    label: el.getAttribute("aria-label") ?? el.textContent.trim().slice(0, 30),
+    rect: [b.left, b.top, b.width, b.height].map((n) => Math.round(n * 10) / 10),
+    after: after.content === "none" ? null : [after.width, after.height],
+    opacity: s.opacity, pointerEvents: s.pointerEvents,
+    hitsItself: !!hit && (hit === el || el.contains(hit)),
+  };
+});
+/** Types `value` into the field the way a keyboard does, then leaves it. */
+const SET_FIELD = async (selector, value) => {
+  const field = document.querySelector(selector);
+  if (!field) return false;
+  field.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.blur();
+  await new Promise((r) => setTimeout(r, 300));
+  return true;
+};
+/** Every reset in the inspector: size, opacity, and every field, label or button it overlaps. */
+const RESETS = () => {
+  const sheet = document.querySelector('[data-slot="sheet-content"]');
+  const rect = (el) => el.getBoundingClientRect();
+  const meet = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const others = [...sheet.querySelectorAll("input, label, button, [role=combobox], [role=switch]")];
+  return [...sheet.querySelectorAll('button[aria-label^="Reset "]')].map((r) => ({
+    label: r.getAttribute("aria-label"),
+    size: [Math.round(rect(r).width), Math.round(rect(r).height)],
+    opacity: getComputedStyle(r).opacity,
+    overlaps: others.filter((o) => o !== r && !o.contains(r) && !r.contains(o) && meet(rect(r), rect(o)))
+      .map((o) => o.getAttribute("aria-label") || o.id || o.textContent.trim().slice(0, 20)),
+  }));
+};
+const SHEET_SCROLL = () => document.querySelector('[data-slot="sheet-content"]').scrollTop;
+const COMBO = '[data-slot="sheet-content"] input[role="combobox"]';
+const COMBO_STATE = (s) => ({ value: document.querySelector(s).value, focused: document.activeElement === document.querySelector(s), open: !!document.querySelector("[data-choice]") });
+const RESET_X = `button[aria-label="Reset X to this label's master value"]`;
+const row = (id) => `[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`;
+async function hold([x, y], ms = 800) { await touch("touchStart", [[x, y, 0]]); await sleep(ms); }
+const key = async (k, code, keyCode, modifiers = 0) => {
+  await send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: k, code, windowsVirtualKeyCode: keyCode, modifiers });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: keyCode, modifiers });
+  await sleep(300);
+};
+
+// ---- phone 390x844, touch: the Layers list
+await run("longPress", async () => {
+  await open(true); await page(OPEN_LAYERS);
+  await hold(await page(CENTRE, row("name")));
+  const during = await page(LIST);
+  await touch("touchEnd", []); await sleep(400);
+  return { during, after: await page(LIST) };
+});
+await run("longPressDrag", async () => {
+  await open(true); await page(OPEN_LAYERS);
+  const before = await page(LIST), [x, y] = await page(CENTRE, row("name"));
+  await hold([x, y]);
+  await moveFingers([[x, y, x, y + 100, 0]]);
+  const moved = await page(LIST);
+  await touch("touchEnd", []); await sleep(400);
+  const after = await page(LIST);
+  return { moved, after, reordered: before.order.join() !== after.order.join(), undo: await page(UNDO_STEPS) };
+});
+await run("dragReorder", async () => {
+  await open(true); await page(OPEN_LAYERS);
+  const before = await page(LIST), [x, y] = await page(CENTRE, row("name"));
+  await swipe([[x, y, x, y + 100, 0]]);
+  const after = await page(LIST);
+  return { after, reordered: before.order.join() !== after.order.join(), undo: await page(UNDO_STEPS) };
+});
+await run("gripReorder", async () => {
+  await open(true); await page(OPEN_LAYERS);
+  const before = await page(LIST), p = await page(CENTRE, '[data-layer-id="name"] [data-grip]');
+  if (!p) return { grip: null };
+  await swipe([[p[0], p[1], p[0], p[1] + 100, 0]]);
+  const after = await page(LIST);
+  return { after, reordered: before.order.join() !== after.order.join(), undo: await page(UNDO_STEPS) };
+});
+await run("listScroll", async () => {
+  await open(true, [844, 390]); await page(OPEN_LAYERS);
+  // A row below the middle of what shows.
+  const id = await page(() => {
+    const c = document.querySelector('[data-slot="sidebar-content"]').getBoundingClientRect();
+    return [...document.querySelectorAll("[data-layer-id]")].find((r) => r.getBoundingClientRect().top > c.top + c.height / 2)?.dataset.layerId;
+  });
+  const out = { id, start: (await page(LIST)).scroll };
+  for (const [kind, selector] of [["byName", row(id)], ["byEye", `[data-layer-id="${id}"] button[aria-label$=": enabled"]`]]) {
+    await page(() => { document.querySelector('[data-slot="sidebar-content"]').scrollTop = 0; });
+    await sleep(200);
+    const b0 = await page(LIST), [x, y] = await page(CENTRE, selector);
+    await swipe([[x, y, x, y - 150, 0]]);
+    const after = await page(LIST);
+    out[kind] = { scrolled: after.scroll[0] - b0.scroll[0], reordered: after.order.join() !== b0.order.join(), menu: after.menu.length };
+  }
+  return out;
+});
+await run("rename", async () => {
+  await open(true); await page(OPEN_LAYERS);
+  await hold(await page(CENTRE, row("name")));
+  await touch("touchEnd", []); await sleep(400);
+  const item = await page(MENU_ITEM, "Rename");
+  if (!item) return { error: "no Rename item", list: await page(LIST) };
+  await tap(item); await sleep(500);
+  const opened = await page(LIST);
+  await send("Input.insertText", { text: "X" });
+  await key("Enter", "Enter", 13);
+  return { opened, name: await page(() => document.querySelector('[data-layer-id="name"] span.truncate')?.textContent) };
+});
+await run("selectMode", async () => {
+  await open(true); await page(OPEN_LAYERS);
+  await hold(await page(CENTRE, row("name")));
+  await touch("touchEnd", []); await sleep(400);
+  const item = await page(MENU_ITEM, "Select");
+  if (!item) return { menu: (await page(LIST)).menu };
+  await tap(item); await sleep(400);
+  const steps = {};
+  for (const [step, id] of [["two", "description"], ["one", "name"], ["none", "description"], ["plain", "name"]]) {
+    await tap(await page(CENTRE, row(id))); await sleep(500);
+    const l = await page(LIST);
+    steps[step] = { selected: l.selected, overlay: l.overlay };
+  }
+  return steps;
+});
+await run("masterRemove", async () => {
+  await open(true); await page(OPEN_LAYERS);
+  await tap(await page(CENTRE, '[data-slot="sidebar-content"] [data-slot="select-trigger"]')); await sleep(500);
+  return page(CONTROLS, '[role="option"] button[aria-label$=" from the library"]');
+});
+
+// ---- phone 390x844, touch: the inspector and other controls
+await run("inspectorScroll", async () => {
+  await open(true); await page(SELECT, "name");
+  const out = {};
+  for (const [kind, selector] of [["byLabel", '[data-slot="sheet-content"] label.cursor-ew-resize'], ["byInput", '[data-slot="sheet-content"] input[id$="-x"]']]) {
+    await page(() => { document.querySelector('[data-slot="sheet-content"]').scrollTop = 0; });
+    const p = await page(CENTRE, selector);
+    if (!p) { out[kind] = null; continue; }
+    const top = await page(SHEET_SCROLL);
+    await swipe([[p[0], p[1], p[0] + 3, p[1] - 150, 0]]); // a real finger drifts a few px sideways
+    out[kind] = { scrolled: Math.round((await page(SHEET_SCROLL)) - top) };
+  }
+  out.touchAction = await page(() => getComputedStyle(document.querySelector('[data-slot="sheet-content"] label.cursor-ew-resize')).touchAction);
+  out.undo = await page(UNDO_STEPS);
+  return out;
+});
+await run("reset", async () => {
+  await open(true); await page(SELECT, "name");
+  const set = {};
+  for (const f of ["x", "y", "title", "placeholder", "suffix"]) set[f] = await page(SET_FIELD, `#name-${f}`, f === "x" || f === "y" ? "1" : "Probe");
+  const resets = await page(RESETS), controls = await page(CONTROLS, '[data-slot="sheet-content"] button[aria-label^="Reset "]');
+  const xBefore = await page(() => document.querySelector("#name-x").value), p = await page(CENTRE, RESET_X);
+  if (p) { await tap(p); await sleep(400); }
+  return { set, resets, controls, xBefore, xAfter: await page(() => document.querySelector("#name-x").value) };
+});
+for (const size of [[390, 844], [844, 390]]) await run(`fieldPair-${size.join("x")}`, async () => {
+  await open(true, size); await page(SELECT, "name");
+  await page(SET_FIELD, "#name-x", "1");
+  return page((resetX) => {
+    const sheet = document.querySelector('[data-slot="sheet-content"]');
+    const r = (el) => el && (({ left, top, width }) => [left, top, width].map(Math.round))(el.getBoundingClientRect());
+    return { sheet: [sheet.scrollWidth, sheet.clientWidth], x: r(document.querySelector("#name-x")), y: r(document.querySelector("#name-y")), resetX: r(document.querySelector(resetX)) };
+  }, RESET_X);
+});
+await run("guideRemove", async () => {
+  await open(true);
+  const [left, top] = (await page(POINTS)).paneTopLeft;
+  await swipe([[left + 150, top + 12, left + 150, top + 132, 0]]);
+  const sel = 'button[aria-label^="Remove "][aria-label$=" manual guide"]';
+  const controls = await page(CONTROLS, sel), p = await page(CENTRE, sel), guides = (await page(READ)).guides;
+  // 12px along the ruler from the drawn ×: inside a 44px reach, outside the 14px mark.
+  if (p) { await tap([p[0], p[1] + 12]); await sleep(400); }
+  return { controls, guides, after: (await page(READ)).guides };
+});
+await run("metallic", async () => {
+  await open(true); await page(SELECT, "name");
+  const sel = '[data-slot="sheet-content"] button[aria-label$="metallic"], [data-slot="sheet-content"] button[aria-label="Metallic"]';
+  const controls = await page(CONTROLS, sel), p = await page(CENTRE, sel);
+  const pressed = () => page((s) => document.querySelector(s)?.getAttribute("aria-pressed"), sel);
+  const before = await pressed();
+  if (p) { await tap(p); await sleep(400); }
+  return { controls, before, after: await pressed() };
+});
+await run("tabClose", async () => {
+  await open(true);
+  await page(async () => { document.querySelector('button[aria-label="New tab"]').click(); await new Promise((r) => setTimeout(r, 1000)); });
+  const controls = await page(CONTROLS, '[role="tablist"] [role="tab"] + button');
+  const tabs = () => page(() => document.querySelectorAll('[role="tablist"] [role="tab"]').length);
+  const p = await page(CENTRE, '[role="tab"][aria-selected="true"] + button');
+  const before = await tabs();
+  // What a finger 23px right of the active × lands on: must not be another tab.
+  const rightOf = await page(([x, y]) => document.elementFromPoint(x + 23, y)?.getAttribute("role") ?? null, p);
+  await tap([p[0] + 10, p[1]]); await sleep(800); // 10px right of the drawn ×
+  return { controls, rightOf, before, after: await tabs(), dialog: (await page(READ)).dialog };
+});
+await run("toast", async () => {
+  await open(true);
+  await page(async () => {
+    const { notify } = await import("/src/notify.ts");
+    notify.error("Probe toast", { action: { label: "Act", onClick() {} } });
+    await new Promise((r) => setTimeout(r, 800));
+  });
+  const controls = await page(CONTROLS, "[data-sonner-toast] [data-button], [data-sonner-toast] [data-close-button]");
+  const p = await page(CENTRE, "[data-sonner-toast] [data-close-button]");
+  if (p) { await tap([p[0] - 10, p[1] - 10]); await sleep(800); } // 10px up-left of the drawn button
+  return { controls, closedByNearTap: !(await page(() => !!document.querySelector('[data-sonner-toast][data-visible="true"]'))) };
+});
+await run("suggestion", async () => {
+  await open(true); await page(SELECT, "styleLine");
+  const p = await page(CENTRE, COMBO);
+  if (!p) return { error: "no suggestion field on styleLine" };
+  await tap(p); await sleep(500);
+  const options = await page(CONTROLS, "[data-choice]"), before = await page(COMBO_STATE, COMBO);
+  const o = await page(CENTRE, "[data-choice]:nth-child(2)");
+  if (!o) return { options, before };
+  await swipe([[o[0], o[1], o[0], o[1] - 40, 0]]); // a finger scrolling the list from an option
+  const afterScroll = await page(COMBO_STATE, COMBO);
+  const o2 = await page(CENTRE, "[data-choice]:nth-child(2)");
+  if (o2) { await tap(o2); await sleep(500); }
+  return { options, before, afterScroll, afterTap: await page(COMBO_STATE, COMBO), log: (await page(READ)).events.log.slice(-12) };
+});
+await run("toolbar", async () => {
+  await open(true); await page(SELECT, "description");
+  const field = '[data-slot="sheet-content"] [contenteditable="true"]';
+  await tap(await page(CENTRE, field)); await sleep(400);
+  await page((s) => {
+    const el = document.querySelector(s), r = document.createRange();
+    r.selectNodeContents(el.querySelector("div") ?? el);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+  }, field);
+  const b = await page(CENTRE, '[data-slot="sheet-content"] button[aria-label="Toggle bold"]');
+  if (!b) return { error: "no Bold button" };
+  await tap(b); await sleep(400);
+  return page((s) => ({ focused: document.activeElement === document.querySelector(s), html: document.querySelector(s).innerHTML.slice(0, 200) }), field);
+});
+await run("inspectorActions", async () => {
+  await open(true); await page(SELECT, "name");
+  const before = (await page(READ)).outline;
+  await page(SET_FIELD, "#name-x", "1.5");
+  const moved = (await page(READ)).outline;
+  await tap(await page(CENTRE, '[data-slot="sheet-content"] button[aria-label="Remove layer"]')); await sleep(600);
+  return { before, moved, removed: !(await page(() => !!document.querySelector('[data-layer-id="name"]'))) };
+});
+await run("tabOrder", async () => {
+  await open(true); await page(SELECT, "name"); await page(OPEN_LAYERS);
+  const where = [];
+  for (let i = 0; i < 40; i++) {
+    await key("Tab", "Tab", 9);
+    where.push(await page(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body) return "body";
+      if (el.closest('[data-slot="sidebar-container"]')) return "layers";
+      if (el.matches('[data-slot="sidebar-trigger"]')) return "toggle";
+      return `outside:${el.getAttribute("aria-label") ?? el.tagName}`;
+    }));
+  }
+  return { outside: where.filter((w) => w.startsWith("outside")).length, kinds: [...new Set(where)].slice(0, 15) };
+});
+```
+
+Then append Phase 3's lines 643–681 (`LAYOUT`, `layout-fresh`, `layout-selected`) verbatim, and finally:
+
+```js
+result.phone = phone;
+
+// ---- desktop 1280x800, mouse and keyboard
+const desktop = {};
+if (!only || only.includes("desktop")) try {
+  const click = async ([x, y], modifiers = 0, clickCount = 1, button = "left") => {
+    await mouse("mouseMoved", x, y);
+    await mouse("mousePressed", x, y, { button, buttons: button === "left" ? 1 : 2, clickCount, modifiers });
+    await mouse("mouseReleased", x, y, { button, buttons: 0, clickCount, modifiers });
+    await sleep(300);
+  };
+  desktop.coarse = await open(false);
+  await screenshot("desktop-fresh");
+  await click(await page(CENTRE, row("name")));
+  await sleep(300);
+  await screenshot("desktop-selected");
+  await page(SET_FIELD, "#name-x", "1");
+  desktop.resetHidden = await page(CONTROLS, RESET_X);
+  await mouse("mouseMoved", ...(await page(CENTRE, "#name-x")));
+  await sleep(300);
+  desktop.resetHover = await page(CONTROLS, RESET_X);
+  await screenshot("desktop-reset-hover");
+
+  await open(false);
+  await click(await page(CENTRE, row("name")), 0, 1, "right");
+  desktop.rightClick = await page(LIST);
+  await screenshot("desktop-menu");
+  await click(await page(MENU_ITEM, "Rename"));
+  desktop.menuRename = await page(LIST);
+
+  await open(false);
+  const n = await page(CENTRE, row("name"));
+  await click(n, 0, 1); await click(n, 0, 2);
+  desktop.dblRename = await page(LIST);
+
+  await open(false);
+  await click(await page(CENTRE, row("name")));
+  await click(await page(CENTRE, row("warning")), 8); // Shift
+  desktop.shiftClick = (await page(LIST)).selected;
+  await click(await page(CENTRE, row("description")), 4); // Meta
+  desktop.metaClick = (await page(LIST)).selected;
+
+  await open(false);
+  await click(await page(CENTRE, row("name")));
+  await page((s) => document.querySelector(s).focus(), row("name"));
+  const order0 = (await page(LIST)).order;
+  await key("ArrowUp", "ArrowUp", 38, 1); // Alt
+  desktop.altUp = { before: order0, after: (await page(LIST)).order };
+  await key("Delete", "Delete", 46);
+  desktop.delete = (await page(LIST)).order;
+
+  await open(false); await page(SELECT, "description");
+  await page(() => document.activeElement?.blur());
+  const o0 = (await page(READ)).outline;
+  await key("ArrowRight", "ArrowRight", 39);
+  desktop.nudge = { before: o0, after: (await page(READ)).outline };
+
+  await open(false); await page(SELECT, "styleLine");
+  await click(await page(CENTRE, COMBO));
+  const opt = await page(CENTRE, "[data-choice]:nth-child(2)");
+  if (opt) await click(opt);
+  desktop.suggestion = await page(COMBO_STATE, COMBO);
+} catch (err) { desktop.error = String(err); }
+result.desktop = desktop;
+
+writeFileSync(join(out, `${label}.json`), JSON.stringify(result, null, 2));
+console.log(JSON.stringify(result));
+ws.close();
+chrome.kill();
+process.exit(0);
+```
+
+What the readings mean: `LIST.scroll` is [scrollTop, scrollHeight, clientHeight] of the Layers list; `overlay` is the sidebar's `data-state`; `CONTROLS.hitsItself` is whether a finger at the control's centre lands on it; `RESETS.overlaps` lists anything a reset's box crosses; `undo` is the header Undo presses to empty the history (phone only).
+
+- [ ] **Step 3: Run it twice**
+
+```bash
+node .agents/mockups/phone-touch-paths/probe.mjs http://localhost:5191/ .agents/mockups/phone-touch-paths before
+node .agents/mockups/phone-touch-paths/probe.mjs http://localhost:5191/ .agents/mockups/phone-touch-paths before-2
+```
+
+Expected (predicted from the code at `fcaee3d1`; record the actual numbers, not these):
+
+| Scenario | Expected before |
+|---|---|
+| `longPress` | `during.menu` the seven items, `during.selected` ["name"], `after.overlay` "expanded" |
+| `longPressDrag` | `moved.menu` open and `reordered` true (the fight); `undo` 1 |
+| `dragReorder` | `reordered` true; `undo` 1 |
+| `gripReorder` | `grip` null |
+| `listScroll` | scrollHeight > clientHeight; `byName.scrolled` 0 and `byName.reordered` true; `byEye.scrolled` above 100 |
+| `rename` | `opened.renaming` true; `renameFocused` recorded; `name` "NameX" if it held focus |
+| `selectMode` | `menu` without "Select" |
+| `masterRemove` | `[]` (no library entries in a fresh browser) or one button about 15px |
+| `inspectorScroll` | `byLabel.scrolled` 0, `byInput.scrolled` above 100, `touchAction` "none", `undo` 0 or more (the 3px drift scrubs) |
+| `reset` | each control `opacity` "0", `pointerEvents` "none", 19.5 × 19.5; `xAfter` equals `xBefore` (the tap did nothing) |
+| `fieldPair-*` | `sheet` scrollWidth equals clientWidth; X and Y side by side (same top) |
+| `guideRemove` | `guides` 1, `after` 1; the × `opacity` "0" |
+| `metallic` | 44 × 44, `opacity` "0.4", `hitsItself` true; `after` differs from `before` |
+| `tabClose` | active × `after` about 26 × 26; the tap 10px right of it hits the chip, `after` equals `before` |
+| `toast` | `[data-button]` 24 tall, close 20 × 20, `closedByNearTap` false |
+| `suggestion` | options 44 tall; `afterScroll.value` equals `before.value`; `afterTap` committed, focused, closed (the compatibility `mousedown` a tap sends already commits) |
+| `toolbar` | `focused` true, a bold run in `html` |
+| `inspectorActions` | `moved` x differs from `before`; `removed` true |
+| `tabOrder` | `outside` above 0 (the header, the pane and the inspector are reachable) |
+| `layout-*` | as Phase 3 left them: preview 369x233, page 390/390, under44 0, font 16 |
+| `desktop` | `coarse` false; `resetHidden` opacity "0", `resetHover` "1"; `rightClick.menu` the seven items, `selected` ["name"]; `dblRename.renaming` and `renameFocused` true; `shiftClick` the range name..warning; `metaClick` it plus description; `altUp.after` name one place up; `delete` without name; `nudge.after` x one point right; `suggestion` committed and focused |
+
+Compare `before.json` with `before-2.json` scenario by scenario, and the four screenshot pairs with Task 3.7 Step 4's script (directory `.agents/mockups/phone-touch-paths`, pairs `before-desktop-<state>` vs `before-2-desktop-<state>` for the four states). Record any difference as the noise floor.
+
+- [ ] **Step 4: Fill in the decisions**
+
+Each row's reading decides what its task builds. Write the outcome into the ledger entry as `decision:` lines, one per row, quoting the reading.
+
+| Reading (from `before.json`) | Then | Else |
+|---|---|---|
+| `longPress.during.menu` is empty (no menu after an 800ms hold) | Task 4.4 builds the ⋯ button on touch (branch D) | Long-press stays the row menu's touch path; no ⋯ |
+| `longPress.after.overlay` is "collapsed", or `longPress.after.events.click` is above `longPress.during.events.click` | Task 4.4 builds the click guard (branch C) | No guard |
+| `rename.opened.renameFocused` false, or `desktop.menuRename.renameFocused` false | Task 4.4 starts the rename when the menu has closed (branch R) | Rename as today |
+| `listScroll.byName.scrolled` 10 or more, and `longPressDrag.reordered` false | **Stop and report**: the code predicts neither; the grip (branch G, which Task 4.4 builds unconditionally) rests on both | Task 4.4 builds the grip as planned |
+| `inspectorScroll.byLabel.scrolled` 10 or more | **Stop and report**: Task 4.2's `pan-y` rests on the label not scrolling | Task 4.2 sets `touch-action: pan-y` on scrub labels as planned |
+| `suggestion.afterTap` not committed, not focused, or still open | Task 4.7's changelog gets the "Tap a suggestion" bullet | No changelog bullet for suggestions (the change is invisible on touch) |
+
+- [ ] **Step 5: Record and commit**
+
+Append to `.agents/ledger.md`, in the format of the `2026-11-12 phone-gestures` entry: `finding: [user request] touch paths for hover, right-click, double-click and keyboard actions (phone layout plan, Phase 4)`, `status: in-progress`, `attempted-in: .agents/worktrees/web-app-pages @ feat/phone-touch-paths, measured at <git rev-parse --short HEAD>`, `delta: baseline`, the probe's two commands, one `evidence` line per scenario (the readings in the table's columns, from `before.json`), the run-to-run differences, and the Step 4 `decision:` lines.
+
+```bash
+git add .agents/ledger.md
+git commit -m "Docs: Record the touch paths baseline"
+```
+
+### Task 4.2: Resets you can see and tap, with room of their own
+
+**Files:**
+- Modify: `src/components/LayerInspectorControls.tsx` (`Row` 130–141, `FieldPair` 143–148, `Badge` 165–217)
+- Modify: `src/components/ScrubField.tsx` (`BadgeSlot` 97–105, the `NumberField.ScrubArea` 139–153)
+- Modify: `src/components/LayerInspector.tsx` (`MixedMark` 293–307)
+- Test: `tests/layerinspector-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Consumes: the `touch:` variant and `tap` spacing (`src/index.css:33, 153`).
+- Produces (classes; no signature changes):
+  - `Badge`'s button: the existing mouse classes stay (`flex size-6 … opacity-0 focus-visible:opacity-100 group-hover/reset:opacity-100 group-focus-within/reset:opacity-100`); the `touch:pointer-events-none …` string (line 206) is replaced by `touch:size-tap touch:opacity-100`.
+  - `Row`'s wrapper: `group/reset relative touch:flex touch:items-end touch:gap-1.5 touch:[&>:first-child]:min-w-0 touch:[&>:first-child]:flex-1`; its badge span: `absolute right-0 top-0 touch:static`.
+  - `FieldPair`: `grid grid-cols-2 gap-2 touch:grid-cols-1`.
+  - `BadgeSlot` with `reserve`: `min-w-6 touch:min-w-tap`.
+  - `ScrubField`'s `NumberField.ScrubArea` gains `style={{ touchAction: "pan-y" }}`.
+  - `MixedMark`'s button gains `touch:size-tap`.
+
+Planner's call: on touch a reset is always shown wherever its field is overridden (the Badge renders only then) and is a real 44px button, with no invisible reach: an invisible reach is what reached over stacked inputs and the X/Y fields before.
+Planner's call: the stacked Row (Title, Choices, Placeholder, Suffix) gives the reset its own column on touch, bottom-aligned beside the field it resets; the absolute pin stays for the mouse, where nothing changes.
+Planner's call: a FieldPair is one column on touch (X over Y, Line over Letter spacing). A half-width cell in the 300px right sheet cannot hold a label, an input and up to three 44px marks; one column costs one row per pair and gives every mark room. A mouse keeps two columns.
+Planner's call: the compact field's reserved badge column is 44px on touch, so its input does not jump when the first reset appears (#619's rule, at finger size).
+Planner's call: scrub labels take `touch-action: pan-y`: a vertical finger scrolls the inspector, a sideways one still scrubs. It is set as an inline style because Base UI's own inline `touch-action: none` would beat a class; a mouse ignores `touch-action`.
+Planner's call: the metallic toggle is left as it is: on touch it is already visible (40% ink means off), 44px, and takes a tap; Task 4.1 `metallic` measures it.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/layerinspector-dom.test.tsx` (add `Row` to an import from `../src/components/LayerInspectorControls`):
+
+```tsx
+describe("on a touch screen", () => {
+  const overridden = { variant: new Set<string>(), label: new Set(["x"]) };
+  const resetX = () => $(`button[aria-label="Reset X to this label's master value"]`) as HTMLButtonElement;
+
+  it("shows an override's reset as a 44px button, not only on hover or focus", () => {
+    render(text(), { overridden });
+    const cls = resetX().className;
+    expect(cls).toContain("touch:size-tap");
+    expect(cls).toContain("touch:opacity-100");
+    expect(cls).not.toContain("touch:pointer-events-none");
+    // A mouse still waits for hover or focus.
+    expect(cls).toContain("opacity-0");
+    expect(cls).toContain("group-hover/reset:opacity-100");
+  });
+
+  // Review Focus 4
+  it("a reset acts on a click, never on a press that scrolls away", () => {
+    const { onReset } = render(text(), { overridden });
+    act(() => {
+      resetX().dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+      resetX().dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
+    });
+    expect(onReset).not.toHaveBeenCalled();
+    click(resetX());
+    expect(onReset).toHaveBeenCalledWith("x", "label");
+  });
+
+  // Review Focus 4
+  it("on touch a stacked row's reset sits beside its field, not over it", () => {
+    act(() => { root.render(createElement(Row, { badge: createElement("button", { id: "b" }) }, createElement("div", { id: "field" }))); });
+    const wrapper = $("#field")!.parentElement!;
+    expect(wrapper.className).toContain("touch:flex");
+    expect(wrapper.className).toContain("touch:[&>:first-child]:flex-1");
+    // The badge's own span (BadgeSlot's sits inside it).
+    expect(wrapper.lastElementChild!.className).toBe("absolute right-0 top-0 touch:static");
+  });
+
+  it("stacks a field pair into one column on touch and reserves a 44px badge column", () => {
+    render(text(), { overridden });
+    const pair = $("#name-x")!.closest(".grid")!;
+    expect(pair.className).toContain("grid-cols-2");
+    expect(pair.className).toContain("touch:grid-cols-1");
+    expect(resetX().closest(".min-w-6")!.className).toContain("touch:min-w-tap");
+  });
+
+  it("lets a finger scroll the inspector from a field's name", () => {
+    render(text());
+    const scrub = $('label[for="name-size"]') as HTMLElement;
+    expect(scrub.style.touchAction).toBe("pan-y");
+  });
+
+  it("gives the differ mark a 44px target on touch", () => {
+    render(text(), { others: [{ layer: text({ id: "tagline", size: 9 }) }] });
+    expect($("[data-mixed]")!.className).toContain("touch:size-tap");
+  });
+});
+```
+
+(If `#name-size`'s label is not the ScrubArea, use the label of any `ScrubField` in the text inspector; it is the `label` element whose `htmlFor` is the ScrubField's `id`.)
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/layerinspector-dom.test.tsx`
+Expected: the class and style assertions FAIL; "a reset acts on a click" passes already (it pins the rule).
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments: `Badge`'s doc ("A reset is offered on demand …") gains: on a touch screen, which has no hover, it always shows and is a 44px button, sitting in space its row gives it; the line-204 comment goes. `Row`'s doc: on touch the badge takes its own column beside the field, bottom-aligned, so it never covers the input. `FieldPair`'s doc: one column on touch, where up to three 44px marks need the room. `BadgeSlot`'s doc: the reserve is 44px on touch. The ScrubArea's style gets a one-line comment: a vertical finger scrolls the inspector, a sideways one scrubs; inline because Base UI sets `touch-action: none` inline.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/layerinspector-dom.test.tsx tests/inspector-more-dom.test.tsx tests/inspector-rerender-dom.test.tsx tests/module-size.test.ts`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/LayerInspectorControls.tsx src/components/ScrubField.tsx src/components/LayerInspector.tsx tests/layerinspector-dom.test.tsx
+git commit -m "Fix: On touch, resets always show, take a fingertip and have room of their own"
+```
+
+### Task 4.3: The other small or hidden controls: guide remove, tab close, toasts, library remove
+
+**Files:**
+- Modify: `src/components/Rulers.tsx` (the guide's × button, 422–437, and the comment above the guides, 385–393)
+- Modify: `src/TabsShell.tsx` (the tab's × button, 684–711)
+- Modify: `src/index.css` (after the toast rules, 292–321)
+- Modify: `src/components/MasterPicker.tsx` (the library ✕, 313–318)
+- Test: `tests/rulers-dom.test.tsx`, `tests/tabstrip-a11y-dom.test.tsx`, `tests/toaster-dom.test.tsx`, `tests/masterpicker-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Produces (classes and CSS; no signature changes):
+  - Rulers ×: the button gains `touch:pointer-events-auto touch:opacity-100 touch:after:absolute touch:after:content-['']` plus, for a vertical guide (× in the top ruler) `touch:after:-inset-x-[15px] touch:after:-inset-y-[3px]`, for a horizontal one (× in the left ruler) `touch:after:-inset-y-[15px] touch:after:-inset-x-[3px]`. (15 = (44 − `REMOVE_SIZE`) / 2; 3 = (`RULER_SIZE` − `REMOVE_SIZE`) / 2.)
+  - Tab ×: when it takes taps (`t.id === state.active || unsaved(t)`), it gains `touch:grid touch:size-tap touch:place-items-center touch:p-0 touch:after:hidden`. An inactive saved tab's × is untouched.
+  - `src/index.css`, after the `[data-sonner-toast][data-visible="false"]` rule:
+
+```css
+/* On a touch screen a toast's buttons take a fingertip: the action and cancel
+   buttons grow to 44px tall (min-height beats Sonner's fixed height), and the
+   20px close button gets an invisible 44px reach around it. */
+@media (pointer: coarse) {
+  [data-sonner-toast] [data-button] { min-height: 44px; }
+  [data-sonner-toast] [data-close-button]::after { content: ""; position: absolute; inset: -12px; }
+}
+```
+
+  (`-12px` is (20 − 44) / 2 for the 20px close button; if Task 4.1 `toast` measured another size, use (size − 44) / 2.)
+  - MasterPicker ✕: gains `touch:grid touch:size-tap touch:place-items-center`.
+
+Planner's call: a guide's × is visible on touch (the spec's rule for hover-only controls) and reaches 44px along its ruler but only the ruler's 20px across it: reaching into the preview would put a guide delete under the label's edge. Phase 3 aimed the ruler strips the same way. Dragging a guide back into a ruler still removes it too.
+Planner's call: a tab's × that takes taps grows its own box to 44px on touch rather than an invisible reach, because a reach would spill onto the next tab's title (measured in Task 4.1 `tabClose.rightOf`); the box is transparent, so only the chip widens.
+Planner's call: toasts are sized in `index.css` beside the existing toast rules, because Sonner renders their buttons; a close tap within 12px of the drawn button closes a toast, which loses nothing.
+Planner's call: the master picker's library ✕ is a sub-44px target the Phase 2 measure never opened; it is sized here so the done list's "open a master" meets the global 44px rule.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/rulers-dom.test.tsx`:
+
+```tsx
+it("shows a guide's remove button on touch, reaching 44px along its ruler", () => {
+  renderRulers();
+  const v = container.querySelector('[aria-label="Remove vertical manual guide"]')!.className;
+  const h = container.querySelector('[aria-label="Remove horizontal manual guide"]')!.className;
+  for (const cls of [v, h]) {
+    expect(cls).toContain("touch:opacity-100");
+    expect(cls).toContain("touch:pointer-events-auto");
+    expect(cls).toContain("opacity-0"); // a mouse still waits for hover or focus
+  }
+  expect(v).toContain("touch:after:-inset-x-[15px] touch:after:-inset-y-[3px]");
+  expect(h).toContain("touch:after:-inset-y-[15px] touch:after:-inset-x-[3px]");
+});
+```
+
+`tests/tabstrip-a11y-dom.test.tsx`:
+
+```tsx
+it("gives a × that takes taps a 44px box on touch, and leaves an inactive tab's × alone", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  const [inactive, active] = closeButtons(); // the new tab is active
+  expect(active.className).toContain("touch:size-tap");
+  expect(active.className).toContain("touch:after:hidden");
+  expect(inactive.className).not.toContain("touch:size-tap");
+  expect(inactive.className).toContain("pointer-events-none opacity-0");
+});
+```
+
+(If the new tab is not the last in DOM order, pick by `previousElementSibling.getAttribute("aria-selected") === "true"`.)
+
+`tests/toaster-dom.test.tsx`:
+
+```tsx
+it("gives a toast's buttons a fingertip on touch screens", () => {
+  const css = readFileSync(join(import.meta.dirname, "..", "src", "index.css"), "utf8");
+  const block = css.match(/@media \(pointer: coarse\)\s*\{\s*\[data-sonner-toast\][\s\S]*?\n\}/)?.[0];
+  expect(block, "index.css has no touch rule for toasts").toBeDefined();
+  expect(block).toMatch(/\[data-sonner-toast\] \[data-button\]\s*\{\s*min-height: 44px;/);
+  expect(block).toMatch(/\[data-close-button\]::after\s*\{[^}]*inset: -12px;/);
+});
+```
+
+`tests/masterpicker-dom.test.tsx` (inside the describe that renders the picker; same setup as "removes a remembered master from its own row"):
+
+```tsx
+it("gives the library remove button a 44px target on touch", () => {
+  renderPicker({ library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } } });
+  openMenu();
+  const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]')!;
+  expect(x.className).toContain("touch:size-tap");
+});
+```
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/rulers-dom.test.tsx tests/tabstrip-a11y-dom.test.tsx tests/toaster-dom.test.tsx tests/masterpicker-dom.test.tsx`
+Expected: the four new tests FAIL; the rest pass.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments: the Rulers comment above the guides gains "On a touch screen, which has no hover, the × always shows, its reach 44px along the ruler and only the ruler's width across it, so it never takes a press on the preview." The tab × comment gains "On touch a × that takes taps is a 44px box; an inactive saved tab's stays hidden so a tap there switches tabs." The MasterPicker ✕ gets "44px on touch."
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/rulers-dom.test.tsx tests/tabstrip-a11y-dom.test.tsx tests/toaster-dom.test.tsx tests/masterpicker-dom.test.tsx tests/tabs-close-draft-dom.test.tsx`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/Rulers.tsx src/TabsShell.tsx src/index.css src/components/MasterPicker.tsx tests/rulers-dom.test.tsx tests/tabstrip-a11y-dom.test.tsx tests/toaster-dom.test.tsx tests/masterpicker-dom.test.tsx
+git commit -m "Fix: Guide, tab, toast and library close buttons take a fingertip on touch"
+```
+
+### Task 4.4: The row menu by finger, and a list that scrolls
+
+**Files:**
+- Modify: `src/usePhoneLayout.ts` (`useMedia`, 12–20: export it)
+- Modify: `src/components/LayerList.tsx` (header comment 1–22; imports 24–28; `Row` props 111–127; `ContextMenu.Root`/`Trigger` 211–216; the name button's class 257–261; the controls `div` 318–354; the menu 356–377; `LayerListView` 382–384; `onPointerDown` 427–436; the `dragHandlers` deps 483; the `Row` render 517–535)
+- Modify: `src/locales/en.ts`, `de.ts`, `es.ts`, `fr.ts`, `pt.ts`
+- Test: `tests/layerlist-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Produces in `src/usePhoneLayout.ts`: `export function useMedia(query: string): boolean` (unchanged body; doc: whether `query` matches now, re-rendering when that changes).
+- Produces in `LayerList.tsx`:
+  - `const COARSE = "(pointer: coarse)";` and, in `LayerListView`, `const touch = useMedia(COARSE);`, passed to each `Row` as `touch: boolean` and read by `dragHandlers`' builder (add `touch` to its `useMemo` deps).
+  - In `Row`: `const selectOnOpen = (open: boolean) => { if (open && !isSelected) p.onSelect(id, {}); };` passed as `ContextMenu.Root`'s `onOpenChange`. The trigger's `onContextMenu` is removed.
+  - **Grip (always built; the code forces it):** the name button's class `touch-none` becomes `touch-none touch:touch-pan-y`. In the controls `div`, after the eye button:
+
+```tsx
+<button type="button" data-grip aria-label={t("Reorder {{name}}", { name })}
+  {...dragHandlers} className={cn(control, "hidden touch:grid touch-none")}>
+  <GripVertical />
+</button>
+```
+
+  and `onPointerDown`'s first line becomes `if (e.button !== 0 || (touch && e.pointerType === "touch" && !e.currentTarget.hasAttribute("data-grip"))) return;`.
+  - **Branch D (only if Task 4.1 decided it):** the menu's `DropdownMenuContent` element is assigned to `const rowMenu = (…)` and rendered in both `ContextMenu.Root` and, in the controls `div` before the eye:
+
+```tsx
+<DropdownMenu onOpenChange={selectOnOpen}>
+  <DropdownMenuTrigger render={<button type="button" aria-label={t("More actions for {{name}}", { name })}
+    className={cn(control, "hidden touch:grid")} />}>
+    <Ellipsis />
+  </DropdownMenuTrigger>
+  {rowMenu}
+</DropdownMenu>
+```
+
+  - **Branch C (only if decided):** `const [menuOpen, setMenuOpen] = useState(false);` set from the Root's `onOpenChange` (beside `selectOnOpen`); the trigger's `onClick` starts `if (menuOpen) { e.stopPropagation(); return; }`.
+  - **Branch R (only if decided):** `const renameOnClose = useRef(false);` the Rename item's `onClick` sets it true instead of calling `setRenaming(true)`; the Root's `onOpenChangeComplete={(open) => { if (!open && renameOnClose.current) { renameOnClose.current = false; setRenaming(true); } }}`.
+  - Locale keys: `"Reorder {{name}}"` (en "Reorder {{name}}", de "{{name}} verschieben", es "Reordenar {{name}}", fr "Réordonner {{name}}", pt "Reordenar {{name}}"); with branch D also `"More actions for {{name}}"` (en as the key, de "Weitere Aktionen für {{name}}", es "Más acciones para {{name}}", fr "Plus d’actions pour {{name}}", pt "Mais ações para {{name}}").
+
+Planner's call: on touch a row's grip drags it and the rest of the row scrolls the list. The code forces this: a `touch-none` name cannot let a finger scroll the list, and Base UI's 500ms timer and the 5px drag both run on a name that drags. With the grip, long-press on the name opens the menu and nothing else; the mouse keeps dragging the name, and the grip is `display: none` without a coarse pointer, so the desktop is unchanged. A touch laptop (coarse is false) keeps dragging rows by the name with a finger, as today.
+Planner's call: the row selects itself when its menu opens (the Root's `onOpenChange`), not on the `contextmenu` event: iOS Safari sends none, and Base UI opens the menu from its own timer. Right-click opens the menu through the same call, so the desktop sees the same selection at the same moment.
+Planner's call: the touch check reuses `usePhoneLayout.ts`'s `useMedia` rather than a second `matchMedia` hook.
+Planner's call: Rename needs nothing new for the phone (the spec's Rename item exists and opens the rename in place); branch R exists only if the probe shows the menu's closing focus taking the new rename box's focus.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/layerlist-dom.test.tsx`:
+
+```tsx
+describe("on a touch screen", () => {
+  const realMatchMedia = window.matchMedia.bind(window);
+  beforeEach(() => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  const nameButton = (id: string) => rowFor(id).querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+  /** One finger's touch event; touchend lifts it. Base UI reads `touches`. */
+  const finger = (el: Element, type: "touchstart" | "touchmove" | "touchend", x = 40, y = 40) => act(() => {
+    const e = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : [{ clientX: x, clientY: y }] });
+    el.dispatchEvent(e);
+  });
+  const wait = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); await Promise.resolve(); });
+  const press = (el: Element, type: string, y: number, pointerType = "touch") => act(() => {
+    el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, clientX: 40, clientY: y, pointerType }));
+  });
+  const menuItems = () => Array.from(document.querySelectorAll('[role="menuitem"]')).map((el) => el.textContent?.trim());
+
+  it("a long-press on a row selects it and opens its menu", async () => {
+    const props = render(baseProps());
+    finger(nameButton("wordmark"), "touchstart");
+    await wait(499);
+    expect(menuItems()).toEqual([]);
+    await wait(1);
+    expect(props.onSelect).toHaveBeenCalledWith("wordmark", {});
+    expect(menuItems()).toContain("Rename");
+  });
+
+  // Review Focus 2
+  it("a finger that moves 11px before the long-press delay opens no menu", async () => {
+    const props = render(baseProps());
+    finger(nameButton("wordmark"), "touchstart", 40, 40);
+    finger(nameButton("wordmark"), "touchmove", 40, 51);
+    await wait(600);
+    expect(menuItems()).toEqual([]);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  // Review Focus 1
+  it("a long-press held then dragged opens the menu and reorders nothing", async () => {
+    const props = render(baseProps());
+    const name = nameButton("wordmark");
+    name.setPointerCapture = vi.fn();
+    press(name, "pointerdown", 40);
+    finger(name, "touchstart");
+    await wait(500);
+    press(name, "pointermove", 140);
+    press(name, "pointerup", 140);
+    finger(name, "touchend");
+    expect(name.setPointerCapture).not.toHaveBeenCalled();
+    expect(props.onReorder).not.toHaveBeenCalled();
+    expect(menuItems()).toContain("Rename");
+  });
+
+  it("drags a row by its grip, and leaves its name to scroll the list", () => {
+    const props = render(baseProps({ selected: ["wordmark"] }));
+    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLButtonElement;
+    expect(grip.getAttribute("aria-label")).toBe("Reorder Brand");
+    expect(grip.className).toContain("hidden touch:grid touch-none");
+    expect(nameButton("wordmark").className).toContain("touch-none touch:touch-pan-y");
+    grip.setPointerCapture = vi.fn();
+    const target = rowFor("barcode");
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+    press(grip, "pointerdown", 100);
+    press(grip, "pointermove", 21);
+    press(grip, "pointerup", 21);
+    expect(grip.setPointerCapture).toHaveBeenCalledWith(1);
+    expect(props.onReorder).toHaveBeenCalledTimes(1);
+  });
+
+  it("a mouse still drags a row by its name", () => {
+    const props = render(baseProps({ selected: ["wordmark"] }));
+    const name = nameButton("wordmark");
+    name.setPointerCapture = vi.fn();
+    const target = rowFor("barcode");
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+    press(name, "pointerdown", 100, "mouse");
+    press(name, "pointermove", 21, "mouse");
+    press(name, "pointerup", 21, "mouse");
+    expect(props.onReorder).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+Outside that describe (no coarse stub), next to "right-click selects the row and lists every layer action":
+
+```tsx
+it("right-click selects through the menu's opening, as a long-press does", async () => {
+  const props = render(baseProps());
+  await rightClick("wordmark");
+  expect(props.onSelect).toHaveBeenCalledTimes(1);
+  expect(props.onSelect).toHaveBeenCalledWith("wordmark", {});
+});
+```
+
+(It passes before and after; it pins that the move to `onOpenChange` keeps one selection call.)
+
+Branch tests, written only with their branch:
+- D: `it("opens the same menu from a row's ⋯ button on touch", …)`: `openMenu(byLabel("More actions for Brand"))`; `menuItems()` equals the right-click list; `onSelect` called with `("wordmark", {})`; the button's class contains `hidden touch:grid`.
+- C: `it("a click that follows a long-press neither selects again nor reaches the list", …)`: long-press as above, then `click(nameButton("wordmark"))` on a wrapper with an `onClick` spy (render the list inside a `div` whose `onClick` is `vi.fn()`); the spy is not called and `onSelect` was called once.
+- R: `it("Rename from the menu opens a focused rename box once the menu has closed", …)`: `rightClick("barcode")`, `pick("Rename")`, flush timers and microtasks; the `input[aria-label="Rename Barcode"]` exists and is `document.activeElement`.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/layerlist-dom.test.tsx`
+Expected: "a long-press … selects it" FAILS (no `contextmenu` in a touch-only long-press, so `onSelect` is not called); "held then dragged" FAILS (`setPointerCapture` called); the grip test FAILS (no grip); the rest pass.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments: the file header's "Right-click a row …" paragraph gains "On a touch screen a long-press opens the same menu (or the row's ⋯ button, branch D), and a row drags by its grip at the right end, so a finger on the rest of the row scrolls the list." The Row's comment at 205–210 says the row selects itself when its menu opens, by right-click or long-press. The grip gets a one-line comment: touch only, it carries the drag so the name can scroll; a mouse drags the name.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/layerlist-dom.test.tsx tests/phone-shell-dom.test.tsx tests/phone-layout-dom.test.tsx tests/i18n.test.ts`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint && npx --yes knip@6.38.0`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/usePhoneLayout.ts src/components/LayerList.tsx src/locales/en.ts src/locales/de.ts src/locales/es.ts src/locales/fr.ts src/locales/pt.ts tests/layerlist-dom.test.tsx
+git commit -m "Feat: Long-press a layer for its menu, and drag it by its grip, on touch"
+```
+
+### Task 4.5: Selection mode
+
+**Files:**
+- Modify: `src/components/LayerList.tsx` (`LayerListProps` 45–78; `Row` props 111–127; the trigger's `onClick` 213; the menu 357–358; the `Row` render 517–535; the memo comment 557–559)
+- Modify: `src/App.tsx` (after `layersToggle`, 437; the list callbacks 2423–2438; the SidebarContent `onClick` 2521–2529; the `LayerList` props 2538–2545)
+- Modify: `src/locales/en.ts`, `de.ts`, `es.ts`, `fr.ts`, `pt.ts`
+- Test: `tests/layerlist-dom.test.tsx`, `tests/phone-shell-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Consumes: Task 4.4's `touch` in `LayerListView` and `Row`.
+- Produces in `LayerListProps`:
+
+```ts
+  /** Selection mode (touch only): every row tap toggles that row, as a
+   *  ⌘/Ctrl-click does. App ends it when the selection is cleared or Layers closes. */
+  selecting: boolean;
+  /** The row menu's Select (touch only): turn selection mode on. */
+  onStartSelecting: () => void;
+```
+
+- `Row` takes `selecting` and `onStartSelecting`. The trigger's `onClick` becomes `(e) => p.onSelect(id, p.selecting ? { toggle: true } : modsOf(e))`. The menu's first item, before Rename: `{touch && !selecting && <DropdownMenuItem onClick={p.onStartSelecting}>{t("Select")}</DropdownMenuItem>}`.
+- In `App.tsx`, after `layersToggle`:
+
+```ts
+  /** Selection mode (LayerList): row taps toggle. It ends when the selection
+   *  empties or Layers closes, so a later tap on a row picks one layer again. */
+  const [selecting, setSelecting] = useState(false);
+  if (selecting && (!selected.length || !sidebarOpen)) setSelecting(false);
+```
+
+  `const listStartSelecting = useStableCallback(() => setSelecting(true));` beside the other list callbacks; the SidebarContent close check becomes `if (phone && !selecting && target.closest("[data-layer-id]") && !(event.shiftKey || event.metaKey || event.ctrlKey)) closeLayers();`; `LayerList` gets `selecting={selecting} onStartSelecting={listStartSelecting}`.
+- Locale key `"Select"`: en "Select", de "Auswählen", es "Seleccionar", fr "Sélectionner", pt "Selecionar".
+
+Planner's call: selection mode lives in App, not LayerList: App decides whether a row tap closes Layers, and the mode must end when Layers closes, which only App sees. It is set back during render (React's "adjusting state when a prop changes" pattern), so there is one rule and no effect.
+Planner's call: the mode also ends when Layers closes (the spec says only "when the selection is cleared"): otherwise a mode left on behind a closed overlay turns the next day's ordinary tap into a toggle that leaves Layers open (Review Focus 3).
+Planner's call: Select is the first item, and only on touch and only while the mode is off; a mouse's menu is unchanged (⌘/Shift-click are its multi-select). There is no other visible sign of the mode: the tinted rows show what is selected, and tapping empty list space, the backdrop or the last selected row ends it.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/layerlist-dom.test.tsx`: `baseProps` gains `selecting: false, onStartSelecting: vi.fn()`. In the "on a touch screen" describe:
+
+```tsx
+it("offers Select first in a row's menu, and in selection mode a tap toggles", async () => {
+  const props = render(baseProps());
+  await act(async () => {
+    rowFor("wordmark").firstElementChild!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+  });
+  expect(menuItems()[0]).toBe("Select");
+  await act(async () => { [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')][0].click(); await Promise.resolve(); });
+  expect(props.onStartSelecting).toHaveBeenCalledTimes(1);
+  render({ ...props, selecting: true });
+  click(nameButton("barcode"));
+  expect(props.onSelect).toHaveBeenLastCalledWith("barcode", { toggle: true });
+});
+```
+
+Outside the touch describe:
+
+```tsx
+it("keeps a mouse's row menu without Select", async () => {
+  render(baseProps());
+  await rightClick("wordmark");
+  expect(menuItems()).not.toContain("Select");
+});
+```
+
+`tests/phone-shell-dom.test.tsx`: add `vi.restoreAllMocks()` to `afterEach`, the `coarse` stub from this phase's intro, and:
+
+```tsx
+const pressed = (id: string) => rowButton(id).getAttribute("aria-pressed") === "true";
+const startSelecting = (id: string) => act(async () => {
+  rowButton(id).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+  await Promise.resolve();
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Select")!.click();
+  await Promise.resolve();
+});
+
+it("Select in a row's menu starts selection mode: taps toggle rows and Layers stays open", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([true, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await tap(rowButton("barcode"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([false, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("clearing the selection ends selection mode", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("barcode")); // the last selected row: the selection empties
+  expect(pressed("barcode")).toBe(false);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await tap(rowButton("name"));
+  expect(pressed("name")).toBe(true);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+// Review Focus 3
+it("closing Layers ends selection mode; the next tap picks one layer and closes Layers", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await tap(slot("sidebar-backdrop"));
+  await openLayers();
+  await tap(rowButton("description"));
+  expect([pressed("barcode"), pressed("name"), pressed("description")]).toEqual([false, false, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+// Review Focus 5
+it("rotating the phone keeps selection mode, the selection and Layers open", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await act(async () => { setViewport(844, 390); });
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(pressed("barcode")).toBe(true);
+  await tap(rowButton("name"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([true, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("a mouse's row menu on a phone-sized window offers no Select", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await act(async () => {
+    rowButton("barcode").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+  });
+  expect([...document.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent?.trim())).not.toContain("Select");
+});
+```
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/layerlist-dom.test.tsx tests/phone-shell-dom.test.tsx`
+Expected: the Select and selection-mode tests FAIL (no Select item; Layers closes on the second tap); the two "no Select" tests pass.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments: LayerList's header gains "On a touch screen the row menu starts with Select, which turns on selection mode: each row tap then toggles that row, until the selection is cleared or Layers closes (App)." App's SidebarContent comment ("A modifier click is building a multi-selection, so Layers stays.") gains "So does any row tap in selection mode."
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/layerlist-dom.test.tsx tests/phone-shell-dom.test.tsx tests/i18n.test.ts tests/app-v3-dom.test.tsx tests/inspector-escape-dom.test.tsx`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/LayerList.tsx src/App.tsx src/locales/en.ts src/locales/de.ts src/locales/es.ts src/locales/fr.ts src/locales/pt.ts tests/layerlist-dom.test.tsx tests/phone-shell-dom.test.tsx
+git commit -m "Feat: Select several layers by finger from a layer's menu"
+```
+
+### Task 4.6: Taps that keep focus: suggestions, the text toolbar, and the Layers overlay
+
+**Files:**
+- Modify: `src/components/TextEditor.tsx` (`ToolbarToggle` 482–506, the toggle's `onMouseDown` at 498; the suggestion options 683–699)
+- Modify: `src/App.tsx` (after the `selecting` lines Task 4.5 added; the AppMenu 2562–2566; the Undo/Redo group 2587–2598; the tab-strip host 2600–2601; the content `div` 2602; `SheetContent` 2839–2857)
+- Test: `tests/text-editor-dom.test.ts`, `tests/phone-shell-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Produces in `TextEditor.tsx`: `ToolbarToggle`'s `onMouseDown={(e) => e.preventDefault()}` becomes `onPointerDown={(e) => e.preventDefault()}`. Each suggestion `li` (`[data-choice]` and `[data-novel]`): `onPointerDown={(e) => e.preventDefault()}` and `onClick={() => commit(c.value)}` (the novel row: `commit(typed.trim())`), replacing its `onMouseDown`.
+- Produces in `App.tsx`: `const covered = phone && sidebarOpen;` (doc: Layers is open over the editor on a phone; what it covers leaves the Tab order and the screen reader). `inert={covered}` on: a new `<div className="contents" inert={covered}>` around `<AppMenu …/>`; the Undo/Redo `div`; the tab-strip host `div`; the `flex min-h-0 flex-1` content `div`; `SheetContent`.
+
+Planner's call: a cancelled `pointerdown` keeps focus in the field (it suppresses the compatibility `mousedown`, whose default moves focus), as the spec says; the commit moves to `click`, because a finger that starts to scroll the suggestion list also sends `pointerdown`, and would otherwise commit the option under it. A mouse click commits as before, only on release instead of press.
+Planner's call: `inert` goes on the five things the open overlay covers, since one wrapper cannot hold them (the inspector portals to `body`, and the Layers toggle sits in the header beside the menu). The toggle and Layers stay reachable, so Escape, the toggle and the backdrop still close it. `inert={false}` renders no attribute, so the desktop's DOM is unchanged; `display: contents` keeps the menu wrapper out of the layout.
+Planner's call: `MasterPicker.tsx:317`'s `onMouseUp` stays (see Found while planning).
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/text-editor-dom.test.ts`, in "TextEditor with a vocabulary": replace `pick` with a full click that cancels its press, and add:
+
+```ts
+/** A real click: pointerdown first (the list cancels it to keep the field's
+ *  focus), then the click, which commits. */
+const pick = (el: HTMLElement) => act(() => {
+  el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+  el.click();
+});
+
+it("keeps the field's focus on a press, and commits on the click", () => {
+  const { onChange } = renderEditor({ lines: [], choices: STYLES });
+  openList();
+  const option = options()[1];
+  const down = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+  act(() => { option.dispatchEvent(down); });
+  expect(down.defaultPrevented).toBe(true);
+  expect(onChange).not.toHaveBeenCalled();
+  act(() => { option.click(); });
+  expect(onChange).toHaveBeenCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
+});
+
+it("commits nothing when a finger scrolls the list from an option", () => {
+  const { onChange } = renderEditor({ lines: [], choices: STYLES });
+  openList();
+  act(() => {
+    options()[1].dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "touch" }));
+    options()[1].dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
+  });
+  expect(onChange).not.toHaveBeenCalled();
+  expect(options()).toHaveLength(2);
+});
+```
+
+and in `describe("TextEditor")`:
+
+```ts
+it("the toolbar's toggles cancel their press, so the field keeps its focus and selection", () => {
+  renderEditor({ lines: [line("x")] });
+  focusTextbox();
+  const bold = container.querySelector('[aria-label="Toggle bold"]')!;
+  const down = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+  act(() => { bold.dispatchEvent(down); });
+  expect(down.defaultPrevented).toBe(true);
+});
+```
+
+`tests/phone-shell-dom.test.tsx`:
+
+```tsx
+const inert = (el: Element | null | undefined) => !!el?.closest("[inert]");
+const menuButton = () => [...container.querySelectorAll("header button")].find((b) => b.textContent?.trim() === "Menu");
+
+it("with Layers open on a phone, only Layers and its toggle take focus", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(rowButton()); // selects (inspector opens) and closes Layers
+  await openLayers();
+  expect(inert(container.querySelector("section"))).toBe(true);
+  expect(inert(document.querySelector('[data-slot="sheet-content"]'))).toBe(true);
+  expect(inert(headerButton("Undo"))).toBe(true);
+  expect(inert(menuButton())).toBe(true);
+  expect(inert(slot("sidebar-trigger"))).toBe(false);
+  expect(inert(rowButton())).toBe(false);
+  await tap(slot("sidebar-backdrop"));
+  expect([...container.querySelectorAll("[inert]")].filter((el) => el.getAttribute("data-slot") !== "sidebar-container")).toEqual([]);
+  expect(inert(document.querySelector('[data-slot="sheet-content"]'))).toBe(false);
+});
+
+it("leaves nothing inert on a desktop with Layers open", async () => {
+  await mount(1280, 800);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+});
+```
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/text-editor-dom.test.ts tests/phone-shell-dom.test.tsx`
+Expected: "keeps the field's focus on a press" FAILS (`defaultPrevented` false; today the commit is on `mousedown`, so the click commits nothing); the toolbar test FAILS; the inert test FAILS; "commits nothing when a finger scrolls" and the desktop test pass. The earlier suggestion tests now use the new `pick` and FAIL until the commit moves to `click`.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments: `ToolbarToggle`'s "Keeps focus …" comment says the cancelled press (mouse or finger) is what keeps focus. The list's "The list is dismissed by blur, so take the press before it." becomes: "The press is cancelled so the field keeps focus (the list closes on blur); the click commits, so a finger that scrolls the list commits nothing." App's new `covered` line carries its doc as in Interfaces.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/text-editor-dom.test.ts tests/phone-shell-dom.test.tsx tests/app-v3-dom.test.tsx tests/inspector-escape-dom.test.tsx tests/save-races-dom.test.tsx tests/tabs-close-draft-dom.test.tsx tests/close-save-master-dom.test.tsx`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/TextEditor.tsx src/App.tsx tests/text-editor-dom.test.ts tests/phone-shell-dom.test.tsx
+git commit -m "Fix: Suggestions and toolbar keep the field's focus on a tap, and open Layers holds the keyboard"
+```
+
+### Task 4.7: Measure again, check the desktop, document
+
+**Files:**
+- Modify: `.agents/ledger.md` (the `2026-11-13 phone-touch-paths` entry)
+- Modify: `docs-site/content/docs/(authoring)/layers.mdx` (rows 8–14, `## Right-click menu` 18–32), `(authoring)/inspector.mdx` (`## Resetting a value` 71–73), `(authoring)/editing.mdx` (`## Selecting` 6–12), `(authoring)/preview.mdx` (`## Rulers and guides` 51), `workspace.mdx` (31)
+- Modify: `CHANGELOG.md` (`## [Unreleased]`)
+
+- [ ] **Step 1: Run the probe on the finished branch**
+
+Same dev server, same command, label `after`: `node .agents/mockups/phone-touch-paths/probe.mjs http://localhost:5191/ .agents/mockups/phone-touch-paths after` (`probe.mjs` unchanged since Task 4.1). Expected:
+
+| Scenario | Expected after |
+|---|---|
+| `longPress` | menu open during the hold (or, with branch D, unchanged from before and the ⋯ path below), `selected` ["name"], `after.overlay` "expanded" |
+| `longPressDrag` | menu open, `reordered` false, `undo` 0 |
+| `dragReorder` | `reordered` false (the name no longer drags by finger); `undo` 0 |
+| `gripReorder` | `reordered` true; `undo` 1 |
+| `listScroll` | `byName.scrolled` above 100, `byName.reordered` false; `byEye` as before |
+| `rename` | `opened.renaming` and `renameFocused` true; `name` "NameX"; Layers open |
+| `selectMode` | `two` [name, description] in list order, expanded; `one` [description], expanded; `none` [], expanded; `plain` [name], collapsed |
+| `masterRemove` | each button 44 × 44 (or `[]`, as before) |
+| `inspectorScroll` | `byLabel.scrolled` above 100, `touchAction` "pan-y", `undo` 0 |
+| `reset` | every control 44 × 44, `opacity` "1", `hitsItself` true, every `overlaps` [] ; `xAfter` the master's X (the tap reset it) |
+| `fieldPair-*` | `sheet` scrollWidth equals clientWidth at both sizes; Y below X; X's input at least 150px wide |
+| `guideRemove` | the × `opacity` "1", its `after` 44 along the ruler, 20 across; `after` 0 (the tap 12px off the drawn × removed it) |
+| `metallic` | unchanged |
+| `tabClose` | active × 44 × 44; `rightOf` not "tab"; the tap 10px right of the drawn × closed the tab or opened its unsaved dialog |
+| `toast` | `[data-button]` 44 tall, close `after` 44 × 44, `closedByNearTap` true |
+| `suggestion` | `afterScroll` uncommitted; `afterTap` committed, focused, closed |
+| `toolbar` | unchanged |
+| `inspectorActions` | unchanged (Remove and X work by finger) |
+| `tabOrder` | `outside` 0 |
+| `layout-fresh` | unchanged |
+| `layout-selected` | under44 0 with the resets now counted when shown; page 390/390; font 16 |
+| `desktop` | `resetHidden` opacity "0" and `resetHover` "1"; `rightClick.menu` the seven items without Select; `menuRename`, `dblRename`, `shiftClick`, `metaClick`, `altUp`, `delete`, `nudge`, `suggestion`: each equal to `before.json` |
+
+A row that misses is a defect in the task that owns it: fix it there (same commit style) and run the probe again.
+
+- [ ] **Step 2: Compare the desktop screenshots**
+
+Task 3.7 Step 4's script with `dir = ".agents/mockups/phone-touch-paths"` and these pairs, for each state in `fresh`, `selected`, `reset-hover`, `menu`: `before-desktop-<state>` vs `before-2-desktop-<state>` (the noise floor) and `before-desktop-<state>` vs `after-desktop-<state>`. Expected: each before/after count at or under its noise floor. If more, view both images, find the class or style that reached the mouse layout and fix it; do not accept a difference.
+
+- [ ] **Step 3: Docs**
+
+- `layers.mdx`: the Name bullet becomes "Name. Double-click it to rename (or use the inspector's name box, or the row menu → Rename)". Add a bullet after Show: "On a touch screen, a **grip** at the right end of the row. Drag it to reorder; the rest of the row scrolls the list". `## Right-click menu` becomes `## Row menu`, its first sentence "Right-click a row, or press and hold it on a touch screen, for everything you can do to a layer." (with branch D: "or tap its **⋯** on a touch screen"). Add after the Remove bullet: "- **Select** (touch screens only) turns on selection mode: each tap on a row adds it to the selection or takes it out. It ends when nothing is selected or Layers closes". "Drag a row to reorder." gains "(by its grip on a touch screen)". Search the site for links to `#right-click-menu` (`grep -rn "right-click-menu" docs-site/content`) and update them.
+- `inspector.mdx`, `## Resetting a value`: after "click it to go back to the master's value." add "On a touch screen, which has no pointer to hover with, the reset always shows beside a changed field. Paired fields such as X and Y sit one per row there, to give each reset room."
+- `editing.mdx`, `## Selecting`: add a bullet "- On a touch screen, press and hold a row in Layers and choose **Select**, then tap rows to add or remove them".
+- `preview.mdx`, line 51: "Kill it with the × in the ruler" gains "(on a touch screen the × always shows)".
+- `workspace.mdx`, line 31: no change needed unless it mentions touch; confirm it still reads true (the active tab's × and the •). `grep -rn -i "hover" docs-site/content` and correct any sentence that says a touch screen needs hover for something this phase changed.
+
+- [ ] **Step 4: CHANGELOG**
+
+Under `## [Unreleased]` → `### Added`, edit the "Bigger controls on phones and tablets." bullet: delete "The small reset buttons beside changed fields stay small for now." Then add after the existing bullets:
+
+- **Layer actions by finger.** On a phone or tablet, press and hold a layer in the Layers list for its menu: Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove. Drag a layer by the grip at the end of its row to reorder it; the rest of the list scrolls with your finger.
+- **Select several layers by finger.** Choose **Select** in a layer's menu, then tap layers to add them to the selection or take them out. It ends when nothing is selected or Layers closes.
+
+Under `### Fixed`, first:
+
+- **Reset buttons you can see and tap.** On a phone or tablet, the reset beside a changed field always shows and is big enough for a finger, beside the field rather than over it. X and Y, and other paired fields, sit one per row there to make room.
+- **The inspector scrolls from anywhere.** A finger that starts on a field's name scrolls the inspector instead of changing the value; dragging sideways still changes it.
+- **Finger-sized close buttons.** A guide's remove button now shows in the ruler on a phone or tablet, and the active tab's close button, notification buttons and a library master's remove button are big enough for a finger.
+
+Only if Task 4.1 decided it, also under `### Fixed`: "- **Tap a suggestion.** Tapping a suggestion under a field fills it in, and scrolling the list no longer picks one." No version bump.
+
+- [ ] **Step 5: Full checks**
+
+```bash
+npx tsc --noEmit && npm run lint && npm test && npx --yes knip@6.38.0 && node scripts/check-release.mjs feat/phone-gestures
+(cd docs-site && npm run types:check && npm run build)
+```
+
+Expected: all pass.
+
+- [ ] **Step 6: Ledger and commit**
+
+Update the `2026-11-13 phone-touch-paths` entry: `status: done`, `measured at <short SHA>`, `delta:` each scenario's before → after reading, the eight pixel-compare counts, the desktop readings side by side, `release: binary-impacting; five bullets queued under [Unreleased] (six with the suggestion bullet), one edited; no version bump`, and `not measured (needs a real phone)`: iOS Safari's long-press (Base UI's timer against iOS's own text-selection callout, and that no `click` follows it); whether a real finger's first move scrolls the list or reaches the grip's drag; the reset buttons and ≠ marks against a real finger in both sheets; a suggestion tap with the on-screen keyboard up (iOS keeps focus?); VoiceOver and TalkBack with Layers open (the `inert` content); the inactive tabs' hidden × (left as it is); and the deferred items: the divider and guide handles under a finger, the ruler corner's 24px squares, a second finger's tap while another rests.
+
+```bash
+git add .agents/ledger.md docs-site/content/docs CHANGELOG.md
+git commit -m "Docs: Describe the touch paths and record their measurements"
+```
+
+Do not push.
+
+### Phase 4 checkpoint
+
+Stop. Report: the commits, the Task 4.1 decisions and which branches were built, the before and after readings, the pixel-compare counts, and the three deferred items (divider and guide handles, ruler corner, a second finger's tap). Describe selection mode in plain words (Select in a layer's menu; taps toggle; ends when nothing is selected or Layers closes) so the user can overrule it, since its mockup was skipped. Ask the user to try on a real phone (`npm run dev -- --host`, over Wi-Fi): press and hold a layer, hold then drag it, scroll a long Layers list, drag by the grip, Rename from the menu, Select then tap several layers, close Layers and tap a row, rotate in selection mode, tap a reset while the field is not focused, scroll the inspector from a field's name, remove a guide with its ×, close a tab and a notification, tap a suggestion with the keyboard up, drag the compare divider and a guide, and tap with one finger while another rests. Then ask whether to push and open the PR, and against which base.
 
 ## Phase 5 — Open, save and export on a phone (outline)
 

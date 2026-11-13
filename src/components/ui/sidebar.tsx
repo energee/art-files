@@ -150,7 +150,8 @@ function SidebarProvider({
 
 // `overlay` (App.tsx sets it on a phone): the sidebar slides over the content
 // instead of taking room beside it, with a backdrop that closes it, no resize
-// handle, and at most 85% of the screen wide.
+// handle, and always 85% of the screen wide: it sets its own --sidebar-width,
+// so the desktop width (saved or default) neither sizes it nor is changed by it.
 function Sidebar({ overlay = false, className, children, ...props }: React.ComponentProps<"div"> & { overlay?: boolean }) {
   const { state, open, setOpen } = useSidebar()
   return (
@@ -158,10 +159,13 @@ function Sidebar({ overlay = false, className, children, ...props }: React.Compo
       data-collapsible={state === "collapsed" ? "offcanvas" : ""} data-side="left" data-slot="sidebar">
       {!overlay && <div data-slot="sidebar-gap"
         className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:w-0" />}
+      {/* Its mousedown is held off so a tap leaves focus where it was:
+          closing then hands focus inside the panel to the Layers toggle
+          (App's closeLayers) instead of it falling to the page. */}
       {overlay && open && <div data-slot="sidebar-backdrop" aria-hidden="true"
-        className="fixed inset-0 z-40 bg-black/30" onClick={() => setOpen(false)} />}
+        className="fixed inset-0 z-40 bg-black/30" onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(false)} />}
       <div data-slot="sidebar-container" data-side="left" inert={state === "collapsed"}
-        className={cn("fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]", overlay && "z-40 max-w-[85vw]", className)}
+        className={cn("fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]", overlay && "z-40 [--sidebar-width:85vw]", className)}
         {...props}>
         <div data-sidebar="sidebar" data-slot="sidebar-inner" className="flex size-full flex-col bg-sidebar">{children}</div>
         {!overlay && <SidebarResizeHandle />}
