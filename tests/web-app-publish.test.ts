@@ -79,6 +79,18 @@ describe("feed workflows publish the web app", () => {
       expect(steps, name).toMatch(/if: steps\.web_app\.outcome == 'failure'\n\s+run: rm -rf site\/app/);
     }
   });
+  it("drops a partial app after the download and before the Pages upload", () => {
+    for (const name of ["release.yml", "update-feed.yml"]) {
+      const yml = read(name);
+      const at = (s: string) => {
+        const i = yml.indexOf(s);
+        expect(i, `${name}: ${s}`).toBeGreaterThan(-1);
+        return i;
+      };
+      expect(at("id: web_app"), name).toBeLessThan(at("rm -rf site/app"));
+      expect(at("rm -rf site/app"), name).toBeLessThan(at("upload-pages-artifact"));
+    }
+  });
   it("keeps the web app steps identical in both workflows", () => {
     expect(webAppSteps("update-feed.yml")).toBe(webAppSteps("release.yml"));
   });

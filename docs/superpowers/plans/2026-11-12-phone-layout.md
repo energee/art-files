@@ -22,7 +22,7 @@
 - No phone-only copy of the Layers list, inspector, menu or toolbar. No helper text explaining gestures.
 - Layout changes are measured before and after (preview size, smallest tap target, page scroll width at 390×844 touch emulation), recorded in `.agents/ledger.md` with the branch tested.
 - A broken web build must never hold back the update feed.
-- Nothing is deployed, and no release is cut, without the user's explicit go-ahead at that time.
+- Merging the Phase 1 PR approves public deployment of the web app at the next release. No release is cut, and no workflow is dispatched, without the user's explicit go-ahead at that time.
 - Repo rules: no `git stash`; no Co-Authored-By; commit subjects `Feat:` / `Fix:` / `Docs:` / `Build:`; binary-impacting changes add bullets under `## [Unreleased]` in `CHANGELOG.md` without a version bump; run `npx tsc --noEmit`, `npm run lint`, `npm test`, `npx --yes knip@6.38.0` and `node scripts/check-release.mjs origin/main` before each PR.
 - Worktrees live in `.agents/worktrees/<slug>/`; lock each one (`git worktree lock`) while in use. If `node_modules` is a symlink, remove the link and run `npm ci`; never `npm ci` through it.
 
@@ -170,7 +170,7 @@ it("release.yml no longer calls the repo private", () => {
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `npx vitest run tests/web-app-publish.test.ts`
-Expected: the 7 new tests FAIL; Task 1.1's 4 still pass.
+Expected: the new tests FAIL; Task 1.1's tests still pass.
 
 - [ ] **Step 3: Edit `release.yml`**
 
@@ -188,7 +188,7 @@ Expected: the 7 new tests FAIL; Task 1.1's 4 still pass.
 - [ ] **Step 5: Run the tests**
 
 Run: `npx vitest run tests/web-app-publish.test.ts`
-Expected: PASS (11 tests).
+Expected: PASS (every test in the file).
 
 - [ ] **Step 6: Lint the workflows**
 
@@ -241,7 +241,7 @@ gh pr create --base main --title "Build: Publish the web app beside the update f
 
 ### Phase 1 checkpoint
 
-Stop. Report: PR link, CI status, the measured results, and that the app goes public at the next release. Ask the user two things: whether to merge, and whether to publish before the next release by dispatching `update-feed.yml` for the current release tag (that tag predates this PR, so its build is the desktop-only layout; the phone shell arrives with a later release). Do neither without an answer.
+Stop. Report: PR link, CI status, the measured results, and that the app goes public at the next release. Ask the user two things: whether to merge, and whether to publish before the next release by dispatching `update-feed.yml` for the current release tag (that tag predates this PR, so its build is the desktop-only layout; the phone shell arrives with a later release). Do neither without an answer. Open PR #800 fixes a crash in browsers that block storage, so republishing the 0.1.119 feed before that fix ships would publish a web app with a known crash.
 
 ---
 

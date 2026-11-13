@@ -7,6 +7,9 @@
 # Exists because the feed publish can fail after a release's binaries are
 # already up (as it did for v0.1.10/v0.1.11), and release.yml's version guard
 # rightly refuses to rebuild an existing version — this is the re-runnable half.
+# If the web build fails (for example for a tag older than label-lab-v0.1.106,
+# which has no .nvmrc), the feed still publishes but the live web app goes
+# offline until the next successful publish: each deploy replaces the whole site.
 # Keep the steps (including the "Add the web app" step) in lockstep with
 # release.yml's publish-update-feed job.
 name: Republish update feed
@@ -69,6 +72,8 @@ jobs:
       # The feed outranks the web app: a failed web build publishes the feed
       # without a fresh app/ (a re-run can still find an earlier attempt's
       # artifact), and the run still shows failed through the web-app job.
+      # With no app/, the live web app is offline until the next successful
+      # publish, because each deploy replaces the whole site.
       - name: Add the web app
         id: web_app
         continue-on-error: true

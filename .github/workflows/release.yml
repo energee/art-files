@@ -280,6 +280,8 @@ jobs:
       # The feed outranks the web app: a failed web build publishes the feed
       # without a fresh app/ (a re-run can still find an earlier attempt's
       # artifact), and the run still shows failed through the web-app job.
+      # With no app/, the live web app is offline until the next successful
+      # publish, because each deploy replaces the whole site.
       - name: Add the web app
         id: web_app
         continue-on-error: true

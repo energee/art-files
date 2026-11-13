@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **Label Lab on the web.** The editor is published at energ.ee/art-files/app/ with each release.
+
 ### Fixed
 - **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
 - **Letter-spaced text prints at the width the layout shows.** In Barlow Condensed, text with Letter spacing and an fi, fl, ffi or ffl ("office", "Unfiltered") printed narrower than the preview, so a right-aligned line stopped short of its edge and a run after it started late. Letter-spaced text now prints each letter separately, as the preview draws it.
