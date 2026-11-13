@@ -52,6 +52,8 @@ it("a Settings, Save Master review or ⌘K palette that fails to load says so an
 
     await act(async () => { menu.actions.find((c) => c.id === "settings")!.run(); });
     await vi.waitFor(() => expect(document.body.textContent).toContain("Settings failed to load"), { timeout: 5000 });
+    // Settings is a page over the label: leave it to get back to the Layers list.
+    await act(async () => { menu.actions.find((c) => c.id === "settings")!.run(); });
 
     // An override to promote: with none, Save Master skips the review.
     await act(async () => (document.querySelector('[data-layer-id="warning"] button[aria-label$=": enabled"]') as HTMLButtonElement).click());

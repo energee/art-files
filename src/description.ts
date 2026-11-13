@@ -142,10 +142,14 @@ export function parseRuns(line: StyledLine): StyledLine[] {
  *  drops \b/\v and breaks the run at \n/\v/\f/\r, while the canvas preview
  *  paints \t\n\f\r as one space and the rest as nothing or a missing-glyph
  *  box. The policy: line/tab separators become one space; every other C0 and
- *  C1 control, DEL, the BOM and the zero-width space are dropped. */
+ *  C1 control, DEL, the BOM and the zero-width space are dropped.
+ *  Decomposed accents ("e" + U+0301, as macOS file names spell them) are
+ *  composed to NFC (#788): the browser composes the pair when it draws the
+ *  preview, but the PDF cannot position a combining mark. */
 export function printableText(text: string): string {
   return text.replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, " ")
-    .replace(/[\0-\x1f\x7f-\x9f\u200b\ufeff]/g, "");
+    .replace(/[\0-\x1f\x7f-\x9f\u200b\ufeff]/g, "")
+    .normalize("NFC");
 }
 
 /** Splits text into its space-separated words with every word's inline
