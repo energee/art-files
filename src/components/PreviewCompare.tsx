@@ -82,6 +82,12 @@ export interface PreviewCompareHandle {
   showMask: () => void;
   /** The exact page box rulers measure; its client rect includes App's CSS transform. */
   getPageElement: () => HTMLDivElement | null;
+  /** A press is down on a layer (move) or a tick (resize), started or not. */
+  layerGestureArmed: () => boolean;
+  /** Ends that gesture exactly as Escape does: undoes its step if it had
+   *  moved (onDragCancel), clears the snap lines and readout, and drops it
+   *  so later moves do nothing. */
+  cancelLayerGesture: () => void;
 }
 
 export const PreviewCompare = forwardRef<
@@ -187,12 +193,6 @@ export const PreviewCompare = forwardRef<
       RASTER_DEBOUNCE_MS);
     return () => window.clearTimeout(timeout);
   }, [zoom]);
-
-  useImperativeHandle(ref, () => ({
-    showArt: () => changeSplit(0),
-    showMask: () => changeSplit(100),
-    getPageElement: () => pageElement.current,
-  }), [changeSplit]);
 
   // The display list and boxes, measured once per layers/source/Bleed change. A throw here
   // (a bad binding, an unparsable payload) is caught by the paint effect
@@ -390,25 +390,39 @@ export const PreviewCompare = forwardRef<
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
 
-  // Escape mid-drag: undo the single step the drag opened (if any) and drop the
-  // in-flight session so a further pointermove can't resume it. Capture
-  // phase + preventDefault marks the Escape as spent before the inspector
-  // Sheet's document listener sees it, so cancelling a drag doesn't also
-  // close the inspector and deselect (App's Sheet onOpenChange, #117).
+  /** Undo the single step the move or resize opened (if any) and drop the
+   *  in-flight session so a further pointermove can't resume it. True when
+   *  it undid a started gesture. */
+  const cancelLayerGesture = useCallback((): boolean => {
+    const started = !!(drag.current?.started || resize.current?.started);
+    if (started) onDragCancel();
+    drag.current = null; resize.current = null;
+    setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
+    return started;
+  }, [onDragCancel]);
+
+  // Escape mid-drag cancels it, the same path a second finger takes
+  // (cancelLayerGesture). Capture phase + preventDefault marks the Escape as
+  // spent before the inspector Sheet's document listener sees it, so
+  // cancelling a drag doesn't also close the inspector and deselect (App's
+  // Sheet onOpenChange, #117).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
-      if (drag.current?.started || resize.current?.started) {
-        e.preventDefault();
-        swallowClick.current = true;
-        onDragCancel();
-      }
-      drag.current = null; resize.current = null;
-      setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
+      if (e.key !== "Escape" || !cancelLayerGesture()) return;
+      e.preventDefault();
+      swallowClick.current = true;
     }
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [onDragCancel]);
+  }, [cancelLayerGesture]);
+
+  useImperativeHandle(ref, () => ({
+    showArt: () => changeSplit(0),
+    showMask: () => changeSplit(100),
+    getPageElement: () => pageElement.current,
+    layerGestureArmed: () => !!(drag.current || resize.current),
+    cancelLayerGesture: () => { cancelLayerGesture(); },
+  }), [changeSplit, cancelLayerGesture]);
 
   // No source, no preview: end the session and free both plates' backing
   // stores, up to 51MB each on a zoomed tab. The paint effect above resizes

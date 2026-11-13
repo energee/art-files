@@ -61,7 +61,10 @@ function renderRulers(over: Partial<Parameters<typeof Rulers>[0]> = {}) {
   page.getBoundingClientRect = () => rect(800, 500);
   container.appendChild(pane);
   const previewRef: { current: PreviewCompareHandle } = {
-    current: { showArt() {}, showMask() {}, getPageElement: () => page },
+    current: {
+      showArt() {}, showMask() {}, getPageElement: () => page,
+      layerGestureArmed: () => false, cancelLayerGesture() {},
+    },
   };
   const props: Parameters<typeof Rulers>[0] = {
     paneRef: { current: pane }, previewRef, view: { get: () => FITTED, subscribe: () => () => {} },
@@ -348,7 +351,10 @@ function transformedPane() {
     };
   };
   container.appendChild(pane);
-  const previewRef = { current: { showArt() {}, showMask() {}, getPageElement: () => page } };
+  const previewRef = { current: {
+    showArt() {}, showMask() {}, getPageElement: () => page,
+    layerGestureArmed: () => false, cancelLayerGesture() {},
+  } };
   /** Where a guide must sit for the view, straight from the browser's rect. */
   const expectedLeft = (point: number) => {
     const p = page.getBoundingClientRect();

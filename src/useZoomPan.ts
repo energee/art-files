@@ -7,6 +7,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { PREVIEW_OVERSAMPLE } from "@/layout";
 import type { CanViewHandle } from "@/components/CanView";
+import type { PreviewCompareHandle } from "@/components/PreviewCompare";
 
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
@@ -17,6 +18,10 @@ export const ZOOM_FACTOR = 1.25;
 
 /** Quiet time after a wheel tick before the zoom is published to React. */
 const ZOOM_SETTLE_MS = 100;
+
+/** A finger landing in one of these is theirs, not the pane's: the rulers'
+ *  strips and guide handles, and the text being edited in place. */
+const OWNS_ITS_FINGER = '[data-slot="rulers"], [contenteditable="true"], input, textarea';
 
 /** The pane's transform: scale `z` about its top-left, then offset by (x, y)
  *  screen px. z === 1 is the fitted view. */
@@ -85,11 +90,14 @@ export const pinchView = (r: DOMRect, v: View, a0: Point, b0: Point, a1: Point, 
 };
 
 /** `is2d`: the pane shows the 2D compare (wheel, pan and typed zoom act on
- *  it); otherwise zoom goes to the 3D camera through `canView`. */
+ *  it); otherwise zoom goes to the 3D camera through `canView`. `preview`
+ *  says whether a finger landed on a layer drag, and cancels it when a
+ *  second finger turns the touch into a pinch. */
 export function useZoomPan(
   is2d: boolean,
   previewPane: RefObject<HTMLDivElement | null>,
   canView: RefObject<CanViewHandle | null>,
+  preview: RefObject<PreviewCompareHandle | null>,
 ) {
   const [liveView] = useState(createLiveView);
   const zoomLayer = useRef<HTMLDivElement>(null);
@@ -194,10 +202,12 @@ export function useZoomPan(
 
   // Drag-to-pan on the right button — the same button OrbitControls pans
   // with in the 3D views. A pan leaves the zoom alone, so React never hears
-  // about it.
+  // about it. Fingers: below.
   const panFrom = useRef<{ x: number; y: number; r: DOMRect } | null>(null);
   const [panning, setPanning] = useState(false);
   function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
+    if (!fingers.current.size) touchMoved.current = false;
+    if (e.pointerType === "touch") return onTouchDown(e);
     if (e.button !== 2 || !is2d) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     panFrom.current = {
@@ -206,6 +216,7 @@ export function useZoomPan(
     setPanning(true);
   }
   function onPanMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch") return onTouchMove(e);
     const from = panFrom.current;
     if (!from) return;
     const dx = e.clientX - from.x, dy = e.clientY - from.y;
@@ -214,14 +225,61 @@ export function useZoomPan(
     const v = liveView.get();
     liveView.set(clampView(from.r, v.z, v.x + dx, v.y + dy));
   }
-  function onPanEnd() {
+  function onPanEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch") return onTouchEnd(e);
     if (!panFrom.current) return;
     panFrom.current = null;
     setPanning(false);
   }
 
+  // Fingers on the pane (touch only), by pointerId, at their last event: one
+  // pans unless the layer drag took it, two pinch, a third is ignored. Each
+  // touch is captured to the element it landed on by the browser, and its
+  // moves bubble here, so the pane takes no capture of its own.
+  const fingers = useRef(new Map<number, Point>());
+  const lonePans = useRef(false);
+  /** The finger gesture moved the view: swallow the click it ends with. */
+  const touchMoved = useRef(false);
+  function onTouchDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!is2d || fingers.current.size === 2) return;
+    if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();
+    else preview.current?.cancelLayerGesture();
+  }
+  function onTouchMove(e: React.PointerEvent<HTMLDivElement>) {
+    const from = fingers.current.get(e.pointerId);
+    if (!from) return;
+    const to = { x: e.clientX, y: e.clientY };
+    const r = e.currentTarget.getBoundingClientRect();
+    const v = liveView.get();
+    if (fingers.current.size === 2) {
+      const other = [...fingers.current].find(([id]) => id !== e.pointerId)![1];
+      const local = (p: Point) => ({ x: p.x - r.left, y: p.y - r.top });
+      liveView.set(pinchView(r, v, local(from), local(other), local(to), local(other)));
+    } else if (lonePans.current) {
+      liveView.set(clampView(r, v.z, v.x + to.x - from.x, v.y + to.y - from.y));
+    }
+    fingers.current.set(e.pointerId, to);
+    if (liveView.get() !== v) touchMoved.current = true;
+  }
+  function onTouchEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (!fingers.current.delete(e.pointerId)) return;
+    lonePans.current = true; // the finger left after a pinch pans
+    setZoom(liveView.get().z);
+  }
+  /** Capture-phase click on the pane: the click that ends a finger gesture
+   *  which moved the view never reaches the pane (deselect) or the sheet
+   *  (pick). */
+  function onPaneClickCapture(e: React.MouseEvent) {
+    if (!touchMoved.current) return;
+    touchMoved.current = false;
+    e.stopPropagation();
+  }
+
   return {
     zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
     zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
+    onPaneClickCapture,
   };
 }
