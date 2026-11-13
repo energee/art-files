@@ -395,16 +395,21 @@ export const PreviewCompare = forwardRef<
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
 
+  // Held in a ref so cancelLayerGesture keeps one identity: App passes a new
+  // onDragCancel every render, and the no-source effect below must not re-run
+  // (and render again) on each of them.
+  const onDragCancelRef = useRef(onDragCancel);
+  onDragCancelRef.current = onDragCancel;
   /** Undo the single step the move or resize opened (if any) and drop the
    *  in-flight session so a further pointermove can't resume it. True when
    *  it undid a started gesture. */
   const cancelLayerGesture = useCallback((): boolean => {
     const started = !!(drag.current?.started || resize.current?.started);
-    if (started) onDragCancel();
+    if (started) onDragCancelRef.current();
     drag.current = null; resize.current = null; tapFrom.current = null;
     setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     return started;
-  }, [onDragCancel]);
+  }, []);
 
   // Escape mid-drag cancels it, the same path a second finger takes
   // (cancelLayerGesture). Capture phase + preventDefault marks the Escape as

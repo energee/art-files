@@ -6,7 +6,7 @@
 // that a double-tap or double-click opens only a drawn text layer.
 // Mounted like tests/inplace-editor-dom.test.tsx.
 // @vitest-environment happy-dom
-import { act, createElement, createRef } from "react";
+import { act, createElement, createRef, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { PreviewCompare, type PreviewCompareHandle } from "../src/components/PreviewCompare";
@@ -172,6 +172,23 @@ it("a tab that goes hidden mid-press keeps no gesture armed", () => {
   expect(handle.current!.layerGestureArmed()).toBe(true);
   mount({ hidden: true });
   expect(handle.current!.layerGestureArmed()).toBe(false);
+});
+
+it("a hidden preview commits once per parent render, however often onDragCancel changes", () => {
+  let commits = 0;
+  const props = (onDragCancel: () => void) => ({
+    canvasRender: null, layers: ALL, editLayerOf: (l: Layer) => l, selected: [], onPick: () => {},
+    onEditText: () => {}, onEditUppercase: () => {}, onEditCommit: () => {}, onDrag, onDragCancel,
+    onResize: vi.fn(), onEditSession, cornerRadiusPct: 0, zoom: 1, bleedIn: 0, unit: "in", ref: handle,
+  } as Parameters<typeof PreviewCompare>[0]);
+  const render = () => act(() => {
+    root.render(createElement(Profiler, { id: "p", onRender: () => { commits++; } },
+      createElement(PreviewCompare, props(() => {})))); // App's cancelGesture: new every render
+  });
+  render();
+  commits = 0;
+  for (let i = 0; i < 3; i++) render();
+  expect(commits).toBe(3);
 });
 
 it("a finger's resize within the slop hands over the finger's latest point", () => {
