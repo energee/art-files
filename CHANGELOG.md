@@ -47,6 +47,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 - **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
 - **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+- **Ctrl+K and Ctrl+B work with Caps Lock on.** On Windows and Linux, the command palette and the Layers sidebar shortcuts did nothing while Caps Lock was on.
 - **The preview toolbar no longer runs under the inspector.** With a layer selected, the right end of the toolbar under the preview sat behind the inspector, which hid the update button and, in a narrow window, part of the Can view's sliders. The toolbar now stops at the inspector's edge and scrolls sideways when the window is too narrow to show it all.
 - **Changing Bleed keeps the texture under the label.** After a Bleed change in Settings, the preview and the Can view kept the texture and mask at the old page size until your next edit, leaving a bare strip along the right and bottom edges. They now refit straight away. Exports were always correct.
 

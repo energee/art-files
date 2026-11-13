@@ -78,6 +78,13 @@ describe("⌘K over an open dialog (#237)", () => {
     expect(palette()).toBeNull();
   });
 
+  it("Ctrl+K opens the palette with Caps Lock on, when the key reads as an upper-case K (#787)", async () => {
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "K", ctrlKey: true, bubbles: true, cancelable: true }));
+    });
+    await vi.waitFor(() => expect(palette()).not.toBeNull(), { timeout: 5000 });
+  });
+
   it("⌘K opens the palette from the app, and ⌘K inside the palette closes it", async () => {
     await pressK(document.body);
     await vi.waitFor(() => expect(palette()).not.toBeNull(), { timeout: 5000 });
