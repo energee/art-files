@@ -16,7 +16,11 @@ import { setViewport } from "./viewport";
 // Same mounting as inspector-escape-dom.test.tsx: the Lolev fixture master,
 // with the canvas-heavy views stubbed out.
 vi.mock("../src/model/starterLayers", async () => ({ starterMaster: (await import("./fixtures/lolevMaster")).lolevMaster }));
-vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
+/** The preview's onPick, so a test can pick a layer as a canvas tap does. */
+const preview = vi.hoisted(() => ({ pick: (_id: string | null, _mods: object) => {} }));
+vi.mock("../src/components/PreviewCompare", () => ({
+  PreviewCompare: (p: { onPick: typeof preview.pick }) => { preview.pick = p.onPick; return null; },
+}));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/fonts", () => ({
@@ -190,6 +194,105 @@ it("rotating the phone keeps selection mode, the selection and Layers open", asy
   expect(sidebar().getAttribute("data-state")).toBe("expanded");
 });
 
+const rowIds = () => [...container.querySelectorAll<HTMLElement>("[data-layer-id]")].map((r) => r.dataset.layerId!);
+const pickedIds = () => rowIds().filter(pressed);
+const addLayer = async () => {
+  const trigger = container.querySelector('[aria-label="Add layer"]') as HTMLElement;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    trigger.click();
+    await Promise.resolve();
+  });
+  await tap([...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Text")!);
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+};
+
+it("undoing the add of the only selected layer ends selection mode", async () => {
+  coarse();
+  await mount(1024, 768);
+  await addLayer();
+  const [added] = pickedIds();
+  await startSelecting(added);
+  await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true })); });
+  expect(rowIds()).not.toContain(added);
+  await tap(rowButton("name"));
+  await tap(rowButton("description"));
+  expect(pickedIds()).toEqual(["description"]);
+});
+
+it("removing the whole selection from the row menu ends selection mode", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await act(async () => {
+    rowButton("name").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    await Promise.resolve();
+  });
+  await tap([...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim().startsWith("Remove"))!);
+  expect(rowIds()).not.toContain("barcode");
+  await tap(rowButton("description"));
+  expect(pickedIds()).toEqual(["description"]);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+it("Add layer in selection mode ends it", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await addLayer();
+  await openLayers();
+  await tap(rowButton("name"));
+  expect(pickedIds()).toEqual(["name"]);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+it("on a touch tablet, Select works with Layers docked, and a canvas pick ends the mode", async () => {
+  coarse();
+  await mount(1024, 768);
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await tap(rowButton("description"));
+  expect(pickedIds().sort()).toEqual(["barcode", "description", "name"]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await act(async () => { preview.pick("name", {}); });
+  expect(pickedIds()).toEqual(["name"]);
+  await tap(rowButton("barcode"));
+  expect(pickedIds()).toEqual(["barcode"]);
+});
+
+it("a Shift-click in selection mode still selects a range", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  const ids = rowIds();
+  await startSelecting(ids[1]);
+  await act(async () => { rowButton(ids[3]).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true })); });
+  expect(pickedIds()).toEqual(ids.slice(1, 4));
+});
+
+it("in selection mode a long-press on an unselected row picks it alone and the mode stays; Select is announced", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  expect(container.querySelector('[data-add-layer]')!.closest('[data-slot="sidebar-group"]')!.querySelector('[role="status"]')!.textContent).toBe("Selecting layers. Tap a layer to add or remove it.");
+  await tap(rowButton("name"));
+  await act(async () => {
+    rowButton("description").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    await Promise.resolve();
+  });
+  expect(pickedIds()).toEqual(["description"]);
+  await act(async () => { document.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  await tap(rowButton("name"));
+  expect(pickedIds().sort()).toEqual(["description", "name"]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
 it("a mouse's row menu on a phone-sized window offers no Select", async () => {
   await mount(390, 844);
   await openLayers();
@@ -214,17 +317,18 @@ it("keeps a desktop's Layers beside the preview, resizable, and open after a pic
   expect(slot("sidebar-resize-handle")).not.toBeNull();
   expect(slot("sidebar-backdrop")).toBeNull();
   expect(slot("sidebar-container")!.className).not.toContain("z-40");
-  expect(slot("sidebar-container")!.className).not.toContain("max-w-[85vw]");
+  expect(slot("sidebar-container")!.className).not.toContain("[--sidebar-width:85vw]");
   await tap(rowButton());
   expect(sidebar().getAttribute("data-state")).toBe("expanded");
 });
 
-// Review Focus 5: a width saved on a desktop browser never makes the overlay wider than the phone.
-it("caps the overlay at 85% of the screen whatever width was saved", async () => {
-  localStorage.setItem("sidebar_width", "520");
+// Review Focus 5: a width saved on a desktop browser, wide or narrow, never sizes the overlay.
+it.each(["520", "180", null])("makes the overlay 85vw wide whatever width was saved (saved: %s)", async (saved) => {
+  if (saved) localStorage.setItem("sidebar_width", saved);
   await mount(390, 844);
   await openLayers();
-  expect(slot("sidebar-container")!.className).toContain("max-w-[85vw]");
+  expect(slot("sidebar-container")!.className).toContain("[--sidebar-width:85vw]");
+  expect(localStorage.getItem("sidebar_width")).toBe(saved);
 });
 
 it("gives a phone header Undo and Redo buttons that run the history", async () => {

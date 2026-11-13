@@ -802,9 +802,6 @@ describe("on a touch screen", () => {
     expect(menuItems()).toContain("Rename");
   });
 
-  // The finger's lift after a long-press arrives as a click on the row: it
-  // must not select again, nor reach the Layers overlay, which closes on a
-  // row click.
   it("offers Select first in a row's menu, and in selection mode a tap toggles", async () => {
     const props = render(baseProps());
     await act(async () => {
@@ -819,6 +816,9 @@ describe("on a touch screen", () => {
     expect(props.onSelect).toHaveBeenLastCalledWith("barcode", { toggle: true });
   });
 
+  // The finger's lift after a long-press arrives as a click on the row: it
+  // must not select again, nor reach the Layers overlay, which closes on a
+  // row click.
   it("a click that follows a long-press neither selects again nor reaches the list", async () => {
     const outside = vi.fn();
     const props = baseProps();

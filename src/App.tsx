@@ -96,7 +96,7 @@ import { MasterPicker, type LibraryEntry } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
-  EMPTY_SELECTION, gestureIds, resolveSelect, type Selection,
+  EMPTY_SELECTION, gestureIds, resolveSelect, type Selection, type SelectMods,
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
@@ -435,10 +435,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  where it covers the preview; later size changes leave it as it is. */
   const [sidebarOpen, setSidebarOpen] = useState(!phone);
   const layersToggle = useRef<HTMLButtonElement>(null);
-  /** Selection mode (LayerList): row taps toggle. It ends when the selection
-   *  empties or Layers closes, so a later tap on a row picks one layer again. */
-  const [selecting, setSelecting] = useState(false);
-  if (selecting && (!selected.length || !sidebarOpen)) setSelecting(false);
+  /** At least one selected id is a layer that exists (undoing an add leaves
+   *  its id selected). */
+  const removable = selected.some((id) => rowById.has(id));
+  /** Selection mode (LayerList): row taps toggle. It holds the selection the
+   *  list last made in the mode, so anything else that sets the selection (a
+   *  canvas pick, Add layer, Remove) ends it; so do no live layer selected
+   *  and Layers closing. A later tap on a row then picks one layer again. */
+  const [modeSelection, setModeSelection] = useState<Selection | null>(null);
+  const selecting = modeSelection === selection && removable && sidebarOpen;
+  if (modeSelection && !selecting) setModeSelection(null);
   /** Layers is open over the editor on a phone: what it covers leaves the
    *  Tab order and the screen reader (`inert`). The Layers toggle and the
    *  panel stay reachable, so Escape, the toggle and the backdrop still close it. */
@@ -494,9 +500,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** A row or canvas click, resolved against the anchor and the list's row
    *  order (front to back). A background click (null) clears everything. */
   const clearSelection = () => setSelection(EMPTY_SELECTION);
+  const listOrder = () => rows.map((r) => r.layer.id).reverse();
   const pick = (id: string | null, mods: { shift?: boolean; toggle?: boolean }) => {
     if (id === null) { clearSelection(); return; }
-    const order = rows.map((r) => r.layer.id).reverse();
+    const order = listOrder();
     setSelection((s) => resolveSelect(s, id, mods, order));
   };
   // The layer the inspector shows: the most recently picked one, passing
@@ -2178,7 +2185,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires
    *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
-  const removable = selected.some((id) => rowById.has(id));
   /** File → Save Master… and the picker's button: the review writes into the
    *  version the picker names, and both say which. */
   const saveLabel = version === null ? t("Save Master…") : t("Save Variant…");
@@ -2428,7 +2434,13 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   // Stable identities for the memoized panels, so a keystroke re-renders only
   // the inspector and the canvas (#605).
-  const listSelect = useStableCallback(pick);
+  // In selection mode the list's own picks keep the mode on (modeSelection).
+  const listSelect = useStableCallback((id: string, mods: SelectMods) => {
+    if (!selecting) { pick(id, mods); return; }
+    const next = resolveSelect(selection, id, mods, listOrder());
+    setSelection(next);
+    setModeSelection(next);
+  });
   // Show and lock on a selected row act on the whole selection, as its
   // drag, reorder and Delete do.
   const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) => {
@@ -2444,7 +2456,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (phone) closeLayers();
   });
   const listRemove = useStableCallback(onRemoveLayer);
-  const listStartSelecting = useStableCallback(() => setSelecting(true));
+  const listStartSelecting = useStableCallback(() => setModeSelection(selection));
   /** The row menu's Reset to Master: drops this label's design overrides on
    *  the layer and the rest of the selection, as one undo step. Content
    *  (label.values) stays. A label-only layer is skipped: its override is its

@@ -39,6 +39,7 @@ const de: Record<keyof typeof en, string> = {
   "Invalid value": "Ungültiger Wert",
   "{{name}}: locked": "{{name}}: gesperrt",
   "{{name}}: enabled": "{{name}}: aktiviert",
+  "Selecting layers. Tap a layer to add or remove it.": "Ebenen auswählen. Tippen Sie auf eine Ebene, um sie hinzuzufügen oder zu entfernen.",
   "Select": "Auswählen",
   "Rename": "Umbenennen",
   "Unlock": "Entsperren",

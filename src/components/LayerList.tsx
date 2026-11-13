@@ -18,8 +18,8 @@ import { isMacOS } from "@/keys";
 // On a touch screen a long-press opens the same menu, and a row drags by its
 // grip at the right end, so a finger on the rest of the row scrolls the list.
 // On a touch screen the row menu starts with Select, which turns on selection
-// mode: each row tap then toggles that row, until the selection is cleared or
-// Layers closes (App).
+// mode (announced, not shown): each row tap then toggles that row (a
+// Shift-click still selects a range), until App ends the mode.
 // The header carries the title and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
@@ -242,7 +242,7 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
         <ContextMenu.Trigger
           onClick={(e) => {
             if (menuOpen) { e.stopPropagation(); return; }
-            p.onSelect(id, p.selecting ? { toggle: true } : modsOf(e));
+            p.onSelect(id, p.selecting && !e.shiftKey ? { toggle: true } : modsOf(e));
           }}
           className={cn(
             "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -432,14 +432,19 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
   const { rows, selected, onReorder } = props;
   const touch = useMedia(COARSE);
   const [announcement, setAnnouncement] = useState("");
+  // A live region speaks only when its text changes, so a repeat of the same
+  // text toggles a trailing no-break space to be announced again.
+  const announce = useCallback((text: string) =>
+    setAnnouncement((prev) => prev === text ? text + "\u00a0" : text), []);
   const reorder = useCallback((id: string, delta: number) => {
     onReorder(id, delta);
     const name = rows.find((r) => r.layer.id === id)?.layer.name ?? t("Layer");
-    const text = delta > 0 ? t("{{name}} moved forward.", { name }) : t("{{name}} moved backward.", { name });
-    // A live region speaks only when its text changes, so a repeat of the
-    // same move toggles a trailing no-break space to be announced again.
-    setAnnouncement((prev) => prev === text ? text + "\u00a0" : text);
-  }, [onReorder, rows, t]);
+    announce(delta > 0 ? t("{{name}} moved forward.", { name }) : t("{{name}} moved backward.", { name }));
+  }, [onReorder, rows, t, announce]);
+  const startSelecting = () => {
+    props.onStartSelecting();
+    announce(t("Selecting layers. Tap a layer to add or remove it."));
+  };
   // Rows grouped by owning container (master, or the variant that added the
   // layer), in VISIBLE order (front first): a layer only reorders among its
   // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
@@ -584,7 +589,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               onReset={props.onReset}
               touch={touch}
               selecting={props.selecting}
-              onStartSelecting={props.onStartSelecting}
+              onStartSelecting={startSelecting}
             />
           ))}
         </SidebarMenu>

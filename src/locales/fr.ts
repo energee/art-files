@@ -39,6 +39,7 @@ const fr: Record<keyof typeof en, string> = {
   "Invalid value": "Valeur non valide",
   "{{name}}: locked": "{{name}} : verrouillé",
   "{{name}}: enabled": "{{name}} : activé",
+  "Selecting layers. Tap a layer to add or remove it.": "Sélection de calques. Touchez un calque pour l’ajouter ou le retirer.",
   "Select": "Sélectionner",
   "Rename": "Renommer",
   "Unlock": "Déverrouiller",
