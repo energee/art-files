@@ -1122,3 +1122,38 @@ no status, no attempts, no delta.
 - unexpected: none.
 - not measured (needs a real phone): the list under phone-gestures above still stands (finger slop and the 300ms window under a real hand, palm rejection and OS cancels, pinch feel, the on-screen keyboard, iOS double-tap-zoom and edge swipes, real touch radius, rotating mid-pinch, the Can view on a real GPU), plus the release blocker that both pointerups of a double-tap reach the sheet on iOS Safari, and a resting finger while another taps.
 - release: non-binary-impacting (agent ledger only); no bullet queued.
+## 2026-11-13 phone-touch-paths
+- finding: [user request] touch paths for hover, right-click, double-click and keyboard actions (phone layout plan, Phase 4)
+- status: in-progress
+- attempted-in: .agents/worktrees/web-app-pages @ feat/phone-touch-paths, measured at 0b65513c
+- delta: baseline. `npm run dev -- --port 5191 --strictPort`, then `node .agents/mockups/phone-touch-paths/probe.mjs http://localhost:5191/ .agents/mockups/phone-touch-paths before` (and again with label `before-2`). The probe is the plan's Task 4.1 Step 2 script verbatim, assembled from phone-gestures/probe.mjs lines 1–233 (first five comment lines replaced) and 643–681; headless Chrome over CDP on port 9333, real Input.dispatchTouchEvent at 390x844 (844x390 where named), mouse and keys at 1280x800. Each run took 102s. Outputs in .agents/mockups/phone-touch-paths/ (gitignored).
+- evidence (longPress, 800ms hold on Name): during.menu the seven items (Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master, Remove); during.selected [] (not ["name"] as predicted); during.overlay "expanded", click 1, contextmenu 0; after the lift: selected ["name"], overlay "collapsed", click 2, menu still open.
+- evidence (longPressDrag, hold then +100px): moved.menu the seven items; order unchanged; reordered false (predicted true); undo 0.
+- evidence (dragReorder, swipe +100px): order name moved two places down (warning, styleLine, description, abv, name, …); reordered true; undo 1.
+- evidence (gripReorder): grip null (no [data-grip]).
+- evidence (listScroll, 844x390, row Name, swipe −150px): list [0, 466, 390] (scrolls, 76px of travel); byName scrolled 0, reordered false (predicted true), menu 0; byEye scrolled 76 (the whole travel), reordered false, menu 0.
+- evidence (rename, long-press then tap Rename): opened.renaming true, renameFocused false, overlay "collapsed", click 3; `name` absent (the typed "X" and Enter reached no field; the row was still renaming).
+- evidence (selectMode): menu has no "Select" (the seven items).
+- evidence (masterRemove): [] (no library entries in a fresh browser).
+- evidence (inspectorScroll): byLabel scrolled 0; byInput scrolled 0; touchAction "none"; undo 1. Probe artefact on byInput: the X field's centre is at y 1275, below the 844 viewport, so that finger lands on HTML (scratch diagnostic, below). byLabel is a real reading: the first scrub label (Size, at 23,777) takes the drag, and its scrub is the undo step.
+- evidence (reset, Name, X/Y/title/placeholder set; no #name-suffix field): two resets (X, Y), 20x20 (rect 19.5x19.5), opacity "0", pointerEvents "none", hitsItself false, overlaps []; xBefore "1", xAfter "1" (the tap did nothing).
+- evidence (fieldPair-390x844): sheet 390/390; X [52,633,124], Y [237,633,124] side by side; resetX [26,645,20]. fieldPair-844x390: sheet 300/300; X [596,173,79], Y [736,173,79]; resetX [570,186,20].
+- evidence (guideRemove): × 11.4x11.4, opacity "0", pointerEvents "none", hitsItself false; guides 1, after 1.
+- evidence (metallic): Metallic 44x44 opacity "1", Stroke: metallic 44x44 opacity "0.4"; both hitsItself false and before = after "true". Probe artefact: both sit at y 1484 and 1601, below the viewport inside the scrolled sheet, so the tap missed; not a reading of the control.
+- evidence (tabClose, two tabs): inactive × 13x13 (::after 26x26) opacity "0", pointerEvents "none"; active × 13x13 (::after 26x26) opacity "0.4", hitsItself true; rightOf (23px right) null; the tap 10px right of the active × closed the tab: before 2, after 1 (predicted unchanged); dialog null.
+- evidence (toast): Close 20x20, Act 35.5x24; closedByNearTap false.
+- evidence (suggestion, styleLine): options 44 tall (355.5x44), hitsItself true; before "" focused open; afterScroll "" focused open; afterTap "Hazy Pale Ale", focused true, open false.
+- evidence (toolbar, Description): focused true; html has `data-bold="true"` on the HOPS run.
+- evidence (inspectorActions): outline x 186.9 → 71.1 (moved); removed false. Probe artefact: after the X field's focus the sheet sits at scrollTop 620 and Remove layer is at y −123, off-screen, so the tap missed (scratch diagnostic).
+- evidence (tabOrder, 40 Tabs): outside 20; kinds layers, toggle, header buttons, New tab, White ink comparison, Ruler settings, Zoom percentage, Layer name, Enabled, Locked, Remove layer, Close inspector, Font, …
+- evidence (layout-fresh): preview 369x233, pane 390x695, page 390/390, under44 0, smallest field font 16. layout-selected: preview 369x233, pane 390x315, inspector bottom, page 390/390, under44 0, font 16.
+- evidence (desktop 1280x800 mouse): coarse false; resetHidden opacity "0" (pointerEvents auto, hitsItself true), resetHover opacity "1"; rightClick.menu the seven items, selected ["name"], contextmenu 1; menuRename renaming true, renameFocused true; dblRename renaming true, renameFocused true; shiftClick [warning, styleLine, name]; metaClick plus description; altUp moves name one place up; Delete removes name; nudge x 308.4 → 309.6; suggestion "Hazy Pale Ale", focused, closed.
+- evidence (scratch diagnostic, not part of the probe, same server and harness): a swipe of −150px in the inspector from bare sheet (195,520) scrolls it 194px; from the on-screen Name field (195,547) 205px, undo 0; from the Size scrub label (23,777) 0px, undo 1. So the sheet scrolls by finger, inputs do not block it, and the scrub label alone takes the drag.
+- evidence (run to run, before.json vs before-2.json, every field): identical. Desktop screenshots (Task 3.7 Step 4 script): fresh 0, selected 0, reset-hover 0, menu 21 differing pixels. Noise floor 0, 0, 0, 21.
+- decision: longPress.during.menu has the seven items (not empty) → long-press stays the row menu's touch path; Task 4.4 builds no ⋯ (branch D not taken).
+- decision: longPress.after.overlay "collapsed" and after.events.click 2 > during 1 → Task 4.4 builds the click guard (branch C).
+- decision: rename.opened.renameFocused false (desktop.menuRename true) → Task 4.4 starts the rename once the menu has closed (branch R).
+- decision: listScroll.byName.scrolled 0 (under 10) → no stop; Task 4.4 builds the grip (branch G) as planned. Note: longPressDrag.reordered false and listScroll.byName.reordered false both differ from the plan's prediction (no long-press/drag fight was seen: the menu opened and the drag did nothing).
+- decision: inspectorScroll.byLabel.scrolled 0 (under 10) → no stop; Task 4.2 sets `touch-action: pan-y` on scrub labels as planned.
+- decision: suggestion.afterTap committed ("Hazy Pale Ale"), focused, closed → no changelog bullet for suggestions.
+- not measured (needs a real phone): long-press timing and the OS's own long-press callout under a real finger, real touch slop on rows, iOS Safari's click after a long-press.
