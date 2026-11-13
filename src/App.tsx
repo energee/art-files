@@ -2397,7 +2397,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   return (
     <TooltipProvider>
       <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
-        <DialogContent showCloseButton={false}>
+        <DialogContent bar="lock" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>{t("This label was made with a different master")}</DialogTitle>
             <DialogDescription>
@@ -2496,10 +2496,11 @@ export const DocumentEditor = memo(function DocumentEditor({
                 .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
         </header>
-      {/* The workspace tab strip's slot, under the menubar. Hidden, not
+      {/* The slot under the menubar for the workspace tab strip and the
+          plain bars (recovery, the updater). The strip is hidden, not
           unmounted, while the Settings page is up: settings belong to the
           app, not to a tab. */}
-      {active && <div className={settingsOpen ? "hidden" : "contents"} ref={tabStripHost} />}
+      {active && <div className={settingsOpen ? "contents *:data-tab-strip:hidden" : "contents"} ref={tabStripHost} />}
       {/* The Settings page covers the workspace, which stays mounted and
           laid out underneath (invisible and inert, not display:none) so the
           label, its view and its canvases are as they were on Back.

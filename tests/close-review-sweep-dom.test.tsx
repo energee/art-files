@@ -109,8 +109,11 @@ async function twoTabsClosingWindow() {
   await twoUnsavedTabs();
   await act(async () => { await emit("tauri://close-requested"); });
   await vi.waitFor(() => expect(summary()).not.toBeNull());
+  // Both are locking bars under the title bar, not centred boxes.
+  expect(summary()!.hasAttribute("data-bar")).toBe(true);
   await act(async () => { button("Review Changes…", summary()).click(); });
   await vi.waitFor(() => expect(prompt()?.textContent).toContain("“A”"));
+  expect(prompt()!.hasAttribute("data-bar")).toBe(true);
 }
 
 /** Clicks Save on the prompt for tab A (master edits), resolving the stub
