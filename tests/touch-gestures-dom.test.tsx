@@ -895,3 +895,36 @@ it("a second finger that brushes while a tick press is inside the slop leaves th
   expect(box("name")).toEqual(start);
   expect(canUndo()).toBe(false);
 }, 60_000);
+
+// A finger on a control that keeps its own fingers (here a ruler) is checked
+// before the pane looks for a resize to pinch with: it neither takes the
+// resize's finger nor lets it pan the view.
+it("a finger on a ruler while a tick press is inside the slop leaves the resize alone and the view still", async () => {
+  run("zoom-in"); run("zoom-in");
+  finger(pane, "pointerdown", 9, 400, BOARD_Y); finger(pane, "pointerup", 9, 400, BOARD_Y);
+  const ruler = pane.appendChild(Object.assign(document.createElement("div"), { innerHTML: "<div></div>" }));
+  ruler.dataset.slot = "rulers";
+  select("name");
+  const start = box("name"), view = zoomLayer.style.transform, { x, y } = pastNameCorner();
+  finger(tick("1,1"), "pointerdown", 1, x, y);
+  finger(tick("1,1"), "pointermove", 1, x + 3, y);
+  finger(ruler.firstElementChild!, "pointerdown", 2, 10, 10);
+  finger(ruler.firstElementChild!, "pointermove", 2, 40, 10);
+  finger(tick("1,1"), "pointermove", 1, x + 20, y + 10);
+  finger(ruler.firstElementChild!, "pointerup", 2, 40, 10);
+  finger(tick("1,1"), "pointerup", 1, x + 20, y + 10);
+  expect(box("name").w).toBeGreaterThan(start.w);
+  expect(zoomLayer.style.transform).toBe(view);
+  expect(canUndo()).toBe(true);
+}, 60_000);
+
+it("switching to the Can view mid-drag puts the layer back and leaves Undo empty", async () => {
+  const before = structuredClone(layers()), { x, y } = centre("name");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(sheet, "pointermove", 1, x + 30, y);
+  expect(canUndo()).toBe(true);
+  run("view-can");
+  expect(probe.preview!.canvasRender).toBeNull();
+  expect(layers()).toEqual(before);
+  expect(canUndo()).toBe(false);
+}, 60_000);
