@@ -155,7 +155,6 @@ const en = {
   "Paste": "Paste",
   "Select All": "Select All",
   "Enter Full Screen": "Enter Full Screen",
-  "Exit Full Screen": "Exit Full Screen",
   "Preview: Label": "Preview: Label",
   "Preview: Mask": "Preview: Mask",
   "Preview: Rendered": "Preview: Rendered",

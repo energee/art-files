@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// appmenu-dom.test.tsx — the in-window menu paints a glyph only where the Mac menu does.
+// appmenu-dom.test.tsx — the in-window menu draws text rows without icons.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
@@ -50,40 +50,19 @@ function menuItem(label: string) {
   return item;
 }
 
-it("renders a leading svg on File → New Tab", async () => {
+it("draws no icon on a row: only the text, shortcut and checkmark", async () => {
   const { container, root } = await renderMenu();
   try {
     await openMenu(container, "File");
-    const newTab = menuItem("New Tab");
-    const glyph = newTab.querySelector("svg");
-    expect(glyph).not.toBeNull();
-    expect(glyph?.getAttribute("aria-hidden")).toBe("true");
-    expect(newTab.firstElementChild).toBe(glyph);
-  } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
-  }
-});
-
-it("renders a leading svg on Edit → Undo and on the View → Label check", async () => {
-  const { container, root } = await renderMenu();
-  try {
-    await openMenu(container, "Edit");
-    const undo = menuItem("Undo");
-    expect(undo.querySelector("svg")).not.toBeNull();
-    // Close Edit first: clicking another trigger while a menu is open closes it
+    expect(menuItem("New Tab").querySelector("svg")).toBeNull();
+    // Close File first: clicking another trigger while a menu is open closes it
     // rather than switching (same in Chrome on Base UI 1.6 and 1.8).
     await act(async () => {
       document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       await Promise.resolve();
     });
     await openMenu(container, "View");
-    const label = menuItem("Label");
-    // Its own glyph, not only the checkmark indicator.
-    expect(label.querySelector("svg.lucide-rectangle-horizontal")).not.toBeNull();
-    // Sized like a plain row's glyph: the checkbox item has no svg size rule
-    // of its own, so an unsized Lucide icon drew at its 24px default.
-    expect(label.querySelector("svg.lucide-rectangle-horizontal")?.classList.contains("size-4")).toBe(true);
+    expect(menuItem("Label").querySelector("svg.lucide-rectangle-horizontal")).toBeNull();
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

@@ -4,17 +4,12 @@ import { isMacOS } from "@/keys";
 // desktop menu also carries File → Open Recent, rebuilt from src/recent.ts.
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation, t as translate } from "@/i18n";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
 import type {
-  CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
+  CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
-import {
-  ALargeSmall, Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  Grid2x2, Grid3x3, History, ImagePlus, Layers, Maximize2, MenuIcon, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
-  Redo2, Ruler, Settings, Sparkles, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
-  ZoomIn, ZoomOut, type LucideIcon,
-} from "lucide-react";
+import { MenuIcon } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
 import { commitFieldDraft, dialogOpen, isTypingTarget } from "@/keys";
 import { clearRecent, openRecent, recentLabels, recentTitles, subscribeRecent } from "@/recent";
@@ -25,52 +20,6 @@ import {
 } from "@/components/ui/menubar";
 import { errMsg } from "@/lib/utils";
 import { usePhoneLayout } from "@/usePhoneLayout";
-
-/** SF Symbols, the icons macOS itself uses in menus. The Mac menu shows the
- *  symbol (set natively after install, so it tints with light and dark mode;
- *  src-tauri/src/menu_symbols.rs) and the in-window menu draws the closest
- *  Lucide glyph, so every row carries the same picture in both. */
-const SYMBOL_GLYPH = {
-  "plus.square.on.square": SquarePlus,
-  "folder": FolderOpen,
-  "clock.arrow.circlepath": History,
-  "xmark": X,
-  "square.and.arrow.down": SquareArrowDown,
-  "doc.on.doc": Files,
-  "books.vertical": BookOpen,
-  "bookmark": Bookmark,
-  "doc.badge.plus": BookmarkPlus,
-  "square.and.arrow.up": SquareArrowUp,
-  "photo": FileImage,
-  "circle.lefthalf.filled": Contrast,
-  "square.3.layers.3d": Layers,
-  "arrow.uturn.backward": Undo2,
-  "arrow.uturn.forward": Redo2,
-  "gear": Settings,
-  "rectangle": RectangleHorizontal,
-  "cylinder": Cylinder,
-  "sparkles": Sparkles,
-  "square": Square,
-  "square.grid.2x2": Grid2x2,
-  "ruler": Ruler,
-  "rectangle.split.2x1": Columns2,
-  "plus.magnifyingglass": ZoomIn,
-  "minus.magnifyingglass": ZoomOut,
-  "arrow.up.left.and.down.right.magnifyingglass": Maximize2,
-  "textformat": Type,
-  "photo.badge.plus": ImagePlus,
-  "barcode": Barcode,
-  "qrcode": QrCode,
-  "trash": Trash2,
-  "sidebar.left": PanelLeft,
-  "desktopcomputer": Monitor,
-  "sun.max": Sun,
-  "moon": Moon,
-  "paintpalette": Palette,
-  "textformat.size": ALargeSmall,
-  "square.grid.3x3": Grid3x3,
-} satisfies Record<string, LucideIcon>;
-type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
 type ActionEntry = {
   kind: "action";
@@ -87,7 +36,6 @@ type ActionEntry = {
   /** Extra ⌘K search terms (cmdk keywords): the palette's old wording, so a
    *  search for "Hide rulers" or "Preview: Mask" still finds the row. */
   keywords?: string[];
-  symbol: MenuSymbol;
 };
 type CheckAction = ActionEntry & { check: true };
 type SeparatorEntry = { kind: "separator"; id: string };
@@ -98,59 +46,56 @@ type SubmenuEntry = {
   kind: "submenu";
   id: string;
   text: string;
-  /** Absent on the top-level File/Edit/Layer/View titles, which carry no icon. */
-  symbol?: MenuSymbol;
   items: MenuEntry[];
 };
 /** File → Open Recent: desktop only, its rows built from src/recent.ts. */
-type RecentEntry = { kind: "recent"; id: string; text: string; symbol: MenuSymbol };
+type RecentEntry = { kind: "recent"; id: string; text: string };
 type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry | RecentEntry;
 
-/** The application-owned menus. One table drives both renderers: every row
- *  names an SF Symbol, which the Mac menu shows and the in-window menu draws
- *  as its Lucide match (SYMBOL_GLYPH). Exported for tests, which pin the
+/** The application-owned menus. One table drives both renderers; rows are
+ *  text only, with no icons. Exported for tests, which pin the
  *  wiring (e.g. the Edit menu's native clipboard roles) against this data. */
 export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
-      { kind: "action", id: "tab-new", text: "New Tab", symbol: "plus.square.on.square" },
-      { kind: "action", id: "project-open", text: "Open Label…", symbol: "folder" },
-      { kind: "recent", id: "recent-menu", text: "Open Recent", symbol: "clock.arrow.circlepath" },
-      { kind: "action", id: "tab-close", text: "Close Tab", symbol: "xmark" },
+      { kind: "action", id: "tab-new", text: "New Tab" },
+      { kind: "action", id: "project-open", text: "Open Label…" },
+      { kind: "recent", id: "recent-menu", text: "Open Recent" },
+      { kind: "action", id: "tab-close", text: "Close Tab" },
       { kind: "separator", id: "file-new" },
-      { kind: "action", id: "project-save", text: "Save Label", symbol: "square.and.arrow.down" },
-      { kind: "action", id: "project-save-as", text: "Save Label As…", symbol: "doc.on.doc" },
+      { kind: "action", id: "project-save", text: "Save Label" },
+      { kind: "action", id: "project-save-as", text: "Save Label As…" },
       { kind: "separator", id: "file-master" },
-      { kind: "action", id: "master-open", text: "Open Master…", symbol: "books.vertical" },
+      { kind: "action", id: "master-open", text: "Open Master…" },
       // An ellipsis: it opens the review before anything is written.
-      { kind: "action", id: "master-save", text: "Save Master…", live: true, symbol: "bookmark" },
-      { kind: "action", id: "master-save-as", text: "Save Master As…", symbol: "doc.badge.plus" },
+      { kind: "action", id: "master-save", text: "Save Master…", live: true },
+      { kind: "action", id: "master-save-as", text: "Save Master As…" },
       { kind: "separator", id: "file-projects" },
       {
-        kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
+        kind: "submenu", id: "export-menu", text: "Export", items: [
           // Settings → Export as (Art + mask) picks one set: one file each (White
           // Ink inside), or the art + mask pairs and the single plates.
-          { kind: "action", id: "export-pdf", text: "Export PDF", symbol: "doc.on.doc", optional: true },
-          { kind: "action", id: "export-pdf-as", text: "Export PDF As…", symbol: "doc.on.doc", optional: true },
-          { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc", optional: true },
-          { kind: "action", id: "export-both-as", text: "Export PDFs As…", symbol: "doc.on.doc", optional: true },
-          { kind: "action", id: "export-art", text: "Export Label PDF", symbol: "doc.on.doc", optional: true },
-          { kind: "action", id: "export-mask", text: "Export Mask PDF", symbol: "doc.on.doc", optional: true },
-          { kind: "action", id: "export-psd", text: "Export PSD", symbol: "square.3.layers.3d", optional: true },
-          { kind: "action", id: "export-psd-as", text: "Export PSD As…", symbol: "square.3.layers.3d", optional: true },
-          { kind: "action", id: "export-psds", text: "Export PSDs", symbol: "square.3.layers.3d", optional: true },
-          { kind: "action", id: "export-psds-as", text: "Export PSDs As…", symbol: "square.3.layers.3d", optional: true },
+          { kind: "action", id: "export-pdf", text: "Export PDF", optional: true },
+          { kind: "action", id: "export-pdf-as", text: "Export PDF As…", optional: true },
+          { kind: "action", id: "export-both", text: "Export PDFs", optional: true },
+          { kind: "action", id: "export-both-as", text: "Export PDFs As…", optional: true },
+          { kind: "action", id: "export-art", text: "Export Label PDF", optional: true },
+          { kind: "action", id: "export-mask", text: "Export Mask PDF", optional: true },
+          { kind: "action", id: "export-psd", text: "Export PSD", optional: true },
+          { kind: "action", id: "export-psd-as", text: "Export PSD As…", optional: true },
+          { kind: "action", id: "export-psds", text: "Export PSDs", optional: true },
+          { kind: "action", id: "export-psds-as", text: "Export PSDs As…", optional: true },
         ],
       },
     ],
   },
   {
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
-      { kind: "action", id: "undo", text: "Undo", symbol: "arrow.uturn.backward" },
-      { kind: "action", id: "redo", text: "Redo", symbol: "arrow.uturn.forward" },
+      { kind: "action", id: "undo", text: "Undo" },
+      { kind: "action", id: "redo", text: "Redo" },
       // Both rows move to the application menu on the Mac (useNativeMenu).
       { kind: "separator", id: "edit-settings" },
-      { kind: "action", id: "settings", text: "Settings…", symbol: "gear" },
+      { kind: "action", id: "settings", text: "Settings…" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut", text: "Cut" },
       { kind: "predefined", item: "Copy", text: "Copy" },
@@ -162,55 +107,54 @@ export const APP_MENUS: SubmenuEntry[] = [
     // Remove Layer's ⌫ is display-only, like Undo's: Delete/Backspace go
     // through App's guarded listener, which stands aside in text fields.
     kind: "submenu", id: "layer-menu", text: "Layer", items: [
-      { kind: "action", id: "layer-add-text", text: "Add Text Layer", symbol: "textformat" },
-      { kind: "action", id: "layer-add-image", text: "Add Image Layer", symbol: "photo.badge.plus" },
-      { kind: "action", id: "layer-add-barcode", text: "Add Barcode Layer", symbol: "barcode" },
-      { kind: "action", id: "layer-add-qr", text: "Add QR Layer", symbol: "qrcode" },
+      { kind: "action", id: "layer-add-text", text: "Add Text Layer" },
+      { kind: "action", id: "layer-add-image", text: "Add Image Layer" },
+      { kind: "action", id: "layer-add-barcode", text: "Add Barcode Layer" },
+      { kind: "action", id: "layer-add-qr", text: "Add QR Layer" },
       { kind: "separator", id: "layer-remove-sep" },
-      { kind: "action", id: "layer-remove", text: "Remove Layer", symbol: "trash" },
+      { kind: "action", id: "layer-remove", text: "Remove Layer" },
     ],
   },
   {
     kind: "submenu", id: "view-menu", text: "View", items: [
-      { kind: "action", id: "view-label", text: "Label", check: true, keywords: ["Preview: Label"], symbol: "rectangle" },
-      { kind: "action", id: "view-mask", text: "Mask", check: true, keywords: ["Preview: Mask"], symbol: "circle.lefthalf.filled" },
-      { kind: "action", id: "view-rendered", text: "Rendered", check: true, keywords: ["Preview: Rendered", "Foil", "Metallic"], symbol: "sparkles" },
-      { kind: "action", id: "view-can", text: "Can", check: true, keywords: ["Preview: Can"], symbol: "cylinder" },
+      { kind: "action", id: "view-label", text: "Label", check: true, keywords: ["Preview: Label"] },
+      { kind: "action", id: "view-mask", text: "Mask", check: true, keywords: ["Preview: Mask"] },
+      { kind: "action", id: "view-rendered", text: "Rendered", check: true, keywords: ["Preview: Rendered", "Foil", "Metallic"] },
+      { kind: "action", id: "view-can", text: "Can", check: true, keywords: ["Preview: Can"] },
       { kind: "separator", id: "view-modes" },
       // The Can view's count, as the status bar's 1|4; disabled in 2D.
-      { kind: "action", id: "view-one-can", text: "One Can", check: true, keywords: ["Preview: One Can"], symbol: "square" },
-      { kind: "action", id: "view-four-pack", text: "Four-Pack", check: true, keywords: ["Preview: Four-Pack"], symbol: "square.grid.2x2" },
+      { kind: "action", id: "view-one-can", text: "One Can", check: true, keywords: ["Preview: One Can"] },
+      { kind: "action", id: "view-four-pack", text: "Four-Pack", check: true, keywords: ["Preview: Four-Pack"] },
       { kind: "separator", id: "view-cans" },
       // ⌘B is the sidebar provider's own guarded listener, never a native
       // accelerator (that would take Bold from a text field).
-      { kind: "action", id: "layers", text: "Layers", check: true, keywords: ["Show sidebar", "Hide sidebar"], symbol: "sidebar.left" },
-      { kind: "action", id: "rulers", text: "Rulers", check: true, keywords: ["Show rulers", "Hide rulers"], symbol: "ruler" },
-      { kind: "action", id: "guides", text: "Guides", check: true, keywords: ["Show guides", "Hide guides"], symbol: "rectangle.split.2x1" },
+      { kind: "action", id: "layers", text: "Layers", check: true, keywords: ["Show sidebar", "Hide sidebar"] },
+      { kind: "action", id: "rulers", text: "Rulers", check: true, keywords: ["Show rulers", "Hide rulers"] },
+      { kind: "action", id: "guides", text: "Guides", check: true, keywords: ["Show guides", "Hide guides"] },
       // The app's one length unit, as the ruler corner's picker sets it; here
       // so it stays reachable with the rulers hidden. One is always checked.
       {
-        kind: "submenu", id: "units-menu", text: "Units", symbol: "ruler", items: [
-          { kind: "action", id: "unit-in", text: "Inches", check: true, keywords: ["Units"], symbol: "ruler" },
-          { kind: "action", id: "unit-mm", text: "Millimetres", check: true, keywords: ["Units", "Millimeters"], symbol: "ruler" },
-          { kind: "action", id: "unit-pt", text: "Points", check: true, keywords: ["Units"], symbol: "textformat.size" },
-          { kind: "action", id: "unit-px", text: "Pixels", check: true, keywords: ["Units"], symbol: "square.grid.3x3" },
+        kind: "submenu", id: "units-menu", text: "Units", items: [
+          { kind: "action", id: "unit-in", text: "Inches", check: true, keywords: ["Units"] },
+          { kind: "action", id: "unit-mm", text: "Millimetres", check: true, keywords: ["Units", "Millimeters"] },
+          { kind: "action", id: "unit-pt", text: "Points", check: true, keywords: ["Units"] },
+          { kind: "action", id: "unit-px", text: "Pixels", check: true, keywords: ["Units"] },
         ],
       },
       { kind: "separator", id: "view-zoom" },
-      { kind: "action", id: "zoom-in", text: "Zoom In", symbol: "plus.magnifyingglass" },
-      { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
-      { kind: "action", id: "zoom-fit", text: "Zoom to Fit", symbol: "arrow.up.left.and.down.right.magnifyingglass" },
+      { kind: "action", id: "zoom-in", text: "Zoom In" },
+      { kind: "action", id: "zoom-out", text: "Zoom Out" },
+      { kind: "action", id: "zoom-fit", text: "Zoom to Fit" },
       { kind: "separator", id: "view-appearance" },
       // System / Light / Dark, also in the ⌘K palette; one is always checked.
       {
-        kind: "submenu", id: "appearance-menu", text: "Appearance", symbol: "paintpalette", items: [
-          { kind: "action", id: "theme-system", text: "System", check: true, keywords: ["Theme"], symbol: "desktopcomputer" },
-          { kind: "action", id: "theme-light", text: "Light", check: true, keywords: ["Theme"], symbol: "sun.max" },
-          { kind: "action", id: "theme-dark", text: "Dark", check: true, keywords: ["Theme"], symbol: "moon" },
+        kind: "submenu", id: "appearance-menu", text: "Appearance", items: [
+          { kind: "action", id: "theme-system", text: "System", check: true, keywords: ["Theme"] },
+          { kind: "action", id: "theme-light", text: "Light", check: true, keywords: ["Theme"] },
+          { kind: "action", id: "theme-dark", text: "Dark", check: true, keywords: ["Theme"] },
         ],
       },
-      // Ours rather than the row AppKit inserts on first open, which arrives
-      // after menu_symbols.rs has run and so would stay without its icon.
+      // Ours rather than the row AppKit inserts on first open.
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Fullscreen", text: "Enter Full Screen" },
     ],
@@ -282,13 +226,6 @@ function visibleEntries(entries: MenuEntry[], commands: CommandIndex): MenuEntry
   });
 }
 
-function MenuGlyph({ name }: { name: MenuSymbol }) {
-  const Icon = SYMBOL_GLYPH[name];
-  // Sized here: MenubarCheckboxItem, unlike MenubarItem, has no svg size
-  // rule, so an unsized glyph drew at Lucide's 24px default on check rows.
-  return <Icon aria-hidden="true" className="size-4" />;
-}
-
 function WebEntries(props: {
   entries: MenuEntry[];
   commands: CommandIndex;
@@ -305,7 +242,6 @@ function WebEntries(props: {
       return (
         <MenubarSub key={entry.id}>
           <MenubarSubTrigger>
-            {entry.symbol && <MenuGlyph name={entry.symbol} />}
             {entry.text}
           </MenubarSubTrigger>
           <MenubarSubContent className={MENU_ITEMS}>
@@ -321,7 +257,6 @@ function WebEntries(props: {
       return (
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
-          <MenuGlyph name={entry.symbol} />
           {rowTitle(entry, command)}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
@@ -329,7 +264,6 @@ function WebEntries(props: {
     }
     return (
       <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
-        <MenuGlyph name={entry.symbol} />
         {rowTitle(entry, command)}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
@@ -347,7 +281,7 @@ function WebMenu(props: { commands: CommandIndex; checked: CheckedState; menus: 
       <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
         <MenubarMenu>
           <MenubarTrigger className={MENU_TRIGGER}>
-            {/* Sized: the trigger has no svg size rule (see MenuGlyph). */}
+            {/* Sized: the trigger has no svg size rule of its own. */}
             <MenuIcon className="size-4" />
             <span className="sr-only">{t("Menu")}</span>
           </MenubarTrigger>
@@ -374,8 +308,8 @@ function WebMenu(props: { commands: CommandIndex; checked: CheckedState; menus: 
 
 type MenuApi = typeof import("@tauri-apps/api/menu");
 type NativeResource = { close: () => Promise<void> };
-type NativeEntry = MenuItem | CheckMenuItem | IconMenuItem | PredefinedMenuItem | Submenu;
-type NativeAction = MenuItem | CheckMenuItem | IconMenuItem;
+type NativeEntry = MenuItem | CheckMenuItem | PredefinedMenuItem | Submenu;
+type NativeAction = MenuItem | CheckMenuItem;
 
 
 /** Native menus must own modified accelerators so macOS can display them.
@@ -407,7 +341,6 @@ type NativeMenuLabels = {
   quit: string;
   help: string;
   update: { check: string; restart: string };
-  fullScreen: [string, string];
 };
 const DEFAULT_NATIVE_MENU_LABELS: NativeMenuLabels = {
   about: "About Label Lab",
@@ -419,7 +352,6 @@ const DEFAULT_NATIVE_MENU_LABELS: NativeMenuLabels = {
   quit: "Quit Label Lab",
   help: "Help",
   update: { check: "Check for Updates…", restart: "Restart to Update" },
-  fullScreen: ["Enter Full Screen", "Exit Full Screen"],
 };
 
 /** The macOS application menu. Quit is a custom item, not the predefined
@@ -456,11 +388,10 @@ export async function macApplicationMenu(
     resources.push(item);
     return item;
   }));
-  const updater = await api.IconMenuItem.new({
+  const updater = await api.MenuItem.new({
     id: `check-for-updates${tag}`,
     text: labels.update.check,
     action: checkForUpdates,
-    icon: "Refresh",
   });
   resources.push(updater);
   items.splice(1, 0, updater);
@@ -549,8 +480,8 @@ async function nativeEntry(
   const command = commands[entry.id];
   const options = {
     id: `${entry.id}${tag}`,
-    // The plain title: menu_symbols.rs finds the row by it. A `live` row's
-    // label goes on afterwards, through the state sync's setText.
+    // The plain title. A `live` row's label goes on afterwards, through the
+    // state sync's setText.
     text: entry.text,
     enabled: !command.disabled,
     accelerator: nativeAccelerator(command),
@@ -564,17 +495,6 @@ async function nativeEntry(
   }
   resources.push(item);
   return item;
-}
-
-/** Every row's title and SF Symbol, for menu_symbols.rs to set on the
- *  installed Mac menu. Titles are unique across APP_MENUS. Exported for tests. */
-export function menuSymbols(entries: MenuEntry[] = APP_MENUS): [string, string][] {
-  return entries.flatMap((entry): [string, string][] => {
-    if (entry.kind === "action" || entry.kind === "recent") return [[entry.text, entry.symbol]];
-    if (entry.kind !== "submenu") return [];
-    const own: [string, string][] = entry.symbol ? [[entry.text, entry.symbol]] : [];
-    return [...own, ...menuSymbols(entry.items)];
-  });
 }
 
 /** The macOS application-menu item's two labels, toggled by `updateInstalled`. */
@@ -671,7 +591,7 @@ function useNativeMenu(
         const recentBuiltFrom = JSON.stringify(recentLabels());
         const native = (entry: MenuEntry) =>
           nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources, labels, tag);
-        // One table for the rows and their symbols below. The Mac menu bar:
+        // The Mac menu bar:
         // Settings… (and its separator) leave Edit for the application menu,
         // where macOS puts it (#551; macApplicationMenu). Windows and Linux
         // keep the full table.
@@ -710,25 +630,13 @@ function useNativeMenu(
         }
         const previous = await menu.setAsAppMenu();
         if (previous) await previous.close();
-        // The Tauri menu API only knows AppKit's old template icons; the SF
-        // Symbols go on natively. A failure leaves the rows without icons.
-        if (isMacOS()) {
-          await invoke("set_menu_symbols", {
-            symbols: [...menuSymbols(shown), ...labels.fullScreen.map((title): [string, string] => [title, "viewfinder"])],
-          })
-            .catch((error: unknown) => console.warn("menu symbols:", error));
-        }
         if (!live) {
           await closeResources(resources);
           return;
         }
         const actionItems = new Map<string, NativeAction>();
         for (const resource of resources) {
-          if (
-            resource instanceof api.MenuItem
-            || resource instanceof api.CheckMenuItem
-            || resource instanceof api.IconMenuItem
-          ) {
+          if (resource instanceof api.MenuItem || resource instanceof api.CheckMenuItem) {
             // Every clickable row carries this build's tag.
             actionItems.set(resource.id.slice(0, -tag.length), resource);
           }
@@ -860,7 +768,6 @@ export const AppMenu = memo(function AppMenu(props: {
     quit: t("Quit Label Lab"),
     help: t("Help"),
     update: { check: t(UPDATE_ITEM_TEXT.check), restart: t(UPDATE_ITEM_TEXT.restart) },
-    fullScreen: [t("Enter Full Screen"), t("Exit Full Screen")],
   }), [t]);
   const commands = Object.fromEntries(props.actions.map((command) => [command.id, command]));
   const menus = visibleEntries(localizedMenus(t), commands) as SubmenuEntry[];
