@@ -10,6 +10,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Label Lab on the web.** The editor is published at energ.ee/art-files/app/ with each release.
 - **Edit several layers at once.** With several layers selected, a change in the inspector now applies to every selected layer that has that control: power, lock, position and colour to all of them, and Typography, Image, Barcode or QR settings when they are all that kind. The header shows the count ("3 layers"), and each change is one undo step. Before, the inspector changed only the last layer you picked. A typed X or Y gives every layer the same value, so layers on the same guide line up. The name, content, bindings and Template field settings are hidden until you select one layer.
 - **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
+- **Label Lab fits a phone.** On a phone's browser the editor keeps the same Layers list, preview, toolbar and inspector. Layers slides in from the side and closes when you pick a layer, the inspector opens from the bottom with the label above it, the menus sit under one ☰ button, and Undo and Redo get their own buttons.
+- **Bigger controls on touch screens.** Buttons, fields and menu rows are at least 44 pixels on phones, tablets and touch laptops, and fields no longer make the page zoom when you tap them.
 
 ### Fixed
 - **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
