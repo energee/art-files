@@ -21,12 +21,18 @@ it("lets the operator enable and disable two-file exports", async () => {
   }
   try {
     await act(async () => { root.render(createElement(Settings)); });
-    const toggle = container.querySelector<HTMLButtonElement>('[aria-label="Two-file export (art + mask)"]')!;
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-    await act(async () => { toggle.click(); });
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    // "Export as" names both outcomes: One file | Art + mask.
+    const group = container.querySelector('[aria-labelledby="export-as"]')!;
+    const [one, pair] = [...group.querySelectorAll<HTMLButtonElement>("button")];
+    expect([one.textContent, pair.textContent]).toEqual(["One file", "Art + mask"]);
+    expect(one.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => { pair.click(); });
+    expect(pair.getAttribute("aria-pressed")).toBe("true");
     expect(current.twoFilePdfExport).toBe(true);
-    await act(async () => { toggle.click(); });
+    await act(async () => { one.click(); });
+    expect(current.twoFilePdfExport).toBe(false);
+    // Pressing the chosen side again keeps it: one of the two is always on.
+    await act(async () => { one.click(); });
     expect(current.twoFilePdfExport).toBe(false);
   } finally {
     await act(async () => { root.unmount(); });

@@ -32,6 +32,7 @@ it("quietly advertises updates, keeps Later discoverable, and reuses the update 
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => button("Update available").click());
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("0.1.0 → 0.2.0");
+    expect(document.querySelector('[role="dialog"]')?.getAttribute("data-bar")).toBe("plain"); // a bar, not a modal
     // Installing no longer restarts, so the unsaved-changes warning waits for the restart step.
     expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain("unsaved changes");
     await act(async () => button("Later").click());

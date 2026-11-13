@@ -3,7 +3,8 @@
 // (Windows' installer closes the app itself, so it relaunches during install).
 // The status bar shows only what can be acted on or is under way: checking,
 // an available update, the download, a restart to finish, a failed install.
-// "Up to date" answers a manual check in the dialog and nowhere else.
+// "Up to date" answers a manual check in the update bar (a non-modal dialog
+// laid out as a bar under the tabs) and nowhere else.
 // Before anything closes the app it runs the shell's beforeRestart — the
 // same walk through unsaved tabs and wait for running exports a quit gets —
 // and stops if that is cancelled or an export fails.
@@ -116,6 +117,8 @@ export function DesktopUpdater(props: {
   beforeRestart?: () => Promise<boolean>;
   checkRequest: number;
   statusHost?: HTMLElement | null;
+  /** Where the update bar sits: the tab strip's slot. */
+  barHost?: HTMLElement | null;
   /** Fires with the version once an update is installed and awaiting a relaunch. */
   onInstalled?: () => void;
 }) {
@@ -317,9 +320,10 @@ export function DesktopUpdater(props: {
         </span>,
         props.statusHost,
       )}
-    <Dialog open={open}
+    {/* A plain bar under the tabs, not a modal: the label stays usable. */}
+    <Dialog modal={false} disablePointerDismissal open={open}
       onOpenChange={(open) => { if (!open && !busy) dismiss(); }}>
-      <DialogContent showCloseButton={!busy}>
+      <DialogContent bar="plain" container={props.barHost} showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>
             {status.kind === "available" && t("Update available")}
@@ -347,9 +351,9 @@ export function DesktopUpdater(props: {
         </DialogHeader>
 
         {status.kind === "available" && status.body && (
-          <div className="space-y-1.5">
+          <div className="order-last w-full space-y-1.5">
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{t("What's new")}</p>
-            <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md bg-muted p-3 text-xs">
+            <div className="max-h-24 space-y-1.5 overflow-y-auto rounded-md bg-muted p-3 text-xs">
               {releaseNoteLines(status.body).map((line, i) => (
                 <p key={i} className={NOTE_CLASS[line.kind]}>
                   {line.text.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>

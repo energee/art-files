@@ -1,8 +1,6 @@
 // settings-focus-dom.test.tsx — Settings loads its fields on first open
-// (#410). The dialog must still open focused on its first field, as it did
-// when the fields shipped with the editor, not on the Close button that is
-// the only focusable thing while the fields are still loading. The first
-// field is the Language picker (Language leads).
+// (#410). The page must still open focused on its first field once they
+// arrive. The first field is the Language picker (Language leads).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
