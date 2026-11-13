@@ -390,7 +390,16 @@ export const Rulers = memo(function Rulers(props: {
           keyboard focus on the handle reveals it too. The × is inert until
           revealed: an invisible-but-clickable target in the ruler would
           delete a guide the moment someone dragged a new one out at the same
-          spot. */}
+          spot. On a touch screen, which has no hover, the × always shows, its
+          reach 44px along the ruler and only the ruler's width across it, so
+          it never takes a press on the preview. The reach is sized from the
+          × as drawn, 11.4px (size-3.5 at the 13px root), not REMOVE_SIZE:
+          17px = ⌈(44 − 11.4) / 2⌉ along the ruler; across it, 3px is the ×'s
+          offset from the ruler's outer edge, so the reach starts at that edge
+          and stops short of the inner one. Two side effects are accepted:
+          guides closer than about 28px have overlapping reaches (the later
+          guide in DOM order wins), and a press in the ruler within about
+          23px of a guide hits its × instead of starting a new guide. */}
       {shownManual.map((guide) => {
         const vertical = guide.axis === "x";
         const kind = t(vertical ? "Vertical" : "Horizontal");
@@ -427,8 +436,11 @@ export const Rulers = memo(function Rulers(props: {
                 "pointer-events-none text-muted-foreground opacity-0",
                 "group-hover:pointer-events-auto group-hover:opacity-100",
                 "group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+                "touch:pointer-events-auto touch:opacity-100 touch:after:absolute touch:after:content-['']",
                 "hover:bg-destructive-soft hover:text-destructive-text focus-visible:ring-2 focus-visible:ring-ring",
-                vertical ? "left-0 -translate-x-1/2" : "top-0 -translate-y-1/2")}
+                vertical
+                  ? "left-0 -translate-x-1/2 touch:after:-inset-x-[17px] touch:after:-inset-y-[3px]"
+                  : "top-0 -translate-y-1/2 touch:after:-inset-y-[17px] touch:after:-inset-x-[3px]")}
               style={vertical
                 ? { top: (RULER_SIZE - REMOVE_SIZE) / 2 }
                 : { left: (RULER_SIZE - REMOVE_SIZE) / 2 }}>
@@ -458,9 +470,12 @@ export const Rulers = memo(function Rulers(props: {
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag}
             onClick={onStripClick} />
           <Popover>
+            {/* On a touch screen the corner grows to a 44px target over the
+                rulers' ends; the right and bottom padding keep the unit
+                centred in the painted corner. */}
             <PopoverTrigger
               style={{ height: RULER_SIZE, width: RULER_SIZE }}
-              className="pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 touch:min-h-tap touch:min-w-tap touch:pr-6 touch:pb-6 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 touch:hover:bg-transparent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               title={t("Ruler settings ({{unit}})", { unit })} aria-label={t("Ruler settings, current unit {{unit}}", { unit })}>
               {unit}
             </PopoverTrigger>

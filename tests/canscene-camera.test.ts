@@ -213,3 +213,18 @@ it("still paints every picture change once the camera has stopped on a limit", (
     expect(render.mock.calls.length, name).toBeGreaterThan(0);
   }
 });
+
+// The 3D half of Fit (tests/fit-sheet-dom.test.tsx has the 2D half): at 100%
+// the flat label stands as tall on screen as the 2D sheet would, and on a
+// short pane that sheet is the pane's full height (fitSheetWidth).
+it("frames the flat label at 100% as tall as a short pane, like the 2D sheet", () => {
+  const pane = document.createElement("div");
+  Object.defineProperties(pane, { clientWidth: { value: 543 }, clientHeight: { value: 241 } });
+  const flat = new CanScene(pane);
+  flat.resize(); flat.setMode("flat"); flat.setZoom(1); drainFrames();
+  const { camera, controls } = flat as unknown as CameraScene;
+  const labelHeight = (flat as unknown as { labelHeight(): number }).labelHeight();
+  const viewHeight = 2 * camera.position.distanceTo(controls.target) * Math.tan((camera.fov * Math.PI) / 360);
+  expect((labelHeight / viewHeight) * 241).toBeCloseTo(241, 6);
+  flat.dispose();
+});

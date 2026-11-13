@@ -100,6 +100,16 @@ const duplicateAsset = (dir: string, a: string, b: string) =>
 const tooLarge = (name: string) =>
   new Error(t("Archive is too large: {{name}} exceeds the 128 MiB file or 256 MiB total limit.", { name: `"${name}"` }));
 
+/** A picked .label or .master's bytes, refusing a file too big to be either
+ *  before any of it is read. A phone's chooser lists every file (no `accept`
+ *  on touch), so a video is a tap away, and reading gigabytes would freeze or
+ *  kill the tab. A real archive's compressed size cannot usefully exceed the
+ *  total limit. */
+export async function readArchiveFile(file: File): Promise<Uint8Array> {
+  if (file.size > TOTAL_CAP) throw tooLarge(file.name);
+  return new Uint8Array(await file.arrayBuffer());
+}
+
 /** Streams the archive through fflate's Unzip in 64 KiB slices, counting the
  *  bytes each entry REALLY inflates to: a central directory can understate an
  *  entry's size, so the declared size alone bounds neither memory nor the

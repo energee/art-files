@@ -2,7 +2,7 @@
 // the v3 display list (planLayers) by the canvas backend and stacked; a
 // resizable divider reveals the white-ink layer (left side) over the art
 // (right side). Click selects the layer under the cursor (hittestLayers);
-// double-clicking a text layer edits it IN PLACE over the artwork — the
+// double-clicking (or double-tapping) a text layer edits it IN PLACE — the
 // same rich-lines field the sidebar uses (TextEditor's useTextField), sized
 // to the drawn glyphs, a pill toolbar floating above it, or a plain box for
 // a number/code layer — applying live, one undo step per session. Pointer-
@@ -11,9 +11,9 @@
 // the drag into one undo step the same way.
 //
 // The overlay geometry (page-space boxes, trim guide, selection ticks) lives
-// in previewOverlay.ts and the rich-text in-place session in
-// InPlaceRichField.tsx (#433); this file owns the plates, hit-testing and the
-// pointer gestures.
+// in previewOverlay.ts, the rich-text in-place session in InPlaceRichField.tsx
+// (#433), and the presses (move, resize, tap, double-tap) in useSheetPress.ts;
+// this file owns the plates, hit-testing and the in-place session.
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
@@ -27,15 +27,16 @@ import {
   ART, BLEED_SHIFT, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale,
 } from "@/layout";
 import { labelFontCss } from "@/fonts";
-import { modsOf, type SelectMods } from "@/selection";
+import type { SelectMods } from "@/selection";
 import { errMsg } from "@/lib/utils";
 import { lengthLabel, type LengthUnit } from "@/rulers";
 import {
-  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, pageBox,
-  SEL_PAD,
+  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, pageBox, pagePointOf,
+  pillPos, SEL_PAD, snapColor, type SnapLines,
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
 import { InPlacePlainField } from "./InPlacePlainField";
+import { useSheetPress } from "./useSheetPress";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -44,34 +45,8 @@ import { InPlacePlainField } from "./InPlacePlainField";
 export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
   maskShown ? ["art", "mask"] : ["art"];
 
-/** Pointer travel (px) before a press becomes a drag; below it is a click. */
-const DRAG_THRESHOLD_PX = 3;
-
-
 /** Drag snap distance to a guide or another layer's edge/middle, in label points. */
 export const SNAP_PT = 6;
-
-/** Blue for a page guide (the master's margins/centre, or a manual one),
- *  fuchsia for another layer's edge or middle — the Photoshop/Sketch
- *  convention, and the only way to tell at a glance WHICH kind of alignment
- *  the drag caught. App classifies the line (SnapMark.guide); comparing
- *  coordinates here could not tell a manual guide from a layer edge, nor an
- *  X guide's value landing on a Y line. */
-const snapColor = (mark: SnapMark) => (mark.guide ? "bg-info" : "bg-primary");
-
-/** A snap that happened: the line (guide space), how far the indicator
- *  segment runs along it — from the moving box to the far end of what it
- *  lined up with — and whether a page guide, rather than another layer's
- *  edge, is the only thing that offered it. */
-export interface SnapMark { at: number; from: number; to: number; guide: boolean }
-
-export interface SnapLines {
-  x: SnapMark | null; y: SnapMark | null;
-  /** The distance the drag ACTUALLY travelled after snapping, in label
-   *  points — what the drag readout shows. */
-  dx: number; dy: number;
-}
-
 
 /** Wheel/pinch events arrive every frame. Keep the CSS transform immediate,
  *  then replace its backing bitmap once the gesture pauses. */
@@ -82,6 +57,17 @@ export interface PreviewCompareHandle {
   showMask: () => void;
   /** The exact page box rulers measure; its client rect includes App's CSS transform. */
   getPageElement: () => HTMLDivElement | null;
+  /** A press is down on a layer (move) or a tick (resize), started or not. */
+  layerGestureArmed: () => boolean;
+  /** Ends that gesture exactly as Escape does: undoes its step if it had
+   *  moved (onDragCancel), clears the snap lines and readout, and drops it
+   *  so later moves do nothing. */
+  cancelLayerGesture: () => void;
+  /** A second finger landed: the first finger's press is no tap. */
+  endTap: () => void;
+  /** The tick resize's finger, if one is down, at its latest point: the pane
+   *  can pinch with it while the resize has not started. */
+  resizeFinger: () => { pointerId: number; x: number; y: number; started: boolean } | null;
 }
 
 export const PreviewCompare = forwardRef<
@@ -117,7 +103,7 @@ export const PreviewCompare = forwardRef<
      *  picker's commit rule). */
     onEditCommit: (id: string) => void;
     onEditUppercase: (id: string, uppercase: boolean, first: boolean) => void;
-    /** Drag-to-move: called on every pointermove past the 3px threshold with
+    /** Drag-to-move: called on every pointermove past the threshold with
      *  the CUMULATIVE delta from the drag's start, in label points, `first`
      *  true on the movement that crosses the threshold — App applies moveBy
      *  against the layer as it was at the start (and every other selected
@@ -188,12 +174,6 @@ export const PreviewCompare = forwardRef<
     return () => window.clearTimeout(timeout);
   }, [zoom]);
 
-  useImperativeHandle(ref, () => ({
-    showArt: () => changeSplit(0),
-    showMask: () => changeSplit(100),
-    getPageElement: () => pageElement.current,
-  }), [changeSplit]);
-
   // The display list and boxes, measured once per layers/source/Bleed change. A throw here
   // (a bad binding, an unparsable payload) is caught by the paint effect
   // below, so the last frame stays up.
@@ -249,46 +229,22 @@ export const PreviewCompare = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasRender, plan, rasterScale, bleedIn, maskShown]);
 
-  // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
-  // aspect ratio is locked to PAGE.w/PAGE.h, so a click maps to label-space
-  // points proportionally off the bounding rect.
-  function pagePointOf(
-    e: { clientX: number; clientY: number; currentTarget: HTMLDivElement },
-  ): { xPt: number; yPt: number } | undefined {
-    const r = e.currentTarget.getBoundingClientRect();
-    if (!r.width || !r.height) return undefined; // not laid out yet (e.g. display:none)
-    return {
-      xPt: ((e.clientX - r.left) / r.width) * PAGE.w,
-      yPt: ((e.clientY - r.top) / r.height) * PAGE.h,
-    };
-  }
-
   // Which layer under the event, or null — undefined means "can't tell":
   // source not assembled, not laid out, or the click was really the divider.
-  function hitOf(e: React.MouseEvent<HTMLDivElement>): string | null | undefined {
+  function hitOf(e: React.MouseEvent): string | null | undefined {
     if (!canvasRender) return undefined;
     // The handle tracks the pointer while dragging, so at drag-end the
     // synthesized click still lands over it; ignore anything whose target
     // is the handle so finishing a drag can't change the selection.
     if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return undefined;
-    const p = pagePointOf(e);
+    const p = pagePointOf(pageElement.current!, e.clientX, e.clientY);
     if (!p) return undefined;
     return hitTestBoxes(p.xPt, p.yPt, hitBoxes);
   }
 
-  // A finished drag still fires a click at pointerup; swallow it so moving a
-  // multi-selection can't collapse the selection to the grabbed layer.
-  // (LayerList's suppressClick is the same guard for row reorders.)
-  const swallowClick = useRef(false);
-  function onClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (swallowClick.current) { swallowClick.current = false; return; }
-    const id = hitOf(e);
-    if (id !== undefined) onPick(id, modsOf(e));
-  }
-
-  // Inline text editing: double-click a text layer to edit it IN PLACE over
-  // the artwork. Every keystroke goes straight to the document (see
-  // onEditText's doc), so the drawn render is the live feedback.
+  // Inline text editing: double-click (or double-tap) a text layer to edit
+  // it IN PLACE over the artwork. Every keystroke goes straight to the
+  // document (see onEditText's doc), so the drawn render is the feedback.
   const [editing, setEditing] = useState<string | null>(null);
   // The pill toolbar position (viewport px, captured at open).
   const [toolbarPos, setToolbarPos] = useState({ left: 8, top: 8 });
@@ -300,124 +256,44 @@ export const PreviewCompare = forwardRef<
   // the undo step, and a session that typed nothing commits nothing.
   const edited = useRef(false);
 
-  // Drag-to-move: pointerdown on an unlocked layer arms a two-axis drag;
-  // crossing a 3px threshold starts the gesture (first=true); App folds every
-  // move into ONE undo step.
-  const drag = useRef<{
-    id: string; startClientX: number; startClientY: number;
-    pxPerPtX: number; pxPerPtY: number; started: boolean;
-  } | null>(null);
-
-  // Which lines (if any) the in-flight drag has snapped to, purely to drive
-  // the highlights below — the drag math itself is App's (snapDelta/moveBy),
-  // which reports back what it landed on.
-  const [snap, setSnap] = useState<SnapLines>({ x: null, y: null, dx: 0, dy: 0 });
-
-  // The live measurement badge: the layer it hangs off, and the distance
-  // travelled (a move) or nothing (a resize, which reads its size off the
-  // box the patch just produced). Null when no gesture is running.
-  const [readout, setReadout] = useState<{ id: string; moved: { dx: number; dy: number } | null } | null>(null);
-
-  /** Label points per CSS pixel for the page element, captured once per
-   *  gesture (the wrapper's aspect ratio is locked to the page). */
-  const pageScale = () => {
-    const r = pageElement.current!.getBoundingClientRect();
-    return { pxPerPtX: r.width / PAGE.w, pxPerPtY: r.height / PAGE.h };
-  };
-
-  // Drag-to-resize from any selection tick. Its own pointer session
-  // (capture on the tick) so it never competes with the move drag on the
-  // wrapper; the wrapper's move never starts because the tick stops
-  // pointerdown propagation.
-  const resize = useRef<{
-    id: string; handle: ResizeHandle; startClientX: number; startClientY: number;
-    pxPerPtX: number; pxPerPtY: number; started: boolean;
-  } | null>(null);
-  function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
-    if (e.button !== 0 || editing || boxesById.get(id)?.locked) return;
-    e.stopPropagation();
-    resize.current = { id, handle, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-  function onHandleMove(e: React.PointerEvent<HTMLSpanElement>) {
-    const d = resize.current;
-    if (!d) return;
-    const dxPx = e.clientX - d.startClientX;
-    const dyPx = e.clientY - d.startClientY;
-    if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
-    const first = !d.started;
-    d.started = true;
-    setSnap(onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first));
-    setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
-  }
-  function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
-    // A pointercancel fires no click, so only a real pointerup arms the swallow.
-    if (e.type === "pointerup") swallowClick.current ||= !!resize.current?.started;
-    resize.current = null;
-    setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
-    e.stopPropagation();
-  }
-
-  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0 || editing || !canvasRender) return;
-    const id = hitOf(e);
-    if (!id) return;
-    const target = boxesById.get(id);
-    if (!target || target.locked) return; // locked, or draws nothing
-    drag.current = {
-      id, startClientX: e.clientX, startClientY: e.clientY,
-      ...pageScale(), started: false,
-    };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    const d = drag.current;
-    if (!d) return;
-    const dxPx = e.clientX - d.startClientX;
-    const dyPx = e.clientY - d.startClientY;
-    if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return; // plain click, no undo step
-    const first = !d.started;
-    d.started = true;
-    const dx = dxPx / d.pxPerPtX;
-    const dy = dyPx / d.pxPerPtY;
-    const snapped = onDrag(d.id, dx, dy, first);
-    setSnap(snapped);
-    setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
-  }
-  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    // A pointercancel fires no click, so only a real pointerup arms the swallow.
-    if (e.type === "pointerup") swallowClick.current ||= !!drag.current?.started;
-    drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
-  }
-
-  // Escape mid-drag: undo the single step the drag opened (if any) and drop the
-  // in-flight session so a further pointermove can't resume it. Capture
-  // phase + preventDefault marks the Escape as spent before the inspector
-  // Sheet's document listener sees it, so cancelling a drag doesn't also
-  // close the inspector and deselect (App's Sheet onOpenChange, #117).
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
-      if (drag.current?.started || resize.current?.started) {
-        e.preventDefault();
-        swallowClick.current = true;
-        onDragCancel();
-      }
-      drag.current = null; resize.current = null;
-      setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
+  /** Opens text layer `id` in place, locked too (a lock stops moving, not typing). */
+  function startEditing(e: React.MouseEvent<HTMLDivElement>, id: string) {
+    const layer = layers.find((l) => l.id === id);
+    if (layer?.kind !== "text" || !canvasRender) return;
+    if (!layer.input && !layer.choices?.length) {
+      // Anchor the pill over the layer's box (captured once: it portals to
+      // <body>, where App's CSS zoom can't scale it).
+      const b = boxesById.get(id);
+      if (!b) return;
+      setToolbarPos(pillPos(e.currentTarget.getBoundingClientRect(), b));
     }
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [onDragCancel]);
+    edited.current = false;
+    setEditing(id);
+  }
 
-  // No source, no preview: end the session and free both plates' backing
+  // Presses on the sheet and its ticks: move, resize, tap, double-tap.
+  const press = useSheetPress({
+    pageElement, boxesById, editing, hitOf, startEditing, onPick, onDrag, onResize, onDragCancel,
+  });
+  const { snap, readout, cancelLayerGesture } = press;
+
+  useImperativeHandle(ref, () => ({
+    showArt: () => changeSplit(0),
+    showMask: () => changeSplit(100),
+    getPageElement: () => pageElement.current,
+    ...press.gesture,
+  }), [changeSplit, press.gesture]);
+
+  // No source, no preview: end the session and any armed move or resize (a
+  // hidden tab keeps no gesture), and free both plates' backing
   // stores, up to 51MB each on a zoomed tab. The paint effect above resizes
   // them when a source returns (#734).
   useEffect(() => {
     if (canvasRender) return;
     setEditing(null);
+    cancelLayerGesture();
     for (const c of [artCanvas.current, maskCanvas.current]) if (c) c.width = c.height = 0;
-  }, [canvasRender]);
+  }, [canvasRender, cancelLayerGesture]);
 
   // Report the open session so App can skip the layer from the render for
   // its duration, and COMMIT the one that just ended if it changed anything.
@@ -448,29 +324,6 @@ export const PreviewCompare = forwardRef<
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [editing]);
-
-  function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
-    const id = hitOf(e);
-    const layer = id ? layers.find((l) => l.id === id) : undefined;
-    if (!id || !layer || layer.kind !== "text" || !canvasRender) return;
-    if (!layer.input && !layer.choices?.length) {
-      // Anchor the pill over the layer's box, mapped page → viewport px off
-      // the same rect the click math uses. Captured once, because the pill
-      // portals to <body>: App's CSS zoom can't scale it there.
-      const b = boxesById.get(id);
-      if (!b) return;
-      const r = e.currentTarget.getBoundingClientRect();
-      const boxLeft = r.left + (b.x / PAGE.w) * r.width;
-      const boxTop = r.top + (b.y / PAGE.h) * r.height;
-      // ponytail: fixed clamp for four toggles; measure if the toolbar grows.
-      setToolbarPos({
-        left: Math.max(8, Math.min(boxLeft, window.innerWidth - 188)),
-        top: Math.max(8, boxTop - 48),
-      });
-    }
-    edited.current = false;
-    setEditing(id);
-  }
 
   // Selection changes reuse the scene's boxes; they never remeasure text or codes.
   const boxes = useMemo(
@@ -508,20 +361,18 @@ export const PreviewCompare = forwardRef<
       className="relative m-auto w-full overflow-hidden border border-plate-edge bg-input"
       style={{
         // Width cap in the style object, not the class list, so the 3D scene
-        // can import the same number and frame its label to this sheet.
-        maxWidth: PREVIEW_MAX_W,
+        // can import the same rule (fitSheetWidth) and frame its label to
+        // this sheet: at most PREVIEW_MAX_W, and no wider than the zoom
+        // layer's height (cqh; App makes it the size container) allows, so
+        // 100% shows the whole label on a short pane.
+        maxWidth: `min(${PREVIEW_MAX_W}px, ${(100 * PAGE.w) / PAGE.h}cqh)`,
         aspectRatio: `${PAGE.w} / ${PAGE.h}`,
         // Query container, so the in-place editor can size its invisible
         // glyphs as a share of the page height (cqh) at any zoom.
         containerType: "size",
         ...cornerRadius(dieR + BLEED, PAGE.w, PAGE.h),
       }}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      {...press.sheet}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
       <canvas
@@ -646,9 +497,10 @@ export const PreviewCompare = forwardRef<
               key={h.key} aria-hidden="true" data-resize-handle={h.key}
               title={t("Drag to resize (shift: keep proportions)")}
               className={b.locked ? h.clsLocked : h.cls}
-              onClick={(e) => { e.stopPropagation(); swallowClick.current = false; }}
-              onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
-              onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
+              // A tick keeps its clicks: a mouse resize's would pick, and a
+              // finger's tap has already picked where it lifted (onPointerUp).
+              onClick={(e) => e.stopPropagation()}
+              {...press.tick(b.id, h.handle)}
             />
           ))}
         </div>

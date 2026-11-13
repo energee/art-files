@@ -230,6 +230,13 @@ function change(el: Element, value: string) {
   });
 }
 
+/** Whether a pointerdown and a mousedown on `el` are each cancelled: engines
+ *  differ on which of the two moves focus, so both must be. */
+const pressCancelled = (el: Element) => [
+  new PointerEvent("pointerdown", { bubbles: true, cancelable: true }),
+  new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+].map((down) => { act(() => { el.dispatchEvent(down); }); return down.defaultPrevented; });
+
 const focusTextbox = () => {
   const box = container.querySelector('[role="textbox"]') as HTMLElement;
   act(() => { box.focus(); });
@@ -280,6 +287,13 @@ describe("TextEditor", () => {
     expect(onChange.mock.lastCall?.[0][0]).toMatchObject({ text: "x", bold: true });
     act(() => { bold.blur(); });
     expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
+  });
+
+  it("the toolbar's toggles cancel their press, so the field keeps its focus and selection", () => {
+    renderEditor({ lines: [line("x")] });
+    focusTextbox();
+    const bold = container.querySelector('[aria-label="Toggle bold"]')!;
+    expect(pressCancelled(bold)).toEqual([true, true]);
   });
 
   it("never shows the layer's placeholder in the field; the canvas draws it", () => {
@@ -379,10 +393,12 @@ describe("TextEditor with a vocabulary", () => {
   const options = () =>
     Array.from(document.querySelectorAll("[data-choice]")) as HTMLElement[];
   const novel = () => document.querySelector("[data-novel]") as HTMLElement | null;
-  /** A real click sends mousedown first, which is what the list listens for —
-   *  it has to beat the input's blur, or the list is gone before the pick. */
-  const pick = (el: HTMLElement) =>
-    act(() => { el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+  /** A real click: pointerdown first (the list cancels it to keep the field's
+   *  focus), then the click, which commits. */
+  const pick = (el: HTMLElement) => act(() => {
+    el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+    el.click();
+  });
   const openList = (id = "layer") => {
     const box = container.querySelector(`#${id}`) as HTMLInputElement;
     act(() => { box.focus(); });
@@ -400,6 +416,27 @@ describe("TextEditor with a vocabulary", () => {
     expect(onChange).toHaveBeenCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
   });
 
+  it("keeps the field's focus on a press, and commits on the click", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    openList();
+    const option = options()[1];
+    expect(pressCancelled(option)).toEqual([true, true]);
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => { option.click(); });
+    expect(onChange).toHaveBeenCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
+  });
+
+  it("commits nothing when a finger scrolls the list from an option", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    openList();
+    act(() => {
+      options()[1].dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "touch" }));
+      options()[1].dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(options()).toHaveLength(2);
+  });
+
   it("filters as you type, matching title or value", () => {
     renderEditor({ lines: [], choices: STYLES });
     const box = openList();
@@ -414,6 +451,8 @@ describe("TextEditor with a vocabulary", () => {
     const box = openList();
     change(box, "Saison");
     expect(novel()?.textContent).toContain("Saison");
+    expect(pressCancelled(novel()!)).toEqual([true, true]);
+    expect(onChange).not.toHaveBeenCalled();
     key(box, "Enter");
     expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Saison" }]);
   });

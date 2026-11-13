@@ -12,6 +12,7 @@ description: Tabs, menus, the command palette, messages and crash recovery.
 - **Layers sidebar.** Master picker plus the list. Collapse it from the header button, View → Layers, or `⌘B`.
 - **Preview.** The sheet, the mask reveal, the flat rendered label, or the 3D can. Status bar underneath: zoom and the Label | Mask | Rendered | Can view control.
 - **Inspector.** Right-hand sheet, open while a layer is selected. Not a modal. You can still click the list and the preview.
+- **On a phone.** Layers slides over the preview from the header button and closes when you pick or add a layer, or press Escape. The menus sit under ☰, and Undo and Redo get their own buttons. Held upright, the inspector opens from the bottom, and notifications appear at the top, below the header's buttons. While Layers is open, Tab and screen readers stay inside it. Controls are finger-sized on phones and tablets.
 
 On macOS the desktop app draws everything around the preview (sidebar, tabs, header, status bar, inspector) on Liquid Glass, so the windows behind show through, blurred. The preview itself stays solid so the glass never changes how your artwork looks.
 
@@ -27,7 +28,7 @@ In the desktop app, **File → Open Recent** lists the last ten `.label` files y
 
 Quitting while a PDF or PSD is still exporting waits for it, then Label Lab closes by itself. If the export fails, Label Lab stays open so you can read the error.
 
-The active tab shows its × dimmed at all times; other tabs show theirs on hover. A tab with unsaved changes shows a • in that spot instead, which is also its close button.
+The active tab shows its × dimmed at all times; other tabs show theirs on hover. A tab with unsaved changes shows a • in that spot instead, which is also its close button. On a touch screen only the active tab's × closes it: a tap anywhere on another tab switches to it, and a tab with unsaved changes shows its • and × side by side once active.
 
 Background tabs keep state and assets. They drop the rendered preview. Switch back and it rebuilds like usual.
 

@@ -75,7 +75,9 @@ export const Position = memo(function Position(props: Ctx & {
   );
   // A segmented row is label + three icons + badge, too wide for half of
   // the panel, so in a pair it stacks: label above, control below, its
-  // badge after the control so the control lines up under the label.
+  // badge after the control so the control lines up under the label. On a
+  // touch screen the pair is one full-width column (FieldPair) and the row
+  // stacks the same way.
   const stacked = (node: ReactNode) =>
     <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-1 [&>div>span]:flex-row-reverse">{node}</div>;
   const hGuide = showX && (
@@ -416,9 +418,10 @@ export const StyleSection = memo(function StyleSection(props: Ctx & { layer: Lay
 
       <div className="space-y-1">
         <Heading control={
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 touch:gap-3">
             {/* One reset per state: here while the stroke is off, beside
-                the colour while it is on. */}
+                the colour while it is on. The wider gap on touch keeps the
+                switch's reach (switch.tsx) off the reset. */}
             <BadgeSlot badge={!strokeOn && badge(["style.stroke"], t("Stroke"))} />
             <Switch
               aria-label={t("Outer stroke")}

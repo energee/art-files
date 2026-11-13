@@ -310,10 +310,11 @@ export function MasterPicker(props: {
                   } : undefined}
                   // Remove is the row's own action, not a pick: every event it
                   // fires stops here so the Select never sees a selection.
+                  // 44px on touch.
                   action={entry.inLibrary && (
                     <button type="button" aria-label={translate("Remove {{name}} from the library", { name: entry.name })}
                       title={translate("Remove from the library (Delete). The file stays where it is.")}
-                      className="pointer-events-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
+                      className="pointer-events-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text touch:grid touch:size-tap touch:place-items-center"
                       onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
                       onClick={(e) => { stop(e); void forget(id); }}>
                       <X className="size-3.5" aria-hidden />

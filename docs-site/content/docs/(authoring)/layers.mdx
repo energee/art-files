@@ -1,6 +1,6 @@
 ---
 title: Layers
-description: The Layers list, visibility, lock, the right-click menu, and adding layers.
+description: The Layers list, visibility, lock, the row menu, and adding layers.
 ---
 
 Left list is every layer on the resolved label, **front to back**. Background texture and metallic mask sit at the bottom like any other image. No special Document group.
@@ -8,26 +8,28 @@ Left list is every layer on the resolved label, **front to back**. Background te
 Each row:
 
 - Kind icon (text, image, barcode, QR; texture and mask have their own)
-- Name. Double-click it to rename (or use the inspector's name box, or right-click → Rename)
+- Name. Double-click it to rename (or use the inspector's name box, or the row menu → Rename)
 - A **variant badge** when a variant *adds* this layer, or when an enabled variant changes this master layer. Hover it: "Added by the Collab variant" or "Changed by the Collab variant". A row the variant adds turns grey while that variant is off, and its Show eye is crossed out
-- A **lock** on a locked layer. Click it to unlock. Locking is in the right-click menu and the inspector header. A locked layer can't be dragged, resized or nudged on the canvas, but typed inspector values still apply. Page art (Background, Metallic mask) has no lock because it can't be dragged
+- A **lock** on a locked layer. Click it to unlock. Locking is in the row menu and the inspector header. A locked layer can't be dragged, resized or nudged on the canvas, but typed inspector values still apply. Page art (Background, Metallic mask) has no lock because it can't be dragged
 - **Show**, an eye at the right edge of every row. A crossed-out eye means the layer is hidden from both preview and exports; its name stays readable in grey. This is the saved, undoable `enabled` setting, not a session-only hide. Showing a layer whose variant is off also enables that variant; the tooltip names it
+- On a touch screen, a **grip** at the right end of the row. Drag it to reorder; a finger on the rest of the row scrolls the list
 
 The list is for building the label, so it doesn't mark what this label changed from its master. The Save Master review lists that.
 
-## Right-click menu
+## Row menu
 
-Right-click a row for everything you can do to a layer. It selects the row first, unless the row is already part of the selection, and each action applies to the whole selection.
+Right-click a row, or press and hold it on a touch screen, for everything you can do to a layer. It selects the row first, unless the row is already part of the selection, and each action applies to the whole selection.
 
 - **Rename** (one layer only)
 - **Hide** or **Show**, and **Lock** or **Unlock** (not on page art)
 - **Bring Forward** (`⌥↑`) and **Send Backward** (`⌥↓`)
 - **Reset to Master** puts the layer's position, type and colour back to the master's and keeps what you typed into it. It is greyed out on a layer this label hasn't restyled
 - **Remove** (Delete or Backspace). Undo restores removed layers
+- **Select** (touch screens only) starts selecting: each tap on a row adds it to the selection or takes it out, and Layers stays open. It ends when nothing is selected, when Layers closes, or when the selection changes another way, such as a tap on the label or Add layer
 
 Remove is also the trash button in the inspector header.
 
-Drag a row to reorder. Up the list is toward the front. Delete or Backspace on a selected row removes it.
+Drag a row to reorder (by its grip on a touch screen). Up the list is toward the front. Delete or Backspace on a selected row removes it.
 
 Click a row to select it (inspector opens). The selected row is tinted blue. `⇧` extends. `⌘` / `Ctrl` toggles. Selecting a layer on the preview scrolls its row into view.
 

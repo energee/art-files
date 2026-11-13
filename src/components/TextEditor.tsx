@@ -492,9 +492,12 @@ function ToolbarToggle(props: {
             aria-label={props.label}
             size="sm"
             pressed={props.pressed}
-            // Keeps focus (and the selection) in the contenteditable field
-            // instead of moving it to the button, so the toggle still knows
-            // which line(s) to flip.
+            // The cancelled press (mouse or finger) keeps focus (and the
+            // selection) in the contenteditable field instead of moving it
+            // to the button, so the toggle still knows which line(s) to flip.
+            // Both events: engines differ on which one moves focus; where the
+            // cancelled pointerdown suppresses mousedown, it never fires.
+            onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
             onPressedChange={props.onPress}
           >
@@ -682,17 +685,24 @@ export function ChoiceBox(props: {
           className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
           {shown.map((c, i) => (
             <li key={c.value} id={`${id}-opt-${i}`} role="option" data-choice aria-selected={i === active}
-              // The list is dismissed by blur, so take the press before it.
-              onMouseDown={(e) => { e.preventDefault(); commit(c.value); }}
-              className={cn("cursor-default rounded-sm px-2 py-1 text-xs",
+              // The press is cancelled so the field keeps focus (the list closes
+              // on blur); the click commits, so a finger that scrolls the list
+              // commits nothing. Both press events are cancelled: engines differ
+              // on which one moves focus.
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => commit(c.value)}
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs touch:flex touch:min-h-tap touch:items-center",
                 i === active ? "bg-accent" : "hover:bg-accent")}>
               {c.title ?? c.value}
             </li>
           ))}
           {novel && (
             <li key="__novel" id={`${id}-opt-${shown.length}`} role="option" data-novel aria-selected={active === shown.length}
-              onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
-              className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => commit(typed.trim())}
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground touch:flex touch:min-h-tap touch:items-center",
                 active === shown.length ? "bg-accent" : "hover:bg-accent")}>
               {t("Use “{{value}}”", { value: typed.trim() })}
             </li>
@@ -763,7 +773,7 @@ function RichField(props: TextEditorProps) {
         // height:auto, so it grows a line at a time and the panel scrolls.
         className={cn(
           "min-h-8",
-          "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
+          "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2 touch:text-tap",
           "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         )}
       />
