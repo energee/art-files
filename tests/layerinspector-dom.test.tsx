@@ -1191,4 +1191,13 @@ describe("on a touch screen", () => {
     expect(classes).toContain("touch:gap-1");
     expect(classes.some((c) => /^gap-/.test(c))).toBe(false);
   });
+
+  // A switch's touch reach runs about 9px past its track; the wider gap on
+  // touch keeps it off the reset beside it (measured in the real-touch probe).
+  it.each(["Uppercase", "Outer stroke"])("on touch the %s switch's reach stays clear of the reset beside it", (name) => {
+    render(text());
+    const classes = byLabel(name)!.parentElement!.className.split(" ");
+    expect(classes).toContain("gap-1.5");
+    expect(classes).toContain("touch:gap-3");
+  });
 });

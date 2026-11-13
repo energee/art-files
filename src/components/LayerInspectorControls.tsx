@@ -154,12 +154,13 @@ export function FieldPair(props: { children: [ReactNode, ReactNode] }) {
 
 /** A label on the left, a compact control on the right — the layout every
  *  non-ScrubField row here shares (ScrubField draws its own label). 44px
- *  tall on a touch screen, so a Switch's widened hit area stays in its row. */
+ *  tall on a touch screen, so a Switch's widened hit area stays in its row,
+ *  and a wider gap there, so that hit area stops short of the reset beside it. */
 export function Field(props: { id?: string; label: string; badge?: ReactNode; children: ReactNode }) {
   return (
     <div className="group/reset flex items-center justify-between gap-2 touch:min-h-tap">
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
-      <span className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5 touch:gap-3">
         <BadgeSlot badge={props.badge} />
         {props.children}
       </span>

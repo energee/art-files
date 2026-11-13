@@ -418,9 +418,10 @@ export const StyleSection = memo(function StyleSection(props: Ctx & { layer: Lay
 
       <div className="space-y-1">
         <Heading control={
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 touch:gap-3">
             {/* One reset per state: here while the stroke is off, beside
-                the colour while it is on. */}
+                the colour while it is on. The wider gap on touch keeps the
+                switch's reach (switch.tsx) off the reset. */}
             <BadgeSlot badge={!strokeOn && badge(["style.stroke"], t("Stroke"))} />
             <Switch
               aria-label={t("Outer stroke")}
