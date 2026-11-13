@@ -7,7 +7,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { shortcutLabel } from "@/keys";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "@/i18n";
+import { getLanguage, useTranslation } from "@/i18n";
 
 // The classic light transparency checker, deliberately NOT theme-tinted: a
 // dark checker made black art invisible in the dark UI. Light grey + white
@@ -65,7 +65,10 @@ export function FileDrop(props: {
           shown: props.fileName,
           text: rejected.some((f) => f.errors.some((e) => e.code === "too-many-files"))
             ? t("Drop one file.")
-            : t("Choose {{types}} for {{label}}.", { types: Object.values(props.accept).flat().join(" or "), label: props.label }),
+            : t("Choose {{types}} for {{label}}.", {
+              types: new Intl.ListFormat(getLanguage(), { type: "disjunction" }).format(Object.values(props.accept).flat()),
+              label: props.label,
+            }),
         });
         return;
       }
@@ -149,7 +152,7 @@ export function FileDrop(props: {
                 }}>
                 {t("Undo")}
               </Button>
-            ) : `${shortcutLabel("⌘Z")} brings it back.`}
+            ) : t("{{shortcut}} brings it back.", { shortcut: shortcutLabel("⌘Z") })}
           </p>
         )}
       </div>

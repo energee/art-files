@@ -43,6 +43,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 - **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
 - **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+- **Image well messages are fully translated.** In Spanish, French, German and Portuguese, the note after removing an image ended in English ("brings it back"), and the wrong-file message joined the accepted file types with an English "or". Both now follow the app's language.
+- **Choice fields work with a screen reader.** A field that offers choices, or a barcode's Code field with tiers, now announces the option you arrow to before Enter commits it, names its list after the field instead of an internal id, and reads its error message with the field.
 
 ### Changed
 - **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
@@ -51,6 +53,7 @@ that section to the new version (see .agents/release-steward.md).
 - **White Ink for transparent art builds faster.** The plate's solid colour under art with alpha is now laid down in large blocks instead of one byte at a time. The exported file is unchanged.
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
 - **Guides stay put when the rulers toggle.** Showing or hiding the rulers no longer leaves guides off the label until the next zoom.
+- **Export Artwork PDF is now Export Label PDF.** With Two-file export on, the File menu and the command palette name the plate "Label", as the View menu and the preview toolbar already do.
 
 ## [0.1.119] - 2026-11-12
 

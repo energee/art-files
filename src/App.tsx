@@ -2138,7 +2138,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath }, "pair")) },
       { id: "export-both-as", label: t("Export PDFs As…"),
         disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true }, "pair")) },
-      { id: "export-art", label: t("Export Artwork PDF"),
+      { id: "export-art", label: t("Export Label PDF"),
         disabled: exportBusy, run: guardExport(() => void exportPdfPlate("art", { labelPath: filePath })) },
       { id: "export-mask", label: t("Export Mask PDF"),
         disabled: exportBusy, run: guardExport(() => void exportPdfPlate("mask", { labelPath: filePath })) },
@@ -2328,7 +2328,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     return (
       <div className="space-y-1">
-        <Label htmlFor={id} className="text-xs text-muted-foreground">
+        <Label id={`${id}-label`} htmlFor={id} className="text-xs text-muted-foreground">
           {layer.kind === "barcode" ? t("Code") : t("Value")}
         </Label>
         {/* A vocabulary makes this the same picker the styled fields use —
