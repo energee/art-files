@@ -2544,9 +2544,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
                 .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
-          {/* A phone has no keyboard for ⌘Z: Undo and Redo get buttons. */}
+          {/* A phone has no keyboard for ⌘Z: Undo and Redo get buttons. At
+              the right end only when upright: sideways, the right-hand
+              inspector would cover them. */}
           {phone && (
-            <div className="ml-auto flex items-center gap-1">
+            <div className={cn("flex items-center gap-1", narrow && "ml-auto")}>
               <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("undo").label}
                 disabled={byId("undo").disabled} onClick={byId("undo").run}>
                 <Undo2 />
@@ -2561,7 +2563,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       {/* The workspace tab strip's slot, under the menubar. */}
       {active && <div className="contents" ref={tabStripHost} />}
       <div className="flex min-h-0 flex-1">
-        <section className="flex min-w-0 flex-1 flex-col">
+        {/* Under 768px wide the inspector rises from the bottom: the section
+            (preview pane and toolbar) keeps 45svh clear for it, so the
+            toolbar rests on the sheet. Matches data-[side=bottom]:h-[45svh]. */}
+        <section className={cn("flex min-w-0 flex-1 flex-col",
+          narrow && "transition-[margin] duration-200",
+          narrow && active && inspected && "mb-[45svh]")}>
           <div
             ref={previewPane}
             // The inspector sheet is non-modal and portals over the window,
@@ -2570,12 +2577,11 @@ export const DocumentEditor = memo(function DocumentEditor({
             // is `m-auto` inside — recentres itself in what is left. Keeping
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
-            // against. The margins match the sheet's sizes below: mr-[300px]
-            // its data-[side=right]:w-[300px], mb-[45svh] its
-            // data-[side=bottom]:h-[45svh] on an upright phone.
+            // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
+            // When the sheet is at the bottom the section above makes room.
             className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border bg-background",
               "transition-[margin] duration-200",
-              active && inspected && (narrow ? "mb-[45svh]" : "mr-[300px]"),
+              active && inspected && !narrow && "mr-[300px]",
               panning && "cursor-grabbing")}
             onContextMenu={(e) => viewMode === "2d" && e.preventDefault()}
             // Clicking the pasteboard — the pane around the label sheet —
@@ -2790,7 +2796,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             // specificity and left the sheet at 75% below 640px (#132). The
             // bottom height replaces the base's data-[side=bottom]:h-auto the
             // same way. On a phone z-30 puts the sheet under the Layers
-            // overlay (z-40), which would otherwise open behind it.
+            // overlay (z-40), which would otherwise open behind it; sideways
+            // too, where a wide saved Layers overlay reaches the right sheet.
             className={cn("gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none data-[side=bottom]:h-[45svh]",
               phone && "z-30")}>
             {inspected && (

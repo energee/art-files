@@ -166,7 +166,10 @@ it("keeps undo and redo out of a desktop header", async () => {
 });
 
 const sheet = () => document.querySelector('[data-slot="sheet-content"]')!;
-const pane = () => container.querySelector('[data-slot="sidebar-inset"] section > div')!;
+const section = () => container.querySelector('[data-slot="sidebar-inset"] section')!;
+const pane = () => section().firstElementChild!;
+const toolbar = () => pane().nextElementSibling!;
+const undoGroup = () => headerButton("Undo")!.parentElement!;
 const nameBox = () => document.querySelector("#barcode-name") as HTMLInputElement;
 
 it("raises the inspector from the bottom on an upright phone and keeps it right on a sideways one", async () => {
@@ -174,14 +177,38 @@ it("raises the inspector from the bottom on an upright phone and keeps it right 
   await openLayers();
   await tap(rowButton());
   expect(sheet().getAttribute("data-side")).toBe("bottom");
-  expect(sheet().className).toContain("h-[45svh]");
   expect(sheet().className).toContain("overflow-y-auto"); // Review Focus 4: the sheet scrolls to the focused field
-  expect(pane().className).toContain("mb-[45svh]");
+  // The bottom reservation sits on the section, so the toolbar (the pane's
+  // next sibling) rests on top of the sheet and the pane stays the preview.
+  expect(section().className).toContain("mb-[45svh]");
+  expect(pane().className).not.toContain("mb-[45svh]");
   expect(pane().className).not.toContain("mr-[300px]");
   await act(async () => setViewport(844, 390));
   expect(sheet().getAttribute("data-side")).toBe("right");
   expect(pane().className).toContain("mr-[300px]");
-  expect(pane().className).not.toContain("mb-[45svh]");
+  expect(section().className).not.toContain("mb-[45svh]");
+});
+
+it("keeps the preview toolbar inside the element that makes room for the bottom sheet", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(rowButton());
+  expect(toolbar().querySelector('input[aria-label="Zoom percentage"]')).not.toBeNull();
+  expect(toolbar().closest("section")).toBe(section());
+  expect(section().className).toContain("mb-[45svh]");
+  expect(toolbar().className).not.toContain("mb-[45svh]");
+});
+
+// The right-hand sheet on a sideways phone covers the header's right end.
+it("puts Undo and Redo at the header's right end only when the inspector is at the bottom", async () => {
+  await mount(844, 390);
+  await openLayers();
+  await tap(rowButton());
+  expect(sheet().getAttribute("data-side")).toBe("right");
+  expect(undoGroup().className).not.toContain("ml-auto");
+  await act(async () => setViewport(390, 844));
+  expect(sheet().getAttribute("data-side")).toBe("bottom");
+  expect(undoGroup().className).toContain("ml-auto");
 });
 
 it("keeps the desktop inspector on the right with the pane's right margin", async () => {
@@ -217,7 +244,9 @@ it("keeps the selection, the open inspector, a half-typed field and undo across 
 });
 
 // Carry-over from Task 2.3's review: Layers (z-40) must open over the
-// inspector sheet, not under it, and a pick there must still work.
+// inspector sheet, not under it, and a pick there must still work. happy-dom
+// has no hit-testing, so this only checks the z classes; the real stacking
+// is verified by measurement in Task 2.7.
 it("opens Layers over the open inspector on a phone and lets a row be picked", async () => {
   await mount(390, 844);
   await openLayers();
@@ -241,5 +270,5 @@ it("leaves the desktop sheet on the right at the stock z-50", async () => {
   expect(sheet().className).toContain("z-50");
   expect(sheet().className).not.toContain("z-30");
   expect(sheet().className).toContain("data-[side=right]:w-[300px]");
-  expect(pane().className).not.toContain("mb-[45svh]");
+  expect(section().className).not.toContain("mb-[45svh]");
 });
