@@ -7,8 +7,8 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
 import {
-  AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical,
-  ArrowDownToLine, ArrowUpToLine, ChevronDown, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart,
+  AlignCenterHorizontal, AlignCenterVertical,
+  ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, ArrowUpToLine, ChevronDown, Undo2, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart,
   type LucideIcon,
 } from "lucide-react";
 import type { Layer, Symbology } from "@/model/layers";
@@ -112,7 +112,7 @@ export function Heading(props: {
 }) {
   const { more } = props;
   return (
-    <div className="mb-2 mt-7 flex items-center justify-between">
+    <div className="group/reset mb-2 mt-7 flex items-center justify-between">
       <h2 className="text-xs font-medium text-foreground">{props.children}</h2>
       <span className="flex items-center gap-1.5">
         {props.control}
@@ -133,7 +133,7 @@ export function Heading(props: {
  *  directly (Field, ScrubField), which draws it left of the control. */
 export function Row(props: { badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className="relative">
+    <div className="group/reset relative">
       {props.children}
       <span className="absolute right-0 top-0"><BadgeSlot badge={props.badge} /></span>
     </div>
@@ -151,7 +151,7 @@ export function FieldPair(props: { children: [ReactNode, ReactNode] }) {
  *  non-ScrubField row here shares (ScrubField draws its own label). */
 export function Field(props: { id?: string; label: string; badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="group/reset flex items-center justify-between gap-2">
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
       <span className="flex items-center gap-1.5">
         <BadgeSlot badge={props.badge} />
@@ -161,10 +161,14 @@ export function Field(props: { id?: string; label: string; badge?: ReactNode; ch
   );
 }
 
-/** The override badge — up to TWO marks beside a control, one per source: a
- *  filled dot for a variant, a ring for this label, matching the Layers list.
- *  Each resets only its own source, so clearing your own edit can never
- *  rewrite the shipped variant (which is what one merged badge used to do).
+/** The reset beside an overridden control — up to TWO buttons, one per
+ *  source: this label's (muted) and a variant's (info ink; it rewrites the
+ *  master, and its tooltip says so). Each resets only its own source, so
+ *  clearing your own edit can never rewrite the shipped variant.
+ *
+ *  A reset is offered on demand, not as a standing mark: it shows while its
+ *  row (the nearest `group/reset` ancestor) is hovered or holds focus. Every
+ *  container a badge is drawn in carries that class.
  *
  *  `paths` are checked in order and the first hit is what Reset restores. A
  *  binding and a bound y are each ONE path to edit.ts's leaf-path walk
@@ -179,10 +183,10 @@ export function Badge(props: {
   const label = t(props.label);
   const who = props.overridden.variantName ?? t("A variant");
   const marks = ([
-    { source: "variant", cls: "bg-current", title: t("{{who}} sets {{label}}. Click to reset it in the master.", { who, label }),
+    { source: "variant", cls: "text-info-text", title: t("{{who}} sets {{label}}. Click to reset it in the master.", { who, label }),
       aria: t("Reset {{label}} to the master", { label }),
       path: props.paths.find((p) => props.overridden.variant.has(p)) },
-    { source: "label", cls: "border border-current", title: t("This label sets {{label}}. Click to use the master value.", { label }),
+    { source: "label", cls: "text-muted-foreground hover:text-foreground", title: t("Reset {{label}}", { label }),
       aria: t("Reset {{label}} to this label's master value", { label }),
       path: props.paths.find((p) => props.overridden.label.has(p)) },
   ] as const).filter((m) => m.path);
@@ -193,12 +197,15 @@ export function Badge(props: {
         <button
           key={m.source}
           type="button"
-          className="flex size-6 shrink-0 items-center justify-center rounded text-info-text hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "opacity-0 focus-visible:opacity-100 group-hover/reset:opacity-100 group-focus-within/reset:opacity-100", m.cls,
+          )}
           title={m.title}
           aria-label={m.aria}
           onClick={() => props.onReset(m.path!, m.source)}
         >
-          <span aria-hidden="true" className={cn("size-2 rounded-full", m.cls)} />
+          <Undo2 aria-hidden="true" className="size-3" />
         </button>
       ))}
     </span>
@@ -297,9 +304,9 @@ export function useInspectorOptions() {
     // the guide (offset 0). Empty selection = a legacy layer placed by an
     // absolute x/y; choosing any guide converts it.
     hGuides: [
-      { value: "left" as const, label: t("Anchor to left guide"), icon: AlignStartVertical },
+      { value: "left" as const, label: t("Anchor to left guide"), icon: ArrowLeftToLine },
       { value: "center" as const, label: t("Anchor to center guide"), icon: AlignCenterVertical },
-      { value: "right" as const, label: t("Anchor to right guide"), icon: AlignEndVertical },
+      { value: "right" as const, label: t("Anchor to right guide"), icon: ArrowRightToLine },
     ] satisfies readonly { value: Anchor; label: string; icon: LucideIcon }[],
     vGuides: [
       { value: "top" as const, label: t("Anchor to top guide"), icon: ArrowUpToLine },

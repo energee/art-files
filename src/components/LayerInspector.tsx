@@ -2,11 +2,20 @@
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
 // inline rename (commits on Enter or blur, Escape cancels, like the Layers
-// row's), power and lock icon toggles (no lock on page art), close
-// button, a "editing one of N" note on a multi-selection, an off-variant
-// note), the parent's content editor (no heading: its caption names it),
-// kind-specific geometry/typography, Position (not on page art), Style, and
-// expandable template field settings.
+// row's), Show (the list's eye), Lock (not on page art) and Remove buttons
+// that act on the whole selection, close button, an off-variant note), the
+// parent's content editor (no heading: its caption names it), kind-specific
+// geometry/typography, Position (not on page art), Style, and expandable
+// template field settings.
+//
+// With several layers selected (`others`) it still shows `layer`, the
+// last-picked one, but only the controls the selection shares: the header
+// reads "3 layers" in place of the rename box; the content editor, binding
+// rows and template field settings (one layer's each) are hidden; and the
+// kind section shows only when every selected layer is that kind. The parent
+// sends each patch to every selected layer that has the control
+// (model/multiEdit.ts). A control the layers differ on gets a mark beside it
+// that sets the shown value on all of them.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -36,8 +45,9 @@
 // callbacks; the header and `content` here still render with every edit.
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
-  Barcode, Image, Lock, LockOpen, Power, PowerOff, QrCode, Type, XIcon, type LucideIcon,
+  Barcode, EqualNot, Eye, EyeOff, Image, Lock, LockOpen, QrCode, Trash2, Type, XIcon, type LucideIcon,
 } from "lucide-react";
+import { isMixed, pickPaths, type Peer } from "@/model/multiEdit";
 import type { BindingSide, Layer, LayerKind } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
 import { Button } from "@/components/ui/button";
@@ -99,13 +109,16 @@ export function LayerInspector(props: {
    *  white ink, so Style offers no plate toggle, and only raster art offers
    *  Tint raster (an SVG already takes the fill). */
   rasterArt?: boolean;
+  /** The header's Remove button: removes the layer and the rest of the
+   *  selection. Absent = no button. */
+  onRemove?: () => void;
   /** Shows the header's visible close button. It is a SheetClose, so it
    *  needs the parent Sheet (whose close-press clears the selection, as
    *  Escape does) and returns focus on a keyboard close like Escape. */
   showCloseButton?: boolean;
-  /** How many layers are selected. Above one, the header says only this
-   *  layer is edited — drag, reorder and delete act on all of them. */
-  selectionCount?: number;
+  /** The other selected layers. With any, the sheet shows only the controls
+   *  the selection shares (see the file header). Absent = one layer. */
+  others?: readonly Peer[];
   /** The name of the switched-OFF variant that adds this layer. Such a layer
    *  does not draw and edits to it are dropped (editLabel's patchLayers), so
    *  the header's power reads off — matching the Layers row — and turning
@@ -133,9 +146,20 @@ export function LayerInspector(props: {
   ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- overriddenKey is props.overridden's contents
   const sets = useMemo(() => props.overridden, [overriddenKey]);
+  // The selection as the mixed marks read it, new only when a selected
+  // layer changes; null with one layer, so `badge` keeps its identity there.
+  const multi = !!props.others?.length;
+  const peersKey = multi ? JSON.stringify([layer, props.others]) : "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- peersKey is layer and props.others by value
+  const peers = useMemo(() => (multi ? { layer, others: props.others! } : null), [peersKey]);
   const badge = useCallback((paths: readonly string[], label: string) => (
-    <Badge paths={paths} overridden={sets} label={label} onReset={onReset} />
-  ), [sets, onReset]);
+    <>
+      {peers && isMixed(peers.layer, peers.others, paths) && (
+        <MixedMark label={label} onMatch={() => set(pickPaths(peers.layer, paths))} />
+      )}
+      <Badge paths={paths} overridden={sets} label={label} onReset={onReset} />
+    </>
+  ), [sets, onReset, peers, set]);
   const overridden = useCallback((paths: readonly string[]) =>
     paths.some((p) => sets.variant.has(p) || sets.label.has(p)), [sets]);
   const ctx: Ctx = {
@@ -156,19 +180,23 @@ export function LayerInspector(props: {
   const Icon = KIND_ICONS[layer.kind];
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   const enabled = layer.enabled && props.offVariant === undefined;
-  const multi = (props.selectionCount ?? 1) > 1;
+  const sameKind = !props.others?.some((o) => o.layer.kind !== layer.kind);
   // Page art hides Position, so a position override left on it needs its own reset.
   const stalePosition = page && STALE_POSITION.some(([paths]) => overridden(paths));
 
   return (
     <div className="space-y-1 px-4 py-3">
-      <div className="flex items-center gap-2">
+      <div className="group/reset flex items-center gap-2">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <Input
+        {multi ? (
+          // A name is one layer's: the count stands in, and names the dialog.
+          <h2 id={`${layer.id}-name`} className="flex-1 truncate text-xs font-medium">
+            {t("{{count}} layer", { count: props.others!.length + 1 })}
+          </h2>
+        ) : <Input
           // Also names the inspector dialog (App.tsx, #616).
           id={`${layer.id}-name`}
           aria-label={t("Layer name")}
-          aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
           className="h-7 flex-1 text-xs font-medium"
           value={nameDraft ?? layer.name}
           data-draft={nameDraft !== null ? "" : undefined}
@@ -179,14 +207,14 @@ export function LayerInspector(props: {
             if (e.key === "Enter") commitName();
             else if (e.key === "Escape") setNameDraft(null);
           }}
-        />
-        {/* Power and lock as icon toggles, the Layers row's icons: they stay
+        />}
+        {/* The selection's actions, with the Layers row's icons: they stay
             reachable with the sidebar hidden (⌘B). Page art has no lock — it
             can't be dragged, so locking it would do nothing. */}
         <Button variant="ghost" size="icon-sm" aria-label={t("Enabled")} aria-pressed={enabled}
-          title={enabled ? t("Turn off this layer") : t("Turn on this layer")}
+          title={enabled ? t("Hide from preview and exports") : t("Show in preview and exports")}
           onClick={() => set({ enabled: !enabled })}>
-          {enabled ? <Power aria-hidden="true" /> : <PowerOff aria-hidden="true" />}
+          {enabled ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
         </Button>
         {badge(["enabled"], "Enabled")}
         {!page && <>
@@ -197,43 +225,40 @@ export function LayerInspector(props: {
           </Button>
           {badge(["locked"], "Locked")}
         </>}
+        {props.onRemove && (
+          <Button variant="ghost" size="icon-sm" aria-label={t("Remove layer")} title={t("Remove layer")}
+            className="hover:text-destructive-text" onClick={props.onRemove}>
+            <Trash2 aria-hidden="true" />
+          </Button>
+        )}
         {props.showCloseButton && (
           <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label={t("Close inspector")} />}>
             <XIcon className="size-4.5" aria-hidden="true" />
           </SheetClose>
         )}
       </div>
-      {/* Not focusable: the Sheet keeps focus off the panel so Backspace and
-          the arrows still delete and nudge the whole selection. */}
-      {multi && (
-        <p id={`${layer.id}-selection-note`} className="text-[11px] text-muted-foreground">
-          {t("Editing {{name}} only ({{count}} selected)", { name: layer.name, count: props.selectionCount })}
-        </p>
-      )}
       {props.offVariant !== undefined && (
         <p className="text-[11px] text-muted-foreground">
           {t("From {{variant}}. Turn on this variant to edit the layer.", { variant: props.offVariant })}
         </p>
       )}
 
-      {props.content !== undefined && (
+      {props.content !== undefined && !multi && (
         // No heading: the editor's own caption (Text, Code, Link, Texture…)
         // names it.
         <div className="pt-2">{props.content}</div>
       )}
 
-      {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
-      {layer.kind === "image" && <ImageGeometry layer={layer} rasterArt={props.rasterArt} {...ctx} />}
-      {layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
-      {/* A barcode has no `input` to hang a contract off, but its tier list is
-          the same vocabulary a style has. */}
-      {layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
+      {sameKind && layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
+      {sameKind && layer.kind === "image" && <ImageGeometry layer={layer} rasterArt={props.rasterArt} {...ctx} />}
+      {sameKind && layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
+      {sameKind && layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
 
       {/* Page art has no Position: the renderer stretches it over the whole
           page and ignores x/y (planLayers), so the fields would change nothing.
           A position override still left on it keeps its reset badges here. */}
       {stalePosition && (
-        <div className="flex items-center justify-between gap-2 pt-2">
+        <div className="group/reset flex items-center justify-between gap-2 pt-2">
           <p className="text-[11px] text-muted-foreground">{t("Unused position override")}</p>
           <span className="flex items-center">
             {STALE_POSITION.map(([paths, label]) =>
@@ -241,13 +266,15 @@ export function LayerInspector(props: {
           </span>
         </div>
       )}
-      {!page && <Position layer={layer} layerNames={props.layerNames} onUnbind={onUnbind} onBind={props.onBind && onBind} {...ctx} />}
+      {!page && <Position layer={layer} layerNames={props.layerNames} onUnbind={onUnbind} onBind={props.onBind && onBind} multi={multi} {...ctx} />}
 
       {/* Nor ink of its own to colour or stroke — the texture IS the colour
           and the mask IS the plate — so like the old Document layers it
           carries no Style stack. */}
       {!page && <StyleSection layer={layer} rasterArt={props.rasterArt} {...ctx} />}
-      {(layer.kind === "text" || layer.kind === "barcode") && (
+      {/* A barcode has no `input` to hang a contract off, but its tier list is
+          the same vocabulary a style has. */}
+      {!multi && (layer.kind === "text" || layer.kind === "barcode") && (
         <details className="mt-7">
           <summary className="cursor-pointer rounded py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {t("Template field settings")}
@@ -258,5 +285,21 @@ export function LayerInspector(props: {
         </details>
       )}
     </div>
+  );
+}
+
+/** Beside a control the selected layers differ on (model/multiEdit.ts's
+ *  isMixed): a click sets the shown value on all of them. Sits in the badge
+ *  slot, so every control gets it without a prop of its own. */
+function MixedMark(props: { label: string; onMatch: () => void }) {
+  const { t } = useTranslation();
+  const title = t("Selected layers differ. Click to set {{label}} on all of them.", { label: t(props.label) });
+  return (
+    <button
+      type="button" data-mixed="" title={title} aria-label={title} onClick={props.onMatch}
+      className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <EqualNot aria-hidden="true" className="size-3" />
+    </button>
   );
 }

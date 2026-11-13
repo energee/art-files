@@ -8,6 +8,8 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Added
 - **Label Lab on the web.** The editor is published at energ.ee/art-files/app/ with each release.
+- **Edit several layers at once.** With several layers selected, a change in the inspector now applies to every selected layer that has that control: power, lock, position and colour to all of them, and Typography, Image, Barcode or QR settings when they are all that kind. The header shows the count ("3 layers"), and each change is one undo step. Before, the inspector changed only the last layer you picked. A typed X or Y gives every layer the same value, so layers on the same guide line up. The name, content, bindings and Template field settings are hidden until you select one layer.
+- **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
 
 ### Fixed
 - **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
@@ -55,6 +57,12 @@ that section to the new version (see .agents/release-steward.md).
 - **Print PSD export holds up the app less.** Each image now decodes once instead of twice, and the images move to the background build instead of being copied. If the background build dies partway, which should be rare, the export now fails with an error instead of finishing on the main thread. The exported file is unchanged.
 - **Exports read only the fonts a label uses.** An export used to parse every bundled family to measure text. It now parses the label's own families, and the exported file is unchanged.
 - **White Ink for transparent art builds faster.** The plate's solid colour under art with alpha is now laid down in large blocks instead of one byte at a time. The exported file is unchanged.
+- **A quieter Layers list.** The list no longer marks which layers a label changed from its master, and the Changed filter is gone: the list is for building the label, and the Save Master review still lists what changed. Each row is its name, an eye, and a lock only when the layer is locked (click it to unlock). The trash column is gone, so long names have more room.
+- **Right-click a layer for everything you can do to it.** The menu now holds Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove, with their shortcuts. It selects the row first and acts on the whole selection. Reset to Master puts a layer's position, type and colour back and keeps what you typed into it.
+- **Remove moved to the inspector header,** beside Show and Lock, where one button acts on every selected layer. The header's power icon is now the same eye the list uses. Delete and Backspace still remove.
+- **Reset appears when you point at a field.** The dots beside changed fields are gone, along with the gap that was kept for them. Point at a field this label changed, or tab into it, and a reset arrow appears.
+- **Power and lock on a selected Layers row act on the whole selection.** Clicking either on one of several selected rows, or Lock in its right-click menu, now changes all of them, as drag, reorder and Delete already did.
+- **Horizontal guide buttons match Vertical guide.** Left and right are now arrows pointing at a line, like top and bottom.
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
 - **Guides stay put when the rulers toggle.** Showing or hiding the rulers no longer leaves guides off the label until the next zoom.
 

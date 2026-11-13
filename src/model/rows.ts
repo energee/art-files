@@ -7,6 +7,7 @@
 // see what turning the variant on brings. Pure; App memoizes it per
 // master/label change and hands it to LayerList and the inspector.
 import type { LabelFile, Layer, Master } from "./layers";
+import { isLabelOnly } from "./editLayers";
 import { resolveLayers, withStoredValue } from "./resolveLayers";
 
 /** A variant as the list's chips and badges see it. */
@@ -24,13 +25,14 @@ export interface LayerRow {
    *  does, so the row can name it. A variant is a whole alternative version of
    *  the template, not a bag of extra layers: it may move, recolour or retype
    *  anything the master set (the Collab variant moves the logo). Kept apart
-   *  from `changed` because the two have different blast radii — resetting
+   *  from `overridden` because the two have different blast radii — resetting
    *  this one edits the MASTER FILE. */
   variantOverridden?: VariantChip;
-  /** THIS label changed the layer — a fill value or a label override. What
-   *  the list's "Changed" filter shows, and the successor to the Fillable
-   *  filter now that every layer is fillable. */
-  changed?: boolean;
+  /** THIS label overrides part of the layer's design (position, type, colour,
+   *  name, power or lock): what the row menu's Reset to Master clears. A fill
+   *  value is not one, since a reset keeps content; nor is a label-only
+   *  layer, whose override is its only definition (isLabelOnly). */
+  overridden?: boolean;
 }
 
 export function variantChips(master: Master, label: LabelFile): VariantChip[] {
@@ -59,10 +61,10 @@ export function layerRows(master: Master, label: LabelFile): {
     const v = touching ?? adder(layer.id);
     const variantOverridden = touching && masterIds.has(layer.id)
       ? chips.get(touching.id) : undefined;
-    const changed = label.values[layer.id] !== undefined || !!label.overrides?.[layer.id];
+    const overridden = !!label.overrides?.[layer.id] && !isLabelOnly(master, label, layer.id);
     return {
       layer, ...(v ? { variant: chips.get(v.id) } : {}),
-      ...(variantOverridden ? { variantOverridden } : {}), ...(changed ? { changed } : {}),
+      ...(variantOverridden ? { variantOverridden } : {}), ...(overridden ? { overridden } : {}),
     };
   });
   // Layers only an OFF variant would add, raw from its diff — but carrying
