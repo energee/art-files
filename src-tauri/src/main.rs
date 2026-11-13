@@ -4,7 +4,6 @@
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod menu_symbols;
 mod terminate;
 
 use std::{
@@ -231,8 +230,7 @@ fn main() {
             updater_enabled,
             relaunch_app,
             take_opened_file,
-            terminate::set_unsaved,
-            menu_symbols::set_menu_symbols
+            terminate::set_unsaved
         ])
         // macOS: Dock → Quit, logout and AppleScript `quit` bypass the
         // window close flow; route them through it (see terminate.rs).

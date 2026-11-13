@@ -52,14 +52,14 @@ const native = vi.hoisted(() => {
     beforeInstall: null as (() => Promise<void>) | null,
     installCalls: 0,
     api: {
-      MenuItem: class extends Resource {}, IconMenuItem: class extends Resource {},
+      MenuItem: class extends Resource {},
       PredefinedMenuItem: class extends Resource {}, Submenu: class extends Resource {},
       Menu: class extends Resource {}, CheckMenuItem,
     },
   };
 });
-// The macOS-only paths: the application menu's icon, its SF Symbols call, and
-// the window Quit closes.
+// The macOS-only paths: the application menu's About icon and the
+// window Quit closes.
 const win = vi.hoisted(() => ({ close: vi.fn(async () => undefined) }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: async () => undefined }));
 vi.mock("@tauri-apps/api/app", () => ({ defaultWindowIcon: async () => ({ rid: 1, close: async () => undefined }) }));
@@ -224,8 +224,7 @@ it("reports a failed Quit as the quit source", async () => {
   }
 });
 
-// File → Save Master… is a `live` row: installed under its plain title (the
-// SF Symbol lookup's key), it then reads the command's label, which says
+// File → Save Master… is a `live` row: installed under its plain title, it then reads the command's label, which says
 // Save Variant… while a variant is the version.
 it("installs Save Master… under its plain title and shows the command's variant wording", async () => {
   native.items.clear();

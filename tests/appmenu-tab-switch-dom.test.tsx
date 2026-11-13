@@ -57,7 +57,7 @@ const native = vi.hoisted(() => {
     /** Awaited before a menu installs: holds a rebuild mid-flight. */
     installGate: Promise.resolve(),
     api: {
-      MenuItem: class extends Resource {}, IconMenuItem: class extends Resource {},
+      MenuItem: class extends Resource {},
       PredefinedMenuItem: class extends Resource {}, Submenu: class extends Resource {},
       Menu: class extends Resource {}, CheckMenuItem: class extends Resource {},
     },

@@ -2,7 +2,7 @@
 // the macOS application menu's Quit routing.
 import { describe, expect, it, vi } from "vitest";
 import {
-  APP_MENUS, actionsIn, macApplicationMenu, menuSymbols, nativeAccelerator,
+  APP_MENUS, macApplicationMenu, nativeAccelerator,
 } from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
 
@@ -54,23 +54,6 @@ describe("file menu", () => {
     expect(ids).not.toContain("project-new");
   });
 
-  it("gives every row an SF Symbol, and every title is unique", () => {
-    const pairs = menuSymbols();
-    const actions = actionsIn(APP_MENUS);
-    // Unique: menu_symbols.rs finds each native row by its title.
-    expect(new Set(pairs.map(([title]) => title)).size).toBe(pairs.length);
-    for (const action of actions) {
-      expect(pairs.find(([title]) => title === action.text), action.id).toBeDefined();
-    }
-    expect(Object.fromEntries(pairs)).toMatchObject({
-      "New Tab": "plus.square.on.square", "Open Label…": "folder",
-      "Save Label": "square.and.arrow.down", "Export": "square.and.arrow.up",
-      "Undo": "arrow.uturn.backward", "Settings…": "gear", "Rulers": "ruler",
-      "Add Text Layer": "textformat", "Remove Layer": "trash", "Layers": "sidebar.left",
-      "Appearance": "paintpalette", "Dark": "moon", "Mask": "circle.lefthalf.filled",
-    });
-  });
-
   it("names the .label commands Label and gives Save Master its ellipsis (it opens a review)", () => {
     const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
     const texts = file.items.flatMap((entry) => entry.kind === "action" ? [entry.text] : []);
@@ -120,7 +103,7 @@ describe("view menu", () => {
     const at = view.items.findIndex((entry) => entry.kind === "submenu" && entry.id === "units-menu");
     expect(view.items[at - 1]).toMatchObject({ id: "guides" });
     const units = view.items[at];
-    expect(units).toMatchObject({ text: "Units", symbol: "ruler" });
+    expect(units).toMatchObject({ text: "Units" });
     expect(units.kind === "submenu" && units.items).toEqual([
       expect.objectContaining({ id: "unit-in", text: "Inches", check: true }),
       expect.objectContaining({ id: "unit-mm", text: "Millimetres", check: true }),
@@ -161,7 +144,6 @@ describe("macOS application menu", () => {
     const api = {
       PredefinedMenuItem: record(made.predefined),
       MenuItem: record(made.items),
-      IconMenuItem: record(made.items),
       Submenu: record([]),
     };
     return { api: api as unknown as Parameters<typeof macApplicationMenu>[0], made };
@@ -191,6 +173,14 @@ describe("macOS application menu", () => {
       options.item === item || (typeof options.item === "object" && item in (options.item as object)))?.text;
     expect(text("About")).toBe("About Label Lab");
     expect(text("Hide")).toBe("Hide Label Lab");
+  });
+
+  it("builds Check for Updates… as a plain row, with no icon", async () => {
+    const { api, made } = fakeApi();
+    await macApplicationMenu(api, [], () => undefined, () => undefined, settingsRow, "#1");
+    const updater = made.items.find((options) => options.id === "check-for-updates#1");
+    expect(updater).toBeDefined();
+    expect(updater).not.toHaveProperty("icon");
   });
 
 });
