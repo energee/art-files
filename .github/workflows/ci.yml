@@ -90,7 +90,7 @@ jobs:
           cache: npm
       - run: npm audit --omit=dev --audit-level=high
       # Prebuilt, version-pinned cargo-audit (compiling it costs ~5 minutes a run).
-      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-audit@0.22.2
       - run: cargo audit
