@@ -153,7 +153,6 @@ const de: Record<keyof typeof en, string> = {
   "Paste": "Einfügen",
   "Select All": "Alles auswählen",
   "Enter Full Screen": "Vollbild ein",
-  "Exit Full Screen": "Vollbild verlassen",
   "Preview: Label": "Vorschau: Etikett",
   "Preview: Mask": "Vorschau: Maske",
   "Preview: Rendered": "Vorschau: Gerendert",
