@@ -52,7 +52,8 @@ export function CommandMenu(props: { actions: Command[]; checked?: CheckedState 
   const [open, setOpen] = useState<boolean | null>(null);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+      // Lower-cased: with Caps Lock on, Windows and Linux report "K" (#787).
+      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         // Toggle, but never open while a modal dialog is open (#237, #244);
         // with the palette itself open, ⌘K closes it. Read the DOM now, at

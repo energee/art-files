@@ -2138,7 +2138,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath }, "pair")) },
       { id: "export-both-as", label: t("Export PDFs As…"),
         disabled: exportBusy, run: guardExport(() => void buildFull({ labelPath: filePath, ask: true }, "pair")) },
-      { id: "export-art", label: t("Export Artwork PDF"),
+      { id: "export-art", label: t("Export Label PDF"),
         disabled: exportBusy, run: guardExport(() => void exportPdfPlate("art", { labelPath: filePath })) },
       { id: "export-mask", label: t("Export Mask PDF"),
         disabled: exportBusy, run: guardExport(() => void exportPdfPlate("mask", { labelPath: filePath })) },
@@ -2328,7 +2328,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     return (
       <div className="space-y-1">
-        <Label htmlFor={id} className="text-xs text-muted-foreground">
+        <Label id={`${id}-label`} htmlFor={id} className="text-xs text-muted-foreground">
           {layer.kind === "barcode" ? t("Code") : t("Value")}
         </Label>
         {/* A vocabulary makes this the same picker the styled fields use —
@@ -2503,6 +2503,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
             // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
+            // The preview toolbar under the pane carries the same margin and
+            // transition, or its right end would sit under the sheet.
             className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border bg-background",
               "transition-[margin] duration-200",
               active && inspected && "mr-[300px]",
@@ -2610,8 +2612,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               </div>
             )}
           </div>
-          {/* Preview toolbar, in every view. */}
-          <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
+          {/* Preview toolbar, in every view. It makes the same room for the
+              inspector sheet as the pane above. */}
+          <div className={cn("flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2",
+            "transition-[margin] duration-200",
+            active && inspected && "mr-[300px]")}>
             {/* The "%" sits inside the border so the readout is one control;
                 clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>

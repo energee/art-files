@@ -50,7 +50,9 @@ export function glyphPaths(
     bbox.maxY = Math.max(bbox.maxY, point[1]);
   };
   let advance = 0;
-  const glyphs = font.layout(text).glyphs;
+  // No ligatures in a tracked run: the plan charges tracking per character,
+  // and the live PDF text and the canvas preview drop them too (#776).
+  const glyphs = font.layout(text, tracking ? { liga: false } : undefined).glyphs;
   for (const glyph of glyphs) {
     const toLabel = rotated
       ? (x: number, y: number): Pt => [anchorX - y * scale, anchorY - (advance + x * scale)]
