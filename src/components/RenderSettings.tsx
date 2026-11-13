@@ -48,7 +48,7 @@ export function RenderSettings({ value, onChange }: { value: Settings; onChange:
         onChange={(bleedIn) => set({ bleedIn })} />
       {/* Both outcomes are named, so nobody has to work out what "on"
           means. Stored as twoFilePdfExport, as the switch it replaced was. */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 touch:min-h-tap">
         <span id="export-as" className="text-xs text-muted-foreground">{t("Export as")}</span>
         <ToggleGroup aria-labelledby="export-as" spacing={0} variant="outline"
           value={[value.twoFilePdfExport ? "pair" : "one"]}

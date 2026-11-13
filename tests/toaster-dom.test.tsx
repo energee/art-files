@@ -14,6 +14,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { setLanguage } from "@/i18n";
 import { notify } from "@/notify";
 import { EXIT_MS, advance, mount, settleDismissal, setupToastHarness, show, text, toastCount } from "./toast-harness";
+import { setViewport } from "./viewport";
 
 setupToastHarness();
 
@@ -87,6 +88,42 @@ it("sits at the bottom centre", () => {
   const toaster = document.querySelector("[data-sonner-toaster]")!;
   expect(toaster.getAttribute("data-y-position")).toBe("bottom");
   expect(toaster.getAttribute("data-x-position")).toBe("center");
+});
+
+// Under 768px wide the inspector rises from the bottom; toasts there would
+// cover its lowest fields, so they drop from the top instead.
+it("sits at the top centre under 768px wide", () => {
+  setViewport(390, 844);
+  try {
+    mount();
+    show(() => notify.success("Saved"));
+    const toaster = document.querySelector("[data-sonner-toaster]")!;
+    expect(toaster.getAttribute("data-y-position")).toBe("top");
+    expect(toaster.getAttribute("data-x-position")).toBe("center");
+  } finally {
+    setViewport(1024, 768);
+  }
+});
+
+// …and below the header, so a toast never covers its Layers, ☰, Undo and Redo
+// (a tap there landed on the toast). The workspace tab strip under the header
+// may be covered. Sonner reads --mobile-offset-* under 600px, --offset-* above.
+it("drops below the header under 768px wide, and keeps its desktop offsets above", () => {
+  const offsets = () => {
+    const style = (document.querySelector("[data-sonner-toaster]") as HTMLElement).style;
+    return [style.getPropertyValue("--offset-top"), style.getPropertyValue("--mobile-offset-top"), style.getPropertyValue("--offset-bottom")];
+  };
+  mount();
+  show(() => notify.success("Saved"));
+  expect(offsets()).toEqual(["24px", "16px", "24px"]);
+  setViewport(390, 844);
+  try {
+    mount();
+    show(() => notify.success("Saved"));
+    expect(offsets()).toEqual(["76px", "76px", "24px"]);
+  } finally {
+    setViewport(1024, 768);
+  }
 });
 
 it("follows the app theme", () => {
@@ -269,4 +306,13 @@ it("runs onDismiss when a toast is closed or dismissed by id, not when it fades 
   expect(byId).toHaveBeenCalledTimes(1);
   expect(acted).not.toHaveBeenCalled();
   expect(faded).not.toHaveBeenCalled();
+});
+
+it("gives a toast's buttons a fingertip on touch screens", () => {
+  const css = readFileSync(join(import.meta.dirname, "..", "src", "index.css"), "utf8");
+  const block = css.match(/@media \(pointer: coarse\)\s*\{\s*\[data-sonner-toast\][\s\S]*?\n\}/)?.[0];
+  expect(block, "index.css has no touch rule for toasts").toBeDefined();
+  expect(block).toMatch(/\[data-sonner-toast\] \[data-button\]\s*\{\s*min-height: 44px;/);
+  expect(block).toMatch(/\[data-sonner-toast\] \[data-button\]\s*\{[^}]*min-width: 44px;/);
+  expect(block).toMatch(/\[data-close-button\]::after\s*\{[^}]*inset: -13px;/);
 });

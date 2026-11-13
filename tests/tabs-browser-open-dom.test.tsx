@@ -39,11 +39,13 @@ const handle = (name: string): Handle => {
 };
 const touched: DocumentMeta = { title: "A", dirty: false, edited: true, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0 };
 
+let container: HTMLDivElement;
 let root: Root;
 beforeEach(async () => {
   mocks.editors.length = 0;
   localStorage.clear();
-  root = createRoot(document.createElement("div"));
+  container = document.createElement("div");
+  root = createRoot(container);
   await act(async () => { root.render(createElement(TabsShell)); });
   // Tab one holds a.label; tab two is a fresh tab in front of it.
   mocks.editors[0].fileHandleSlot.current = () => handle("a.label");
@@ -53,6 +55,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await act(async () => { root.unmount(); });
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const pick = (name: string) => act(async () => {
@@ -70,4 +73,20 @@ it("picking a file a tab already holds focuses that tab", async () => {
 it("picking any other file opens it", async () => {
   await pick("b.label");
   expect(mocks.editors[1].fileToOpen).toMatchObject({ handle: { name: "b.label" } });
+});
+
+const realMatchMedia = window.matchMedia.bind(window);
+/** A finger is the primary pointer: (pointer: coarse) matches. */
+const coarse = () => vi.spyOn(window, "matchMedia").mockImplementation(
+  (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
+const fallback = () => container.querySelector('input[type="file"]') as HTMLInputElement;
+
+it("with a mouse the Open Label fallback asks for a .label", () => {
+  expect(fallback().getAttribute("accept")).toBe(".label");
+});
+
+it("on a touch screen the Open Label fallback lists every file", async () => {
+  coarse();
+  await act(async () => { root.render(createElement(TabsShell)); });
+  expect(fallback().hasAttribute("accept")).toBe(false);
 });

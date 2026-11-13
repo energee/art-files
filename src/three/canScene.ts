@@ -12,7 +12,7 @@ import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import type { LabelTextures } from "./labelTextures";
 import { DEFAULT_RENDER } from "@/settings";
 import {
-  ART, LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
+  ART, fitSheetWidth, LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_OVERSAMPLE, TRIM_UV,
 } from "@/layout";
 
 /** What the scene shows: one can, the 2x2 four-pack, or the flat label. */
@@ -720,8 +720,9 @@ export class CanScene {
 
   /** Camera distance at which the label reads the same height on screen as the
    *  2D preview's sheet — which is what makes 100% mean one thing across
-   *  every view. The 2D sheet is width-driven (it fills the pane up to
-   *  PREVIEW_MAX_W and takes its height from the page aspect), so its height is
+   *  every view. The 2D sheet's width is fitSheetWidth: the pane's width up
+   *  to PREVIEW_MAX_W, less when the pane is too short for the label; its
+   *  height follows from the page aspect, so it is
    *  predictable from the pane this canvas now occupies; the rest is the
    *  perspective camera's own half-angle. The can then runs off the top and
    *  bottom of the frame, which is the point: the label is the subject, the can
@@ -736,7 +737,7 @@ export class CanScene {
   private framingDistance(surfaceOffset = 0) {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (!w || !h) return DEFAULT_ZOOM; // pre-layout; setMode reframes later
-    const sheetHeight = Math.min(w, PREVIEW_MAX_W) * (PAGE.h / PAGE.w);
+    const sheetHeight = fitSheetWidth(w, h) * (PAGE.h / PAGE.w);
     const toSurface = this.labelHeight()
       / (2 * (sheetHeight / h) * Math.tan((this.camera.fov * Math.PI) / 360));
     return toSurface + surfaceOffset;

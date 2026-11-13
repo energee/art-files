@@ -61,7 +61,10 @@ function renderRulers(over: Partial<Parameters<typeof Rulers>[0]> = {}) {
   page.getBoundingClientRect = () => rect(800, 500);
   container.appendChild(pane);
   const previewRef: { current: PreviewCompareHandle } = {
-    current: { showArt() {}, showMask() {}, getPageElement: () => page },
+    current: {
+      showArt() {}, showMask() {}, getPageElement: () => page,
+      layerGestureArmed: () => false, cancelLayerGesture() {}, endTap() {}, resizeFinger: () => null,
+    },
   };
   const props: Parameters<typeof Rulers>[0] = {
     paneRef: { current: pane }, previewRef, view: { get: () => FITTED, subscribe: () => () => {} },
@@ -100,6 +103,19 @@ describe("Rulers manual-guide removal", () => {
       handle.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
     });
     expect(props.onRemoveManual).toHaveBeenCalledWith(7);
+  });
+
+  it("shows a guide's remove button on touch, reaching 44px along its ruler", () => {
+    renderRulers();
+    const v = container.querySelector('[aria-label="Remove vertical manual guide"]')!.className;
+    const h = container.querySelector('[aria-label="Remove horizontal manual guide"]')!.className;
+    for (const cls of [v, h]) {
+      expect(cls).toContain("touch:opacity-100");
+      expect(cls).toContain("touch:pointer-events-auto");
+      expect(cls).toContain("opacity-0"); // a mouse still waits for hover or focus
+    }
+    expect(v).toContain("touch:after:-inset-x-[17px] touch:after:-inset-y-[3px]");
+    expect(h).toContain("touch:after:-inset-y-[17px] touch:after:-inset-x-[3px]");
   });
 
   it("hides every manual guide, handle and × when Guides is off", () => {
@@ -348,7 +364,10 @@ function transformedPane() {
     };
   };
   container.appendChild(pane);
-  const previewRef = { current: { showArt() {}, showMask() {}, getPageElement: () => page } };
+  const previewRef = { current: {
+    showArt() {}, showMask() {}, getPageElement: () => page,
+    layerGestureArmed: () => false, cancelLayerGesture() {}, endTap() {}, resizeFinger: () => null,
+  } };
   /** Where a guide must sit for the view, straight from the browser's rect. */
   const expectedLeft = (point: number) => {
     const p = page.getBoundingClientRect();

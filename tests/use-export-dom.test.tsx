@@ -413,3 +413,22 @@ it("a later save leaves an earlier download's URL alone until its time is up (#6
   advance(DOWNLOAD_URL_MS);
   expect(urls.revoked()).toEqual(["blob:test/0", "blob:test/1"]);
 }, 30000);
+
+// Phone layout, Phase 5 (Task 5.3). An export asked for while one builds (a
+// second tap on a slow phone) does nothing; its menu rows are disabled
+// meanwhile (App's exportBusy). Task 5.1 could not catch this in a browser:
+// the build finished before the menu could reopen.
+it("an export asked for while another is building does nothing, and one file is saved", async () => {
+  let release!: (saved: Saved) => void;
+  save.next = [() => new Promise<Saved>((resolve) => { release = resolve; })];
+  mount(<Probe />);
+  let first!: Promise<void>;
+  await act(async () => { first = api.buildFull(); });
+  await untilRequests(1);
+  await act(async () => { await api.buildFull(); await api.exportPsd(); await api.exportPdfPlate("art"); });
+  expect(names()).toEqual(["Lupula.pdf"]);
+  expect(api.exporting).toBe("pdf");
+  await finish(async () => { release({ name: "Lupula.pdf", bytes: new Uint8Array() }); await first; });
+  expect(names()).toEqual(["Lupula.pdf"]);
+  expect(text()).toContain("Saved Lupula.pdf");
+}, 30000);

@@ -166,7 +166,7 @@ export function MasterSaveReview(props: {
               : t("Save these changes to the master. Selected overrides go into the {{target}} version.", { target: props.target })}
         </DialogDescription>
         {promotable.length > 1 && (
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm touch:min-h-tap">
             <Checkbox
               data-row="all"
               checked={allTicked}
@@ -181,7 +181,7 @@ export function MasterSaveReview(props: {
               {g.rows.map((c) => {
                 const row = rowId(c);
                 return c.kind === "promote" ? (
-                  <label key={row} className="mt-1 flex items-center gap-2">
+                  <label key={row} className="mt-1 flex items-center gap-2 touch:min-h-tap">
                     <Checkbox data-row={row} checked={ticked.has(row)} onCheckedChange={() => toggle(row)} />
                     <span className="text-attention-text">{rowText(c, t)}</span>
                   </label>

@@ -21,6 +21,7 @@ import {
   type Tab, type TabsState,
 } from "@/tabs";
 import { LABEL_EXT, isLabelName } from "@/labelfile";
+import { COARSE, useMedia } from "@/usePhoneLayout";
 import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
 import { canRebind, dropRecovery, earlierSnapshots, noteDiscard, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
@@ -167,6 +168,7 @@ export default function TabsShell() {
   // Updates… becomes Restart to Update (same click, DesktopUpdater decides).
   const [updateInstalled, setUpdateInstalled] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const coarse = useMedia(COARSE);
 
   const anyUnsaved = state.tabs.some(unsaved);
   const anyExporting = state.tabs.some((t) => t.exporting);
@@ -627,7 +629,7 @@ export default function TabsShell() {
   // useMemo so the strip element is rebuilt only when its content changes,
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
-    <div data-tab-strip className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
+    <div data-tab-strip className="flex h-9 touch:h-auto shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
       {/* A tablist (#404) so assistive tech announces the active document;
           each chip's title button is the tab, and names unsaved work (#403).
           ARIA lets a tablist own tabs only (#615), so each × is a mouse
@@ -657,11 +659,14 @@ export default function TabsShell() {
           tabs[(i + step + tabs.length) % tabs.length].focus();
         }}>
         {state.tabs.map((t, i) => (
+          // A tap on the chip's own box (its padding, or an inactive tab's
+          // control spot, which takes no taps on touch) switches to the tab.
           <div
             key={t.id}
             role="presentation"
+            onClick={(e) => { if (e.target === e.currentTarget) activate(t.id); }}
             className={cn(
-              "group flex h-6.5 min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
+              "group flex h-6.5 touch:h-auto min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
               t.id === state.active
                 ? "bg-background text-foreground shadow-xs"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -678,12 +683,13 @@ export default function TabsShell() {
               }}
               title={t.filePath ?? t.title}
               aria-label={unsaved(t) ? translate("{{name}} (unsaved changes)", { name: t.title }) : undefined}
-              className="min-w-0 flex-1 truncate rounded-sm text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              className="min-w-0 flex-1 truncate rounded-sm text-left text-xs touch:min-h-tap touch:min-w-tap outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t.title}
             </button>
             {/* Mouse only (see the tablist above). An unsaved tab opens
                 the close dialog first. The after: box widens the hit area
-                to 26 px without growing the drawn button. */}
+                to 26 px without growing the drawn button (with a mouse; on
+                touch the button itself grows, below). */}
             <button
               aria-hidden="true"
               tabIndex={-1}
@@ -701,12 +707,20 @@ export default function TabsShell() {
                 !unsaved(t) && ["group-hover:opacity-100", t.id === state.active
                   ? "opacity-40"
                   : "pointer-events-none opacity-0 group-hover:pointer-events-auto"],
+                // On touch only the active tab's control takes a tap, as a
+                // 44px box, so a tap anywhere on an inactive tab (an unsaved
+                // one's • included) switches to it: two taps close any other
+                // tab. Touch has no hover to swap the • for the ×, so the
+                // active unsaved tab shows both, side by side.
+                t.id === state.active
+                  ? "touch:flex touch:size-tap touch:items-center touch:justify-center touch:gap-0.5 touch:p-0 touch:after:hidden"
+                  : "touch:pointer-events-none",
               )}>
               {unsaved(t) ? (
                 <>
                   <span className="block size-3 text-center leading-3 group-hover:hidden"
                     aria-hidden="true">•</span>
-                  <X className="hidden size-3 group-hover:block" />
+                  <X className={cn("hidden size-3 group-hover:block", t.id === state.active && "touch:block")} />
                 </>
               ) : <X className="size-3" />}
             </button>
@@ -720,7 +734,7 @@ export default function TabsShell() {
         }}
         aria-label={t("New tab")}
         title={t("New tab ({{shortcut}})", { shortcut: shortcutLabel("⌘N") })}
-        className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        className="shrink-0 rounded-md px-2 py-0.5 touch:size-tap text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         +
       </button>
     </div>
@@ -764,8 +778,10 @@ export default function TabsShell() {
           its props (see tabStripHost). */}
       {stripHost && createPortal(tabStrip, stripHost)}
       {/* Hidden-input Open fallback (browser without FS-Access): bytes, no
-          save identity. Desktop never lands here — it uses the native dialog. */}
-      <input ref={fileInput} type="file" accept={LABEL_EXT} className="hidden"
+          save identity. Desktop never lands here — it uses the native dialog.
+          No `accept` on a touch screen, where a phone's picker can grey out a
+          custom extension; the open refuses a wrong file. */}
+      <input ref={fileInput} type="file" accept={coarse ? undefined : LABEL_EXT} className="hidden"
         onChange={(e) => {
           const f = e.currentTarget.files?.[0];
           e.currentTarget.value = "";

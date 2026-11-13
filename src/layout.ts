@@ -87,8 +87,15 @@ export function coverFit(imgW: number, imgH: number) {
 /** Widest the 2D preview sheet is drawn on screen, in CSS px. It lives here
  *  rather than in PreviewCompare's class list because the 3D scene has to
  *  predict that sheet's on-screen height to frame its own label to match
- *  (see canScene's framingDistance) — two readers, one number. */
+ *  (see fitSheetWidth and canScene's framingDistance) — two readers, one
+ *  number. */
 export const PREVIEW_MAX_W = 900;
+/** The 2D sheet's on-screen width at 100% in a pane of that content size:
+ *  it fills the width up to PREVIEW_MAX_W, unless the pane is too short for
+ *  the label's height, so Fit always shows the whole label. PreviewCompare
+ *  states the same rule in CSS; canScene frames its label to it. */
+export const fitSheetWidth = (paneW: number, paneH: number): number =>
+  Math.min(paneW, PREVIEW_MAX_W, paneH * PAGE.w / PAGE.h);
 /** The zoom ceiling every view shares: App clamps the 2D zoom to it and
  *  canScene derives its closest orbit from it, so a view handoff is never
  *  silently clipped. (Raster density is previewRasterScale's job.) */
