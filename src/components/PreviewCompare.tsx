@@ -11,9 +11,9 @@
 // the drag into one undo step the same way.
 //
 // The overlay geometry (page-space boxes, trim guide, selection ticks) lives
-// in previewOverlay.ts and the rich-text in-place session in
-// InPlaceRichField.tsx (#433); this file owns the plates, hit-testing and the
-// pointer gestures.
+// in previewOverlay.ts, the rich-text in-place session in InPlaceRichField.tsx
+// (#433), and the presses (move, resize, tap, double-tap) in useSheetPress.ts;
+// this file owns the plates, hit-testing and the in-place session.
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
@@ -27,7 +27,7 @@ import {
   ART, BLEED_SHIFT, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale,
 } from "@/layout";
 import { labelFontCss } from "@/fonts";
-import { modsOf, type SelectMods } from "@/selection";
+import type { SelectMods } from "@/selection";
 import { errMsg } from "@/lib/utils";
 import { lengthLabel, type LengthUnit } from "@/rulers";
 import {
@@ -36,7 +36,7 @@ import {
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
 import { InPlacePlainField } from "./InPlacePlainField";
-import { extraFinger, foldTap, isTap, stillPress, type Tap } from "./touchPress";
+import { useSheetPress } from "./useSheetPress";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -242,16 +242,6 @@ export const PreviewCompare = forwardRef<
     return hitTestBoxes(p.xPt, p.yPt, hitBoxes);
   }
 
-  // A finished drag still fires a click; swallow it so moving a multi-selection can't collapse
-  // it to the grabbed layer (LayerList's suppressClick, the same guard). On touch only our own tap
-  // picks (onPointerUp, under the finger): Chrome's click, aimed elsewhere or after no tap, picks nothing.
-  const swallowClick = useRef(false), pressType = useRef(""); // the last press's pointerType
-  function onClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (swallowClick.current || pressType.current === "touch") { swallowClick.current = false; return; }
-    const id = hitOf(e);
-    if (id !== undefined) onPick(id, modsOf(e));
-  }
-
   // Inline text editing: double-click (or double-tap) a text layer to edit
   // it IN PLACE over the artwork. Every keystroke goes straight to the
   // document (see onEditText's doc), so the drawn render is the feedback.
@@ -266,172 +256,33 @@ export const PreviewCompare = forwardRef<
   // the undo step, and a session that typed nothing commits nothing.
   const edited = useRef(false);
 
-  // Drag-to-move: pointerdown on an unlocked layer arms a two-axis drag;
-  // crossing the threshold (3px, a finger 10px) starts the gesture
-  // (first=true); App folds every move into ONE undo step.
-  const drag = useRef<{
-    id: string; startClientX: number; startClientY: number;
-    pxPerPtX: number; pxPerPtY: number; started: boolean;
-  } | null>(null);
-
-  // Which lines (if any) the in-flight drag has snapped to, purely to drive
-  // the highlights below — the drag math itself is App's (snapDelta/moveBy),
-  // which reports back what it landed on.
-  const [snap, setSnap] = useState<SnapLines>({ x: null, y: null, dx: 0, dy: 0 });
-
-  // The live measurement badge: the layer it hangs off, and the distance
-  // travelled (a move) or nothing (a resize, which reads its size off the
-  // box the patch just produced). Null when no gesture is running.
-  const [readout, setReadout] = useState<{ id: string; moved: { dx: number; dy: number } | null } | null>(null);
-
-  /** Label points per CSS pixel for the page element, captured once per
-   *  gesture (the wrapper's aspect ratio is locked to the page). */
-  const pageScale = () => {
-    const r = pageElement.current!.getBoundingClientRect();
-    return { pxPerPtX: r.width / PAGE.w, pxPerPtY: r.height / PAGE.h };
-  };
-
-  // Drag-to-resize from any selection tick. Its own pointer session
-  // (capture on the tick, owned by `pointerId`) so it never competes with
-  // the move drag on the wrapper: a tick that takes the press stops its
-  // propagation, so the wrapper's move never starts. A press the tick does
-  // not take (during in-place editing, on a locked layer, an extra finger, a
-  // finger on any layer) bubbles on as any other press would.
-  // A finger resizes only past the tap slop; before that a second finger may pinch (resizeFinger).
-  const resize = useRef<{
-    id: string; handle: ResizeHandle; pointerId: number; startClientX: number; startClientY: number;
-    pxPerPtX: number; pxPerPtY: number; started: boolean; last: { x: number; y: number }; // the finger's latest point
-  } | null>(null);
-  function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
-    if (extraFinger(e) || e.button !== 0 || editing || boxesById.get(id)?.locked) return;
-    // Chrome aims a finger NEAR a tick at the tick, but the event keeps the
-    // finger's own position: on any layer it goes on to the sheet, which
-    // moves and picks that layer; only on bare stock does it resize.
-    if (e.pointerType === "touch" && hitOf(e)) return;
-    e.stopPropagation(); tapFrom.current = lastTap.current = null; // a resize is no tap, and breaks a double-tap
-    resize.current = {
-      id, handle, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false,
-      last: { x: e.clientX, y: e.clientY },
-    };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-  function onHandleMove(e: React.PointerEvent<HTMLSpanElement>) {
-    const d = resize.current;
-    if (d?.pointerId !== e.pointerId) return;
-    const dxPx = e.clientX - d.startClientX, dyPx = e.clientY - d.startClientY;
-    d.last = { x: e.clientX, y: e.clientY };
-    if (!d.started && stillPress(e.pointerType, { x: d.startClientX, y: d.startClientY }, d.last)) return;
-    const first = !d.started;
-    d.started = true;
-    setSnap(onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first));
-    setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
-  }
-  /** The resize's own pointer lifting ends it; its cancel reverts it like
-   *  Escape. Every lift goes on to the sheet and the pane: a pinch may hold
-   *  the resize's finger, and a finger on a layer that onHandleDown handed to
-   *  the sheet ends its move there. */
-  function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
-    if (resize.current?.pointerId !== e.pointerId) return;
-    if (e.type === "pointercancel") { cancelLayerGesture(); return; }
-    swallowClick.current ||= resize.current.started;
-    resize.current = null;
-    setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
-  }
-
-  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (extraFinger(e) || e.button !== 0 || editing || !canvasRender) return;
-    const id = hitOf(e);
-    if (!id) return;
-    const target = boxesById.get(id);
-    if (!target || target.locked) return; // locked, or draws nothing
-    drag.current = {
-      id, startClientX: e.clientX, startClientY: e.clientY,
-      ...pageScale(), started: false,
-    };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    const at = { x: e.clientX, y: e.clientY };
-    if (tapFrom.current && !isTap(tapFrom.current, at)) tapFrom.current = null; // past the slop once is no tap
-    const d = drag.current;
-    if (!d) return;
-    const dxPx = e.clientX - d.startClientX, dyPx = e.clientY - d.startClientY;
-    if (!d.started && stillPress(e.pointerType, { x: d.startClientX, y: d.startClientY }, at)) return; // no undo step
-    const first = !d.started;
-    d.started = true;
-    const dx = dxPx / d.pxPerPtX;
-    const dy = dyPx / d.pxPerPtY;
-    const snapped = onDrag(d.id, dx, dy, first);
-    setSnap(snapped);
-    setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
-  }
-  // Finger double-tap (touchPress.ts): where a touch that may be a tap landed; the last tap.
-  const tapFrom = useRef<{ x: number; y: number } | null>(null);
-  const lastTap = useRef<Tap | null>(null), tapOpened = useRef(false); // a tap opened the session, until the next press
-  /** Capture phase, so every press starts afresh: no swallow left armed by a
-   *  drag whose click never came (a moved touch sends none) eats its click; a
-   *  first finger starts a tap unless a session is open (an extra one ends
-   *  it: endTap). */
-  function onPressCapture(e: React.PointerEvent<HTMLDivElement>) {
-    swallowClick.current = tapOpened.current = false; pressType.current = e.pointerType;
-    if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
-  }
-  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (extraFinger(e)) return; // an ignored finger's lift ends nothing
-    if (e.pointerType === "touch") {
-      const from = tapFrom.current; tapFrom.current = null;
-      const hit = from && !drag.current?.started && isTap(from, { x: e.clientX, y: e.clientY }) ? hitOf(e) : undefined;
-      if (hit !== undefined) onPick(hit, {}); // under the finger, not the click
-      const { open, last } = foldTap(lastTap.current, hit ?? null, e.timeStamp); lastTap.current = last;
-      if (open && hit) { tapOpened.current = true; startEditing(e, hit); }
+  /** Opens text layer `id` in place, locked too (a lock stops moving, not typing). */
+  function startEditing(e: React.MouseEvent<HTMLDivElement>, id: string) {
+    const layer = layers.find((l) => l.id === id);
+    if (layer?.kind !== "text" || !canvasRender) return;
+    if (!layer.input && !layer.choices?.length) {
+      // Anchor the pill over the layer's box (captured once: it portals to
+      // <body>, where App's CSS zoom can't scale it).
+      const b = boxesById.get(id);
+      if (!b) return;
+      setToolbarPos(pillPos(e.currentTarget.getBoundingClientRect(), b));
     }
-    swallowClick.current ||= !!drag.current?.started;
-    drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
+    edited.current = false;
+    setEditing(id);
   }
 
-  // Held in a ref so cancelLayerGesture keeps one identity: App passes a new
-  // onDragCancel every render, and the no-source effect below must not re-run
-  // (and render again) on each of them.
-  const onDragCancelRef = useRef(onDragCancel);
-  onDragCancelRef.current = onDragCancel;
-  /** Undo the single step the move or resize opened (if any) and drop the
-   *  in-flight session so a further pointermove can't resume it. True when
-   *  it undid a started gesture. */
-  const cancelLayerGesture = useCallback((): boolean => {
-    const started = !!(drag.current?.started || resize.current?.started);
-    if (started) onDragCancelRef.current();
-    drag.current = null; resize.current = null; tapFrom.current = null;
-    setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
-    return started;
-  }, []);
-
-  // Escape mid-drag cancels it, the same path a starting pinch takes
-  // (cancelLayerGesture). Capture phase + preventDefault marks the Escape as
-  // spent before the inspector Sheet's document listener sees it, so
-  // cancelling a drag doesn't also close the inspector and deselect (App's
-  // Sheet onOpenChange, #117).
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape" || !cancelLayerGesture()) return;
-      e.preventDefault();
-      swallowClick.current = true;
-    }
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [cancelLayerGesture]);
+  // Presses on the sheet and its ticks: move, resize, tap, double-tap.
+  const press = useSheetPress({
+    pageElement, boxesById, editing, hitOf, startEditing, onPick, onDrag, onResize, onDragCancel,
+  });
+  const { snap, readout, cancelLayerGesture } = press;
 
   useImperativeHandle(ref, () => ({
     showArt: () => changeSplit(0),
     showMask: () => changeSplit(100),
     getPageElement: () => pageElement.current,
-    layerGestureArmed: () => !!(drag.current || resize.current),
-    cancelLayerGesture: () => { cancelLayerGesture(); },
-    endTap: () => { tapFrom.current = null; },
-    resizeFinger: () => {
-      const d = resize.current;
-      return d && { pointerId: d.pointerId, ...d.last, started: d.started };
-    },
-  }), [changeSplit, cancelLayerGesture]);
+    ...press.gesture,
+  }), [changeSplit, press.gesture]);
 
   // No source, no preview: end the session and any armed move or resize (a
   // hidden tab keeps no gesture), and free both plates' backing
@@ -439,7 +290,8 @@ export const PreviewCompare = forwardRef<
   // them when a source returns (#734).
   useEffect(() => {
     if (canvasRender) return;
-    setEditing(null); cancelLayerGesture();
+    setEditing(null);
+    cancelLayerGesture();
     for (const c of [artCanvas.current, maskCanvas.current]) if (c) c.width = c.height = 0;
   }, [canvasRender, cancelLayerGesture]);
 
@@ -472,28 +324,6 @@ export const PreviewCompare = forwardRef<
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [editing]);
-
-  /** Opens text layer `id` in place, locked too (a lock stops moving, not typing). */
-  function startEditing(e: React.MouseEvent<HTMLDivElement>, id: string) {
-    const layer = layers.find((l) => l.id === id);
-    if (layer?.kind !== "text" || !canvasRender) return;
-    if (!layer.input && !layer.choices?.length) {
-      // Anchor the pill over the layer's box (captured once: it portals to
-      // <body>, where App's CSS zoom can't scale it).
-      const b = boxesById.get(id);
-      if (!b) return;
-      setToolbarPos(pillPos(e.currentTarget.getBoundingClientRect(), b));
-    }
-    edited.current = false;
-    setEditing(id);
-  }
-  // Mouse and pen only: on touch the tap counter (onPointerUp) decides, and
-  // Chrome's own dblclick, sent past our slop and window, is ignored. An open
-  // session ignores it too: on a desktop the click-away has closed it by then.
-  function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
-    const id = editing || pressType.current === "touch" ? undefined : hitOf(e);
-    if (id) startEditing(e, id);
-  }
 
   // Selection changes reuse the scene's boxes; they never remeasure text or codes.
   const boxes = useMemo(
@@ -542,19 +372,7 @@ export const PreviewCompare = forwardRef<
         containerType: "size",
         ...cornerRadius(dieR + BLEED, PAGE.w, PAGE.h),
       }}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerDownCapture={onPressCapture}
-      onPointerUp={onPointerUp}
-      // The mousedowns Chrome sends after the tap that opened the field would blur it
-      // (off the field) or select a word (on it, as a double-click): the field opens with a caret.
-      onMouseDown={(e) => { if (tapOpened.current) e.preventDefault(); }}
-      // A cancelled press (an incoming call, the OS taking the touch) puts
-      // the layer back, as Escape and a starting pinch do; an ignored extra
-      // finger's cancel leaves the first finger's gesture alone.
-      onPointerCancel={(e) => { if (!extraFinger(e)) cancelLayerGesture(); }}
+      {...press.sheet}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
       <canvas
@@ -682,8 +500,7 @@ export const PreviewCompare = forwardRef<
               // A tick keeps its clicks: a mouse resize's would pick, and a
               // finger's tap has already picked where it lifted (onPointerUp).
               onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
-              onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
+              {...press.tick(b.id, h.handle)}
             />
           ))}
         </div>

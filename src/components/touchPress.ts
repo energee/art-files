@@ -1,9 +1,9 @@
-// touchPress.ts — the press rules PreviewCompare and the pane (useZoomPan)
+// touchPress.ts — the press rules the sheet (useSheetPress) and the pane (useZoomPan)
 // share: which finger may start a layer gesture, when a press is still a
 // click or a tap rather than a drag or a pinch, and the finger double-tap
 // that opens a text layer in place on the preview.
 // Chrome does send dblclick after a double-tap, but near a small selected
-// layer it aims it (and the clicks) at a resize tick, so PreviewCompare
+// layer it aims it (and the clicks) at a resize tick, so useSheetPress
 // counts taps itself from where each finger lifted.
 
 /** A finger that lands while another is down: only the first finger of a
