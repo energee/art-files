@@ -67,7 +67,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: win
 vi.mock("@tauri-apps/api/menu", () => native.api);
 import { APP_MENUS, AppMenu, actionsIn } from "@/components/AppMenu";
 
-/** The export rows App.tsx offers with Settings → Two-file export on; with it
+/** The export rows App.tsx offers with Settings → Export as (Art + mask) on; with it
  *  off it offers the other optional exports (one file each) instead. */
 const PAIRED = new Set(["export-both", "export-both-as", "export-art", "export-mask", "export-psds", "export-psds-as"]);
 const offered = (pairs: boolean) => (entry: { id: string; optional?: true }) =>

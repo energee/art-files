@@ -744,9 +744,9 @@ it("names the view-mode group and its keyboard shortcuts", async () => {
   } finally { await unmount(); }
 });
 
-// The inspector edits one layer: on a multi-selection it says which (#1), and
-// on a layer only an off variant adds it reads Off like the row does (#2).
-it("the inspector names its one layer in a multi-selection and reads an off variant's layer as Off", async () => {
+// A layer only an off variant adds reads Off like the row does (#2); a
+// multi-selection is headed by its count.
+it("the inspector reads an off variant's layer as Off and heads a multi-selection with its count", async () => {
   const { container, unmount } = await mountEditor();
   try {
     const rowButton = (id: string) =>
@@ -760,7 +760,69 @@ it("the inspector names its one layer in a multi-selection and reads an off vari
     expect(container.querySelector("#master-picker")!.textContent).toContain("Collab");
     expect(enabled().getAttribute("aria-pressed")).toBe("true");
     await act(async () => rowButton("name").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
-    expect(document.querySelector("#name-selection-note")?.textContent).toBe("Editing Name only (2 selected)");
+    expect(document.querySelector("#name-name")?.textContent).toBe("2 layers");
   } finally { await unmount(); }
 }, 60_000);
 
+// With several layers selected, a change from the inspector reaches every
+// one of them as ONE undo step, and so does power on a selected Layers row
+// (src/model/multiEdit.ts).
+it("an inspector change and a row's power reach every selected layer, one undo step each", async () => {
+  await withCanvasEditor(async (p, container) => {
+    const rowButton = (id: string) =>
+      container.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`) as HTMLButtonElement;
+    await act(async () => rowButton("barcode").click());
+    await act(async () => rowButton("name").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
+    const locked = () => ["barcode", "name"].map((id) => !!layerOf(p(), id)?.locked);
+    await act(async () => (document.querySelector('[aria-label="Locked"]') as HTMLButtonElement).click());
+    expect(locked()).toEqual([true, true]);
+    await pressUndo();
+    expect(locked()).toEqual([false, false]);
+
+    const drawn = () => ["barcode", "name"].map((id) => p().layers.some((l) => l.id === id));
+    expect(drawn()).toEqual([true, true]);
+    await act(async () =>
+      (container.querySelector('[data-layer-id="name"] button[aria-label$=": enabled"]') as HTMLButtonElement).click());
+    expect(drawn()).toEqual([false, false]);
+    await pressUndo();
+    expect(drawn()).toEqual([true, true]);
+
+    // Page art picked last (a shift-range ending on Background) has no
+    // Position or Style to share, so the sheet stays on the last layer that does.
+    await act(async () => rowButton("mask").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
+    expect(document.querySelector("#name-name")?.textContent).toBe("3 layers");
+    expect(document.querySelector('[aria-label="Locked"]')).not.toBeNull();
+  });
+}, 60_000);
+
+// The row menu's Reset to Master puts a layer's design back and keeps its
+// content, and the inspector header's Remove takes the whole selection.
+it("Reset to Master clears a layer's overrides, and the header's Remove removes the selection", async () => {
+  await withCanvasEditor(async (p, container) => {
+    const rowButton = (id: string) =>
+      container.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`) as HTMLButtonElement;
+    const menuItem = (text: string) => Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim().startsWith(text))!;
+    await act(async () => rowButton("name").click());
+    await act(async () => (document.querySelector('[aria-label="Locked"]') as HTMLButtonElement).click());
+    expect(layerOf(p(), "name").locked).toBe(true);
+    // Right-click another row: it becomes the selection, and has nothing to reset.
+    await act(async () => {
+      rowButton("barcode").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+      await Promise.resolve();
+    });
+    expect(document.querySelector("#barcode-name")).not.toBeNull();
+    expect(menuItem("Reset to Master").getAttribute("aria-disabled")).toBe("true");
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    await act(async () => {
+      rowButton("name").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+      await Promise.resolve();
+    });
+    await act(async () => { menuItem("Reset to Master").click(); await Promise.resolve(); });
+    expect(layerOf(p(), "name").locked).toBeFalsy();
+
+    await act(async () => rowButton("barcode").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
+    await act(async () => (document.querySelector('[aria-label="Remove layer"]') as HTMLButtonElement).click());
+    expect(p().layers.some((l) => l.id === "name" || l.id === "barcode")).toBe(false);
+  });
+}, 60_000);

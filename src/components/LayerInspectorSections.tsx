@@ -40,6 +40,9 @@ import {
 
 export const Position = memo(function Position(props: Ctx & {
   layer: Layer; layerNames: readonly { id: string; name: string }[]; onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
+  /** Several layers are selected: a binding is one layer's, so its rows and
+   *  the Bind button are hidden. */
+  multi?: boolean;
 }) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
@@ -55,7 +58,7 @@ export const Position = memo(function Position(props: Ctx & {
   const showX = !horizontal;
   const showY = (!binding || horizontal) && typeof y === "number";
   const pair = (a: ReactNode, b: ReactNode) =>
-    a && b ? <FieldPair>{[a, b]}</FieldPair> : a || b;
+    a && b ? <FieldPair>{a}{b}</FieldPair> : a || b;
   const xField = showX && (
     <DimensionField badge={badge(["x"], "X")}
       id={`${id}-x`} label={guideOf(layer.guideX) ? t("X offset") : "X"} unit={props.unit} value={layer.x}
@@ -111,7 +114,7 @@ export const Position = memo(function Position(props: Ctx & {
   );
   // Unbound, Bind is an icon button on Rotation's row; bound, the binding's
   // own rows (Bound to, Side, Gap, Unbind) replace it.
-  const bind = !binding && (
+  const bind = !binding && !props.multi && (
     <DropdownMenu>
       <DropdownMenuTrigger render={
         <Button variant="outline" size="icon-xs" aria-label={t("Bind to layer…")} title={t("Bind to layer…")}
@@ -141,7 +144,7 @@ export const Position = memo(function Position(props: Ctx & {
       <Heading>{t("Position")}</Heading>
       {pair(xField, yField)}
       {hGuide && vGuide ? pair(stacked(hGuide), stacked(vGuide)) : hGuide || vGuide}
-      {binding && (
+      {binding && !props.multi && (
         <>
           <Field label={t("Bound to")} badge={badge(["binding", "y"], t("Binding"))}>
             <span className="flex items-center gap-1 text-xs font-medium">
@@ -170,7 +173,7 @@ export const Position = memo(function Position(props: Ctx & {
         </>
       )}
       {(rotation || bind) && (
-        <div className="flex items-center justify-between gap-2">
+        <div className="group/reset flex items-center justify-between gap-2">
           {rotation && <Label className="text-xs text-muted-foreground">{t("Rotation")}</Label>}
           <span className="flex items-center gap-1.5">{bind}{rotation}</span>
         </div>
@@ -386,7 +389,7 @@ export const StyleSection = memo(function StyleSection(props: Ctx & { layer: Lay
     <div className="space-y-3">
       <div className="space-y-1">
         <Heading>{t("Color")}</Heading>
-        <div className="flex items-center gap-1.5">
+        <div className="group/reset flex items-center gap-1.5">
           <div className="min-w-0 flex-1">
             {/* "No ink" is only offered where it can't break the layer: a
                 code with no fill cannot scan. */}
@@ -430,7 +433,7 @@ export const StyleSection = memo(function StyleSection(props: Ctx & { layer: Lay
         }>{t("Stroke")}</Heading>
         {strokeOn && (
           <>
-            <div className="flex items-center gap-1.5">
+            <div className="group/reset flex items-center gap-1.5">
               <div className="min-w-0 flex-1">
                 <ColorField
                   id={`${id}-stroke-color`} label={t("Stroke")} value={style.stroke!} allowNone={false}
