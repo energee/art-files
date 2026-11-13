@@ -47,6 +47,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 - **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
 - **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+- **Screen readers announce a master that fails to open.** The "Could not open master" message under the master picker used to appear without being read out. It is now announced like the picker's other notes.
 - **Image well messages are fully translated.** In Spanish, French, German and Portuguese, the note after removing an image ended in English ("brings it back"), and the wrong-file message joined the accepted file types with an English "or". Both now follow the app's language.
 - **Choice fields work with a screen reader.** A field that offers choices, or a barcode's Code field with tiers, now announces the option you arrow to before Enter commits it, names its list after the field instead of an internal id, and reads its error message with the field.
 - **Ctrl+K and Ctrl+B work with Caps Lock on.** On Windows and Linux, the command palette and the Layers sidebar shortcuts did nothing while Caps Lock was on.
