@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.120] - 2026-11-12
 
 ### Fixed
 - **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
