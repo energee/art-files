@@ -2,8 +2,9 @@
 // gesture Photoshop and Figma use for values judged against a live preview
 // (tracking, stroke width) rather than known in advance. With a fine primary
 // pointer only: on a touch-first device the name scrolls the panel instead,
-// and the value is typed. Built on Base UI's NumberField, which owns clamping, rounding, arrow keys and the scrub gesture
-// (ScrubArea, Shift/Alt for coarse/fine). NumberRoot below pins the few
+// and the value is typed. Built on Base UI's NumberField, which owns
+// clamping, rounding, arrow keys and the scrub gesture (ScrubArea,
+// Shift/Alt for coarse/fine). NumberRoot below pins the few
 // NumberField defaults that don't suit an editor that writes on every change.
 // Styling stays shadcn — a Label as the scrub handle, an InputGroup holding
 // the Input and its unit addon. LayerInspector's BlankableField shares

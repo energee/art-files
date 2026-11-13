@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { PREVIEW_OVERSAMPLE } from "@/layout";
 import type { CanViewHandle } from "@/components/CanView";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
-import { isTap } from "@/components/touchPress";
+import { isTap, type Point } from "@/components/touchPress";
 
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
@@ -27,7 +27,6 @@ const OWNS_ITS_FINGER = '[data-slot="rulers"], [contenteditable="true"], input, 
 /** The pane's transform: scale `z` about its top-left, then offset by (x, y)
  *  screen px. z === 1 is the fitted view. */
 type View = { z: number; x: number; y: number };
-type Point = { x: number; y: number };
 
 /** The current view, held outside React so a wheel tick or pan move does not
  *  render the editor. `get`/`subscribe` fit useSyncExternalStore. */

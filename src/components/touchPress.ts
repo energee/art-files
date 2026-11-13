@@ -22,15 +22,18 @@ export const DOUBLE_TAP_MS = 300;
  *  count as a tap: a real fingertip rolls a few px. */
 export const TAP_SLOP_PX = 10;
 
+/** A pointer position in client px. */
+export type Point = { x: number; y: number };
+
 /** Whether a touch that landed at `from` and lifted at `to` is a tap. */
-export const isTap = (from: { x: number; y: number }, to: { x: number; y: number }): boolean =>
+export const isTap = (from: Point, to: Point): boolean =>
   Math.hypot(to.x - from.x, to.y - from.y) <= TAP_SLOP_PX;
 
 /** Whether a press that landed at `from` and is now at `to` is still a click
  *  or a tap, so neither a move nor a resize starts: a finger within
  *  TAP_SLOP_PX (an imprecise tap must not nudge the layer), a mouse or pen
  *  under DRAG_THRESHOLD_PX. */
-export const stillPress = (pointerType: string, from: { x: number; y: number }, to: { x: number; y: number }): boolean =>
+export const stillPress = (pointerType: string, from: Point, to: Point): boolean =>
   pointerType === "touch" ? isTap(from, to) : Math.hypot(to.x - from.x, to.y - from.y) < DRAG_THRESHOLD_PX;
 
 /** A tap that may start a double-tap: the layer under the lift, and when

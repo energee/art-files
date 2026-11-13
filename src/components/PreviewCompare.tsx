@@ -237,7 +237,7 @@ export const PreviewCompare = forwardRef<
     // synthesized click still lands over it; ignore anything whose target
     // is the handle so finishing a drag can't change the selection.
     if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return undefined;
-    const p = pagePointOf({ clientX: e.clientX, clientY: e.clientY, currentTarget: pageElement.current! });
+    const p = pagePointOf(pageElement.current!, e.clientX, e.clientY);
     if (!p) return undefined;
     return hitTestBoxes(p.xPt, p.yPt, hitBoxes);
   }

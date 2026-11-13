@@ -175,8 +175,6 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
   // Whether the row menu is open; the click a long-press's lift sends
   // arrives then and is dropped.
   const [menuOpen, setMenuOpen] = useState(false);
-  // iOS sends no contextmenu, so the row selects itself as its menu opens.
-  const selectOnOpen = (open: boolean) => { if (open && !isSelected) p.onSelect(id, {}); };
   // A row selected from the canvas may sit below the fold of a short window.
   const itemRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -237,7 +235,11 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
           long-press's lift sends stops here: it neither selects again nor
           closes the phone's Layers overlay. */}
       <ContextMenu.Root
-        onOpenChange={(open) => { setMenuOpen(open); selectOnOpen(open); }}
+        onOpenChange={(open) => {
+          setMenuOpen(open);
+          // iOS sends no contextmenu, so the row selects itself as its menu opens.
+          if (open && !isSelected) p.onSelect(id, {});
+        }}
       >
         <ContextMenu.Trigger
           onClick={(e) => {
