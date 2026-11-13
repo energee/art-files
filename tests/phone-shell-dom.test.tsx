@@ -149,6 +149,7 @@ it("caps the overlay at 85% of the screen whatever width was saved", async () =>
 it("gives a phone header Undo and Redo buttons that run the history", async () => {
   await mount(390, 844);
   expect(headerButton("Undo")!.disabled).toBe(true);
+  expect(headerButton("Redo")!.disabled).toBe(true);
   await openLayers();
   await tap(power());
   expect(power().getAttribute("aria-pressed")).toBe("true");

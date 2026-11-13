@@ -347,7 +347,8 @@ function WebMenu(props: { commands: CommandIndex; checked: CheckedState; menus: 
       <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
         <MenubarMenu>
           <MenubarTrigger className={MENU_TRIGGER}>
-            <MenuIcon />
+            {/* Sized: the trigger has no svg size rule (see MenuGlyph). */}
+            <MenuIcon className="size-4" />
             <span className="sr-only">{t("Menu")}</span>
           </MenubarTrigger>
           <MenubarContent align="start" className={MENU_ITEMS}>
