@@ -2,7 +2,9 @@
 // real editor pane (src/useZoomPan.ts with src/components/PreviewCompare.tsx):
 // the layer drag and the resize take only the first finger of a touch, a
 // second finger turns a drag into a pinch and puts the layer back, a cancelled
-// touch reverts like Escape, and no click-swallow outlives the next press.
+// touch reverts like Escape, no click-swallow outlives the next press, and a
+// finger on a tick moves the layer from inside its box and resizes it from
+// outside (a mouse always resizes).
 // Layer geometry and Undo are read off the real document and history.
 // happy-dom has no pointer capture, so each finger's later events are sent to
 // the element it landed on, as capture would.
@@ -283,6 +285,53 @@ it("a cancelled resize puts the layer back and leaves no undo step", async () =>
   finger(t, "pointercancel", 1, 120, 110);
   expect(layer("description")).toEqual(start);
   expect(canUndo()).toBe(false);
+}, 60_000);
+
+/** A layer's box in label points, off the live document. */
+const box = (id: string) => {
+  const { m, planAssets } = probe.preview!.canvasRender!;
+  return boxOfLayer(id, layers(), m, planAssets)!;
+};
+
+it("a finger the browser aims at a tick but that lands inside the layer moves it", async () => {
+  select("name");
+  const start = box("name"), { x, y } = centre("name");
+  const t = tick("1,0");
+  finger(t, "pointerdown", 1, x, y);
+  finger(t, "pointermove", 1, x + 20, y);
+  finger(t, "pointerup", 1, x + 20, y);
+  const moved = box("name");
+  expect(moved.x).toBeGreaterThan(start.x);
+  expect(moved.w).toBeCloseTo(start.w);
+  expect(moved.h).toBeCloseTo(start.h);
+  // The lift ended the move: a stray later move goes nowhere.
+  finger(sheet, "pointermove", 1, x + 60, y);
+  expect(box("name")).toEqual(moved);
+}, 60_000);
+
+it("a finger on a tick outside the layer resizes it", async () => {
+  select("name");
+  const start = box("name");
+  const x = ((start.x + start.w) / PAGE.w) * W + 6, y = ((start.y + start.h) / PAGE.h) * H + 6;
+  const t = tick("1,1");
+  finger(t, "pointerdown", 1, x, y);
+  finger(t, "pointermove", 1, x + 20, y + 10);
+  finger(t, "pointerup", 1, x + 20, y + 10);
+  expect(box("name").w).toBeGreaterThan(start.w);
+}, 60_000);
+
+it("a mouse on a tick resizes as before, wherever on the tick it lands", async () => {
+  select("name");
+  const start = box("name"), { x, y } = centre("name");
+  const t = tick("1,0");
+  const mouse = (type: string, cx: number) => act(() => {
+    t.dispatchEvent(new PointerEvent(type, { pointerType: "mouse", pointerId: 1, isPrimary: true, button: 0, clientX: cx, clientY: y, bubbles: true }));
+  });
+  mouse("pointerdown", x);
+  mouse("pointermove", x + 20);
+  mouse("pointerup", x + 20);
+  expect(box("name").w).toBeGreaterThan(start.w);
+  expect(box("name").x).toBeCloseTo(start.x);
 }, 60_000);
 
 it("a pen on the pasteboard behaves as the mouse does", async () => {

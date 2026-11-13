@@ -10,15 +10,24 @@ import type { Style } from "@/types";
 
 /** The eight selection ticks, which double as resize handles. hx/hy name
  *  the grabbed edge (-1 left/top, 0 not grabbed, 1 right/bottom); position
- *  and cursor follow from them. */
+ *  and cursor follow from them. On touch an unlocked tick's hit area is 44px,
+ *  an invisible `::after` (as ui/switch.tsx does) whose inner edge sits at
+ *  the tick's centre so it reaches away from the layer: on a small layer it
+ *  never covers the box, which a finger drags to move. An edge tick's reach
+ *  overlaps the corner ticks beside it on a small layer, so the corners
+ *  stack on top: no tick's reach covers another tick. */
 export const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
   .filter((hx) => hx || hy)
   .map((hx) => {
     const at = `${hy < 0 ? "-top-[3px]" : hy > 0 ? "-bottom-[3px]" : "top-1/2 -translate-y-1/2"} ${
       hx < 0 ? "-left-[3px]" : hx > 0 ? "-right-[3px]" : "left-1/2 -translate-x-1/2"}`;
+    const reach = `touch:after:absolute touch:after:size-tap touch:after:content-[''] ${
+      hx < 0 ? "touch:after:right-1" : hx > 0 ? "touch:after:left-1" : "touch:after:left-1/2 touch:after:-translate-x-1/2"} ${
+      hy < 0 ? "touch:after:bottom-1" : hy > 0 ? "touch:after:top-1" : "touch:after:top-1/2 touch:after:-translate-y-1/2"}${
+      hx && hy ? " touch:z-1" : ""}`;
     const cursor = !hx ? "cursor-ns-resize" : !hy ? "cursor-ew-resize" : hx === hy ? "cursor-nwse-resize" : "cursor-nesw-resize";
     const base = `absolute size-2 rounded-[1px] border border-sky-400 bg-background ${at}`;
-    return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor}`, clsLocked: base };
+    return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor} ${reach}`, clsLocked: base };
   }));
 
 /** Breathing room between a layer's measured box and its selection

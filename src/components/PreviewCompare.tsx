@@ -334,14 +334,24 @@ export const PreviewCompare = forwardRef<
   // (capture on the tick, owned by `pointerId`) so it never competes with
   // the move drag on the wrapper: a tick that takes the press stops its
   // propagation, so the wrapper's move never starts. A press the tick does
-  // not take (during in-place editing, on a locked layer, an extra finger)
-  // bubbles on as any other press would.
+  // not take (during in-place editing, on a locked layer, an extra finger, a
+  // finger inside the layer's box) bubbles on as any other press would.
   const resize = useRef<{
     id: string; handle: ResizeHandle; pointerId: number; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;
   } | null>(null);
+  /** Whether the pointer is over layer `id`'s own box. */
+  const insideBox = (e: { clientX: number; clientY: number }, id: string): boolean => {
+    const p = pagePointOf({ clientX: e.clientX, clientY: e.clientY, currentTarget: pageElement.current! });
+    const b = boxesById.get(id);
+    return !!p && !!b && hitTestBoxes(p.xPt, p.yPt, [b]) === id;
+  };
   function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
     if (extraFinger(e) || e.button !== 0 || editing || boxesById.get(id)?.locked) return;
+    // Chrome aims a finger NEAR a tick at the tick, even from inside a small
+    // layer, but the event keeps the finger's own position: inside the box
+    // is handed on to the sheet's move drag, outside resizes.
+    if (e.pointerType === "touch" && insideBox(e, id)) return;
     e.stopPropagation();
     resize.current = {
       id, handle, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false,
@@ -360,7 +370,9 @@ export const PreviewCompare = forwardRef<
     setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
   }
   /** The resize's own pointer lifting ends it; its cancel reverts it like
-   *  Escape. Any other pointer's up passes through to the pane. */
+   *  Escape. Any other pointer's up passes through to the pane, and so does
+   *  the lift when no resize ran (a finger inside the box that onHandleDown
+   *  handed to the sheet): that move ends at the sheet. */
   function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
     if (resize.current?.pointerId !== e.pointerId) return;
     e.stopPropagation();

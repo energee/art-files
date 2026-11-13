@@ -1,13 +1,15 @@
 // preview-touch-dom.test.tsx — PreviewCompare's handle for the pane's finger
 // gestures (src/useZoomPan.ts): whether a press on a layer or tick is down,
 // and cancelling it exactly as Escape does, so a second finger can turn a
-// layer drag into a pinch without leaving an undo step. Mounted like
-// tests/inplace-editor-dom.test.tsx.
+// layer drag into a pinch without leaving an undo step; and the resize
+// ticks' outward 44px touch reach (src/components/previewOverlay.ts).
+// Mounted like tests/inplace-editor-dom.test.tsx.
 // @vitest-environment happy-dom
 import { act, createElement, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { PreviewCompare, type PreviewCompareHandle } from "../src/components/PreviewCompare";
+import { HANDLES } from "../src/components/previewOverlay";
 import type { CanvasRenderSource } from "../src/canvas/draw";
 import { PAGE } from "../src/layout";
 import type { Layer } from "../src/model/layers";
@@ -96,6 +98,26 @@ it("cancelling a press that never moved undoes nothing", () => {
   act(() => handle.current!.cancelLayerGesture());
   expect(onDragCancel).not.toHaveBeenCalled();
   expect(handle.current!.layerGestureArmed()).toBe(false);
+});
+
+const handleCls = (key: string) => HANDLES.find((h) => h.key === key)!;
+
+it("resize ticks reach 44px outward on touch and look the same", () => {
+  for (const h of HANDLES) {
+    expect(h.cls).toContain("absolute size-2 rounded-[1px] border border-sky-400 bg-background");
+    expect(h.cls).toContain("touch:after:size-tap");
+    expect(h.clsLocked).not.toContain("touch:after");
+  }
+  expect(handleCls("-1,-1").cls).toContain("touch:after:right-1");
+  expect(handleCls("-1,-1").cls).toContain("touch:after:bottom-1");
+  expect(handleCls("1,1").cls).toContain("touch:after:left-1");
+  expect(handleCls("1,1").cls).toContain("touch:after:top-1");
+  expect(handleCls("0,-1").cls).toContain("touch:after:left-1/2 touch:after:-translate-x-1/2");
+  expect(handleCls("0,-1").cls).toContain("touch:after:bottom-1");
+  // On a small layer an edge tick's reach overlaps the corner tick beside
+  // it: the corners stack on top, so each tick's own body stays its own.
+  expect(handleCls("1,-1").cls).toContain("touch:z-1");
+  expect(handleCls("1,0").cls).not.toContain("touch:z-1");
 });
 
 it("Escape mid-drag still undoes it (the shared path)", () => {
