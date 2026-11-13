@@ -193,14 +193,16 @@ export function Badge(props: {
   ] as const).filter((m) => m.path);
   if (!marks.length) return null;
   return (
-    <span className="flex shrink-0 items-center gap-1 touch:mr-4 touch:gap-7">
+    <span className="flex shrink-0 items-center gap-1">
       {marks.map((m) => (
         <button
           key={m.source}
           type="button"
           className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded touch:relative touch:after:absolute touch:after:-inset-[12.25px] touch:after:content-[''] hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            "opacity-0 focus-visible:opacity-100 group-hover/reset:opacity-100 group-focus-within/reset:opacity-100", m.cls,
+            "flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "opacity-0 focus-visible:opacity-100 group-hover/reset:opacity-100 group-focus-within/reset:opacity-100",
+            // Opacity doesn't stop a tap: on touch a hidden reset takes none (under 44px when shown, sized in Phase 4).
+            "touch:pointer-events-none touch:focus-visible:pointer-events-auto touch:group-focus-within/reset:pointer-events-auto", m.cls,
           )}
           title={m.title}
           aria-label={m.aria}
