@@ -5,7 +5,7 @@
 // touch reverts like Escape, no click-swallow outlives the next press, and a
 // finger on a tick moves the layer from inside its box and resizes it from
 // outside (a mouse always resizes), and two taps on a text layer within
-// 300ms edit it in place (src/components/doubleTap.ts).
+// 300ms edit it in place (src/components/touchPress.ts).
 // Layer geometry and Undo are read off the real document and history.
 // happy-dom has no pointer capture, so each finger's later events are sent to
 // the element it landed on, as capture would.
@@ -769,4 +769,16 @@ it("a pinch starts once a finger passes the slop, from the fingers' positions th
   expect(scale()).toBeCloseTo(130 / 112, 6);
   finger(pane, "pointerup", 2, 430, BOARD_Y);
   finger(pane, "pointerup", 1, 300, BOARD_Y);
+}, 60_000);
+
+it("a finger resizes nothing until it has travelled past the 10px slop", async () => {
+  select("description");
+  const start = structuredClone(layer("description")), t = tick("1,1");
+  finger(t, "pointerdown", 1, 100, 100);
+  finger(t, "pointermove", 1, 106, 100);
+  expect(layer("description")).toEqual(start);
+  expect(canUndo()).toBe(false);
+  finger(t, "pointermove", 1, 112, 100);
+  expect(layer("description")).not.toEqual(start);
+  finger(t, "pointerup", 1, 112, 100);
 }, 60_000);

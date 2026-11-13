@@ -100,7 +100,8 @@ import {
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
-import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
+import { PreviewCompare, SNAP_PT, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import type { SnapLines, SnapMark } from "@/components/previewOverlay";
 import { Rulers } from "@/components/Rulers";
 import type { CanViewHandle } from "@/components/CanView";
 import {

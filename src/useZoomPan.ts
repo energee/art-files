@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { PREVIEW_OVERSAMPLE } from "@/layout";
 import type { CanViewHandle } from "@/components/CanView";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
-import { isTap } from "@/components/doubleTap";
+import { isTap } from "@/components/touchPress";
 
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
@@ -259,12 +259,12 @@ export function useZoomPan(
     // An extra finger whose first went to a control that keeps it (a ruler,
     // the divider, a resize past the tap slop) belongs to that gesture:
     // ignored. A resize still within the slop gives its finger up to pinch.
+    if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
     if (!e.isPrimary && !fingers.current.size) {
       const first = preview.current?.releaseResizeFinger();
       if (!first) return;
       fingers.current.set(first.pointerId, { x: first.x, y: first.y });
     }
-    if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
     fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();
     else {

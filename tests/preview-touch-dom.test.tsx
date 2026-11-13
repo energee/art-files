@@ -29,8 +29,8 @@ let onDrag: Mock;
 let onDragCancel: Mock;
 let onEditSession: Mock;
 
-function mount({ layers = ALL, selected = [] }: { layers?: Layer[]; selected?: string[] } = {}) {
-  const source: CanvasRenderSource = {
+function mount({ layers = ALL, selected = [], hidden = false }: { layers?: Layer[]; selected?: string[]; hidden?: boolean } = {}) {
+  const source: CanvasRenderSource | null = hidden ? null : {
     m: measure, planAssets, drawAssets: {} as CanvasRenderSource["drawAssets"], skip: new Set<string>(), fontCss: "Test",
   };
   const noop = () => {};
@@ -164,4 +164,21 @@ it("a hidden layer opens nothing", () => {
   tapAt("name", 1000); tapAt("name", 1200);
   doubleClickAt("name");
   expect(sessions()).not.toContain("name");
+});
+
+it("a tab that goes hidden mid-press keeps no gesture armed", () => {
+  const { x, y } = centre("name");
+  fire(sheet, "pointerdown", x, y);
+  expect(handle.current!.layerGestureArmed()).toBe(true);
+  mount({ hidden: true });
+  expect(handle.current!.layerGestureArmed()).toBe(false);
+});
+
+it("a finger's resize within the slop hands over the finger's latest point", () => {
+  mount({ selected: ["name"] });
+  const t = container.querySelector('[data-resize-handle="1,1"]')!;
+  fire(t, "pointerdown", 1, 1);
+  fire(t, "pointermove", 7, 1);
+  expect(handle.current!.releaseResizeFinger()).toEqual({ pointerId: 1, x: 7, y: 1 });
+  expect(handle.current!.layerGestureArmed()).toBe(false);
 });

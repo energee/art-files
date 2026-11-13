@@ -17,7 +17,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **100% shows the whole label.** In a short window, or on a phone held sideways, the bottom of the label was cut off at 100% until you zoomed or panned. The 3D views frame the same way.
-- **A finger moves a small layer.** Dragging a small selected layer with a finger resized it instead of moving it. A finger inside a layer now moves it, and a touch just outside a corner or edge resizes it.
+- **A finger moves a small layer.** Dragging a small selected layer with a finger resized it instead of moving it. A finger inside a layer now moves it, and a touch just outside a corner or edge resizes it, unless another layer lies under the finger (then use the size fields, or zoom in).
 - **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
 - **Letter-spaced text prints at the width the layout shows.** In Barlow Condensed, text with Letter spacing and an fi, fl, ffi or ffl ("office", "Unfiltered") printed narrower than the preview, so a right-aligned line stopped short of its edge and a run after it started late. Letter-spaced text now prints each letter separately, as the preview draws it.
 - **Minimum height reads right after accented text.** Once a text with an accented letter (such as "Olé") had been measured, the plain letter stopped counting for the rest of the session, so Minimum height read too tall and text could be sized below the minimum you asked for.

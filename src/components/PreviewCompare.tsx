@@ -32,11 +32,11 @@ import { errMsg } from "@/lib/utils";
 import { lengthLabel, type LengthUnit } from "@/rulers";
 import {
   BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, pageBox, pagePointOf,
-  pillPos, SEL_PAD,
+  pillPos, SEL_PAD, snapColor, type SnapLines,
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
 import { InPlacePlainField } from "./InPlacePlainField";
-import { extraFinger, foldTap, isTap, stillPress, type Tap } from "./doubleTap";
+import { extraFinger, foldTap, isTap, stillPress, type Tap } from "./touchPress";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -47,27 +47,6 @@ export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
 
 /** Drag snap distance to a guide or another layer's edge/middle, in label points. */
 export const SNAP_PT = 6;
-
-/** Blue for a page guide (the master's margins/centre, or a manual one),
- *  fuchsia for another layer's edge or middle — the Photoshop/Sketch
- *  convention, and the only way to tell at a glance WHICH kind of alignment
- *  the drag caught. App classifies the line (SnapMark.guide); comparing
- *  coordinates here could not tell a manual guide from a layer edge, nor an
- *  X guide's value landing on a Y line. */
-const snapColor = (mark: SnapMark) => (mark.guide ? "bg-info" : "bg-primary");
-
-/** A snap that happened: the line (guide space), how far the indicator
- *  segment runs along it — from the moving box to the far end of what it
- *  lined up with — and whether a page guide, rather than another layer's
- *  edge, is the only thing that offered it. */
-export interface SnapMark { at: number; from: number; to: number; guide: boolean }
-
-export interface SnapLines {
-  x: SnapMark | null; y: SnapMark | null;
-  /** The distance the drag ACTUALLY travelled after snapping, in label
-   *  points — what the drag readout shows. */
-  dx: number; dy: number;
-}
 
 /** Wheel/pinch events arrive every frame. Keep the CSS transform immediate,
  *  then replace its backing bitmap once the gesture pauses. */
@@ -85,7 +64,7 @@ export interface PreviewCompareHandle {
    *  so later moves do nothing. */
   cancelLayerGesture: () => void;
   /** A tick resize that has not started (a finger within the tap slop) gives
-   *  its finger to the pane's pinch: dropped, its press point returned. */
+   *  its finger to the pane's pinch: dropped, the finger's last point returned. */
   releaseResizeFinger: () => { pointerId: number; x: number; y: number } | null;
 }
 
@@ -319,7 +298,7 @@ export const PreviewCompare = forwardRef<
   // A finger resizes only past the tap slop; before that a second finger pinches (releaseResizeFinger).
   const resize = useRef<{
     id: string; handle: ResizeHandle; pointerId: number; startClientX: number; startClientY: number;
-    pxPerPtX: number; pxPerPtY: number; started: boolean;
+    pxPerPtX: number; pxPerPtY: number; started: boolean; last: { x: number; y: number }; // the finger's latest point
   } | null>(null);
   function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
     if (extraFinger(e) || e.button !== 0 || editing || boxesById.get(id)?.locked) return;
@@ -330,14 +309,23 @@ export const PreviewCompare = forwardRef<
     e.stopPropagation(); tapFrom.current = null; // a resize is no tap
     resize.current = {
       id, handle, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false,
+      last: { x: e.clientX, y: e.clientY },
     };
     e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  /** A tick's click stays the tick's (and ends any swallow), except a finger's
+   *  click over a layer: that reaches the sheet as its press did, where a
+   *  tap's pick or a drag's swallow decides it. */
+  function onHandleClick(e: React.MouseEvent<HTMLSpanElement>) {
+    if ((e.nativeEvent as PointerEvent).pointerType === "touch" && hitOf(e)) return;
+    e.stopPropagation(); swallowClick.current = false;
   }
   function onHandleMove(e: React.PointerEvent<HTMLSpanElement>) {
     const d = resize.current;
     if (d?.pointerId !== e.pointerId) return;
     const dxPx = e.clientX - d.startClientX, dyPx = e.clientY - d.startClientY;
-    if (!d.started && stillPress(e.pointerType, { x: d.startClientX, y: d.startClientY }, { x: e.clientX, y: e.clientY })) return;
+    d.last = { x: e.clientX, y: e.clientY };
+    if (!d.started && stillPress(e.pointerType, { x: d.startClientX, y: d.startClientY }, d.last)) return;
     const first = !d.started;
     d.started = true;
     setSnap(onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first));
@@ -383,9 +371,17 @@ export const PreviewCompare = forwardRef<
     setSnap(snapped);
     setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
   }
-  // Finger double-tap (doubleTap.ts): where a touch that may be a tap landed; the last tap.
+  // Finger double-tap (touchPress.ts): where a touch that may be a tap landed; the last tap.
   const tapFrom = useRef<{ x: number; y: number } | null>(null);
   const lastTap = useRef<Tap | null>(null), tapOpened = useRef(false); // a tap opened the session, until the next press
+  /** Capture phase, so every press starts afresh: no swallow left armed by a
+   *  drag whose click never came (a moved touch sends none) eats its click; a
+   *  first finger starts a tap unless a session is open (an extra one cancels
+   *  it: cancelLayerGesture). */
+  function onPressCapture(e: React.PointerEvent<HTMLDivElement>) {
+    swallowClick.current = tapOpened.current = tapPicked.current = false; pressType.current = e.pointerType;
+    if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
+  }
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     if (extraFinger(e)) return; // an ignored finger's lift ends nothing
     if (e.pointerType === "touch") {
@@ -435,18 +431,19 @@ export const PreviewCompare = forwardRef<
       const d = resize.current;
       if (!d || d.started) return null;
       resize.current = null;
-      return { pointerId: d.pointerId, x: d.startClientX, y: d.startClientY };
+      return { pointerId: d.pointerId, ...d.last };
     },
   }), [changeSplit, cancelLayerGesture]);
 
-  // No source, no preview: end the session and free both plates' backing
+  // No source, no preview: end the session and any armed move or resize (a
+  // hidden tab keeps no gesture), and free both plates' backing
   // stores, up to 51MB each on a zoomed tab. The paint effect above resizes
   // them when a source returns (#734).
   useEffect(() => {
     if (canvasRender) return;
-    setEditing(null);
+    setEditing(null); cancelLayerGesture();
     for (const c of [artCanvas.current, maskCanvas.current]) if (c) c.width = c.height = 0;
-  }, [canvasRender]);
+  }, [canvasRender, cancelLayerGesture]);
 
   // Report the open session so App can skip the layer from the render for
   // its duration, and COMMIT the one that just ended if it changed anything.
@@ -551,13 +548,7 @@ export const PreviewCompare = forwardRef<
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      // A press starts afresh: no swallow left armed by a drag whose click never
-      // came (a moved touch sends none) eats its click; a first finger starts a
-      // tap unless a session is open (an extra one cancels it: cancelLayerGesture).
-      onPointerDownCapture={(e) => {
-        swallowClick.current = tapOpened.current = tapPicked.current = false; pressType.current = e.pointerType;
-        if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
-      }}
+      onPointerDownCapture={onPressCapture}
       onPointerUp={onPointerUp}
       // The mousedowns Chrome sends after the tap that opened the field would blur it
       // (off the field) or select a word (on it, as a double-click): the field opens with a caret.
@@ -690,8 +681,7 @@ export const PreviewCompare = forwardRef<
               key={h.key} aria-hidden="true" data-resize-handle={h.key}
               title={t("Drag to resize (shift: keep proportions)")}
               className={b.locked ? h.clsLocked : h.cls}
-              // A finger's tap on a layer reaches the sheet's pick, as its press did.
-              onClick={(e) => { if ((e.nativeEvent as PointerEvent).pointerType !== "touch" || !hitOf(e)) { e.stopPropagation(); swallowClick.current = false; } }}
+              onClick={onHandleClick}
               onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
               onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
             />

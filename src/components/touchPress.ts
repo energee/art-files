@@ -1,6 +1,7 @@
-// doubleTap.ts — PreviewCompare's tap rules: which finger may start a layer
-// gesture, when a press is still a click or a tap rather than a drag, and
-// the finger double-tap that opens a text layer in place on the preview.
+// touchPress.ts — the press rules PreviewCompare and the pane (useZoomPan)
+// share: which finger may start a layer gesture, when a press is still a
+// click or a tap rather than a drag or a pinch, and the finger double-tap
+// that opens a text layer in place on the preview.
 // Chrome does send dblclick after a double-tap, but near a small selected
 // layer it aims it (and the clicks) at a resize tick, so PreviewCompare
 // counts taps itself from where each finger lifted.

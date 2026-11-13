@@ -1,8 +1,9 @@
 // previewOverlay.ts — PreviewCompare's overlay geometry: label-space points
 // mapped onto the preview frame (pageBox, corner, cqh), the trim guide's
 // dashed stroke and die-cut corners, the selection/resize ticks and their
-// padding, a click's page point and the in-place pill's spot, the readout's
-// inch format, and the on-screen ink of a style.
+// padding, a click's page point and the in-place pill's spot, the snap
+// marks a drag reports (SnapMark, SnapLines) and their colours, the
+// readout's inch format, and the on-screen ink of a style.
 // Values, style objects and layout reads (the sheet's rect, the window's
 // width); no React state. Split out of PreviewCompare.tsx (#433).
 import type { ResizeHandle } from "@/model/edit";
@@ -33,6 +34,27 @@ export const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as cons
     const base = `absolute size-2 rounded-[1px] border border-sky-400 bg-background ${at}`;
     return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor} ${reach}`, clsLocked: base };
   }));
+
+/** Blue for a page guide (the master's margins/centre, or a manual one),
+ *  fuchsia for another layer's edge or middle — the Photoshop/Sketch
+ *  convention, and the only way to tell at a glance WHICH kind of alignment
+ *  the drag caught. App classifies the line (SnapMark.guide); comparing
+ *  coordinates here could not tell a manual guide from a layer edge, nor an
+ *  X guide's value landing on a Y line. */
+export const snapColor = (mark: SnapMark) => (mark.guide ? "bg-info" : "bg-primary");
+
+/** A snap that happened: the line (guide space), how far the indicator
+ *  segment runs along it — from the moving box to the far end of what it
+ *  lined up with — and whether a page guide, rather than another layer's
+ *  edge, is the only thing that offered it. */
+export interface SnapMark { at: number; from: number; to: number; guide: boolean }
+
+export interface SnapLines {
+  x: SnapMark | null; y: SnapMark | null;
+  /** The distance the drag ACTUALLY travelled after snapping, in label
+   *  points — what the drag readout shows. */
+  dx: number; dy: number;
+}
 
 /** Breathing room between a layer's measured box and its selection
  *  outline, in screen px. */
