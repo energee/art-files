@@ -1,5 +1,5 @@
 // useZoomPan.ts — the preview pane's zoom and pan: wheel-to-zoom, right-drag
-// pan, the typed zoom field and the Zoom In / Out / to Fit steps, plus the
+// pan, one-finger pan and two-finger pinch, the typed zoom field and the Zoom In / Out / to Fit steps, plus the
 // zoom handover between the 2D pane and the 3D views (CanView dollies its
 // own camera). The view lives outside React: a gesture writes it to the DOM,
 // and only the settled zoom reaches the editor's state (#714).
@@ -20,6 +20,7 @@ const ZOOM_SETTLE_MS = 100;
 /** The pane's transform: scale `z` about its top-left, then offset by (x, y)
  *  screen px. z === 1 is the fitted view. */
 type View = { z: number; x: number; y: number };
+type Point = { x: number; y: number };
 
 /** The current view, held outside React so a wheel tick or pan move does not
  *  render the editor. `get`/`subscribe` fit useSyncExternalStore. */
@@ -62,6 +63,23 @@ export const zoomAbout = (
 ) => {
   const k = z / v.z;
   return clampView(r, z, v.x + (1 - k) * (ax - v.x), v.y + (1 - k) * (ay - v.y));
+};
+
+/** Two fingers moved from `a0`, `b0` to `a1`, `b1` (pane px from its
+ *  top-left): zoom by the change in their spread about the old midpoint and
+ *  follow the midpoint, clamped as the wheel is. Written as an offset from
+ *  `v` like `zoomAbout`, so a pinch that moves nothing returns `v` exactly. */
+export const pinchView = (r: DOMRect, v: View, a0: Point, b0: Point, a1: Point, b1: Point): View => {
+  const spread0 = Math.hypot(b0.x - a0.x, b0.y - a0.y);
+  const spread1 = Math.hypot(b1.x - a1.x, b1.y - a1.y);
+  // Coincident fingers have no spread to compare: keep the zoom, still follow the midpoint.
+  const z = clampZoom(spread0 ? (v.z * spread1) / spread0 : v.z);
+  const k = z / v.z;
+  const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
+  const m1 = { x: (a1.x + b1.x) / 2, y: (a1.y + b1.y) / 2 };
+  return clampView(r, z,
+    v.x + (m1.x - m0.x) + (1 - k) * (m0.x - v.x),
+    v.y + (m1.y - m0.y) + (1 - k) * (m0.y - v.y));
 };
 
 /** `is2d`: the pane shows the 2D compare (wheel, pan and typed zoom act on
