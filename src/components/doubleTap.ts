@@ -15,7 +15,8 @@ export const TAP_SLOP_PX = 10;
 export const isTap = (from: { x: number; y: number }, to: { x: number; y: number }): boolean =>
   Math.hypot(to.x - from.x, to.y - from.y) <= TAP_SLOP_PX;
 
-/** A tap that may start a double-tap: the layer under the lift, and when. */
+/** A tap that may start a double-tap: the layer under the lift, and when
+ *  (the lift's event timeStamp, ms: monotonic, unlike Date.now()). */
 export type Tap = { id: string; at: number };
 
 /** Folds a finished touch press into the `last` tap. `id` is the layer under

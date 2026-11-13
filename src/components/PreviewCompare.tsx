@@ -45,7 +45,7 @@ import { foldTap, isTap, type Tap } from "./doubleTap";
 export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
   maskShown ? ["art", "mask"] : ["art"];
 
-/** Pointer travel (px) before a press becomes a drag; below it is a click. */
+/** Mouse/pen travel (px) before a press drags (a finger: past TAP_SLOP_PX); below it, a click. */
 const DRAG_THRESHOLD_PX = 3;
 
 /** Drag snap distance to a guide or another layer's edge/middle, in label points. */
@@ -127,7 +127,7 @@ export const PreviewCompare = forwardRef<
      *  picker's commit rule). */
     onEditCommit: (id: string) => void;
     onEditUppercase: (id: string, uppercase: boolean, first: boolean) => void;
-    /** Drag-to-move: called on every pointermove past the 3px threshold with
+    /** Drag-to-move: called on every pointermove past the threshold with
      *  the CUMULATIVE delta from the drag's start, in label points, `first`
      *  true on the movement that crosses the threshold — App applies moveBy
      *  against the layer as it was at the start (and every other selected
@@ -291,8 +291,8 @@ export const PreviewCompare = forwardRef<
   const edited = useRef(false);
 
   // Drag-to-move: pointerdown on an unlocked layer arms a two-axis drag;
-  // crossing a 3px threshold starts the gesture (first=true); App folds every
-  // move into ONE undo step.
+  // crossing the threshold (3px, a finger 10px) starts the gesture
+  // (first=true); App folds every move into ONE undo step.
   const drag = useRef<{
     id: string; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;
@@ -331,7 +331,7 @@ export const PreviewCompare = forwardRef<
     // finger's own position: on any layer it goes on to the sheet, which
     // moves and picks that layer; only on bare stock does it resize.
     if (e.pointerType === "touch" && hitOf(e)) return;
-    e.stopPropagation();
+    e.stopPropagation(); tapFrom.current = null; // a resize is no tap
     resize.current = {
       id, handle, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false,
     };
@@ -374,11 +374,13 @@ export const PreviewCompare = forwardRef<
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const at = { x: e.clientX, y: e.clientY };
+    if (tapFrom.current && !isTap(tapFrom.current, at)) tapFrom.current = null; // past the slop once is no tap
     const d = drag.current;
     if (!d) return;
-    const dxPx = e.clientX - d.startClientX;
-    const dyPx = e.clientY - d.startClientY;
-    if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return; // plain click, no undo step
+    const dxPx = e.clientX - d.startClientX, dyPx = e.clientY - d.startClientY;
+    // Nothing moves (no undo step) below the threshold, and a finger moves nothing while it could still be a tap.
+    if (!d.started && (e.pointerType === "touch" ? isTap({ x: d.startClientX, y: d.startClientY }, at) : Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX)) return;
     const first = !d.started;
     d.started = true;
     const dx = dxPx / d.pxPerPtX;
@@ -389,15 +391,15 @@ export const PreviewCompare = forwardRef<
   }
   // Finger double-tap (doubleTap.ts): where a touch that may be a tap landed; the last tap.
   const tapFrom = useRef<{ x: number; y: number } | null>(null);
-  const lastTap = useRef<Tap | null>(null);
+  const lastTap = useRef<Tap | null>(null), tapOpened = useRef(false); // a tap opened the session, until the next press
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     if (extraFinger(e)) return; // an ignored finger's lift ends nothing
     if (e.pointerType === "touch") {
       const from = tapFrom.current; tapFrom.current = null;
       const tapped = from && !drag.current?.started && isTap(from, { x: e.clientX, y: e.clientY });
       const id = tapped ? hitOf(e) ?? null : null;
-      const { open, last } = foldTap(lastTap.current, id, Date.now()); lastTap.current = last;
-      if (open) startEditing(e, id!);
+      const { open, last } = foldTap(lastTap.current, id, e.timeStamp); lastTap.current = last;
+      if (open && id) { tapOpened.current = true; startEditing(e, id); }
     }
     swallowClick.current ||= !!drag.current?.started;
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
@@ -409,7 +411,7 @@ export const PreviewCompare = forwardRef<
   const cancelLayerGesture = useCallback((): boolean => {
     const started = !!(drag.current?.started || resize.current?.started);
     if (started) onDragCancel();
-    drag.current = null; resize.current = null;
+    drag.current = null; resize.current = null; tapFrom.current = null;
     setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     return started;
   }, [onDragCancel]);
@@ -550,15 +552,16 @@ export const PreviewCompare = forwardRef<
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       // A press starts afresh: no swallow left armed by a drag whose click never
-      // came (a moved touch sends none) eats its click; a finger starts a tap
-      // unless a session is open or another finger is down.
+      // came (a moved touch sends none) eats its click; a first finger starts a
+      // tap unless a session is open (an extra one cancels it: cancelLayerGesture).
       onPointerDownCapture={(e) => {
-        swallowClick.current = false;
-        if (e.pointerType === "touch") tapFrom.current = e.isPrimary && !editing ? { x: e.clientX, y: e.clientY } : null;
+        swallowClick.current = false; tapOpened.current = false;
+        if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
       }}
       onPointerUp={onPointerUp}
-      // Keeps the field focused through the mousedown Chrome sends after the tap that opened it (a click-away ends a session first).
-      onMouseDown={(e) => { if (editing && !sessionRef.current?.contains(e.target as Node)) e.preventDefault(); }}
+      // Keeps the field focused through the mousedown Chrome sends after
+      // the tap that opened it, where the field does not cover the finger.
+      onMouseDown={(e) => { if (tapOpened.current && !sessionRef.current?.contains(e.target as Node)) e.preventDefault(); }}
       // A cancelled press (an incoming call, the OS taking the touch) puts
       // the layer back, as Escape and a second finger do; an ignored extra
       // finger's cancel leaves the first finger's gesture alone.

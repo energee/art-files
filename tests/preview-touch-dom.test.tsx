@@ -2,7 +2,8 @@
 // gestures (src/useZoomPan.ts): whether a press on a layer or tick is down,
 // and cancelling it exactly as Escape does, so a second finger can turn a
 // layer drag into a pinch without leaving an undo step; and the resize
-// ticks' outward 44px touch reach (src/components/previewOverlay.ts).
+// ticks' outward 44px touch reach (src/components/previewOverlay.ts); and
+// that a double-tap or double-click opens only a drawn text layer.
 // Mounted like tests/inplace-editor-dom.test.tsx.
 // @vitest-environment happy-dom
 import { act, createElement, createRef } from "react";
@@ -26,6 +27,7 @@ let sheet: HTMLDivElement;
 let handle: { current: PreviewCompareHandle | null };
 let onDrag: Mock;
 let onDragCancel: Mock;
+let onEditSession: Mock;
 
 function mount({ layers = ALL, selected = [] }: { layers?: Layer[]; selected?: string[] } = {}) {
   const source: CanvasRenderSource = {
@@ -36,7 +38,7 @@ function mount({ layers = ALL, selected = [] }: { layers?: Layer[]; selected?: s
     root.render(createElement(PreviewCompare, {
       canvasRender: source, layers, editLayerOf: (l: Layer) => l, selected, onPick: noop,
       onEditText: noop, onEditUppercase: noop, onEditCommit: noop,
-      onDrag, onDragCancel, onResize: vi.fn(() => ({ x: null, y: null, dx: 0, dy: 0 })), onEditSession: noop,
+      onDrag, onDragCancel, onResize: vi.fn(() => ({ x: null, y: null, dx: 0, dy: 0 })), onEditSession,
       cornerRadiusPct: 0, zoom: 1, bleedIn: 0, unit: "in", ref: handle,
     } as Parameters<typeof PreviewCompare>[0]));
   });
@@ -53,6 +55,7 @@ beforeEach(() => {
   handle = createRef<PreviewCompareHandle>();
   onDrag = vi.fn(() => ({ x: null, y: null, dx: 0, dy: 0 }));
   onDragCancel = vi.fn();
+  onEditSession = vi.fn();
   mount();
 });
 
@@ -126,4 +129,39 @@ it("Escape mid-drag still undoes it (the shared path)", () => {
   fire(sheet, "pointermove", x + 20, y, "mouse");
   act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
   expect(onDragCancel).toHaveBeenCalledTimes(1);
+});
+
+/** A finger tap at layer `id`'s centre, its events stamped `at` ms. */
+const tapAt = (id: string, at: number) => {
+  const { x, y } = centre(id);
+  for (const type of ["pointerdown", "pointerup"]) act(() => {
+    const e = new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, isPrimary: true, pointerType: "touch", clientX: x, clientY: y });
+    Object.defineProperty(e, "timeStamp", { value: at });
+    sheet.dispatchEvent(e);
+  });
+};
+const doubleClickAt = (id: string) => {
+  const { x, y } = centre(id);
+  act(() => { sheet.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: x, clientY: y })); });
+};
+const sessions = () => onEditSession.mock.calls.map(([id]) => id).filter((id) => id !== null);
+
+it("a double-tap on a text layer opens an edit session (the control for the cases below)", () => {
+  tapAt("name", 1000); tapAt("name", 1200);
+  expect(sessions()).toEqual(["name"]);
+});
+
+it.each(["logo", "qr"])("a double-tap or a double-click on the non-text %s layer opens nothing", (id) => {
+  expect(boxOfLayer(id, ALL, measure, planAssets)).not.toBeNull();
+  tapAt(id, 1000); tapAt(id, 1200);
+  doubleClickAt(id);
+  expect(sessions()).toEqual([]);
+  expect(container.querySelector('[aria-label^="Edit "]')).toBeNull();
+});
+
+it("a hidden layer opens nothing", () => {
+  mount({ layers: ALL.filter((l) => l.id !== "name") }); // App passes only the layers that draw
+  tapAt("name", 1000); tapAt("name", 1200);
+  doubleClickAt("name");
+  expect(sessions()).not.toContain("name");
 });

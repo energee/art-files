@@ -437,15 +437,19 @@ it("a pen on the pasteboard behaves as the mouse does", async () => {
   expect(zoomLayer.style.transform).toBe("translate(-275px, -218.75px) scale(1.5625)");
 }, 60_000);
 
-// Double-tap to edit in place: the detector reads each finger's lift
-// (Date.now() stepped by the test), not the browser's click/dblclick.
+// Double-tap to edit in place: the detector reads each finger's lift and its
+// event timeStamp (stamped `at` by the test), not the browser's click/dblclick.
+// A `drift` moves the finger that far before it lifts.
 const tapAt = (id: string, at: number, on: Element = sheet, pointerType = "touch", drift = 0) => {
-  vi.spyOn(Date, "now").mockReturnValue(at);
   const { x, y } = centre(id);
   const fire = (type: string, dx = 0) => act(() => {
-    on.dispatchEvent(new PointerEvent(type, { pointerType, pointerId: 1, isPrimary: true, button: 0, clientX: x + dx, clientY: y, bubbles: true }));
+    const e = new PointerEvent(type, { pointerType, pointerId: 1, isPrimary: true, button: 0, clientX: x + dx, clientY: y, bubbles: true });
+    Object.defineProperty(e, "timeStamp", { value: at });
+    on.dispatchEvent(e);
   });
-  fire("pointerdown"); fire("pointerup", drift);
+  fire("pointerdown");
+  if (drift) fire("pointermove", drift);
+  fire("pointerup", drift);
   act(() => { on.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })); });
 };
 const editorOf = (name: string) => pane.querySelector(`[aria-label="Edit ${name} text"]`);
@@ -499,15 +503,11 @@ it("a locked text layer opens as its double-click does", async () => {
   expect(editorOf(layer("warning").name.toLowerCase())).not.toBeNull();
 }, 60_000);
 
-// The fixture's only non-text layers (images) draw nothing without their
-// assets, so a non-text layer is covered by startEditing's kind check, the
-// one the desktop double-click has always used.
+// A non-text or hidden layer: tests/preview-touch-dom.test.tsx, where the
+// fixture's image and QR layers draw a box.
 it("a double-tap on the pasteboard opens nothing", async () => {
-  const board = (at: number) => {
-    vi.spyOn(Date, "now").mockReturnValue(at);
-    finger(pane, "pointerdown", 1, 400, BOARD_Y); finger(pane, "pointerup", 1, 400, BOARD_Y);
-  };
-  board(2000); board(2100);
+  const board = () => { finger(pane, "pointerdown", 1, 400, BOARD_Y); finger(pane, "pointerup", 1, 400, BOARD_Y); };
+  board(); board();
   expect(anyEditor()).toBeNull();
 }, 60_000);
 
@@ -547,14 +547,85 @@ it("taps inside an open session never reopen it", async () => {
   expect(editorOf(layer("name").name.toLowerCase())).toBe(field);
 }, 60_000);
 
-it("the mousedown Chrome sends after the opening tap keeps the field focused; one in the field still places the caret", async () => {
+it("the mousedown Chrome sends after the opening tap is default-prevented, so the field keeps focus; one in the field is not", async () => {
   tapAt("warning", 1000); tapAt("warning", 1200);
   const field = editorOf(layer("warning").name.toLowerCase())!;
+  expect(document.activeElement).toBe(field);
   const mousedown = (el: Element) => {
     const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
     act(() => { el.dispatchEvent(e); });
     return e.defaultPrevented;
   };
   expect(mousedown(sheet.querySelector("canvas")!)).toBe(true);
+  expect(document.activeElement).toBe(field);
   expect(mousedown(field)).toBe(false);
+}, 60_000);
+
+it("a mouse press on another layer during a double-click session closes it, selects that layer, and keeps its mousedown", async () => {
+  dblclickAt("name");
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+  const { x, y } = centre("description");
+  const mouse = (type: string) => act(() => {
+    sheet.dispatchEvent(new PointerEvent(type, { pointerType: "mouse", pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y, bubbles: true }));
+  });
+  mouse("pointerdown");
+  const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true, clientX: x, clientY: y });
+  act(() => { sheet.querySelector("canvas")!.dispatchEvent(down); });
+  expect(down.defaultPrevented).toBe(false);
+  mouse("pointerup");
+  act(() => { sheet.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })); });
+  expect(anyEditor()).toBeNull();
+  expect(probe.preview!.selected).toEqual(["description"]);
+}, 60_000);
+
+it("a pinch with a thumb on a layer and a finger on the pasteboard is no tap", async () => {
+  const { x, y } = centre("warning");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(pane, "pointerdown", 2, 400, BOARD_Y);
+  finger(pane, "pointerup", 2, 400, BOARD_Y);
+  finger(sheet, "pointerup", 1, x, y);
+  tapAt("warning", performance.now() + 100);
+  expect(anyEditor()).toBeNull();
+}, 60_000);
+
+it("a pan that wanders past the slop and comes back is no tap", async () => {
+  run("zoom-in"); run("zoom-in");
+  const { x, y } = centre("warning");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(sheet, "pointermove", 1, x + 30, y);
+  finger(sheet, "pointermove", 1, x, y);
+  finger(sheet, "pointerup", 1, x, y);
+  tapAt("warning", performance.now() + 100);
+  expect(anyEditor()).toBeNull();
+}, 60_000);
+
+it("a finger that moves 6px on an unlocked layer moves nothing and is a tap", async () => {
+  const before = structuredClone(layers());
+  tapAt("name", 1000, sheet, "touch", 6);
+  expect(layers()).toEqual(before);
+  expect(canUndo()).toBe(false);
+  tapAt("name", 1200, sheet, "touch", 6);
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+it("a finger that moves 14px drags the layer from where it pressed", async () => {
+  const start = box("name"), { x, y } = centre("name");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(sheet, "pointermove", 1, x + 8, y);
+  expect(box("name")).toEqual(start);
+  finger(sheet, "pointermove", 1, x + 14, y);
+  finger(sheet, "pointerup", 1, x + 14, y);
+  // The whole 14px from the press point, in label points (no snap there).
+  expect(box("name").x - start.x).toBeCloseTo((14 / W) * PAGE.w, 1);
+  expect(canUndo()).toBe(true);
+}, 60_000);
+
+it("a mouse that moves 6px still drags, as before", async () => {
+  const start = box("name"), { x, y } = centre("name");
+  const mouse = (type: string, cx: number) => act(() => {
+    sheet.dispatchEvent(new PointerEvent(type, { pointerType: "mouse", pointerId: 1, isPrimary: true, button: 0, clientX: cx, clientY: y, bubbles: true }));
+  });
+  mouse("pointerdown", x); mouse("pointermove", x + 6); mouse("pointerup", x + 6);
+  expect(box("name").x).toBeGreaterThan(start.x);
+  expect(canUndo()).toBe(true);
 }, 60_000);

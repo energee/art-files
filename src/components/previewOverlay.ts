@@ -3,8 +3,8 @@
 // dashed stroke and die-cut corners, the selection/resize ticks and their
 // padding, a click's page point and the in-place pill's spot, the readout's
 // inch format, and the on-screen ink of a style.
-// Pure values and style objects, no React state. Split out of
-// PreviewCompare.tsx (#433).
+// Values, style objects and layout reads (the sheet's rect, the window's
+// width); no React state. Split out of PreviewCompare.tsx (#433).
 import type { ResizeHandle } from "@/model/edit";
 import { ART, cssFill, PAGE } from "@/layout";
 import type { Style } from "@/types";

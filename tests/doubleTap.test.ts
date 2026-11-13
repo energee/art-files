@@ -8,6 +8,10 @@ it("a second tap on the same layer within the window opens it and forgets both",
   expect(foldTap({ id: "name", at: 1000 }, "name", 1000 + DOUBLE_TAP_MS)).toEqual({ open: true, last: null });
 });
 
+it("a second tap stamped the same instant as the first still opens", () => {
+  expect(foldTap({ id: "name", at: 1000 }, "name", 1000)).toEqual({ open: true, last: null });
+});
+
 it("a tap too late, or on another layer, becomes the new first tap", () => {
   expect(foldTap({ id: "name", at: 1000 }, "name", 1001 + DOUBLE_TAP_MS)).toEqual({ open: false, last: { id: "name", at: 1301 } });
   expect(foldTap({ id: "volume", at: 1000 }, "name", 1100)).toEqual({ open: false, last: { id: "name", at: 1100 } });
