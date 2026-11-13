@@ -7,6 +7,9 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
+- **Letter-spaced text prints at the width the layout shows.** In Barlow Condensed, text with Letter spacing and an fi, fl, ffi or ffl ("office", "Unfiltered") printed narrower than the preview, so a right-aligned line stopped short of its edge and a run after it started late. Letter-spaced text now prints each letter separately, as the preview draws it.
+- **Minimum height reads right after accented text.** Once a text with an accented letter (such as "Olé") had been measured, the plain letter stopped counting for the rest of the session, so Minimum height read too tall and text could be sized below the minimum you asked for.
 - **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
 - **Labels with two QR codes no longer slow down every edit.** With two QR layers holding different values, both codes were rebuilt on every keystroke, nudge and drag step. Each is now built once and reused until its value or style changes.
 - **Replaced images are released.** An image you replaced is freed once undo and redo can no longer reach it, instead of staying in memory until the tab closes.
@@ -44,6 +47,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 - **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
 - **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+- **Changing Bleed keeps the texture under the label.** After a Bleed change in Settings, the preview and the Can view kept the texture and mask at the old page size until your next edit, leaving a bare strip along the right and bottom edges. They now refit straight away. Exports were always correct.
 
 ### Changed
 - **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.

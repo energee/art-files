@@ -1,7 +1,9 @@
 // offThread.ts — runs the PDF builders in a module worker (#713): embedding a
 // full-size raster and saving the file are seconds of CPU, all of it on the
 // main thread otherwise. This file is the PDF's job type; ../offThread.ts owns
-// the hand-off and its fallbacks.
+// the hand-off and its fallbacks. A print job's decoded mask transfers instead
+// of copying (#780); the trade-off is ../offThread.ts's: a worker that dies
+// after a transfer fails the export.
 import { buildOffThread, type BuildWorker } from "../offThread";
 import { buildArtPdf, buildMaskPdf, buildPrintPdf, type Assets } from "./build";
 import type { PlacedLayer } from "../planLayers";
@@ -25,7 +27,10 @@ export const runPdfJob = (job: PdfJob): Promise<Uint8Array> => BUILDERS[job.plat
 
 const spawn = () => new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }) as unknown as BuildWorker<PdfJob>;
 
-/** A PDF build in a fresh worker. `create` is the test seam. */
-export function buildPdfOffThread(job: PdfJob, create: () => BuildWorker<PdfJob> = spawn): Promise<Uint8Array> {
-  return buildOffThread(job, runPdfJob, create);
+/** A PDF build in a fresh worker. `create` is the test seam. `transfer` names
+ *  buffers in the job that nothing else reads, which move rather than copy. */
+export function buildPdfOffThread(
+  job: PdfJob, create: () => BuildWorker<PdfJob> = spawn, transfer: ArrayBuffer[] = [],
+): Promise<Uint8Array> {
+  return buildOffThread(job, runPdfJob, create, transfer);
 }
