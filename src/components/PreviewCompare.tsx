@@ -508,8 +508,11 @@ export const PreviewCompare = forwardRef<
       className="relative m-auto w-full overflow-hidden border border-plate-edge bg-input"
       style={{
         // Width cap in the style object, not the class list, so the 3D scene
-        // can import the same number and frame its label to this sheet.
-        maxWidth: PREVIEW_MAX_W,
+        // can import the same rule (fitSheetWidth) and frame its label to
+        // this sheet: at most PREVIEW_MAX_W, and no wider than the zoom
+        // layer's height (cqh; App makes it the size container) allows, so
+        // 100% shows the whole label on a short pane.
+        maxWidth: `min(${PREVIEW_MAX_W}px, ${(100 * PAGE.w) / PAGE.h}cqh)`,
         aspectRatio: `${PAGE.w} / ${PAGE.h}`,
         // Query container, so the in-place editor can size its invisible
         // glyphs as a share of the page height (cqh) at any zoom.

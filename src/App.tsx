@@ -2645,12 +2645,15 @@ export const DocumentEditor = memo(function DocumentEditor({
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
                 their own camera. Padded, not offset, by the rulers so Fit
                 keeps the label clear of them while the transform's origin
-                stays the pane's top-left. useZoomPan writes the transform. */}
+                stays the pane's top-left. useZoomPan writes the transform.
+                It is the sheet's size container, so Fit shows the whole
+                label: the sheet caps its width by this div's height (cqh). */}
             <div
               ref={zoomLayer}
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
                 transformOrigin: "0 0",
+                containerType: "size",
                 ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}

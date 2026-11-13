@@ -140,3 +140,8 @@ it("a gesture that moves nothing reaches no listener (#726)", async () => {
   stop();
   expect(notified).toBe(0);
 });
+
+it("the zoom layer is the sheet's size container, so cqh is the pane's height", async () => {
+  const { layer } = await mountEditor();
+  expect(layer.style.containerType).toBe("size");
+});
