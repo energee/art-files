@@ -14,7 +14,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Bigger controls on phones and tablets.** Buttons, menu rows, list options, suggestions and checkbox rows are finger-sized, and text fields use 16-pixel text.
 - **Pan and zoom the label with your fingers.** On a phone or tablet, drag with one finger where there is no layer to move around the label, and pinch with two to zoom. The page no longer scrolls or zooms instead. Pinching with a second finger during a layer drag puts the layer back; a second finger that only brushes the screen leaves the drag alone.
 - **Double-tap to type on the label.** Double-tapping a text layer edits it in place, as a double-click does.
-- **Layer actions by finger.** On a phone or tablet, press and hold a layer in the Layers list for its menu: Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove. Rename opens the name box ready to type. Drag a layer by the grip at the end of its row to reorder it; the rest of the row scrolls the list. On a phone, Layers now takes most of the screen's width, so long names show.
+- **Layer actions by finger.** On a phone or tablet, press and hold a layer in the Layers list for its menu: Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove. Rename opens the name box. Drag a layer by the grip at the end of its row to reorder it; the rest of the row scrolls the list. On a phone, Layers now takes most of the screen's width, so long names show.
 - **Select several layers by finger.** Choose **Select** in a layer's menu, then tap layers to add them to the selection or take them out; Layers stays open. It ends when nothing is selected, when Layers closes, or when you tap the label or add a layer.
 
 ### Fixed
