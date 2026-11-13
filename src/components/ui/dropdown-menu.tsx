@@ -2,6 +2,7 @@ import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
 import { cn } from "@/lib/utils"
+import { usePhoneLayout } from "@/usePhoneLayout"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
@@ -125,23 +126,24 @@ function DropdownMenuSubTrigger({
   )
 }
 
-// A submenu keeps its side and slides back on screen when it does not fit:
-// Base UI's default would fall back to another side, and a menu too tall for
-// that (the ☰ View menu on a phone, its rows 44px on touch) then hung off the
-// right edge and scrolled the page sideways.
+// On a phone a submenu keeps its side and slides back on screen when it does
+// not fit: Base UI's default falls back to another side, and a menu too tall
+// for that (the ☰ View menu, its rows 44px on touch) hung off the right edge
+// and scrolled the page sideways. A desktop keeps the default, so a submenu
+// with no room on the right (Bind to layer… in the inspector) flips left.
 function DropdownMenuSubContent({
   align = "start",
   alignOffset = -3,
   side = "right",
   sideOffset = 0,
-  collisionAvoidance = { side: "shift" },
   className,
   ...props
 }: React.ComponentProps<typeof DropdownMenuContent>) {
+  const { phone } = usePhoneLayout()
   return (
     <DropdownMenuContent
       data-slot="dropdown-menu-sub-content"
-      collisionAvoidance={collisionAvoidance}
+      collisionAvoidance={phone ? { side: "shift" } : undefined}
       className={cn("w-auto min-w-[96px] rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
       align={align}
       alignOffset={alignOffset}

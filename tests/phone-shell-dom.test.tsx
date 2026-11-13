@@ -329,10 +329,14 @@ it("closes Layers on a phone after Add layer, with the new layer selected", asyn
     trigger.click();
     await Promise.resolve();
   });
-  const text = [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Text");
-  await tap(text!);
+  const text = [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Text") as HTMLElement;
+  await act(async () => { text.focus(); });
+  await tap(text);
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
   expect(sidebar().getAttribute("data-state")).toBe("collapsed");
   expect(sheet().getAttribute("data-side")).toBe("bottom");
+  // The menu would hand focus back to Add layer, inside the closed panel.
+  expect(document.activeElement).toBe(slot("sidebar-trigger"));
 });
 
 it("keeps a desktop's Layers open after Add layer", async () => {
@@ -407,3 +411,52 @@ it("Escape leaves a desktop's Layers open", async () => {
   expect(sidebar().getAttribute("data-state")).toBe("expanded");
 });
 
+// Escape that something inside Layers owns stays there: an open menu, the
+// inline rename box, a text field, a list drag, or a modal dialog.
+it("Escape in an open menu, the rename box or a text field leaves Layers open", async () => {
+  await mount(390, 844);
+  await openLayers();
+  const trigger = container.querySelector('[aria-label="Add layer"]') as HTMLElement;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    trigger.click();
+    await Promise.resolve();
+  });
+  const item = document.querySelector('[role="menu"] [role="menuitem"]')!;
+  await escapeOn(item);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+
+  await act(async () => { rowButton().dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); });
+  const rename = container.querySelector('[data-layer-id="barcode"] input') as HTMLInputElement;
+  expect(rename).not.toBeNull();
+  await escapeOn(rename);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+
+  const field = document.createElement("input");
+  slot("sidebar-content")!.appendChild(field);
+  await escapeOn(field);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("Escape that cancels a Layers drag leaves Layers open", async () => {
+  await mount(390, 844);
+  await openLayers();
+  const button = rowButton();
+  button.setPointerCapture = vi.fn();
+  await act(async () => { button.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0 })); });
+  await escapeOn(button);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("Escape with a modal dialog open leaves Layers open", async () => {
+  await mount(390, 844);
+  await openLayers();
+  const dialog = document.createElement("div");
+  dialog.setAttribute("data-slot", "dialog-content");
+  document.body.appendChild(dialog);
+  try {
+    await escapeOn(document.body);
+    expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  } finally { dialog.remove(); }
+});

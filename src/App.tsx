@@ -433,28 +433,31 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  ⌘B stays the provider's guarded listener. Starts closed on a phone,
    *  where it covers the preview; later size changes leave it as it is. */
   const [sidebarOpen, setSidebarOpen] = useState(!phone);
+  const layersToggle = useRef<HTMLButtonElement>(null);
   /** Close Layers. Focus inside the panel moves to the Layers toggle: the
-   *  panel goes inert as it closes, and focus would fall to the page. */
+   *  panel goes inert as it closes, and focus would fall to the page. (The
+   *  Add layer menu hands focus to the toggle itself, LayerList's addFocus.) */
   const closeLayers = useStableCallback(() => {
-    document.activeElement?.closest('[data-slot="sidebar-container"]')
-      ?.closest('[data-slot="sidebar-wrapper"]')
-      ?.querySelector<HTMLElement>('[data-slot="sidebar-trigger"]')?.focus();
+    if (document.activeElement?.closest('[data-slot="sidebar-container"]')) layersToggle.current?.focus();
     setSidebarOpen(false);
   });
-  // Escape closes the Layers overlay. Captured on the window, so it runs
-  // before the inspector Sheet's document listener, and marked handled, so
-  // the Sheet (see its onOpenChange) keeps the layer selected. A text field
-  // or an open menu or list keeps its own Escape.
+  // Escape closes the Layers overlay. Heard on <html> as it bubbles: after
+  // React's handlers, so Escape a field, the list's drag or anything else
+  // already handled (defaultPrevented) stays theirs; and before the inspector
+  // Sheet's listener on the document, which keeps the layer selected for an
+  // Escape marked handled (see its onOpenChange). An open menu or list and a
+  // modal dialog keep their own Escape too.
   useEffect(() => {
     if (!active || !phone || !sidebarOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target) || dialogOpen()) return;
       if (e.target instanceof Element && e.target.closest('[role="menu"], [role="listbox"]')) return;
       e.preventDefault();
       closeLayers();
     };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    const html = document.documentElement;
+    html.addEventListener("keydown", onKey);
+    return () => html.removeEventListener("keydown", onKey);
   }, [active, phone, sidebarOpen, closeLayers]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
@@ -2535,7 +2538,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onToggle={listToggle}
               onRename={listRename}
               onReorder={listReorder}
-              onAdd={listAdd} onRemove={listRemove} invalid={flaggedLayers}
+              onAdd={listAdd} addFocus={phone ? layersToggle : undefined} onRemove={listRemove} invalid={flaggedLayers}
               onReset={listReset}
               />
           </SidebarContent>
@@ -2552,7 +2555,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             the sidebar is collapsed. */}
         <header data-tauri-drag-region={overlayTitlebar() ? "" : undefined}
           className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2 titlebar:h-10">
-          <SidebarTrigger className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
+          <SidebarTrigger ref={layersToggle} className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}

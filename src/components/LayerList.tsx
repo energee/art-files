@@ -62,6 +62,10 @@ export interface LayerListProps {
    *  switched to, the base master otherwise. It used to offer a submenu per
    *  variant; the Select decides now, so there is one Add layer. */
   onAdd: (kind: LayerKind) => void;
+  /** Where focus goes when the Add layer menu closes; its own button when
+   *  unset. App sets the Layers toggle on a phone, where adding closes the
+   *  Layers overlay and that button goes inert with it. */
+  addFocus?: React.RefObject<HTMLElement | null>;
   /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
   /** The row menu's Reset to Master: drop this label's design overrides on
@@ -498,7 +502,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               </button>
             }
           />
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" finalFocus={props.addFocus}>
             {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
               <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
                 <Icon className="size-3.5" /> {t(label)}
