@@ -49,6 +49,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Horizontal guide buttons match Vertical guide.** Left and right are now arrows pointing at a line, like top and bottom.
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
 - **Guides stay put when the rulers toggle.** Showing or hiding the rulers no longer leaves guides off the label until the next zoom.
+- **Quieter developer console, no visible change.** Selecting a layer no longer logs a React missing-key warning from the inspector's Position section. The app behaves exactly as before.
 
 ## [0.1.119] - 2026-11-12
 
