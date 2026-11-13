@@ -36,7 +36,6 @@ const pt: Record<keyof typeof en, string> = {
   "Compare": "Comparar",
   "Cans shown": "Latas exibidas",
   "Rename {{name}}": "Renomear {{name}}",
-  "Reorder {{name}}": "Reordenar {{name}}",
   "Invalid value": "Valor inválido",
   "{{name}}: locked": "{{name}}: bloqueada",
   "{{name}}: enabled": "{{name}}: ativada",

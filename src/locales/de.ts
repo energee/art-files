@@ -36,7 +36,6 @@ const de: Record<keyof typeof en, string> = {
   "Compare": "Vergleichen",
   "Cans shown": "Angezeigte Dosen",
   "Rename {{name}}": "{{name}} umbenennen",
-  "Reorder {{name}}": "{{name}} verschieben",
   "Invalid value": "Ungültiger Wert",
   "{{name}}: locked": "{{name}}: gesperrt",
   "{{name}}: enabled": "{{name}}: aktiviert",

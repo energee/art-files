@@ -169,10 +169,11 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
   }
   const [renaming, setRenaming] = useState(false);
   // The menu's Rename opens the rename box in the tap itself (so a phone's
-  // keyboard can come up), and tells the closing menu to leave focus there
-  // rather than return it to the row, which took it on a phone.
+  // keyboard can come up), and tells the closing menu to leave focus there:
+  // the row would take focus back and the blur would close the box.
   const renamePicked = useRef(false);
-  // Open while a long-press's lift arrives as a click on the row.
+  // Whether the row menu is open; the click a long-press's lift sends
+  // arrives then and is dropped.
   const [menuOpen, setMenuOpen] = useState(false);
   // iOS sends no contextmenu, so the row selects itself as its menu opens.
   const selectOnOpen = (open: boolean) => { if (open && !isSelected) p.onSelect(id, {}); };
@@ -383,14 +384,22 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
               {inactive ? <EyeOff /> : <Eye />}
             </button>
             {/* Touch only: it carries the drag so the name can scroll the
-                list; a mouse drags the name. */}
-            <button type="button" data-grip aria-label={t("Reorder {{name}}", { name })}
-              {...dragHandlers} className={cn(control, "hidden touch:grid touch-none")}>
+                list; a mouse drags the name. Hidden from the keyboard and
+                assistive tech, which reorder through the menu and Alt+↑/↓.
+                A held finger here must not start the trigger's long-press
+                (its touchstart; Android's contextmenu), which would open the
+                menu under a drag that paused before moving. */}
+            <button type="button" data-grip tabIndex={-1} aria-hidden
+              {...dragHandlers} onTouchStart={stop}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              className={cn(control, "hidden touch:grid touch-none")}>
               <GripVertical />
             </button>
           </div>
         </ContextMenu.Trigger>
-        {/* Wide enough that "Send Backward" and its shortcut share a line. */}
+        {/* Wide enough that "Send Backward" and its shortcut share a line.
+            finalFocus as a function returns every other close's focus to the
+            row's name button, even one that had already moved elsewhere. */}
         <DropdownMenuContent className="min-w-48"
           finalFocus={() => { const back = !renamePicked.current; renamePicked.current = false; return back; }}>
           {touch && !p.selecting && <DropdownMenuItem onClick={p.onStartSelecting}>{t("Select")}</DropdownMenuItem>}

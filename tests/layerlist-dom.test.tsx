@@ -453,7 +453,9 @@ describe("LayerList", () => {
   it("every interactive control has an accessible name (a11y lens)", () => {
     const props = baseProps({ selected: ["wordmark"] });
     render(props);
-    const controls = Array.from(container.querySelectorAll('button, input, [role="img"]'));
+    // aria-hidden ones (the touch grip) are outside the accessibility tree.
+    const controls = Array.from(container.querySelectorAll(
+      'button:not([aria-hidden="true"]), input, [role="img"]'));
     expect(controls.length).toBeGreaterThan(20);
     for (const el of controls) {
       const name = el.getAttribute("aria-label") ?? el.getAttribute("aria-labelledby")
@@ -528,21 +530,44 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   // Pins the outcome only: the real-browser failures (the closing menu's
   // focus return taking the box) don't happen in happy-dom; the CDP probe
   // in .agents/mockups/phone-touch-paths/ measures them.
-  it("Rename from the menu leaves a focused rename box once the menu has closed", async () => {
-    render(baseProps({ selected: ["barcode"] }));
-    await rightClick("barcode");
-    // A pointer reaches the item before it presses; a bare click() would
-    // make it the active item there and then, which focuses it a frame later.
-    // movementX: Base UI ignores a WebKit mousemove that does not move.
+  const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  /** Picks Rename as a pointer does: it reaches the item before it presses.
+   *  A bare click() would make it the active item there and then, which
+   *  focuses it a frame later. movementX: Base UI ignores a WebKit mousemove
+   *  that does not move. */
+  const pickRename = async () => {
     const item = menuItem("Rename");
     for (const type of ["pointerover", "pointerenter", "pointermove", "mousemove"])
       act(() => { item.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: "mouse", movementX: 1 })); });
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await settle();
     await pick("Rename");
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await settle();
+  };
+  it("Rename from the menu leaves a focused rename box once the menu has closed", async () => {
+    render(baseProps({ selected: ["barcode"] }));
+    await rightClick("barcode");
+    await pickRename();
     const input = rowFor("barcode").querySelector('input[aria-label="Rename Barcode"]');
     expect(input).not.toBeNull();
     expect(document.activeElement).toBe(input);
+  });
+
+  // Every close but Rename's returns focus to the row: a "Rename was picked"
+  // mark that outlived its close would leave focus nowhere on the next.
+  it("after a rename, the next close of the menu returns focus to the row's name", async () => {
+    render(baseProps({ selected: ["barcode"] }));
+    await rightClick("barcode");
+    await pickRename();
+    keydown(rowFor("barcode").querySelector("input")!, "Enter");
+    // A right-click's press focuses the name first, as in a browser.
+    const name = rowFor("barcode").querySelector<HTMLElement>('[data-slot="sidebar-menu-button"]')!;
+    act(() => name.focus());
+    await rightClick("barcode");
+    await settle();
+    keydown(document.activeElement!, "Escape");
+    await settle();
+    expect(menuItem("Hide")).toBeUndefined();
+    expect(document.activeElement).toBe(name);
   });
 
   it("the row menu hides, locks, reorders and resets", async () => {
@@ -809,10 +834,47 @@ describe("on a touch screen", () => {
     expect(props.onSelect).toHaveBeenCalledTimes(1);
   });
 
+  // The menu is cleared on close, so a later Shift-click is a click again.
+  it("after a long-press menu is dismissed, a Shift-click on the row extends the selection", async () => {
+    const props = render(baseProps());
+    finger(nameButton("wordmark"), "touchstart");
+    await wait(500);
+    finger(nameButton("wordmark"), "touchend");
+    keydown(document.activeElement!, "Escape");
+    await wait(50);
+    expect(menuItems()).toEqual([]);
+    act(() => { nameButton("wordmark").dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true, detail: 1 })); });
+    expect(props.onSelect).toHaveBeenLastCalledWith("wordmark", expect.objectContaining({ shift: true }));
+  });
+
+  // The grip sits inside the row's menu trigger, whose long-press would
+  // otherwise open the menu under a drag that paused before moving.
+  it("holding the grip still opens no menu, and the drag that follows reorders", async () => {
+    const props = render(baseProps());
+    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLButtonElement;
+    grip.setPointerCapture = vi.fn();
+    const target = rowFor("barcode");
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+    press(grip, "pointerdown", 100);
+    finger(grip, "touchstart", 40, 100);
+    // Android sends contextmenu for a held finger; iOS and the probe don't.
+    act(() => { grip.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
+    await wait(600);
+    expect(menuItems()).toEqual([]);
+    expect(props.onSelect).not.toHaveBeenCalled();
+    press(grip, "pointermove", 21);
+    press(grip, "pointerup", 21);
+    expect(props.onReorder).toHaveBeenCalledTimes(1);
+  });
+
   it("drags a row by its grip, and leaves its name to scroll the list", () => {
     const props = render(baseProps({ selected: ["wordmark"] }));
     const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLButtonElement;
-    expect(grip.getAttribute("aria-label")).toBe("Reorder Brand");
+    // Out of the tab order and the accessibility tree: Bring Forward, Send
+    // Backward and Alt+↑/↓ reorder without it.
+    expect(grip.getAttribute("aria-hidden")).toBe("true");
+    expect(grip.tabIndex).toBe(-1);
     expect(grip.className).toContain("hidden touch:grid touch-none");
     expect(nameButton("wordmark").className).toContain("touch-none touch:touch-pan-y");
     grip.setPointerCapture = vi.fn();
@@ -838,4 +900,20 @@ describe("on a touch screen", () => {
     press(name, "pointerup", 21, "mouse");
     expect(props.onReorder).toHaveBeenCalledTimes(1);
   });
+});
+
+// A touch laptop: the primary pointer is fine, so a finger still drags a row
+// by its name, as before the grip.
+it("on a fine-pointer screen a finger still drags a row by its name", () => {
+  const props = render(baseProps({ selected: ["wordmark"] }));
+  const name = rowFor("wordmark").querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+  name.setPointerCapture = vi.fn();
+  const target = rowFor("barcode");
+  vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+  vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+  try {
+    for (const [type, y] of [["pointerdown", 100], ["pointermove", 21], ["pointerup", 21]] as const)
+      act(() => { name.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, clientX: 40, clientY: y, pointerType: "touch" })); });
+    expect(props.onReorder).toHaveBeenCalledTimes(1);
+  } finally { vi.restoreAllMocks(); }
 });
