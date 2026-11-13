@@ -73,6 +73,11 @@ export interface SnapLines {
 }
 
 
+/** A finger that lands while another is down: only the first finger of a
+ *  touch may move or resize a layer; the rest belong to the pane's pinch.
+ *  (A mouse or a pen is always primary.) */
+const extraFinger = (e: React.PointerEvent) => e.pointerType === "touch" && !e.isPrimary;
+
 /** Wheel/pinch events arrive every frame. Keep the CSS transform immediate,
  *  then replace its backing bitmap once the gesture pauses. */
 const RASTER_DEBOUNCE_MS = 160;
@@ -326,22 +331,26 @@ export const PreviewCompare = forwardRef<
   };
 
   // Drag-to-resize from any selection tick. Its own pointer session
-  // (capture on the tick) so it never competes with the move drag on the
-  // wrapper; the wrapper's move never starts because the tick stops
-  // pointerdown propagation.
+  // (capture on the tick, owned by `pointerId`) so it never competes with
+  // the move drag on the wrapper: a tick that takes the press stops its
+  // propagation, so the wrapper's move never starts. A press the tick does
+  // not take (during in-place editing, on a locked layer, an extra finger)
+  // bubbles on as any other press would.
   const resize = useRef<{
-    id: string; handle: ResizeHandle; startClientX: number; startClientY: number;
+    id: string; handle: ResizeHandle; pointerId: number; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;
   } | null>(null);
   function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
-    if (e.button !== 0 || editing || boxesById.get(id)?.locked) return;
+    if (extraFinger(e) || e.button !== 0 || editing || boxesById.get(id)?.locked) return;
     e.stopPropagation();
-    resize.current = { id, handle, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false };
+    resize.current = {
+      id, handle, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false,
+    };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function onHandleMove(e: React.PointerEvent<HTMLSpanElement>) {
     const d = resize.current;
-    if (!d) return;
+    if (d?.pointerId !== e.pointerId) return;
     const dxPx = e.clientX - d.startClientX;
     const dyPx = e.clientY - d.startClientY;
     if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
@@ -350,16 +359,19 @@ export const PreviewCompare = forwardRef<
     setSnap(onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first));
     setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
   }
+  /** The resize's own pointer lifting ends it; its cancel reverts it like
+   *  Escape. Any other pointer's up passes through to the pane. */
   function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
-    // A pointercancel fires no click, so only a real pointerup arms the swallow.
-    if (e.type === "pointerup") swallowClick.current ||= !!resize.current?.started;
+    if (resize.current?.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    if (e.type === "pointercancel") { cancelLayerGesture(); return; }
+    swallowClick.current ||= resize.current.started;
     resize.current = null;
     setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
-    e.stopPropagation();
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0 || editing || !canvasRender) return;
+    if (extraFinger(e) || e.button !== 0 || editing || !canvasRender) return;
     const id = hitOf(e);
     if (!id) return;
     const target = boxesById.get(id);
@@ -384,9 +396,8 @@ export const PreviewCompare = forwardRef<
     setSnap(snapped);
     setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
   }
-  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    // A pointercancel fires no click, so only a real pointerup arms the swallow.
-    if (e.type === "pointerup") swallowClick.current ||= !!drag.current?.started;
+  function onPointerUp() {
+    swallowClick.current ||= !!drag.current?.started;
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
 
@@ -537,8 +548,13 @@ export const PreviewCompare = forwardRef<
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
+      // A press starts afresh: no swallow left armed by a drag whose click
+      // never came (a moved touch sends none) eats its click.
+      onPointerDownCapture={() => { swallowClick.current = false; }}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      // A cancelled press (an incoming call, the OS taking the touch) puts
+      // the layer back, as Escape and a second finger do.
+      onPointerCancel={() => { cancelLayerGesture(); }}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
       <canvas

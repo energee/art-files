@@ -49,6 +49,7 @@ const PANE = { x: 0, y: 0, left: 0, top: 0, right: 800, bottom: 600, width: 800,
 
 let unmount = async () => {};
 beforeEach(() => {
+  down.clear(); primary = null;
   probe.armed = false;
   probe.cancel = vi.fn(() => { probe.armed = false; });
 });
@@ -77,8 +78,16 @@ async function mountEditor() {
 }
 
 const run = (id: string) => act(() => { probe.actions.find((c) => c.id === id)!.run(); });
+// Fingers: the first one down in a touch set is the primary, as in a browser.
+const down = new Set<number>();
+let primary: number | null = null;
 const finger = (el: Element, type: string, id: number, clientX: number, clientY: number) => act(() => {
-  el.dispatchEvent(new PointerEvent(type, { pointerType: "touch", pointerId: id, button: 0, clientX, clientY, bubbles: true }));
+  if (type === "pointerdown" && !down.size) primary = id;
+  if (type === "pointerdown") down.add(id);
+  el.dispatchEvent(new PointerEvent(type, {
+    pointerType: "touch", pointerId: id, isPrimary: id === primary, button: 0, clientX, clientY, bubbles: true,
+  }));
+  if (type === "pointerup" || type === "pointercancel") down.delete(id);
 });
 const click = (el: Element) => act(() => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 const viewOf = (layer: HTMLElement) => {
@@ -248,6 +257,16 @@ it("a mouse's left drag still does not pan, and fingers leave a 3D view's camera
   run("view-can");
   const at = probe.view!.get();
   finger(pane, "pointerdown", 11, 400, 300);
+  finger(pane, "pointermove", 11, 300, 200);
+  expect(probe.view!.get()).toBe(at);
+});
+
+it("a finger still down when the pane leaves 2D stops moving the view", async () => {
+  const { pane } = await mountEditor();
+  run("zoom-in"); run("zoom-in");
+  finger(pane, "pointerdown", 11, 400, 300);
+  run("view-can");
+  const at = probe.view!.get();
   finger(pane, "pointermove", 11, 300, 200);
   expect(probe.view!.get()).toBe(at);
 });

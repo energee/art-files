@@ -560,7 +560,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const {
     zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
     zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
-    onPaneClickCapture,
+    onPanePointerDownCapture, onPaneClickCapture,
   } = useZoomPan(viewMode === "2d", previewPane, canView, previewRef);
   // The 3D scene's mode: Rendered shows the flat label, Can its count.
   let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
@@ -2632,6 +2632,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             // (onPaneClickCapture), so this click is a tap or a left click.
             // touch-none keeps the browser from scrolling or zooming the
             // page instead.
+            onPointerDownCapture={onPanePointerDownCapture}
             onClickCapture={onPaneClickCapture}
             onClick={(e) => {
               if (viewMode !== "2d") return;

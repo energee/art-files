@@ -206,7 +206,6 @@ export function useZoomPan(
   const panFrom = useRef<{ x: number; y: number; r: DOMRect } | null>(null);
   const [panning, setPanning] = useState(false);
   function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
-    if (!fingers.current.size) touchMoved.current = false;
     if (e.pointerType === "touch") return onTouchDown(e);
     if (e.button !== 2 || !is2d) return;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -233,15 +232,27 @@ export function useZoomPan(
   }
 
   // Fingers on the pane (touch only), by pointerId, at their last event: one
-  // pans unless the layer drag took it, two pinch, a third is ignored. Each
-  // touch is captured to the element it landed on by the browser, and its
-  // moves bubble here, so the pane takes no capture of its own.
+  // pans unless the layer drag took it, two pinch, a third is ignored. The
+  // browser captures each touch to the element it landed on (while that
+  // element stays in the DOM), and its moves bubble here, so the pane takes
+  // no capture of its own.
   const fingers = useRef(new Map<number, Point>());
   const lonePans = useRef(false);
   /** The finger gesture moved the view: swallow the click it ends with. */
   const touchMoved = useRef(false);
+  /** Capture phase, so it runs even for a press a tick or a ruler keeps. A
+   *  primary touch means no other finger is down, so any id still listed
+   *  missed its lift; a press with no finger down starts a new gesture,
+   *  which never inherits an old swallow. */
+  function onPanePointerDownCapture(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch" && e.isPrimary) fingers.current.clear();
+    if (!fingers.current.size) touchMoved.current = false;
+  }
   function onTouchDown(e: React.PointerEvent<HTMLDivElement>) {
     if (!is2d || fingers.current.size === 2) return;
+    // An extra finger whose first went to a control that keeps it (a resize
+    // tick, a ruler, the divider) belongs to that gesture: ignored.
+    if (!e.isPrimary && !fingers.current.size) return;
     if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
     fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();
@@ -249,7 +260,7 @@ export function useZoomPan(
   }
   function onTouchMove(e: React.PointerEvent<HTMLDivElement>) {
     const from = fingers.current.get(e.pointerId);
-    if (!from) return;
+    if (!from || !is2d) return;
     const to = { x: e.clientX, y: e.clientY };
     const r = e.currentTarget.getBoundingClientRect();
     const v = liveView.get();
@@ -280,6 +291,6 @@ export function useZoomPan(
   return {
     zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
     zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
-    onPaneClickCapture,
+    onPanePointerDownCapture, onPaneClickCapture,
   };
 }

@@ -65,7 +65,7 @@ const centre = (id: string) => {
   return { x: ((b.x + b.w / 2) / PAGE.w) * W, y: ((b.y + b.h / 2) / PAGE.h) * H };
 };
 const fire = (el: Element, type: string, x: number, y: number, pointerType = "touch") => act(() => {
-  el.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, pointerType, clientX: x, clientY: y }));
+  el.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, isPrimary: true, pointerType, clientX: x, clientY: y }));
 });
 
 it("arms on a finger on an unlocked layer, not on bare stock, and disarms on lift", () => {
