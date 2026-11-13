@@ -458,7 +458,7 @@ no status, no attempts, no delta.
 
 ## 2026-10-11 open-recent-menu-symbols
 - finding: [UX/low] src/components/AppMenu.tsx:495 — set_menu_symbols is not re-applied after the Open Recent submenu rebuilds, so rebuilt rows can lose their SF Symbols
-- status: open
+- status: wontfix — moot: menu icons removed (feat/menu-no-icons, 2026-11-13)
 - attempts: 0/3
 - observed-at: 0bb506c
 - evidence: review leftover from #506 (45c726e)
