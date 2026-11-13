@@ -303,7 +303,8 @@ h1, h2, h3 { font-family: var(--font-heading); }
    transition list is Sonner's own plus the delayed visibility). A toast that
    comes back is visible at once. The visible toasts keep their animations.
    Only the bottom stack is moved: the top one (under 768px wide, sonner.tsx)
-   keeps Sonner's own placement, full width inside its 16px phone margins. */
+   keeps Sonner's own placement, full width inside its 16px phone margins,
+   with its top offset (below the header) set in sonner.tsx. */
 [data-sonner-toaster][data-x-position="center"][data-y-position="bottom"] {
   left: var(--toast-center-x, 50%) !important;
   bottom: var(--toast-bottom, 16px) !important;

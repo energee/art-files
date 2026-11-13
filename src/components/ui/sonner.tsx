@@ -2,7 +2,8 @@
 // with a few changes. The theme comes from useTheme() (src/theme.ts) instead of
 // next-themes, which this app doesn't have. The stack sits at the bottom centre
 // (the top centre under 768px wide, where the inspector rises from the bottom
-// and toasts would cover its lowest fields) and shows four toasts, all
+// and toasts would cover its lowest fields; there it starts below the header,
+// so a toast never covers Layers, ☰, Undo or Redo) and shows four toasts, all
 // expanded: Sonner's default folds older toasts into slivers behind the
 // newest, and a persistent warning or error must stay readable. Callers can
 // override all three.
@@ -31,6 +32,12 @@ import { useTranslation } from "@/i18n";
 import { useTheme } from "@/theme";
 import { usePhoneLayout } from "@/usePhoneLayout";
 
+// The phone header is 57px tall on a touch screen (44px buttons). A toast's
+// close button sits 6px above its top edge and its touch reach 13px more
+// (index.css), so the toast starts 19px below the header. Sonner reads
+// mobileOffset under 600px wide and offset above, so both are set.
+const BELOW_HEADER = { top: 57 + 19 };
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const [theme] = useTheme();
   const { t } = useTranslation();
@@ -41,6 +48,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme}
       className="toaster group"
       position={narrow ? "top-center" : "bottom-center"}
+      offset={narrow ? BELOW_HEADER : undefined}
+      mobileOffset={narrow ? BELOW_HEADER : undefined}
       visibleToasts={4}
       expand
       hotkey={[]}
