@@ -43,6 +43,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 - **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
 - **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+- **The preview toolbar no longer runs under the inspector.** With a layer selected, the right end of the toolbar under the preview sat behind the inspector, which hid the update button and, in a narrow window, part of the Can view's sliders. The toolbar now stops at the inspector's edge and scrolls sideways when the window is too narrow to show it all.
 
 ### Changed
 - **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
