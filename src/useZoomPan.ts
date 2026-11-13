@@ -260,20 +260,20 @@ export function useZoomPan(
     // text being edited in place) is that control's. Checked first, so such
     // a finger never takes over an unstarted resize below.
     if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
+    if (!e.isPrimary) preview.current?.endTap(); // a press joined by a second finger is no tap
     // An extra finger while none of ours is down: its first went to a control
     // that keeps it (a ruler, the divider, a resize past the tap slop), so it
-    // is ignored, unless a resize still within the slop gives its finger up.
+    // is ignored, unless it is a resize still within the slop: that finger
+    // joins the pinch, and the tick keeps resizing with it until one starts.
     if (!e.isPrimary && !fingers.current.size) {
-      const first = preview.current?.releaseResizeFinger();
-      if (!first) return;
+      const first = preview.current?.resizeFinger();
+      if (!first || first.started) return;
       fingers.current.set(first.pointerId, { x: first.x, y: first.y });
     }
     fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();
-    else {
-      preview.current?.cancelLayerGesture();
-      pinchFrom.current = new Map(fingers.current);
-    }
+    // The first finger's drag or resize goes on until the pinch starts.
+    else pinchFrom.current = new Map(fingers.current);
   }
   function onTouchMove(e: React.PointerEvent<HTMLDivElement>) {
     const from = fingers.current.get(e.pointerId);
@@ -282,8 +282,12 @@ export function useZoomPan(
     const r = e.currentTarget.getBoundingClientRect();
     const v = liveView.get();
     if (fingers.current.size === 2 && pinchFrom.current) {
-      // The move that leaves the slop starts the pinch from here: no jump.
-      if (!isTap(pinchFrom.current.get(e.pointerId)!, to)) pinchFrom.current = null;
+      // The move that leaves the slop starts the pinch from here (no jump),
+      // and puts back the first finger's drag or resize.
+      if (!isTap(pinchFrom.current.get(e.pointerId)!, to)) {
+        pinchFrom.current = null;
+        preview.current?.cancelLayerGesture();
+      }
     } else if (fingers.current.size === 2) {
       const other = [...fingers.current].find(([id]) => id !== e.pointerId)![1];
       const local = (p: Point) => ({ x: p.x - r.left, y: p.y - r.top });
@@ -296,7 +300,11 @@ export function useZoomPan(
   }
   function onTouchEnd(e: React.PointerEvent<HTMLDivElement>) {
     if (!fingers.current.delete(e.pointerId)) return;
-    lonePans.current = true; // the finger left after a pinch pans
+    // Lifted before a pinch started: a tick resize takes its finger back and
+    // a drag goes on. The finger left after a pinch (which dropped both) pans.
+    const resizing = preview.current?.resizeFinger();
+    if (resizing) fingers.current.delete(resizing.pointerId);
+    lonePans.current = !preview.current?.layerGestureArmed();
     setZoom(liveView.get().z);
   }
   /** Capture-phase click on the pane: the click that ends a finger gesture

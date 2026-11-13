@@ -191,11 +191,13 @@ it("a hidden preview commits once per parent render, however often onDragCancel 
   expect(commits).toBe(3);
 });
 
-it("a finger's resize within the slop hands over the finger's latest point", () => {
+it("a finger's resize reports its finger's latest point and whether it has started, and keeps going", () => {
   mount({ selected: ["name"] });
   const t = container.querySelector('[data-resize-handle="1,1"]')!;
   fire(t, "pointerdown", 1, 1);
   fire(t, "pointermove", 7, 1);
-  expect(handle.current!.releaseResizeFinger()).toEqual({ pointerId: 1, x: 7, y: 1 });
-  expect(handle.current!.layerGestureArmed()).toBe(false);
+  expect(handle.current!.resizeFinger()).toEqual({ pointerId: 1, x: 7, y: 1, started: false });
+  expect(handle.current!.layerGestureArmed()).toBe(true);
+  fire(t, "pointermove", 30, 1);
+  expect(handle.current!.resizeFinger()).toEqual({ pointerId: 1, x: 30, y: 1, started: true });
 });

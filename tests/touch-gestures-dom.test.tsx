@@ -118,12 +118,13 @@ it("a second finger on another unlocked layer puts the first finger's drag back 
   expect(layer("name")).not.toEqual(before.find((l) => l.id === "name"));
   expect(canUndo()).toBe(true);
   finger(sheet, "pointerdown", 2, b.x, b.y);
-  expect(layers()).toEqual(before);
-  expect(canUndo()).toBe(false);
-  // Spread them apart along the line between them: twice the distance.
+  // Spread them apart along the line between them: twice the distance. The
+  // first move past the slop starts the pinch and puts the layer back.
   const b1 = { x: b.x + (b.x - a.x) / 2, y: b.y + (b.y - a.y) / 2 };
   const a1 = { x: a.x - (b.x - a.x) / 2, y: a.y - (b.y - a.y) / 2 };
   finger(sheet, "pointermove", 2, b1.x, b1.y);
+  expect(layers()).toEqual(before);
+  expect(canUndo()).toBe(false);
   finger(sheet, "pointermove", 1, a1.x, a1.y);
   expect(scale()).toBeGreaterThan(1);
   finger(sheet, "pointerup", 2, b1.x, b1.y);
@@ -142,8 +143,9 @@ it("the cancel leaves Undo as it was before the drag", async () => {
   finger(sheet, "pointerdown", 1, a.x, a.y);
   finger(sheet, "pointermove", 1, a.x + 30, a.y);
   finger(pane, "pointerdown", 2, 600, BOARD_Y);
+  finger(pane, "pointermove", 2, 640, BOARD_Y); // the pinch starts
   expect(layers()).toEqual(moved);
-  finger(pane, "pointerup", 2, 600, BOARD_Y);
+  finger(pane, "pointerup", 2, 640, BOARD_Y);
   finger(sheet, "pointerup", 1, a.x + 30, a.y);
   run("undo");
   expect(canUndo()).toBe(false);
@@ -842,4 +844,54 @@ it("with a plain MouseEvent click on the tick, a tap on a layer in its reach sel
   finger(sheet, "pointerup", 1, d.x, d.y);
   plainClick(tick("1,1"), d.x, d.y);
   expect(probe.preview!.selected).toEqual(["description"]);
+}, 60_000);
+
+// A second finger cancels the first finger's drag or resize only when the
+// pinch starts (either finger past the 10px slop): a brush that lifts inside
+// the slop leaves the first finger's gesture going.
+it("a second finger that brushes the pasteboard during a drag leaves the drag and one undo step", async () => {
+  const start = box("name"), { x, y } = centre("name");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(sheet, "pointermove", 1, x + 30, y);
+  finger(pane, "pointerdown", 2, 400, BOARD_Y);
+  finger(pane, "pointerup", 2, 400, BOARD_Y);
+  finger(sheet, "pointermove", 1, x + 40, y);
+  finger(sheet, "pointerup", 1, x + 40, y);
+  expect(box("name").x).toBeGreaterThan(start.x);
+  expect(scale()).toBe(1);
+  run("undo");
+  expect(box("name")).toEqual(start);
+  expect(canUndo()).toBe(false);
+}, 60_000);
+
+it("a second finger that spreads past the slop during a drag puts the layer back once and zooms", async () => {
+  const before = structuredClone(layers()), { x, y } = centre("name");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(sheet, "pointermove", 1, x + 30, y);
+  finger(pane, "pointerdown", 2, 400, BOARD_Y);
+  finger(pane, "pointermove", 2, 430, BOARD_Y);
+  expect(layers()).toEqual(before);
+  expect(canUndo()).toBe(false);
+  finger(pane, "pointermove", 2, 460, BOARD_Y);
+  expect(scale()).toBeGreaterThan(1);
+  finger(pane, "pointerup", 2, 460, BOARD_Y);
+  finger(sheet, "pointerup", 1, x + 30, y);
+  expect(layers()).toEqual(before);
+  expect(canUndo()).toBe(false);
+}, 60_000);
+
+it("a second finger that brushes while a tick press is inside the slop leaves the resize to the first", async () => {
+  select("name");
+  const start = box("name"), { x, y } = pastNameCorner();
+  finger(tick("1,1"), "pointerdown", 1, x, y);
+  finger(tick("1,1"), "pointermove", 1, x + 3, y);
+  finger(pane, "pointerdown", 2, 400, BOARD_Y);
+  finger(pane, "pointerup", 2, 400, BOARD_Y);
+  finger(tick("1,1"), "pointermove", 1, x + 20, y + 10);
+  finger(tick("1,1"), "pointerup", 1, x + 20, y + 10);
+  expect(box("name").w).toBeGreaterThan(start.w);
+  expect(scale()).toBe(1);
+  run("undo");
+  expect(box("name")).toEqual(start);
+  expect(canUndo()).toBe(false);
 }, 60_000);

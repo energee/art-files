@@ -1,6 +1,6 @@
 // zoom-pan-touch-dom.test.tsx — fingers on the preview pane (src/useZoomPan.ts):
 // one pans, two pinch about their midpoint, a third is ignored, and a finger
-// the layer drag took does not pan until a second one cancels the drag. The
+// the layer drag took does not pan until a second one's pinch cancels the drag. The
 // view changes outside React like the wheel's, publishes the zoom when a
 // finger lifts, never adds an undo step, and a gesture that moved the view
 // swallows its trailing click. Mounted like tests/zoom-pan-render-dom.test.tsx,
@@ -26,7 +26,7 @@ vi.mock("../src/components/PreviewCompare", async () => {
     PreviewCompare: (props: PreviewProps & { ref?: import("react").Ref<PreviewCompareHandle> }) => {
       useImperativeHandle(props.ref, () => ({
         showArt() {}, showMask() {}, getPageElement: () => null,
-        layerGestureArmed: () => probe.armed, cancelLayerGesture: () => probe.cancel!(), releaseResizeFinger: () => null,
+        layerGestureArmed: () => probe.armed, cancelLayerGesture: () => probe.cancel!(), endTap() {}, resizeFinger: () => null,
       }));
       probe.renders++; probe.preview = props; return null;
     },
@@ -145,7 +145,7 @@ it("the finger left after a pinch pans", async () => {
   expect(v.z).toBeCloseTo(2, 10); expect(v.x).toBeCloseTo(-440, 10); expect(v.y).toBeCloseTo(-300, 10);
 });
 
-it("a lone finger the layer drag took does not pan; a second cancels the drag and pinches", async () => {
+it("a lone finger the layer drag took does not pan; a second cancels the drag once the pinch starts", async () => {
   const { pane, layer } = await mountEditor();
   run("zoom-in"); run("zoom-in");
   probe.armed = true;
@@ -153,8 +153,9 @@ it("a lone finger the layer drag took does not pan; a second cancels the drag an
   finger(pane, "pointermove", 11, 320, 300);
   expect(viewOf(layer)).toEqual({ z: 1.5625, x: -225, y: -168.75 });
   finger(pane, "pointerdown", 12, 489, 300);
-  expect(probe.cancel).toHaveBeenCalledTimes(1);
+  expect(probe.cancel).not.toHaveBeenCalled();
   finger(pane, "pointermove", 12, 500, 300); // out of the tap slop: the pinch starts
+  expect(probe.cancel).toHaveBeenCalledTimes(1);
   expect(viewOf(layer).z).toBe(1.5625);
   finger(pane, "pointermove", 12, 520, 300);
   expect(viewOf(layer).z).toBeCloseTo((1.5625 * 200) / 180, 10);

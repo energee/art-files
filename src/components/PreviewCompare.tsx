@@ -63,9 +63,11 @@ export interface PreviewCompareHandle {
    *  moved (onDragCancel), clears the snap lines and readout, and drops it
    *  so later moves do nothing. */
   cancelLayerGesture: () => void;
-  /** A tick resize that has not started (a finger within the tap slop) gives
-   *  its finger to the pane's pinch: dropped, the finger's last point returned. */
-  releaseResizeFinger: () => { pointerId: number; x: number; y: number } | null;
+  /** A second finger landed: the first finger's press is no tap. */
+  endTap: () => void;
+  /** The tick resize's finger, if one is down, at its latest point: the pane
+   *  can pinch with it while the resize has not started. */
+  resizeFinger: () => { pointerId: number; x: number; y: number; started: boolean } | null;
 }
 
 export const PreviewCompare = forwardRef<
@@ -295,7 +297,7 @@ export const PreviewCompare = forwardRef<
   // propagation, so the wrapper's move never starts. A press the tick does
   // not take (during in-place editing, on a locked layer, an extra finger, a
   // finger on any layer) bubbles on as any other press would.
-  // A finger resizes only past the tap slop; before that a second finger pinches (releaseResizeFinger).
+  // A finger resizes only past the tap slop; before that a second finger may pinch (resizeFinger).
   const resize = useRef<{
     id: string; handle: ResizeHandle; pointerId: number; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean; last: { x: number; y: number }; // the finger's latest point
@@ -325,12 +327,11 @@ export const PreviewCompare = forwardRef<
     setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
   }
   /** The resize's own pointer lifting ends it; its cancel reverts it like
-   *  Escape. Any other pointer's up passes through to the pane, and so does
-   *  the lift when no resize ran (a finger on a layer that onHandleDown
-   *  handed to the sheet): that move ends at the sheet. */
+   *  Escape. Every lift goes on to the sheet and the pane: a pinch may hold
+   *  the resize's finger, and a finger on a layer that onHandleDown handed to
+   *  the sheet ends its move there. */
   function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
     if (resize.current?.pointerId !== e.pointerId) return;
-    e.stopPropagation();
     if (e.type === "pointercancel") { cancelLayerGesture(); return; }
     swallowClick.current ||= resize.current.started;
     resize.current = null;
@@ -369,8 +370,8 @@ export const PreviewCompare = forwardRef<
   const lastTap = useRef<Tap | null>(null), tapOpened = useRef(false); // a tap opened the session, until the next press
   /** Capture phase, so every press starts afresh: no swallow left armed by a
    *  drag whose click never came (a moved touch sends none) eats its click; a
-   *  first finger starts a tap unless a session is open (an extra one cancels
-   *  it: cancelLayerGesture). */
+   *  first finger starts a tap unless a session is open (an extra one ends
+   *  it: endTap). */
   function onPressCapture(e: React.PointerEvent<HTMLDivElement>) {
     swallowClick.current = tapOpened.current = false; pressType.current = e.pointerType;
     if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
@@ -404,7 +405,7 @@ export const PreviewCompare = forwardRef<
     return started;
   }, []);
 
-  // Escape mid-drag cancels it, the same path a second finger takes
+  // Escape mid-drag cancels it, the same path a starting pinch takes
   // (cancelLayerGesture). Capture phase + preventDefault marks the Escape as
   // spent before the inspector Sheet's document listener sees it, so
   // cancelling a drag doesn't also close the inspector and deselect (App's
@@ -425,11 +426,10 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
     layerGestureArmed: () => !!(drag.current || resize.current),
     cancelLayerGesture: () => { cancelLayerGesture(); },
-    releaseResizeFinger: () => {
+    endTap: () => { tapFrom.current = null; },
+    resizeFinger: () => {
       const d = resize.current;
-      if (!d || d.started) return null;
-      resize.current = null;
-      return { pointerId: d.pointerId, ...d.last };
+      return d && { pointerId: d.pointerId, ...d.last, started: d.started };
     },
   }), [changeSplit, cancelLayerGesture]);
 
@@ -552,7 +552,7 @@ export const PreviewCompare = forwardRef<
       // (off the field) or select a word (on it, as a double-click): the field opens with a caret.
       onMouseDown={(e) => { if (tapOpened.current) e.preventDefault(); }}
       // A cancelled press (an incoming call, the OS taking the touch) puts
-      // the layer back, as Escape and a second finger do; an ignored extra
+      // the layer back, as Escape and a starting pinch do; an ignored extra
       // finger's cancel leaves the first finger's gesture alone.
       onPointerCancel={(e) => { if (!extraFinger(e)) cancelLayerGesture(); }}
     >

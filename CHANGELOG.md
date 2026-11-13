@@ -12,7 +12,7 @@ that section to the new version (see .agents/release-steward.md).
 - **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
 - **Label Lab fits a phone.** On a phone's browser the editor keeps the same Layers list, preview, toolbar and inspector. Layers slides in from the side and closes when you pick or add a layer, or press Escape; the inspector opens from the bottom with the label above it, shorter on a short screen so the label stays in view; the menus sit under one ☰ button; Undo and Redo get their own buttons; and notifications drop from the top so they don't cover the inspector.
 - **Bigger controls on phones and tablets.** Buttons, menu rows, list options, suggestions and checkbox rows are finger-sized, and text fields use 16-pixel text. The small reset buttons beside changed fields stay small for now.
-- **Pan and zoom the label with your fingers.** On a phone or tablet, drag with one finger where there is no layer to move around the label, and pinch with two to zoom. The page no longer scrolls or zooms instead. A second finger during a layer drag puts the layer back and pinches.
+- **Pan and zoom the label with your fingers.** On a phone or tablet, drag with one finger where there is no layer to move around the label, and pinch with two to zoom. The page no longer scrolls or zooms instead. Pinching with a second finger during a layer drag puts the layer back; a second finger that only brushes the screen leaves the drag alone.
 - **Double-tap to type on the label.** Double-tapping a text layer edits it in place, as a double-click does.
 
 ### Fixed
