@@ -32,7 +32,9 @@ import { useTranslation } from "@/i18n";
 import { useTheme } from "@/theme";
 import { usePhoneLayout } from "@/usePhoneLayout";
 
-// The phone header is 57px tall on a touch screen (44px buttons). A toast's
+// The phone header (DocumentEditor's <header> in src/App.tsx) is 57px tall on
+// a touch screen (44px buttons), measured; nothing computes it, so a change to
+// that header's height or padding must update this figure too. A toast's
 // close button sits 6px above its top edge and its touch reach 13px more
 // (index.css), so the toast starts 19px below the header. Sonner reads
 // mobileOffset under 600px wide and offset above, so both are set.

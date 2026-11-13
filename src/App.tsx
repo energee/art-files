@@ -40,7 +40,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
-import { LABEL_EXT, type LabelAsset } from "@/labelfile";
+import { LABEL_EXT, readArchiveFile, type LabelAsset } from "@/labelfile";
 import { masterFilter, masterTypes, isAbort } from "@/filePickers";
 import { confirmOverwrite, openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
@@ -242,7 +242,7 @@ type LabelSource = { name: string; bytes: Uint8Array; path?: string; master?: Re
 /** A texture or mask slot's state setter, or fillEmpty's wrapper of one. */
 type SetSlot = (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void;
 const fileSource = async (f: File): Promise<LabelSource> =>
-  ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+  ({ name: f.name, bytes: await readArchiveFile(f) });
 
 /** "rendered" is the flat label in the 3D scene (CanSceneMode "flat"). */
 type ViewMode = "2d" | "can" | "rendered";
@@ -1858,7 +1858,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       if ("path" in target) await openMasterBytes(await readNativeFile(target.path), target.path, target);
       else {
         const file = await target.handle.getFile();
-        await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
+        await openMasterBytes(await readArchiveFile(file), file.name, target);
       }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
@@ -1952,7 +1952,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         [bytes, path] = [await readNativeFile(target.path), target.path];
       } else {
         const file = await target.handle.getFile();
-        [bytes, path] = [new Uint8Array(await file.arrayBuffer()), ""];
+        [bytes, path] = [await readArchiveFile(file), ""];
       }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
@@ -2583,7 +2583,10 @@ export const DocumentEditor = memo(function DocumentEditor({
             6px down to centre the glyph on their 16px midline), so it neither
             moves with the sidebar nor sits under them. Anything else the
             header gains starts at its own left edge, under the lights while
-            the sidebar is collapsed. */}
+            the sidebar is collapsed. Its 57px height on a phone's touch
+            screen is restated by hand as BELOW_HEADER
+            (src/components/ui/sonner.tsx), which starts the toasts below it:
+            change one, change the other. */}
         <header data-tauri-drag-region={overlayTitlebar() ? "" : undefined}
           className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2 titlebar:h-10">
           <SidebarTrigger ref={layersToggle} className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
@@ -2609,7 +2612,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
+              void readArchiveFile(f).then((bytes) => openMasterBytes(bytes, f.name, {}))
                 .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
           {/* A phone has no keyboard for ⌘Z: Undo and Redo get buttons. At

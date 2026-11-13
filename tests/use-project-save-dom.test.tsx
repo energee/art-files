@@ -5,7 +5,7 @@
 // turns (#690), and a Save's finish leaves alone a binding an Open made (#693).
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { useProjectSave } from "@/useProjectSave";
 
 it("saveProject resolves false and reports the error when packing throws", async () => {
@@ -276,6 +276,12 @@ it("with no file picker, each Save downloads the label again under its name and 
     return null;
   }
   const root = createRoot(document.createElement("div"));
+  // Cleaned up even when an assertion below fails, so no mock or root leaks.
+  onTestFinished(() => {
+    act(() => root.unmount());
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/assets/io");
+  });
   await act(async () => { root.render(createElement(Probe)); });
   // Inside act, so a binding's state update would render before filePath is read.
   await act(async () => { await expect(api!.saveProject()).resolves.toBe(true); });
@@ -284,7 +290,4 @@ it("with no file picker, each Save downloads the label again under its name and 
   expect(onSaved).toHaveBeenCalledTimes(2);
   expect(api!.boundHandle()).toBeNull();
   expect(api!.filePath).toBeNull();
-  act(() => root.unmount());
-  vi.doUnmock("@tauri-apps/api/core");
-  vi.doUnmock("@/assets/io");
 });
