@@ -9,6 +9,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { AssetDropOverlay } from "../src/components/AssetDropOverlay";
 import { FileDrop, FILE_DROP_ATTR } from "../src/components/FileDrop";
+import { setLanguage } from "../src/i18n";
 import { fieldWell, fileDrag, label, pdf, png } from "./dom-drag";
 
 let container: HTMLDivElement;
@@ -185,6 +186,39 @@ it("drops a rejection once a different file is loaded", async () => {
   expect(container.querySelector('[role="alert"]')).not.toBeNull();
   act(() => root.render(createElement(FileDrop, { ...props, fileName: "rock.png" })));
   expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+// #783: both messages had an English fragment that never went through t().
+describe("FileDrop messages in another language (#783)", () => {
+  beforeEach(async () => { await act(() => setLanguage("es")); });
+  afterEach(async () => { await act(() => setLanguage("en")); });
+
+  it("translates the whole removed note", () => {
+    const props = { label: "Texture", accept: { "image/png": [".png"] }, onFile: vi.fn(), fileName: "rock.png" };
+    const onClear = vi.fn();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear })));
+    act(() => { (container.querySelector('button[aria-label$="Texture"]:last-of-type') as HTMLButtonElement).click(); });
+    expect(onClear).toHaveBeenCalledOnce();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear, fileName: undefined })));
+    const note = container.querySelector('[role="status"]')!.textContent!;
+    expect(note).toContain("Ctrl+Z lo restaura.");
+    expect(note).not.toContain("brings it back");
+  });
+
+  it("joins the accepted file types in the language's own list form", async () => {
+    const accept = { "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] };
+    act(() => root.render(createElement(FileDrop, { label: "Image", accept, onFile: vi.fn() })));
+    const well = container.querySelector(`[${FILE_DROP_ATTR}]`)!;
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files: [pdf], items: [{ kind: "file", type: pdf.type, getAsFile: () => pdf }] } });
+    await act(async () => {
+      well.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const alert = container.querySelector('[role="alert"]')!.textContent!;
+    expect(alert).not.toContain(" or ");
+    expect(alert).toContain(".svg, .png, .jpg o .jpeg");
+  });
 });
 
 it.each(["Texture", "Metallic mask", "Image"])(

@@ -39,7 +39,8 @@ function setTheme(t: Theme) {
     localStorage.removeItem(KEY);
   } else {
     document.documentElement.dataset.theme = t;
-    localStorage.setItem(KEY, t);
+    try { localStorage.setItem(KEY, t); }
+    catch { /* full or blocked storage: the theme lasts this session only (#778) */ }
   }
   for (const read of readers) read();
 }

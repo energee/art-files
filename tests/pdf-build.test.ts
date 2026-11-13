@@ -12,7 +12,9 @@ import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "./legacy/layout";
 import { ART, PAGE, SHIPPED_BLEED_IN, setBleed } from "../src/layout";
-import { assets, contentStreamText, fillOps, lolevPlan, onePxPng, pageRectPath } from "./fixtures";
+import { planLayers, planText } from "../src/planLayers";
+import type { TextLayer } from "../src/model/layers";
+import { assets, contentStreamText, fillOps, lolevLayers, lolevPlan, onePxPng, pageRectPath, planAssets } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
 // the thing an image whose item is not in the list must NOT contribute.
@@ -308,8 +310,48 @@ it("rejects unsupported print glyphs in the actual family and face (#340)", asyn
   }
 });
 
+it("plans a name with decomposed accents in Poppins (#788)", async () => {
+  const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
+  // Poppins has "\u00e9" but no combining acute: the pair must reach the PDF composed.
+  const layers = lolevLayers({ values: { name: [{ text: "Cafe\u0301 Ole\u0301", fill: L.GOLD, layer: "metallic" }] } });
+  expect(() => planLayers(layers, m, planAssets)).not.toThrow();
+});
+
 it("accepts variation selectors the emoji picker appends (™️ ©️ ®️)", async () => {
   const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
   // U+FE0F folds into the base glyph, so it prints exactly like a plain ™.
   expect(m("Blue Agate™️ ©️ ®︎", 10, "bold")).toBe(m("Blue Agate™ © ®", 10, "bold"));
+});
+
+/** #776: letter spacing is charged per character by the plan, but PDF's Tc
+ *  adds it per shown glyph, so a shaped ligature (Barlow's f_f_i) printed the
+ *  run short. A tracked run prints without ligatures, as the canvas does. */
+describe("letter-spaced text prints without ligatures (#776)", () => {
+  const font = (f: string) => readFileSync(new URL(`../src/assets/fonts/${f}`, import.meta.url));
+  const barlow = {
+    regular: font("BarlowCondensed-Regular.ttf"),
+    semibold: font("BarlowCondensed-SemiBold.ttf"),
+    bold: font("BarlowCondensed-Bold.ttf"),
+  };
+  const barlowAssets = { ...assets, fontFamilies: { "barlow-condensed": barlow } } as const;
+  const style = { fill: "#000000", layer: "white" } as const;
+  const office = async (letterSpacing?: number) => {
+    const layer: TextLayer = {
+      id: "t", name: "T", kind: "text", enabled: true, x: 400, y: 100, anchor: "right", align: "right",
+      size: 20, fontFamily: "barlow-condensed", style: { ...style, letterSpacing },
+      lines: [{ text: "office", ...style }],
+    };
+    return planText(layer, await pdfMeasureFace({ poppins: assets.fonts, "barlow-condensed": barlow }, "poppins"));
+  };
+  /** Glyph codes in the one text show: pdf-lib writes 4 hex digits each. */
+  const shown = async (letterSpacing?: number) =>
+    (await contentStreamText(await buildArtPdf(await office(letterSpacing), barlowAssets))).match(/<([0-9A-F]+)> Tj/)![1].length / 4;
+
+  it("shows one glyph per character when the run is tracked", async () => {
+    expect(await shown(2)).toBe(6);
+  });
+
+  it("keeps the ligature when the run is not tracked", async () => {
+    expect(await shown()).toBe(4);
+  });
 });

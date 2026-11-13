@@ -11,6 +11,28 @@ that section to the new version (see .agents/release-steward.md).
 - **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
 
 ### Fixed
+- **Accented text pasted from a file name now exports.** Text copied from a macOS file name stores "é" as a plain letter plus a separate accent mark. It looked right in the preview, but Poppins refused to export it and named a character you could not see, and Barlow Condensed printed the accent to the right of its letter. The accent is now joined to its letter, as a keyboard types it, so the text prints as previewed and gives the same QR link and export file name either way.
+
+### Changed
+- **A quieter Layers list.** The list no longer marks which layers a label changed from its master, and the Changed filter is gone: the list is for building the label, and the Save Master review still lists what changed. Each row is its name, an eye, and a lock only when the layer is locked (click it to unlock). The trash column is gone, so long names have more room.
+- **Right-click a layer for everything you can do to it.** The menu now holds Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove, with their shortcuts. It selects the row first and acts on the whole selection. Reset to Master puts a layer's position, type and colour back and keeps what you typed into it.
+- **Remove moved to the inspector header,** beside Show and Lock, where one button acts on every selected layer. The header's power icon is now the same eye the list uses. Delete and Backspace still remove.
+- **Reset appears when you point at a field.** The dots beside changed fields are gone, along with the gap that was kept for them. Point at a field this label changed, or tab into it, and a reset arrow appears.
+- **Power and lock on a selected Layers row act on the whole selection.** Clicking either on one of several selected rows, or Lock in its right-click menu, now changes all of them, as drag, reorder and Delete already did.
+- **Horizontal guide buttons match Vertical guide.** Left and right are now arrows pointing at a line, like top and bottom.
+
+## [0.1.120] - 2026-11-12
+
+### Fixed
+- **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
+- **Letter-spaced text prints at the width the layout shows.** In Barlow Condensed, text with Letter spacing and an fi, fl, ffi or ffl ("office", "Unfiltered") printed narrower than the preview, so a right-aligned line stopped short of its edge and a run after it started late. Letter-spaced text now prints each letter separately, as the preview draws it.
+- **Minimum height reads right after accented text.** Once a text with an accented letter (such as "Olé") had been measured, the plain letter stopped counting for the rest of the session, so Minimum height read too tall and text could be sized below the minimum you asked for.
+- **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
+- **Labels with two QR codes no longer slow down every edit.** With two QR layers holding different values, both codes were rebuilt on every keystroke, nudge and drag step. Each is now built once and reused until its value or style changes.
+- **Replaced images are released.** An image you replaced is freed once undo and redo can no longer reach it, instead of staying in memory until the tab closes.
+- **Resizing an SVG layer no longer builds up memory.** Only the last few sizes stay cached instead of every size the drag passed through.
+- **Hidden tabs use less memory.** A tab you are not looking at no longer holds its rendered preview.
+- **Faster tab switching.** Going back to the last tab you were on shows the label straight away, and any other tab no longer waits before it starts rendering.
 - **Smoother edits in the Can view.** Each edit now redoes only what changed: the can's shaders stay built, and foil and corner shapes are kept unless they changed, so typing with the can in view pauses less.
 - **Less work returning to the Can view.** The can model and studio lighting are read once per session instead of every time you switch to the Can view.
 - **The Can view stops drawing when nothing moves.** A can left at 100%, or zoomed all the way in or out, could keep redrawing at full frame rate while idle, costing GPU and battery.
@@ -30,6 +52,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Export again from a background tab uses the current Settings.** A PSD exported from a tab that was hidden while Bleed or PSD resolution changed came out at the old size with a composite of the new one.
 - **Browser downloads keep their file until they have started.** A plain download's link now lasts a minute on its own, instead of ending at the next save, which could cut a large download short, or never ending if its tab had closed during the export.
 - **A PSD built without its worker keeps its Bleed and resolution.** If the background build fails to start, the build on the main thread now uses the export's settings too.
+- **Discard All stays discarded.** Work you discard while quitting is no longer saved for recovery by a snapshot that was about to run, so the next launch won't offer it back.
 - **Quitting waits for a running export.** Quit, Dock Quit and Restart Now now hold until the PDF or PSD finishes, then close by themselves. Before, the export was lost or the print file could be left cut off. If the export fails, the app stays open so you can read the error.
 - **View settings stay put across tabs.** The unit, rulers, guides, Lighting angle and More rows are now one set for every tab, so a change in one tab shows in the others and another tab can no longer undo it at the next launch.
 - **Two browser windows no longer undo each other's settings.** Bleed, DPI and the other Document Settings follow a change made in another window, and a swatch saved in one window is kept when the other saves one.
@@ -39,16 +62,23 @@ that section to the new version (see .agents/release-steward.md).
 - **⌘Z during a drag no longer costs the edit before it.** Pressing Esc after ⌘Z mid-drag used to undo your previous edit too.
 - **Late changes keep their own undo step.** A master switch, Save Master or loaded image landing right after an edit no longer folds into that edit, so ⌘Z takes back one or the other. The edit straight after a drag no longer folds into the drag either.
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
+- **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
+- **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+- **Screen readers announce a master that fails to open.** The "Could not open master" message under the master picker used to appear without being read out. It is now announced like the picker's other notes.
+- **Image well messages are fully translated.** In Spanish, French, German and Portuguese, the note after removing an image ended in English ("brings it back"), and the wrong-file message joined the accepted file types with an English "or". Both now follow the app's language.
+- **Choice fields work with a screen reader.** A field that offers choices, or a barcode's Code field with tiers, now announces the option you arrow to before Enter commits it, names its list after the field instead of an internal id, and reads its error message with the field.
+- **Ctrl+K and Ctrl+B work with Caps Lock on.** On Windows and Linux, the command palette and the Layers sidebar shortcuts did nothing while Caps Lock was on.
+- **The preview toolbar no longer runs under the inspector.** With a layer selected, the right end of the toolbar under the preview sat behind the inspector, which hid the update button and, in a narrow window, part of the Can view's sliders. The toolbar now stops at the inspector's edge and scrolls sideways when the window is too narrow to show it all.
+- **Changing Bleed keeps the texture under the label.** After a Bleed change in Settings, the preview and the Can view kept the texture and mask at the old page size until your next edit, leaving a bare strip along the right and bottom edges. They now refit straight away. Exports were always correct.
 
 ### Changed
-- **A quieter Layers list.** The list no longer marks which layers a label changed from its master, and the Changed filter is gone: the list is for building the label, and the Save Master review still lists what changed. Each row is its name, an eye, and a lock only when the layer is locked (click it to unlock). The trash column is gone, so long names have more room.
-- **Right-click a layer for everything you can do to it.** The menu now holds Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove, with their shortcuts. It selects the row first and acts on the whole selection. Reset to Master puts a layer's position, type and colour back and keeps what you typed into it.
-- **Remove moved to the inspector header,** beside Show and Lock, where one button acts on every selected layer. The header's power icon is now the same eye the list uses. Delete and Backspace still remove.
-- **Reset appears when you point at a field.** The dots beside changed fields are gone, along with the gap that was kept for them. Point at a field this label changed, or tab into it, and a reset arrow appears.
-- **Power and lock on a selected Layers row act on the whole selection.** Clicking either on one of several selected rows, or Lock in its right-click menu, now changes all of them, as drag, reorder and Delete already did.
-- **Horizontal guide buttons match Vertical guide.** Left and right are now arrows pointing at a line, like top and bottom.
+- **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
+- **Print PSD export holds up the app less.** Each image now decodes once instead of twice, and the images move to the background build instead of being copied. If the background build dies partway, which should be rare, the export now fails with an error instead of finishing on the main thread. The exported file is unchanged.
+- **Exports read only the fonts a label uses.** An export used to parse every bundled family to measure text. It now parses the label's own families, and the exported file is unchanged.
+- **White Ink for transparent art builds faster.** The plate's solid colour under art with alpha is now laid down in large blocks instead of one byte at a time. The exported file is unchanged.
 - **Smoother zoom and pan.** Zooming and panning the preview no longer redraws the whole editor on every wheel tick and pointer move. The preview, rulers and zoom readout follow the gesture directly; label sharpness catches up a moment after it stops. Moving the pointer over the preview now redraws only the ruler markers. Resizing a layer and dragging a guide no longer re-measure every layer on each pointer move.
 - **Guides stay put when the rulers toggle.** Showing or hiding the rulers no longer leaves guides off the label until the next zoom.
+- **Export Artwork PDF is now Export Label PDF.** With Two-file export on, the File menu and the command palette name the plate "Label", as the View menu and the preview toolbar already do.
 
 ## [0.1.119] - 2026-11-12
 

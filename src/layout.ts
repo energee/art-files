@@ -312,7 +312,7 @@ export const PX = 72 / DESIGN_DPI;
  *  readout. Live-bound, so importers see the current value.
  *
  *  ponytail: one module-level output resolution, because the app edits one
- *  document at a time. The PSD worker (psd/offThread.ts) has its own copy of
+ *  document at a time. An export worker (offThread.ts) has its own copy of
  *  this module, so its job carries the DPI and bleed and re-applies them
  *  there. If two documents open at once, pass it as a parameter instead. */
 export let OUTPUT_DPI = 0; // set by setOutputDpi(DESIGN_DPI) below
@@ -348,8 +348,8 @@ setOutputDpi(DESIGN_DPI);
  *  one label at a time. If it ever opens two, thread a Geometry through the
  *  renderers instead of reading module state.
  *
- *  NOTE for callers: this affects only the current JS realm. The PSD worker
- *  has its own copy and re-applies the bleed from its job (psd/offThread.ts).
+ *  NOTE for callers: this affects only the current JS realm. An export worker
+ *  has its own copy and re-applies the bleed from its job (offThread.ts).
  *  `npm run
  *  generate`'s Node harness (scripts/generate.ts) imports this module in a
  *  separate process with its own state. It calls setBleed with the master’s

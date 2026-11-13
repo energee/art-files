@@ -229,9 +229,14 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
   if (l.role === "background" || l.role === "mask") {
     const entry = assets.custom?.[l.asset];
     if (!entry) return null;
-    const rect = L.coverFit(entry.aspect, 1);
     const role = l.role;
-    return { size: { w: rect.w, h: rect.h }, emit: () => [{ kind: "page", id, role, asset: l.asset, ...rect }] };
+    const size = L.coverFit(entry.aspect, 1);
+    // The rectangle is fitted in emit, which runs on every plan: the page
+    // size it reads changes with Bleed while layout()'s memo still hits (#789).
+    return {
+      size: { w: size.w, h: size.h },
+      emit: () => [{ kind: "page", id, role, asset: l.asset, ...L.coverFit(entry.aspect, 1) }],
+    };
   }
   const entry = assets.custom?.[l.asset];
   if (!entry) return null;

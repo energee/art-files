@@ -1,6 +1,7 @@
 // TabsShell.tsx — the workspace: a tab strip over one mounted DocumentEditor
 // per open .label project, inactive ones hidden (display:none), their state
-// intact but their rendered previews dropped (see App.tsx's active gating).
+// intact but their rendered previews dropped: empty plates, and decoded
+// bitmaps only on the last tab shown (see App.tsx's active gating).
 // The shell owns everything that outlives or spans documents: the tab list
 // (src/tabs.ts), OS file-open and dropped-.label routing, the File → Open
 // picker (an open must be able to target a new tab), File → Open Recent
@@ -22,7 +23,7 @@ import {
 import { LABEL_EXT, isLabelName } from "@/labelfile";
 import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
-import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
+import { canRebind, dropRecovery, earlierSnapshots, noteDiscard, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
 import { loadRenderSettings, RENDER_KEY, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
@@ -225,7 +226,7 @@ export default function TabsShell() {
           ]),
         } : undefined;
         if (recoveredPath?.rebind) rebound.push(recoveredPath.path);
-        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath });
+        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath, recoveredMaster: r.master });
       }
     })();
   };
@@ -462,6 +463,7 @@ export default function TabsShell() {
    *  and the sweep is over. */
   const discardAll = async () => {
     setSweepCount(0);
+    noteDiscard();
     await Promise.all(stateRef.current.tabs.filter(unsaved).map((t) => dropRecovery(recoveryKey(t.id))));
     endSweep(true);
   };
@@ -740,6 +742,7 @@ export default function TabsShell() {
                 tabStripHost={tabStripHost}
                 updateStatusHost={setUpdateStatusHost}
                 active={isActive}
+                keepSource={t.id === state.previous}
                 fileToOpen={pending[t.id] ?? null}
                 onOpenSettled={e.onOpenSettled}
                 onMeta={e.onMeta}
