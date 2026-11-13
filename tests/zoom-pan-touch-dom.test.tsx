@@ -234,7 +234,8 @@ it("a pinch below the bottom of the range reaches no listener", async () => {
   const stop = probe.view!.subscribe(() => { notified++; });
   finger(pane, "pointerdown", 11, 300, 300);
   finger(pane, "pointerdown", 12, 500, 300);
-  finger(pane, "pointermove", 11, 350, 300);
+  finger(pane, "pointermove", 11, 350, 300); // leaves the slop: the pinch starts
+  finger(pane, "pointermove", 11, 380, 300); // the pinch runs, below the range
   stop();
   expect(notified).toBe(0);
 });
