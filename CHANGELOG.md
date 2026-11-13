@@ -43,6 +43,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Removing a layer right after a tab switch.** Removing a layer others bind to no longer shows a raw error while the tab's preview is loading. Wait for the preview, then remove it.
 - **Crash recovery brings back master edits.** A layer or variant added to the master before a crash now returns with the restored tab, still marked unsaved, instead of going missing with its value set aside.
 - **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
+- **Accented text pasted from a file name now exports.** Text copied from a macOS file name stores "é" as a plain letter plus a separate accent mark. It looked right in the preview, but Poppins refused to export it and named a character you could not see, and Barlow Condensed printed the accent to the right of its letter. The accent is now joined to its letter, as a keyboard types it, so the text prints as previewed and gives the same QR link and export file name either way.
 
 ### Changed
 - **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.
