@@ -15,6 +15,7 @@ that section to the new version (see .agents/release-steward.md).
 - **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
 
 ### Fixed
+- **Quieter developer console, no visible change.** Selecting a layer no longer logs a React missing-key warning from the inspector's Position section. The app behaves exactly as before.
 - **Accented text pasted from a file name now exports.** Text copied from a macOS file name stores "é" as a plain letter plus a separate accent mark. It looked right in the preview, but Poppins refused to export it and named a character you could not see, and Barlow Condensed printed the accent to the right of its letter. The accent is now joined to its letter, as a keyboard types it, so the text prints as previewed and gives the same QR link and export file name either way.
 
 ### Changed
