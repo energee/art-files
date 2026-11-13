@@ -96,7 +96,8 @@ function SidebarProvider({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || keyOwner(event.target) === "text") return
       if (
-        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
+        // Lower-cased: with Caps Lock on, Windows and Linux report "B" (#787).
+        event.key.toLowerCase() === SIDEBAR_KEYBOARD_SHORTCUT &&
         (event.metaKey || event.ctrlKey) &&
         !dialogOpen() // a modal dialog blocks the tab behind it (#244)
       ) {
@@ -211,10 +212,14 @@ function SidebarResizeHandle({ className }: { className?: string }) {
         const wrapper = wrapperOf(event.currentTarget)
         if (wrapper) delete wrapper.dataset.resizing
         setWidth(latest.current)
-        localStorage.setItem(
-          SIDEBAR_WIDTH_STORAGE_KEY,
-          String(Math.round(latest.current))
-        )
+        try {
+          localStorage.setItem(
+            SIDEBAR_WIDTH_STORAGE_KEY,
+            String(Math.round(latest.current))
+          )
+        } catch {
+          // full or blocked storage: the width lasts this session only (#778)
+        }
       }}
       // Double-click resets to the default width, the convention in Figma
       // and VS Code.

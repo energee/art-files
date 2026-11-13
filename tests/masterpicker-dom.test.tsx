@@ -108,6 +108,17 @@ describe("MasterPicker", () => {
     expect(container.querySelector("#master-picker-error")?.textContent).toContain("disk full");
   });
 
+  it("announces the failure to screen readers (#786)", async () => {
+    const onMaster = vi.fn().mockRejectedValue(new Error("disk full"));
+    renderPicker({ onMaster });
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(container.querySelector("#master-picker-error")?.closest('[role="status"], [role="alert"]')).not.toBeNull();
+  });
+
   it("lists the current master's variants as versions of it", () => {
     const onVersion = vi.fn();
     const resolve = vi.fn();
