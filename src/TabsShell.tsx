@@ -702,16 +702,20 @@ export default function TabsShell() {
                 !unsaved(t) && ["group-hover:opacity-100", t.id === state.active
                   ? "opacity-40"
                   : "pointer-events-none opacity-0 group-hover:pointer-events-auto"],
-                // On touch a × that takes taps is a 44px box; an inactive
-                // saved tab's stays hidden so a tap there switches tabs.
-                (t.id === state.active || unsaved(t))
-                  && "touch:grid touch:size-tap touch:place-items-center touch:p-0 touch:after:hidden",
+                // On touch only the active tab's control takes a tap, as a
+                // 44px box, so a tap anywhere on an inactive tab (an unsaved
+                // one's • included) switches to it: two taps close any other
+                // tab. Touch has no hover to swap the • for the ×, so the
+                // active unsaved tab shows both, side by side.
+                t.id === state.active
+                  ? "touch:flex touch:size-tap touch:items-center touch:justify-center touch:gap-0.5 touch:p-0 touch:after:hidden"
+                  : "touch:pointer-events-none",
               )}>
               {unsaved(t) ? (
                 <>
                   <span className="block size-3 text-center leading-3 group-hover:hidden"
                     aria-hidden="true">•</span>
-                  <X className="hidden size-3 group-hover:block" />
+                  <X className={cn("hidden size-3 group-hover:block", t.id === state.active && "touch:block")} />
                 </>
               ) : <X className="size-3" />}
             </button>

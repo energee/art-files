@@ -213,6 +213,27 @@ it("gives a × that takes taps a 44px box on touch, and leaves an inactive tab's
   expect(active.className).toContain("touch:after:hidden");
   expect(inactive.className).not.toContain("touch:size-tap");
   expect(inactive.className).toContain("pointer-events-none opacity-0");
+  expect(inactive.className).toContain("touch:pointer-events-none");
+});
+
+it("on touch, an inactive unsaved tab's • takes no taps; once active its control shows the × beside the •", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  await act(async () => {
+    mocks.onMeta?.({ title: "Draft", dirty: true, edited: true, masterUnsaved: false, filePath: null, exporting: false, exportFailures: 0 });
+  });
+  await act(async () => { mocks.newTab?.(); }); // the unsaved Draft is now inactive
+  const draft = () => closeButtons()[1];
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("false");
+  expect(draft().className).toContain("touch:pointer-events-none");
+  expect(draft().className).not.toContain("touch:size-tap");
+  expect(draft().querySelector("svg")!.getAttribute("class")).not.toContain("touch:block");
+  // a tap on the chip's title switches to the tab
+  await act(async () => { tabs()[1].click(); });
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
+  expect(draft().className).toContain("touch:size-tap");
+  expect(draft().className).not.toContain("touch:pointer-events-none");
+  expect(draft().querySelector("svg")!.getAttribute("class")).toContain("touch:block");
+  expect(draft().querySelector("span")!.className).not.toContain("touch:hidden");
 });
 
 it("names the platform's New Tab shortcut on the + button", () => {
