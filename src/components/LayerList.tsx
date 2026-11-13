@@ -35,7 +35,7 @@ import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/i18n";
-import { useMedia } from "@/usePhoneLayout";
+import { COARSE, useMedia } from "@/usePhoneLayout";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -118,8 +118,6 @@ const control = cn(
 );
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
-/** A finger is the primary pointer: rows drag by their grip, not their name. */
-const COARSE = "(pointer: coarse)";
 /** A row's name button: what a row's keys act on and where its focus rests. */
 const NAME_BUTTON = '[data-slot="sidebar-menu-button"]';
 

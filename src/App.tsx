@@ -120,7 +120,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { baseName, cn, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
-import { usePhoneLayout } from "@/usePhoneLayout";
+import { COARSE, useMedia, usePhoneLayout } from "@/usePhoneLayout";
 import { loadLabelFaces } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import type { PlanAssets } from "@/plan";
@@ -430,6 +430,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const { phone, narrow } = usePhoneLayout();
+  const coarse = useMedia(COARSE);
   /** Controlled so View → Layers and the palette can toggle and check it;
    *  ⌘B stays the provider's guarded listener. Starts closed on a phone,
    *  where it covers the preview; later size changes leave it as it is. */
@@ -2600,8 +2601,10 @@ export const DocumentEditor = memo(function DocumentEditor({
           <span role="status" data-export-blocked-status className="sr-only">
             {blocked ? t("Export blocked: {{reason}}", { reason: blockedWhy }) : ""}
           </span>
-          {/* Open Master's fallback — see masterInput/openMasterPicker. */}
-          <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
+          {/* Open Master's fallback — see masterInput/openMasterPicker. No
+              `accept` on a touch screen, where a phone's picker can grey out a
+              custom extension; the open refuses a wrong file. */}
+          <input ref={masterInput} type="file" accept={coarse ? undefined : MASTER_EXT} hidden
             onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = "";

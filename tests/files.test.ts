@@ -16,7 +16,7 @@ const temp = (stem: string, ext: string) => expect.stringMatching(new RegExp(`^$
 let tauri = false;
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => tauri }));
 
-import { nativeModifiedAt, openNativeFile, saveThrough } from "@/files";
+import { nativeModifiedAt, openNativeFile, openThrough, saveThrough } from "@/files";
 
 // Crash recovery's rebind check (recovery.ts canRebind) reads this. The
 // desktop stat itself is smoke-tested by hand, not here.
@@ -179,5 +179,41 @@ describe("browser saveThrough", () => {
     const download = vi.fn();
     await expect(saveThrough(new Uint8Array([1]), options, download)).resolves.toBeNull();
     expect(download).not.toHaveBeenCalled();
+  });
+});
+
+describe("browser openThrough", () => {
+  const options = {
+    filter: { name: "Label", extensions: ["label"] },
+    types: [{ description: "Label", accept: { "application/zip": [".label"] } }],
+  };
+  afterEach(() => { vi.unstubAllGlobals(); });
+  /** A browser with the open picker; `coarse` says whether a finger is the pointer. */
+  const browser = (coarse: boolean, pick = vi.fn().mockResolvedValue([{ name: "a.label" }])) => {
+    vi.stubGlobal("window", { showOpenFilePicker: pick, matchMedia: (q: string) => ({ matches: coarse && q === "(pointer: coarse)" }) });
+    return pick;
+  };
+
+  it("asks a mouse's picker for the file's type", async () => {
+    const pick = browser(false);
+    await expect(openThrough(options)).resolves.toEqual({ handle: { name: "a.label" } });
+    expect(pick).toHaveBeenCalledWith({ types: options.types });
+  });
+
+  it("on a touch screen asks for no type, so no file is greyed out", async () => {
+    const pick = browser(true);
+    await openThrough(options);
+    expect(pick).toHaveBeenCalledWith({});
+  });
+
+  // Review Focus 2
+  it("a dismissed picker is a cancel, not an error", async () => {
+    browser(true, vi.fn().mockRejectedValue(new DOMException("cancelled", "AbortError")));
+    await expect(openThrough(options)).resolves.toBeNull();
+  });
+
+  it("with no picker, hands the open to the caller's file input", async () => {
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
+    await expect(openThrough(options)).resolves.toBeUndefined();
   });
 });

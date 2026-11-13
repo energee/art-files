@@ -8,6 +8,8 @@ import { useCallback, useSyncExternalStore } from "react";
 
 const NARROW = "(max-width: 767px)";
 const SHORT = "(max-height: 499px)";
+/** A finger is the primary pointer: a touch screen. */
+export const COARSE = "(pointer: coarse)";
 
 /** Whether `query` matches now; re-renders when it starts or stops matching. */
 export function useMedia(query: string): boolean {
