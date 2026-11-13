@@ -494,6 +494,7 @@ const en = {
   "Locate .master…": "Locate .master…",
   "Use “{{name}}”": "Use “{{name}}”",
   "Layers ({{shortcut}})": "Layers ({{shortcut}})",
+  "Menu": "Menu",
   "Export blocked: {{reason}}": "Export blocked: {{reason}}",
   "Can't export yet": "Can't export yet",
   "Show layer": "Show layer",

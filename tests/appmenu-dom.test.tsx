@@ -2,8 +2,11 @@
 // appmenu-dom.test.tsx — the in-window menu paints a glyph only where the Mac menu does.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { APP_MENUS, AppMenu, actionsIn } from "@/components/AppMenu";
+import { setViewport } from "./viewport";
+
+afterEach(() => { setViewport(1024, 768); });
 
 async function renderMenu() {
   const container = document.createElement("div");
@@ -26,11 +29,15 @@ async function openMenu(container: HTMLElement, name: string) {
   const trigger = [...container.querySelectorAll("[data-slot=menubar-trigger]")]
     .find((el) => el.textContent === name);
   if (!(trigger instanceof HTMLElement)) throw new Error(`${name} trigger missing`);
+  await press(trigger);
+}
+
+async function press(el: HTMLElement) {
   await act(async () => {
     for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
-      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
     }
-    trigger.click();
+    el.click();
     await Promise.resolve();
   });
 }
@@ -76,6 +83,28 @@ it("renders a leading svg on Edit → Undo and on the View → Label check", asy
     // Sized like a plain row's glyph: the checkbox item has no svg size rule
     // of its own, so an unsized Lucide icon drew at its 24px default.
     expect(label.querySelector("svg.lucide-rectangle-horizontal")?.classList.contains("size-4")).toBe(true);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
+it("folds File, Edit, Layer and View into one ☰ menu on a phone", async () => {
+  const desktop = await renderMenu();
+  const titles = [...desktop.container.querySelectorAll("[data-slot=menubar-trigger]")].map((el) => el.textContent);
+  expect(titles).toEqual(["File", "Edit", "Layer", "View"]);
+  await act(async () => { desktop.root.unmount(); });
+  desktop.container.remove();
+
+  setViewport(390, 844);
+  const { container, root } = await renderMenu();
+  try {
+    expect(container.querySelectorAll("[data-slot=menubar-trigger]")).toHaveLength(1);
+    await openMenu(container, "Menu");
+    const subs = [...document.querySelectorAll("[data-slot=menubar-sub-trigger]")];
+    expect(subs.map((el) => el.textContent)).toEqual(titles);
+    await press(subs.find((el) => el.textContent === "Edit") as HTMLElement);
+    expect(menuItem("Undo")).toBeTruthy();
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

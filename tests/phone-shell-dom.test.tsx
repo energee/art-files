@@ -52,6 +52,8 @@ const rowButton = (id = "barcode") =>
   container.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`) as HTMLButtonElement;
 const tap = (el: Element | null) => act(async () => { (el as HTMLElement).click(); });
 const openLayers = () => tap(slot("sidebar-trigger"));
+const headerButton = (name: string) => container.querySelector(`header button[aria-label="${name}"]`) as HTMLButtonElement | null;
+const power = () => container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
 
 it("starts with Layers closed on a phone", async () => {
   await mount(390, 844);
@@ -142,4 +144,22 @@ it("caps the overlay at 85% of the screen whatever width was saved", async () =>
   await mount(390, 844);
   await openLayers();
   expect(slot("sidebar-container")!.className).toContain("max-w-[85vw]");
+});
+
+it("gives a phone header Undo and Redo buttons that run the history", async () => {
+  await mount(390, 844);
+  expect(headerButton("Undo")!.disabled).toBe(true);
+  await openLayers();
+  await tap(power());
+  expect(power().getAttribute("aria-pressed")).toBe("true");
+  await tap(headerButton("Undo"));
+  expect(power().getAttribute("aria-pressed")).toBe("false");
+  await tap(headerButton("Redo"));
+  expect(power().getAttribute("aria-pressed")).toBe("true");
+});
+
+it("keeps undo and redo out of a desktop header", async () => {
+  await mount(1280, 800);
+  expect(headerButton("Undo")).toBeNull();
+  expect(headerButton("Redo")).toBeNull();
 });

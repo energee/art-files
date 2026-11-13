@@ -30,6 +30,7 @@
 // file-open routing, render settings, and the updater.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Redo2, Undo2 } from "lucide-react";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { t as translate, useCachedT } from "@/i18n";
@@ -2543,6 +2544,19 @@ export const DocumentEditor = memo(function DocumentEditor({
               void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
                 .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
+          {/* A phone has no keyboard for ⌘Z: Undo and Redo get buttons. */}
+          {phone && (
+            <div className="ml-auto flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("undo").label}
+                disabled={byId("undo").disabled} onClick={byId("undo").run}>
+                <Undo2 />
+              </Button>
+              <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("redo").label}
+                disabled={byId("redo").disabled} onClick={byId("redo").run}>
+                <Redo2 />
+              </Button>
+            </div>
+          )}
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}
       {active && <div className="contents" ref={tabStripHost} />}

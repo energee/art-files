@@ -495,6 +495,7 @@ const es: Record<keyof typeof en, string> = {
   "Locate .master…": "Buscar .master…",
   "Use “{{name}}”": "Usar “{{name}}”",
   "Layers ({{shortcut}})": "Capas ({{shortcut}})",
+  "Menu": "Menú",
   "Export blocked: {{reason}}": "Exportación bloqueada: {{reason}}",
   "Can't export yet": "Aún no se puede exportar",
   "Show layer": "Mostrar capa",

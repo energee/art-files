@@ -11,7 +11,7 @@ import type {
 } from "@tauri-apps/api/menu";
 import {
   ALargeSmall, Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  Grid2x2, Grid3x3, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
+  Grid2x2, Grid3x3, History, ImagePlus, Layers, Maximize2, MenuIcon, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
   Redo2, Ruler, Settings, Sparkles, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
   ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
@@ -24,6 +24,7 @@ import {
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
 import { errMsg } from "@/lib/utils";
+import { usePhoneLayout } from "@/usePhoneLayout";
 
 /** SF Symbols, the icons macOS itself uses in menus. The Mac menu shows the
  *  symbol (set natively after install, so it tints with light and dark mode;
@@ -337,6 +338,25 @@ function WebEntries(props: {
 }
 
 function WebMenu(props: { commands: CommandIndex; checked: CheckedState; menus: SubmenuEntry[] }) {
+  const { phone } = usePhoneLayout();
+  const { t } = useTranslation();
+  // On a phone the same menus fold under one ☰ trigger, each a submenu with
+  // every row it has on the desktop (spec, The layout, item 3).
+  if (phone) {
+    return (
+      <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
+        <MenubarMenu>
+          <MenubarTrigger className={MENU_TRIGGER}>
+            <MenuIcon />
+            <span className="sr-only">{t("Menu")}</span>
+          </MenubarTrigger>
+          <MenubarContent align="start" className={MENU_ITEMS}>
+            <WebEntries entries={props.menus} commands={props.commands} checked={props.checked} />
+          </MenubarContent>
+        </MenubarMenu>
+      </Menubar>
+    );
+  }
   return (
     <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
       {props.menus.map((menu) => (
