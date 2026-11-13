@@ -50,3 +50,36 @@ describe.each(["release.yml", "update-feed.yml"])("%s", (name) => {
 it("release.yml no longer calls the repo private", () => {
   expect(read("release.yml")).not.toMatch(/repo is private|unguessable/);
 });
+
+describe("feed workflows publish the web app", () => {
+  // The comment, the "Add the web app" step and its cleanup step: everything
+  // between the latest.json build and the Pages upload's comment.
+  const webAppSteps = (name: string) => {
+    const yml = read(name);
+    const start = yml.indexOf("      # The feed outranks the web app");
+    const end = yml.indexOf("      # Named per attempt");
+    expect(start, name).toBeGreaterThan(-1);
+    expect(end, name).toBeGreaterThan(start);
+    return yml.slice(start, end);
+  };
+  it("release.yml builds the web app only for an unreleased version", () => {
+    expect(read("release.yml")).toMatch(
+      /web-app:\n\s+needs: \[version, release\]\n\s+if: \$\{\{ !cancelled\(\) && needs\.version\.outputs\.unreleased == 'true' \}\}\n\s+uses: \.\/\.github\/workflows\/web-app\.yml/,
+    );
+  });
+  it("update-feed.yml builds the tag it republishes", () => {
+    expect(read("update-feed.yml")).toMatch(
+      /uses: \.\/\.github\/workflows\/web-app\.yml\n\s+with:\n\s+tag: \$\{\{ inputs\.tag \}\}/,
+    );
+  });
+  it("removes a partly downloaded app before the Pages upload", () => {
+    for (const name of ["release.yml", "update-feed.yml"]) {
+      const steps = webAppSteps(name);
+      expect(steps, name).toContain("id: web_app");
+      expect(steps, name).toMatch(/if: steps\.web_app\.outcome == 'failure'\n\s+run: rm -rf site\/app/);
+    }
+  });
+  it("keeps the web app steps identical in both workflows", () => {
+    expect(webAppSteps("update-feed.yml")).toBe(webAppSteps("release.yml"));
+  });
+});

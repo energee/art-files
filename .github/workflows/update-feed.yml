@@ -67,13 +67,20 @@ jobs:
           bash scripts/build-update-feed.sh site "$tag"
 
       # The feed outranks the web app: a failed web build publishes the feed
-      # without app/, and the run still shows failed through the web-app job.
+      # without a fresh app/ (a re-run can still find an earlier attempt's
+      # artifact), and the run still shows failed through the web-app job.
       - name: Add the web app
+        id: web_app
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: web-app
           path: site/app
+
+      # A failed download can leave a half-extracted app/; never deploy it.
+      - name: Drop a partial web app
+        if: steps.web_app.outcome == 'failure'
+        run: rm -rf site/app
 
       # Named per attempt: a re-run still sees the earlier attempt's
       # artifact, and deploy-pages refuses two with the same name.

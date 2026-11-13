@@ -32,7 +32,7 @@ jobs:
     outputs:
       unreleased: ${{ steps.check.outputs.unreleased }}
     steps:
-      # Keeps its persisted credentials for git ls-remote, which reads this repo's tags.
+      # Persisted credentials are harmless here; this job only reads tags.
       - uses: actions/checkout@v7
       - id: check
         shell: bash
@@ -219,9 +219,9 @@ jobs:
     if: ${{ !cancelled() && needs.version.outputs.unreleased == 'true' }}
     uses: ./.github/workflows/web-app.yml
 
-  # Installed apps read the update feed from GitHub Pages, because that is the
-  # endpoint shipped in src-tauri/tauri.release.conf.json. Copy just the feed
-  # (latest.json + updater archives + signatures) there; DMGs for manual
+  # The repo is public; the update feed lives on GitHub Pages because that is
+  # the endpoint shipped in src-tauri/tauri.release.conf.json. Copy just the
+  # feed (latest.json + updater archives + signatures) there; DMGs for manual
   # install stay on the release page. On Windows/Linux the updater artifact IS
   # the installer (-setup.exe / .AppImage), so those land on Pages too. The web
   # app is published beside the feed at /art-files/app/ (job web-app).
@@ -278,13 +278,20 @@ jobs:
         run: bash scripts/build-update-feed.sh site "label-lab-v$(node -p 'require("./package.json").version')"
 
       # The feed outranks the web app: a failed web build publishes the feed
-      # without app/, and the run still shows failed through the web-app job.
+      # without a fresh app/ (a re-run can still find an earlier attempt's
+      # artifact), and the run still shows failed through the web-app job.
       - name: Add the web app
+        id: web_app
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: web-app
           path: site/app
+
+      # A failed download can leave a half-extracted app/; never deploy it.
+      - name: Drop a partial web app
+        if: steps.web_app.outcome == 'failure'
+        run: rm -rf site/app
 
       # Named per attempt: a re-run still sees the earlier attempt's
       # artifact, and deploy-pages refuses two with the same name.
