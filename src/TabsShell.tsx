@@ -683,7 +683,8 @@ export default function TabsShell() {
             </button>
             {/* Mouse only (see the tablist above). An unsaved tab opens
                 the close dialog first. The after: box widens the hit area
-                to 26 px without growing the drawn button. */}
+                to 26 px without growing the drawn button (with a mouse; on
+                touch the button itself grows, below). */}
             <button
               aria-hidden="true"
               tabIndex={-1}
@@ -701,6 +702,10 @@ export default function TabsShell() {
                 !unsaved(t) && ["group-hover:opacity-100", t.id === state.active
                   ? "opacity-40"
                   : "pointer-events-none opacity-0 group-hover:pointer-events-auto"],
+                // On touch a × that takes taps is a 44px box; an inactive
+                // saved tab's stays hidden so a tap there switches tabs.
+                (t.id === state.active || unsaved(t))
+                  && "touch:grid touch:size-tap touch:place-items-center touch:p-0 touch:after:hidden",
               )}>
               {unsaved(t) ? (
                 <>

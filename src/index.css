@@ -319,3 +319,12 @@ h1, h2, h3 { font-family: var(--font-heading); }
   visibility: hidden;
   transition: transform .4s, opacity .4s, height .4s, box-shadow .2s, visibility 0s linear .4s;
 }
+
+/* On a touch screen a toast's buttons take a fingertip: the action and cancel
+   buttons grow to 44px tall (min-height beats Sonner's fixed height), and the
+   20px close button gets an invisible 44px reach around it (13px past the
+   18px inside its 1px border, which is what the ::after is placed against). */
+@media (pointer: coarse) {
+  [data-sonner-toast] [data-button] { min-height: 44px; }
+  [data-sonner-toast] [data-close-button]::after { content: ""; position: absolute; inset: -13px; }
+}

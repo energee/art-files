@@ -205,6 +205,16 @@ it("shows the active tab's close button without hover", async () => {
   expect(closeBtns[1].classList.contains("pointer-events-none")).toBe(false);
 });
 
+it("gives a × that takes taps a 44px box on touch, and leaves an inactive tab's × alone", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  const [inactive, active] = closeButtons(); // the new tab is active
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
+  expect(active.className).toContain("touch:size-tap");
+  expect(active.className).toContain("touch:after:hidden");
+  expect(inactive.className).not.toContain("touch:size-tap");
+  expect(inactive.className).toContain("pointer-events-none opacity-0");
+});
+
 it("names the platform's New Tab shortcut on the + button", () => {
   // happy-dom's user agent is not a Mac's.
   expect(document.querySelector('[aria-label="New tab"]')?.getAttribute("title")).toBe("New tab (Ctrl+N)");

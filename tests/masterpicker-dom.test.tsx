@@ -259,6 +259,13 @@ describe("MasterPicker", () => {
     expect(container.querySelector("#variant-save")).toBeNull();
   });
 
+  it("gives the library remove button a 44px target on touch", () => {
+    renderPicker({ library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } } });
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]')!;
+    expect(x.className).toContain("touch:size-tap");
+  });
+
   it("removes a remembered master from its own row, without picking it", async () => {
     const onForget = vi.fn().mockResolvedValue(vi.fn());
     const onMaster = vi.fn();
