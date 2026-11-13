@@ -510,6 +510,33 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
   });
 
+  it("right-click selects through the menu's opening, as a long-press does", async () => {
+    const props = render(baseProps());
+    await rightClick("wordmark");
+    expect(props.onSelect).toHaveBeenCalledTimes(1);
+    expect(props.onSelect).toHaveBeenCalledWith("wordmark", {});
+  });
+
+  // Pins the outcome only: the real-browser failures (the closing menu's
+  // focus return taking the box) don't happen in happy-dom; the CDP probe
+  // in .agents/mockups/phone-touch-paths/ measures them.
+  it("Rename from the menu leaves a focused rename box once the menu has closed", async () => {
+    render(baseProps({ selected: ["barcode"] }));
+    await rightClick("barcode");
+    // A pointer reaches the item before it presses; a bare click() would
+    // make it the active item there and then, which focuses it a frame later.
+    // movementX: Base UI ignores a WebKit mousemove that does not move.
+    const item = menuItem("Rename");
+    for (const type of ["pointerover", "pointerenter", "pointermove", "mousemove"])
+      act(() => { item.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: "mouse", movementX: 1 })); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await pick("Rename");
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    const input = rowFor("barcode").querySelector('input[aria-label="Rename Barcode"]');
+    expect(input).not.toBeNull();
+    expect(document.activeElement).toBe(input);
+  });
+
   it("the row menu hides, locks, reorders and resets", async () => {
     const base = baseProps({ selected: ["name"] });
     const props = render({ ...base, rows: base.rows.map((r) =>
@@ -682,4 +709,111 @@ it("announces each of two identical reorders", () => {
   expect(first).toContain("moved forward");
   expect(status.textContent).toContain("moved forward");
   expect(status.textContent).not.toBe(first);
+});
+
+describe("on a touch screen", () => {
+  const realMatchMedia = window.matchMedia.bind(window);
+  beforeEach(() => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  const nameButton = (id: string) => rowFor(id).querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+  /** One finger's touch event; touchend lifts it. Base UI reads `touches`. */
+  const finger = (el: Element, type: "touchstart" | "touchmove" | "touchend", x = 40, y = 40) => act(() => {
+    const e = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : [{ clientX: x, clientY: y }] });
+    el.dispatchEvent(e);
+  });
+  const wait = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); await Promise.resolve(); });
+  const press = (el: Element, type: string, y: number, pointerType = "touch") => act(() => {
+    el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, clientX: 40, clientY: y, pointerType }));
+  });
+  const menuItems = () => Array.from(document.querySelectorAll('[role="menuitem"]')).map((el) => el.textContent?.trim());
+
+  it("a long-press on a row selects it and opens its menu", async () => {
+    const props = render(baseProps());
+    finger(nameButton("wordmark"), "touchstart");
+    await wait(499);
+    expect(menuItems()).toEqual([]);
+    await wait(1);
+    expect(props.onSelect).toHaveBeenCalledWith("wordmark", {});
+    expect(menuItems()).toContain("Rename");
+  });
+
+  // Review Focus 2
+  it("a finger that moves 11px before the long-press delay opens no menu", async () => {
+    const props = render(baseProps());
+    finger(nameButton("wordmark"), "touchstart", 40, 40);
+    finger(nameButton("wordmark"), "touchmove", 40, 51);
+    await wait(600);
+    expect(menuItems()).toEqual([]);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  // Review Focus 1
+  it("a long-press held then dragged opens the menu and reorders nothing", async () => {
+    const props = render(baseProps());
+    const name = nameButton("wordmark");
+    name.setPointerCapture = vi.fn();
+    press(name, "pointerdown", 40);
+    finger(name, "touchstart");
+    await wait(500);
+    press(name, "pointermove", 140);
+    press(name, "pointerup", 140);
+    finger(name, "touchend");
+    expect(name.setPointerCapture).not.toHaveBeenCalled();
+    expect(props.onReorder).not.toHaveBeenCalled();
+    expect(menuItems()).toContain("Rename");
+  });
+
+  // The finger's lift after a long-press arrives as a click on the row: it
+  // must not select again, nor reach the Layers overlay, which closes on a
+  // row click.
+  it("a click that follows a long-press neither selects again nor reaches the list", async () => {
+    const outside = vi.fn();
+    const props = baseProps();
+    act(() => {
+      root.render(createElement("div", { onClick: outside },
+        createElement(SidebarProvider, null, createElement(LayerList, props))));
+    });
+    finger(nameButton("wordmark"), "touchstart");
+    await wait(500);
+    finger(nameButton("wordmark"), "touchend");
+    click(nameButton("wordmark"));
+    expect(outside).not.toHaveBeenCalled();
+    expect(props.onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("drags a row by its grip, and leaves its name to scroll the list", () => {
+    const props = render(baseProps({ selected: ["wordmark"] }));
+    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLButtonElement;
+    expect(grip.getAttribute("aria-label")).toBe("Reorder Brand");
+    expect(grip.className).toContain("hidden touch:grid touch-none");
+    expect(nameButton("wordmark").className).toContain("touch-none touch:touch-pan-y");
+    grip.setPointerCapture = vi.fn();
+    const target = rowFor("barcode");
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+    press(grip, "pointerdown", 100);
+    press(grip, "pointermove", 21);
+    press(grip, "pointerup", 21);
+    expect(grip.setPointerCapture).toHaveBeenCalledWith(1);
+    expect(props.onReorder).toHaveBeenCalledTimes(1);
+  });
+
+  it("a mouse still drags a row by its name", () => {
+    const props = render(baseProps({ selected: ["wordmark"] }));
+    const name = nameButton("wordmark");
+    name.setPointerCapture = vi.fn();
+    const target = rowFor("barcode");
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+    press(name, "pointerdown", 100, "mouse");
+    press(name, "pointermove", 21, "mouse");
+    press(name, "pointerup", 21, "mouse");
+    expect(props.onReorder).toHaveBeenCalledTimes(1);
+  });
 });

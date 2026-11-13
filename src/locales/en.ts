@@ -35,6 +35,7 @@ const en = {
   "Compare": "Compare",
   "Cans shown": "Cans shown",
   "Rename {{name}}": "Rename {{name}}",
+  "Reorder {{name}}": "Reorder {{name}}",
   "Invalid value": "Invalid value",
   "{{name}}: locked": "{{name}}: locked",
   "{{name}}: enabled": "{{name}}: enabled",

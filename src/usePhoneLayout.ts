@@ -10,7 +10,7 @@ const NARROW = "(max-width: 767px)";
 const SHORT = "(max-height: 499px)";
 
 /** Whether `query` matches now; re-renders when it starts or stops matching. */
-function useMedia(query: string): boolean {
+export function useMedia(query: string): boolean {
   const subscribe = useCallback((onChange: () => void) => {
     const list = window.matchMedia(query);
     list.addEventListener("change", onChange);

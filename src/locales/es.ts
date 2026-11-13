@@ -36,6 +36,7 @@ const es: Record<keyof typeof en, string> = {
   "Compare": "Comparar",
   "Cans shown": "Latas visibles",
   "Rename {{name}}": "Renombrar {{name}}",
+  "Reorder {{name}}": "Reordenar {{name}}",
   "Invalid value": "Valor no válido",
   "{{name}}: locked": "{{name}}: bloqueada",
   "{{name}}: enabled": "{{name}}: activada",
