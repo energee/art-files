@@ -32,6 +32,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { Redo2, Undo2 } from "lucide-react";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
+import { SettingsNav } from "@/components/SettingsNav";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { t as translate, useCachedT } from "@/i18n";
 import { commitFieldDraft, dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
@@ -141,7 +142,7 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
     },
   })));
 
-// Settings and the Save Master review are opened rarely, so their modules
+// The Settings page and the Save Master review are opened rarely, so their modules
 // (and the checkbox only the review uses) load on first open, not with the
 // editor (#410). The ⌘K palette does the same inside CommandMenu. Like
 // CanView, a chunk that fails to load says so where the surface would have
@@ -477,6 +478,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => html.removeEventListener("keydown", onKey);
   }, [active, phone, sidebarOpen, closeLayers]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Leaving the Settings page from the keyboard, wherever focus is: ⌘, again
+  // (the command itself is blocked while the page is up, see the page), or
+  // Escape unless a field or an open list is using it.
+  useEffect(() => {
+    if (!settingsOpen || !active) return;
+    const onKey = (e: KeyboardEvent) => {
+      const comma = e.key === "," && (e.metaKey || e.ctrlKey);
+      const target = e.target instanceof Element ? e.target : null;
+      const claimed = e.defaultPrevented || isTypingTarget(e.target) || !!target?.closest('[role="listbox"]');
+      if (!comma && (e.key !== "Escape" || claimed)) return;
+      e.preventDefault();
+      setSettingsOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [settingsOpen, active]);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
     [master.physical, master.guides]);
@@ -2208,7 +2225,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // They don't wait for the preview: the builds load their own fonts and art.
     // They grey out only while an export runs; on a blocked label they stay
     // enabled and guardExport explains why nothing was built.
-    // Settings → Two-file export decides what ⌘E / ⇧⌘E save: one PDF / PSD
+    // Settings → Export as (Art + mask) decides what ⌘E / ⇧⌘E save: one PDF / PSD
     // with White Ink inside, or the art + mask pairs.
     ...(render.twoFilePdfExport ? [
       { id: "export-both", label: t("Export PDFs"), key: "e", mods: "⌘" as const,
@@ -2244,7 +2261,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // which stands aside in text fields; the shortcut here is display-only.
     { id: "layer-remove", label: t("Remove Layer"), shortcut: "⌫", disabled: !removable,
       run: () => onRemoveLayer(selected[selected.length - 1]) },
-    { id: "settings", label: t("Settings…"), key: ",", mods: "⌘", run: () => setSettingsOpen(true) },
+    { id: "settings", label: t("Settings…"), key: ",", mods: "⌘", run: () => setSettingsOpen((open) => !open) },
     { id: "view-label", label: t("Label"), key: "1", run: () => show2d("art") },
     { id: "view-mask", label: t("Mask"), key: "2", run: () => show2d("mask") },
     { id: "view-rendered", label: t("Rendered"), key: "3", run: () => setViewMode("rendered") },
@@ -2486,20 +2503,8 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   return (
     <TooltipProvider>
-      {/* Suspense around the Dialog, not inside it: the first open then
-          mounts the dialog with its fields already there, so it opens
-          focused on the first field rather than on Close. Only an open
-          dialog renders its fields, so only an open one suspends. */}
-      <Suspense fallback={<DialogLoading />}>
-        <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
-          <DialogContent className="sm:max-w-sm">
-            <DialogTitle>{t("Settings")}</DialogTitle>
-            <RenderSettingsFields value={render} onChange={onRenderChange} />
-          </DialogContent>
-        </Dialog>
-      </Suspense>
       <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
-        <DialogContent showCloseButton={false}>
+        <DialogContent bar="lock" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>{t("This label was made with a different master")}</DialogTitle>
             <DialogDescription>
@@ -2513,7 +2518,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Gated on `active` like Settings and the inspector Sheet: a pending
+      {/* Gated on `active` like the Settings page and the inspector Sheet: a pending
           review stays with its tab (hidden while another tab is in front,
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
@@ -2544,7 +2549,8 @@ export const DocumentEditor = memo(function DocumentEditor({
               selection built tap by tap. React bubbles a PORTALED menu's
               click (Add layer, the master picker) through here too, so only
               a target really inside the sidebar counts. */}
-          <SidebarContent onClick={(event) => {
+          {/* The Settings page takes the sidebar for its groups. */}
+          {settingsOpen ? <SidebarContent><SettingsNav onBack={() => setSettingsOpen(false)} /></SidebarContent> : <SidebarContent onClick={(event) => {
             const target = event.target;
             if (!(target instanceof Element && event.currentTarget.contains(target))) return;
             if (!selecting && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
@@ -2571,7 +2577,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onReset={listReset}
               selecting={selecting} onStartSelecting={listStartSelecting}
               />
-          </SidebarContent>
+          </SidebarContent>}
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
         {/* macOS overlay title bar (src/titlebar.ts): the header is the window's
@@ -2627,9 +2633,36 @@ export const DocumentEditor = memo(function DocumentEditor({
             </div>
           )}
         </header>
-      {/* The workspace tab strip's slot, under the menubar. */}
-      {active && <div className="contents" ref={tabStripHost} inert={covered} />}
-      <div className="flex min-h-0 flex-1" inert={covered}>
+      {/* The slot under the menubar for the workspace tab strip and the
+          plain bars (recovery, the updater). The strip is hidden, not
+          unmounted, while the Settings page is up: settings belong to the
+          app, not to a tab. */}
+      {active && <div className={settingsOpen ? "contents *:data-tab-strip:hidden" : "contents"} ref={tabStripHost} inert={covered} />}
+      {/* The Settings page covers the workspace, which stays mounted and
+          laid out underneath (invisible and inert, not display:none) so the
+          label, its view and its canvases are as they were on Back.
+          Invisible, because the rulers and guides stack above the page. */}
+      <div className="relative flex min-h-0 flex-1" inert={covered}>
+      {settingsOpen && (
+        // The dialog-content marker is what dialogOpen() looks for: while the
+        // page is up, the ⌘ commands, bare keys and arrow nudge leave the
+        // label behind it alone, as they did behind the Settings dialog.
+        // That also blocks ⌘, itself, so the effect beside settingsOpen
+        // closes the page on Escape and ⌘,.
+        <section data-settings-page data-slot="dialog-content" aria-label={t("Settings")} hidden={!active}
+          className="absolute inset-0 z-10 overflow-y-auto border-l border-sidebar-border bg-background">
+          <Suspense fallback={null}>
+            {/* Inside the Suspense so it mounts with the fields: the page
+                opens focused on its first field. */}
+            <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-6"
+              ref={(el) => { el?.querySelector<HTMLElement>("button, input, [tabindex]")?.focus(); }}>
+              <h1 className="text-sm font-medium">{t("Settings")}</h1>
+              <RenderSettingsFields value={render} onChange={onRenderChange} />
+            </div>
+          </Suspense>
+        </section>
+      )}
+      <div className={cn("flex min-h-0 flex-1", settingsOpen && "invisible")} inert={settingsOpen}>
         {/* Under 768px wide the inspector rises from the bottom: the section
             (preview pane and toolbar) keeps the sheet's height clear, so the
             toolbar rests on the sheet. Both read --bottom-sheet-height
@@ -2850,7 +2883,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             overlay-free so the preview and the Layers list stay clickable
             while inspecting. active gate: the
             sheet portals to document.body, escaping the shell's display:none. */}
-        <Sheet open={active && !!inspected} modal={false}
+        <Sheet open={active && !!inspected && !settingsOpen} modal={false}
           // Only a deliberate close clears the selection — the sheet has no
           // backdrop, so every click in the list or on the canvas reports as
           // "outside-press", and honouring it wiped ⇧/⌘ selections.
@@ -2913,6 +2946,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           </SheetContent>
         </Sheet>
         {active && <CommandMenu actions={commands} checked={checked} />}
+      </div>
       </div>
         </SidebarInset>
       </SidebarProvider>

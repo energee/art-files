@@ -55,7 +55,7 @@ it("imports Settings, the Save Master review and the ⌘K palette only when each
   try {
     expect(probe).toMatchObject({ settings: 0, review: 0, palette: 0 });
 
-    // ⌘K first: an open Settings dialog would (rightly) block it (#244).
+    // ⌘K first: the open Settings page would (rightly) block it (#244).
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
     });
@@ -63,6 +63,8 @@ it("imports Settings, the Save Master review and the ⌘K palette only when each
 
     await act(async () => { probe.actions.find((c) => c.id === "settings")!.run(); });
     await vi.waitFor(() => expect(shown("render-settings")).not.toBeNull(), { timeout: 5000 });
+    // Settings is a page over the label: leave it to get back to the Layers list.
+    await act(async () => { probe.actions.find((c) => c.id === "settings")!.run(); });
 
     // An override to promote: with none, Save Master skips the review.
     await act(async () => (document.querySelector('[data-layer-id="warning"] button[aria-label$=": enabled"]') as HTMLButtonElement).click());

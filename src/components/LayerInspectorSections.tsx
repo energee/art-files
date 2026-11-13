@@ -58,7 +58,7 @@ export const Position = memo(function Position(props: Ctx & {
   const showX = !horizontal;
   const showY = (!binding || horizontal) && typeof y === "number";
   const pair = (a: ReactNode, b: ReactNode) =>
-    a && b ? <FieldPair>{[a, b]}</FieldPair> : a || b;
+    a && b ? <FieldPair>{a}{b}</FieldPair> : a || b;
   const xField = showX && (
     <DimensionField badge={badge(["x"], "X")}
       id={`${id}-x`} label={guideOf(layer.guideX) ? t("X offset") : "X"} unit={props.unit} value={layer.x}
