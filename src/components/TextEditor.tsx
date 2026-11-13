@@ -495,7 +495,10 @@ function ToolbarToggle(props: {
             // The cancelled press (mouse or finger) keeps focus (and the
             // selection) in the contenteditable field instead of moving it
             // to the button, so the toggle still knows which line(s) to flip.
+            // Both events: engines differ on which one moves focus; where the
+            // cancelled pointerdown suppresses mousedown, it never fires.
             onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
             onPressedChange={props.onPress}
           >
             {props.children}
@@ -684,8 +687,10 @@ export function ChoiceBox(props: {
             <li key={c.value} id={`${id}-opt-${i}`} role="option" data-choice aria-selected={i === active}
               // The press is cancelled so the field keeps focus (the list closes
               // on blur); the click commits, so a finger that scrolls the list
-              // commits nothing.
+              // commits nothing. Both press events are cancelled: engines differ
+              // on which one moves focus.
               onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => commit(c.value)}
               className={cn("cursor-default rounded-sm px-2 py-1 text-xs touch:flex touch:min-h-tap touch:items-center",
                 i === active ? "bg-accent" : "hover:bg-accent")}>
@@ -695,6 +700,7 @@ export function ChoiceBox(props: {
           {novel && (
             <li key="__novel" id={`${id}-opt-${shown.length}`} role="option" data-novel aria-selected={active === shown.length}
               onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => commit(typed.trim())}
               className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground touch:flex touch:min-h-tap touch:items-center",
                 active === shown.length ? "bg-accent" : "hover:bg-accent")}>

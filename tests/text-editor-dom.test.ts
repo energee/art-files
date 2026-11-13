@@ -230,6 +230,13 @@ function change(el: Element, value: string) {
   });
 }
 
+/** Whether a pointerdown and a mousedown on `el` are each cancelled: engines
+ *  differ on which of the two moves focus, so both must be. */
+const pressCancelled = (el: Element) => [
+  new PointerEvent("pointerdown", { bubbles: true, cancelable: true }),
+  new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+].map((down) => { act(() => { el.dispatchEvent(down); }); return down.defaultPrevented; });
+
 const focusTextbox = () => {
   const box = container.querySelector('[role="textbox"]') as HTMLElement;
   act(() => { box.focus(); });
@@ -286,9 +293,7 @@ describe("TextEditor", () => {
     renderEditor({ lines: [line("x")] });
     focusTextbox();
     const bold = container.querySelector('[aria-label="Toggle bold"]')!;
-    const down = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
-    act(() => { bold.dispatchEvent(down); });
-    expect(down.defaultPrevented).toBe(true);
+    expect(pressCancelled(bold)).toEqual([true, true]);
   });
 
   it("never shows the layer's placeholder in the field; the canvas draws it", () => {
@@ -415,9 +420,7 @@ describe("TextEditor with a vocabulary", () => {
     const { onChange } = renderEditor({ lines: [], choices: STYLES });
     openList();
     const option = options()[1];
-    const down = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
-    act(() => { option.dispatchEvent(down); });
-    expect(down.defaultPrevented).toBe(true);
+    expect(pressCancelled(option)).toEqual([true, true]);
     expect(onChange).not.toHaveBeenCalled();
     act(() => { option.click(); });
     expect(onChange).toHaveBeenCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
@@ -448,6 +451,8 @@ describe("TextEditor with a vocabulary", () => {
     const box = openList();
     change(box, "Saison");
     expect(novel()?.textContent).toContain("Saison");
+    expect(pressCancelled(novel()!)).toEqual([true, true]);
+    expect(onChange).not.toHaveBeenCalled();
     key(box, "Enter");
     expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Saison" }]);
   });
