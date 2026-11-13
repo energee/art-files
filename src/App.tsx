@@ -433,6 +433,29 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  ⌘B stays the provider's guarded listener. Starts closed on a phone,
    *  where it covers the preview; later size changes leave it as it is. */
   const [sidebarOpen, setSidebarOpen] = useState(!phone);
+  /** Close Layers. Focus inside the panel moves to the Layers toggle: the
+   *  panel goes inert as it closes, and focus would fall to the page. */
+  const closeLayers = useStableCallback(() => {
+    document.activeElement?.closest('[data-slot="sidebar-container"]')
+      ?.closest('[data-slot="sidebar-wrapper"]')
+      ?.querySelector<HTMLElement>('[data-slot="sidebar-trigger"]')?.focus();
+    setSidebarOpen(false);
+  });
+  // Escape closes the Layers overlay. Captured on the window, so it runs
+  // before the inspector Sheet's document listener, and marked handled, so
+  // the Sheet (see its onOpenChange) keeps the layer selected. A text field
+  // or an open menu or list keeps its own Escape.
+  useEffect(() => {
+    if (!active || !phone || !sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (e.target instanceof Element && e.target.closest('[role="menu"], [role="listbox"]')) return;
+      e.preventDefault();
+      closeLayers();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [active, phone, sidebarOpen, closeLayers]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -829,7 +852,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
       if (dialogOpen()) return;
       // Looked up again after the commit: a draft can dirty the document and
-      // enable the command, and it must run against the committed doc.
+      // enable the command, and it must run against the committed doc. (The
+      // phone header's Undo and Redo do the same, through runAfterDraft.)
       commitFieldDraft();
       const cmd = lookup();
       if (cmd && !cmd.disabled) cmd.run();
@@ -2251,6 +2275,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
+  /** Run command `id` the way its ⌘ key does: commit the focused field's
+   *  held typing, then look the command up again, since the commit can
+   *  change what it acts on and whether it is enabled. */
+  const runAfterDraft = (id: string) => {
+    commitFieldDraft();
+    const cmd = commandsRef.current.find((c) => c.id === id);
+    if (cmd && !cmd.disabled) cmd.run();
+  };
 
   /** The layer a fill field shows: a value the resolver rejected (errors[id])
    *  is shown as STORED, not as the master fallback the resolved layer
@@ -2393,7 +2425,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const listRename = useStableCallback((id: string, name: string) => patch(id, { name }));
   const listReorder = useStableCallback((id: string, delta: number) =>
     editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta)));
-  const listAdd = useStableCallback(onAddLayer);
+  // On a phone a new layer opens its inspector, which Layers would cover.
+  const listAdd = useStableCallback((kind: LayerKind) => {
+    onAddLayer(kind);
+    if (phone) closeLayers();
+  });
   const listRemove = useStableCallback(onRemoveLayer);
   /** The row menu's Reset to Master: drops this label's design overrides on
    *  the layer and the rest of the selection, as one undo step. Content
@@ -2479,18 +2515,12 @@ export const DocumentEditor = memo(function DocumentEditor({
               here too, so only a target really inside the sidebar counts. */}
           <SidebarContent onClick={(event) => {
             const target = event.target;
-            if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+            if (!(target instanceof Element && event.currentTarget.contains(target))) return;
+            if (!target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
             // Picking a layer on a phone uncovers the preview. Here, not in
             // onSelect: that also runs on a long-press, which opens the row menu.
             // A modifier click is building a multi-selection, so Layers stays.
-            if (phone && target instanceof Element && event.currentTarget.contains(target) && target.closest("[data-layer-id]")
-              && !(event.shiftKey || event.metaKey || event.ctrlKey)) {
-              // The panel goes inert as it closes; hand focus to the Layers toggle so it doesn't fall to the page.
-              if (event.currentTarget.contains(document.activeElement))
-                event.currentTarget.closest<HTMLElement>('[data-slot="sidebar-wrapper"]')
-                  ?.querySelector<HTMLElement>('[data-slot="sidebar-trigger"]')?.focus();
-              setSidebarOpen(false);
-            }
+            if (phone && target.closest("[data-layer-id]") && !(event.shiftKey || event.metaKey || event.ctrlKey)) closeLayers();
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master}
@@ -2546,15 +2576,17 @@ export const DocumentEditor = memo(function DocumentEditor({
             }} />
           {/* A phone has no keyboard for ⌘Z: Undo and Redo get buttons. At
               the right end only when upright: sideways, the right-hand
-              inspector would cover them. */}
+              inspector would cover them. Like the ⌘ commands they land a
+              field's held typing first and then run the command as it stands
+              after that (runAfterDraft). */}
           {phone && (
             <div className={cn("flex items-center gap-1", narrow && "ml-auto")}>
               <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("undo").label}
-                disabled={byId("undo").disabled} onClick={byId("undo").run}>
+                disabled={byId("undo").disabled} onClick={() => runAfterDraft("undo")}>
                 <Undo2 />
               </Button>
               <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("redo").label}
-                disabled={byId("redo").disabled} onClick={byId("redo").run}>
+                disabled={byId("redo").disabled} onClick={() => runAfterDraft("redo")}>
                 <Redo2 />
               </Button>
             </div>
@@ -2564,11 +2596,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       {active && <div className="contents" ref={tabStripHost} />}
       <div className="flex min-h-0 flex-1">
         {/* Under 768px wide the inspector rises from the bottom: the section
-            (preview pane and toolbar) keeps 45svh clear for it, so the
-            toolbar rests on the sheet. Matches data-[side=bottom]:h-[45svh]. */}
+            (preview pane and toolbar) keeps the sheet's height clear, so the
+            toolbar rests on the sheet. Both read --bottom-sheet-height
+            (index.css), which yields on a short screen to keep the preview. */}
         <section className={cn("flex min-w-0 flex-1 flex-col",
-          narrow && "transition-[margin] duration-200",
-          narrow && active && inspected && "mb-[45svh]")}>
+          narrow && "transition-[margin] duration-200 motion-reduce:transition-none",
+          narrow && active && inspected && "mb-(--bottom-sheet-height)")}>
           <div
             ref={previewPane}
             // The inspector sheet is non-modal and portals over the window,
@@ -2802,11 +2835,12 @@ export const DocumentEditor = memo(function DocumentEditor({
             // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
             // at the 13px root); an unprefixed w-[300px] lost to both on
             // specificity and left the sheet at 75% below 640px (#132). The
-            // bottom height replaces the base's data-[side=bottom]:h-auto the
+            // bottom height (--bottom-sheet-height, which the section above
+            // reserves too) replaces the base's data-[side=bottom]:h-auto the
             // same way. On a phone z-30 puts the sheet under the Layers
             // overlay (z-40), which would otherwise open behind it; sideways
             // too, where a wide saved Layers overlay reaches the right sheet.
-            className={cn("gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none data-[side=bottom]:h-[45svh]",
+            className={cn("gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none data-[side=bottom]:h-(--bottom-sheet-height)",
               phone && "z-30")}>
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}

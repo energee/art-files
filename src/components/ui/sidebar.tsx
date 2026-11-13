@@ -250,15 +250,19 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { open, toggleSidebar } = useSidebar()
   const { t } = useTranslation()
   return (
+    // aria-expanded tells a screen reader whether the panel is open. The
+    // ghost button paints aria-expanded like a hover; the two classes before
+    // the caller's undo that, so the toggle looks as it did without it.
     <Button
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn(className)}
+      aria-expanded={open}
+      className={cn("aria-expanded:bg-transparent aria-expanded:hover:bg-muted", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()

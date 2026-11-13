@@ -1,8 +1,12 @@
-// phone-shell-dom.test.tsx — Layers on a phone (phone layout, Task 2.3).
-// On a phone Layers starts closed, slides over the preview with a backdrop
-// and no resize handle, and closes when a layer is picked; on a desktop it
-// stays beside the preview, resizable, and open after a pick.
+// phone-shell-dom.test.tsx — the phone shell (phone layout, Phase 2): Layers,
+// the header, the inspector and the preview toolbar, placed by size. On a
+// phone (under 768px wide or under 500px tall) Layers starts closed, slides
+// over the preview with a backdrop and no resize handle, and closes on a pick,
+// an Add layer or Escape; the header gets Undo and Redo; under 768px wide the
+// inspector rises from the bottom. On a desktop all of it stays as it was.
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
@@ -180,13 +184,22 @@ it("raises the inspector from the bottom on an upright phone and keeps it right 
   expect(sheet().className).toContain("overflow-y-auto"); // Review Focus 4: the sheet scrolls to the focused field
   // The bottom reservation sits on the section, so the toolbar (the pane's
   // next sibling) rests on top of the sheet and the pane stays the preview.
-  expect(section().className).toContain("mb-[45svh]");
-  expect(pane().className).not.toContain("mb-[45svh]");
+  // Sheet and reservation read the one variable, so they never disagree.
+  expect(sheet().className).toContain("data-[side=bottom]:h-(--bottom-sheet-height)");
+  expect(section().className).toContain("mb-(--bottom-sheet-height)");
+  expect(pane().className).not.toContain("--bottom-sheet-height");
   expect(pane().className).not.toContain("mr-[300px]");
   await act(async () => setViewport(844, 390));
   expect(sheet().getAttribute("data-side")).toBe("right");
   expect(pane().className).toContain("mr-[300px]");
-  expect(section().className).not.toContain("mb-[45svh]");
+  expect(section().className).not.toContain("--bottom-sheet-height");
+});
+
+// The bottom sheet is 45svh but yields on a short screen, down to 180px, to
+// keep the preview pane 150px tall (src/index.css says what the 345 is).
+it("defines the bottom sheet's height once, yielding to the preview on a short screen", () => {
+  const css = readFileSync(join(__dirname, "../src/index.css"), "utf8");
+  expect(css).toContain("--bottom-sheet-height: clamp(180px, calc(100svh - 345px), 45svh);");
 });
 
 it("keeps the preview toolbar inside the element that makes room for the bottom sheet", async () => {
@@ -195,8 +208,8 @@ it("keeps the preview toolbar inside the element that makes room for the bottom 
   await tap(rowButton());
   expect(toolbar().querySelector('input[aria-label="Zoom percentage"]')).not.toBeNull();
   expect(toolbar().closest("section")).toBe(section());
-  expect(section().className).toContain("mb-[45svh]");
-  expect(toolbar().className).not.toContain("mb-[45svh]");
+  expect(section().className).toContain("mb-(--bottom-sheet-height)");
+  expect(toolbar().className).not.toContain("--bottom-sheet-height");
 });
 
 // The right-hand sheet on a sideways phone covers the header's right end.
@@ -262,7 +275,7 @@ it("opens Layers over the open inspector on a phone and lets a row be picked", a
 });
 
 // Desktop safety: at 1024px the sheet stays on the right at the stock z-50;
-// its only new class, data-[side=bottom]:h-[45svh], is inert on the right.
+// its only new class, data-[side=bottom]:h-(--bottom-sheet-height), is inert on the right.
 it("leaves the desktop sheet on the right at the stock z-50", async () => {
   await mount(1024, 768);
   await tap(rowButton());
@@ -270,7 +283,7 @@ it("leaves the desktop sheet on the right at the stock z-50", async () => {
   expect(sheet().className).toContain("z-50");
   expect(sheet().className).not.toContain("z-30");
   expect(sheet().className).toContain("data-[side=right]:w-[300px]");
-  expect(section().className).not.toContain("mb-[45svh]");
+  expect(section().className).not.toContain("--bottom-sheet-height");
 });
 
 // The preview toolbar makes the same room as the pane: a right margin for the
@@ -295,3 +308,102 @@ it.each([[390, 844, true], [844, 390, true], [1280, 800, false], [1024, 768, fal
     // a phone-sized window driven by a mouse has no touch:h-auto.
     expect(toolbar().className.split(" ").includes("h-8")).toBe(!wraps);
   });
+
+// A phone held sideways is a phone by height alone (under 500px tall).
+it("on a sideways phone, Layers is an overlay whose backdrop hides from screen readers and a pick closes it", async () => {
+  await mount(844, 390);
+  await openLayers();
+  expect(slot("sidebar-gap")).toBeNull();
+  expect(slot("sidebar-backdrop")!.getAttribute("aria-hidden")).toBe("true");
+  await tap(rowButton());
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+it("closes Layers on a phone after Add layer, with the new layer selected", async () => {
+  await mount(390, 844);
+  await openLayers();
+  const trigger = container.querySelector('[aria-label="Add layer"]') as HTMLElement;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    trigger.click();
+    await Promise.resolve();
+  });
+  const text = [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Text");
+  await tap(text!);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(sheet().getAttribute("data-side")).toBe("bottom");
+});
+
+it("keeps a desktop's Layers open after Add layer", async () => {
+  await mount(1280, 800);
+  const trigger = container.querySelector('[aria-label="Add layer"]') as HTMLElement;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    trigger.click();
+    await Promise.resolve();
+  });
+  const text = [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Text");
+  await tap(text!);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+// The header buttons commit a field's held typing first, as the ⌘ commands
+// do (commitFieldDraft): Undo then takes back that typing, and Redo brings it
+// back. Without the commit, Undo stepped over it and the later blur's commit
+// wiped the redo.
+it("header Undo on a phone commits a field's held typing, then undoes it, and Redo restores it", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(power());
+  // Past the 500ms window, so the rename is a step of its own.
+  await act(async () => { await new Promise((r) => setTimeout(r, 600)); });
+  await openLayers();
+  await tap(rowButton());
+  const name = nameBox();
+  const before = name.value;
+  await act(async () => {
+    name.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "Draft");
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await tap(headerButton("Undo"));
+  expect(nameBox().value).toBe(before);
+  expect(power().getAttribute("aria-pressed")).toBe("true");
+  await tap(headerButton("Redo"));
+  expect(nameBox().value).toBe("Draft");
+});
+
+it.each([[390, 844], [1280, 800]] as const)("the Layers toggle reports whether Layers is open at %ix%i", async (width, height) => {
+  await mount(width, height);
+  const toggle = slot("sidebar-trigger")!;
+  const open = sidebar().getAttribute("data-state") === "expanded";
+  expect(toggle.getAttribute("aria-expanded")).toBe(String(open));
+  await openLayers();
+  expect(toggle.getAttribute("aria-expanded")).toBe(String(!open));
+});
+
+const escapeOn = (target: EventTarget) => act(async () => {
+  target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+});
+
+it("Escape closes the Layers overlay on a phone and keeps the selection and the inspector", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(rowButton());
+  await openLayers();
+  await act(async () => { rowButton("collabLead").focus(); });
+  await escapeOn(rowButton("collabLead"));
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+  expect(sheet().getAttribute("data-side")).toBe("bottom");
+  expect(document.activeElement).toBe(slot("sidebar-trigger"));
+});
+
+it("Escape leaves a desktop's Layers open", async () => {
+  await mount(1280, 800);
+  await escapeOn(document.body);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
