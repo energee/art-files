@@ -7,7 +7,11 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Export PDF uses less memory with a metallic mask.** The mask is handed to the export instead of being copied, which saves about 60 MB for a full-size mask while the file builds.
+- **Letter-spaced text prints at the width the layout shows.** In Barlow Condensed, text with Letter spacing and an fi, fl, ffi or ffl ("office", "Unfiltered") printed narrower than the preview, so a right-aligned line stopped short of its edge and a run after it started late. Letter-spaced text now prints each letter separately, as the preview draws it.
+- **Minimum height reads right after accented text.** Once a text with an accented letter (such as "Olé") had been measured, the plain letter stopped counting for the rest of the session, so Minimum height read too tall and text could be sized below the minimum you asked for.
 - **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
+- **Labels with two QR codes no longer slow down every edit.** With two QR layers holding different values, both codes were rebuilt on every keystroke, nudge and drag step. Each is now built once and reused until its value or style changes.
 - **Replaced images are released.** An image you replaced is freed once undo and redo can no longer reach it, instead of staying in memory until the tab closes.
 - **Resizing an SVG layer no longer builds up memory.** Only the last few sizes stay cached instead of every size the drag passed through.
 - **Hidden tabs use less memory.** A tab you are not looking at no longer holds its rendered preview.
@@ -45,6 +49,9 @@ that section to the new version (see .agents/release-steward.md).
 - **No stall after typing on a label with large art.** The recovery copy now stores artwork once, when it changes, instead of re-zipping and rewriting it on every pause in your edits.
 - **Image well messages are fully translated.** In Spanish, French, German and Portuguese, the note after removing an image ended in English ("brings it back"), and the wrong-file message joined the accepted file types with an English "or". Both now follow the app's language.
 - **Choice fields work with a screen reader.** A field that offers choices, or a barcode's Code field with tiers, now announces the option you arrow to before Enter commits it, names its list after the field instead of an internal id, and reads its error message with the field.
+- **Ctrl+K and Ctrl+B work with Caps Lock on.** On Windows and Linux, the command palette and the Layers sidebar shortcuts did nothing while Caps Lock was on.
+- **The preview toolbar no longer runs under the inspector.** With a layer selected, the right end of the toolbar under the preview sat behind the inspector, which hid the update button and, in a narrow window, part of the Can view's sliders. The toolbar now stops at the inspector's edge and scrolls sideways when the window is too narrow to show it all.
+- **Changing Bleed keeps the texture under the label.** After a Bleed change in Settings, the preview and the Can view kept the texture and mask at the old page size until your next edit, leaving a bare strip along the right and bottom edges. They now refit straight away. Exports were always correct.
 
 ### Changed
 - **PDF export no longer freezes the app.** PDFs now build in the background, as PSDs do, so the window stays responsive during an export. The exported file is unchanged.

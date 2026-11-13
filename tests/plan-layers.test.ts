@@ -397,6 +397,15 @@ describe("planLayers qr", () => {
     expect(planLayers([{ ...qr, value: "" }], m, assets)).toEqual([]);
     expect(layerBoxes([{ ...qr, value: "" }], m, assets).get("qr")).toEqual({ x: 10, y: 20, w: 0, h: 0 });
   });
+
+  it("two QR layers with different values reuse their paths plan after plan (#779)", () => {
+    const qrA: QrLayer = { ...qr, id: "qrA", value: "https://lolev.beer/beer/a" };
+    const qrB: QrLayer = { ...qr, id: "qrB", value: "https://lolev.beer/beer/b" };
+    const first = planLayers([qrA, qrB], m, assets) as PlacedPaths[];
+    const second = planLayers([qrA, qrB], m, assets) as PlacedPaths[];
+    expect(second).toHaveLength(4); // a stroke and a fill per layer
+    second.forEach((item, i) => expect(item.paths).toBe(first[i].paths));
+  });
 });
 
 describe("planLayers order and binding", () => {

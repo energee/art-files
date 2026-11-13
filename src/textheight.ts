@@ -57,10 +57,20 @@ export function createHeightMeasure(bytes: Record<Face, Uint8Array>): HeightMeas
     let min = Infinity, max = 0;
     for (const run of runs) {
       const font = fonts[run.face];
+      const letterIds = new Set(
+        [...run.text]
+          .filter((ch) => /[\p{L}\p{N}]/u.test(ch))
+          .map((ch) => font.glyphForCodePoint(ch.codePointAt(0)!).id),
+      );
       for (const glyph of font.layout(run.text).glyphs) {
-        // Punctuation and spaces are not letters/numerals. Keep shaped
-        // ligatures, whose codePoints can contain more than one letter.
-        if (!glyph.codePoints.some((cp) => /[\p{L}\p{N}]/u.test(String.fromCodePoint(cp)))) continue;
+        // Punctuation and spaces are not letters/numerals. Two checks, because
+        // neither is enough alone: the run's own string (letterIds) is the
+        // reliable one, since fontkit caches one Glyph per id and a composite
+        // (é) creates its base letter with no codePoints for the rest of the
+        // session; glyph.codePoints still catches shaped ligatures
+        // (f_f_i.liga), whose glyph no single character maps to.
+        if (!letterIds.has(glyph.id)
+          && !glyph.codePoints.some((cp) => /[\p{L}\p{N}]/u.test(String.fromCodePoint(cp)))) continue;
         if (glyph.id === 0) throw new Error(t("A character is missing from the label font."));
         const height = (glyph.bbox.maxY - glyph.bbox.minY) * run.size / font.unitsPerEm * 25.4 / 72;
         if (!Number.isFinite(height) || height <= 0) throw new Error(t("Could not measure a printed character."));

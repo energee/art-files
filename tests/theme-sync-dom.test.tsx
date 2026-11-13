@@ -3,12 +3,13 @@
 // through any of them, so no two surfaces showing the theme can disagree.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { useTheme, type Theme } from "@/theme";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
   localStorage.clear();
   document.body.replaceChildren();
@@ -35,5 +36,29 @@ it("re-renders every reader when one of them sets the theme", async () => {
   await act(async () => { set("system"); });
   expect(seen[1].at(-1)).toBe("system");
   expect(document.documentElement.dataset.theme).toBeUndefined();
+  await act(async () => root.unmount());
+});
+
+it("still applies the theme and tells readers when localStorage refuses the write (#778)", async () => {
+  let seen: Theme = "system";
+  let set: (t: Theme) => void = () => {};
+  function Reader() {
+    [seen, set] = useTheme();
+    return null;
+  }
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(createElement(Reader)); });
+  // The global is replaced, as in view-prefs-dom.test.tsx: a spy on
+  // Storage.prototype.setItem does not reach a happy-dom localStorage whose
+  // setItem an earlier test already called.
+  vi.stubGlobal("localStorage", {
+    getItem: () => null,
+    setItem: () => { throw new DOMException("full", "QuotaExceededError"); },
+  });
+  await act(async () => { set("dark"); });
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  expect(seen).toBe("dark");
   await act(async () => root.unmount());
 });
