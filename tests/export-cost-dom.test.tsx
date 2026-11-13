@@ -148,15 +148,18 @@ it("copies a PSD pair's pixels: both jobs read them", async () => {
 
 /** A Worker that loads, takes its job and answers with a stand-in file. */
 function stubWorkers() {
-  const spawned: unknown[] = [];
+  const spawned: FakeWorker[] = [];
   class FakeWorker {
     onmessage: ((e: { data: unknown }) => void) | null = null;
     onerror = null;
+    /** The transfer list its job was posted with. */
+    transfer: Transferable[] = [];
     constructor() {
       spawned.push(this);
       queueMicrotask(() => this.onmessage?.({ data: { ready: true } }));
     }
-    postMessage() {
+    postMessage(_job: unknown, transfer: Transferable[]) {
+      this.transfer = transfer;
       queueMicrotask(() => this.onmessage?.({ data: { bytes: new Uint8Array([1]) } }));
     }
     terminate() {}
@@ -177,4 +180,17 @@ it.each([
   await exported(run);
   expect(spawned).toHaveLength(workers);
   expect(saves).not.toHaveBeenCalled();
+}, 30_000);
+
+it("transfers a print PDF's mask pixels, and copies for the pair: two jobs read it (#780)", async () => {
+  stubDecodes();
+  pageArt = { texture: { bytes: onePxPng, kind: "png" }, maskPng: onePxPng };
+  await mount(lolevLayers());
+  const print = stubWorkers();
+  await exported(() => api.buildFull());
+  expect(print.map((worker) => worker.transfer.length)).toEqual([1]);
+  expect(print[0].transfer[0]).toBeInstanceOf(ArrayBuffer);
+  const pair = stubWorkers();
+  await exported(() => api.buildFull({}, "pair"));
+  expect(pair.map((worker) => worker.transfer)).toEqual([[], []]);
 }, 30_000);
