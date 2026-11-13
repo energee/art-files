@@ -65,3 +65,15 @@ it("a fallback builds the worker's bytes at the job's geometry, whatever the liv
   const off = await buildPdfOffThread(j); // no Worker in Node
   expect(Buffer.from(off).equals(Buffer.from(inWorker))).toBe(true);
 });
+
+it("hands a print job's mask pixels to the worker instead of copying them (#780)", async () => {
+  const j = await job("print");
+  j.assets.maskPixels = { data: new Uint8ClampedArray(4), width: 1, height: 1 };
+  const buffer = j.assets.maskPixels.data.buffer as ArrayBuffer;
+  const posted: Transferable[][] = [];
+  const worker = fakeWorker(async () => new Uint8Array([1]));
+  const post = worker.postMessage;
+  worker.postMessage = (msg, transfer) => { posted.push(transfer); post(msg, transfer); };
+  await buildPdfOffThread(j, () => worker, [buffer]);
+  expect(posted).toEqual([[buffer]]);
+});
