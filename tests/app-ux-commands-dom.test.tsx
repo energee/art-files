@@ -177,7 +177,7 @@ it("with two-file export on, ⌘E and ⇧⌘E export the pairs", async () => {
   await paletteRows();
   const rows = paletteGroups().Export;
   expect(rows.map((r) => r.replace(/(⇧?⌘|Ctrl).*$/, ""))).toEqual([
-    "Export PDFs", "Export PDFs As…", "Export Artwork PDF", "Export Mask PDF", "Export PSDs", "Export PSDs As…",
+    "Export PDFs", "Export PDFs As…", "Export Label PDF", "Export Mask PDF", "Export PSDs", "Export PSDs As…",
   ]);
   expect(rows[0]).toMatch(/^Export PDFs.+E$/);
   expect(rows[4]).toMatch(/^Export PSDs.+E$/);

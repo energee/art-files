@@ -378,12 +378,12 @@ export function MasterPicker(props: {
             {translate("Deleted “{{name}}”. {{shortcut}} brings it back.", { name: deleted.name, shortcut: shortcutLabel("⌘Z") })}
           </p>
         )}
+        {(error || unopenedMaster) && (
+          <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">
+            {error || translate('Could not open master "{{name}}".', { name: unopenedMaster })}
+          </p>
+        )}
       </div>
-      {(error || unopenedMaster) && (
-        <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">
-          {error || translate('Could not open master "{{name}}".', { name: unopenedMaster })}
-        </p>
-      )}
     </div>
   );
 }

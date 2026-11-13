@@ -608,10 +608,12 @@ export function ChoiceBox(props: {
    *  NOT a layer's placeholder, which only the canvas draws. */
   placeholder?: string;
   invalid?: boolean;
+  /** The id of the field's error text, while it shows. */
+  describedBy?: string;
   className?: string;
 }) {
   const { t } = useTranslation();
-  const { id, value, choices, onCommit, placeholder, invalid } = props;
+  const { id, value, choices, onCommit, placeholder, invalid, describedBy } = props;
   const [draft, setDraft] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
   const typed = draft ?? value;
@@ -641,9 +643,14 @@ export function ChoiceBox(props: {
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"
+        // Focus never leaves the input, so these two are how a screen reader
+        // finds the list and hears the highlighted option.
+        aria-controls={open ? `${id}-list` : undefined}
+        aria-activedescendant={open && active >= 0 ? `${id}-opt-${active}` : undefined}
         value={typed}
         placeholder={placeholder}
         aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         data-draft={draft !== null && draft !== value ? "" : undefined}
         onFocus={() => setDraft(value)}
         // Blur COMMITS what was typed — clicking away must not throw the edit
@@ -670,10 +677,11 @@ export function ChoiceBox(props: {
           }
         }} />
       {open && (shown.length > 0 || novel) && (
-        <ul role="listbox" aria-label={t("{{id}} choices", { id })}
+        // Named by the field's own caption: callers give their Label `${id}-label`.
+        <ul id={`${id}-list`} role="listbox" aria-labelledby={`${id}-label`}
           className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
           {shown.map((c, i) => (
-            <li key={c.value} role="option" data-choice aria-selected={i === active}
+            <li key={c.value} id={`${id}-opt-${i}`} role="option" data-choice aria-selected={i === active}
               // The list is dismissed by blur, so take the press before it.
               onMouseDown={(e) => { e.preventDefault(); commit(c.value); }}
               className={cn("cursor-default rounded-sm px-2 py-1 text-xs",
@@ -682,7 +690,7 @@ export function ChoiceBox(props: {
             </li>
           ))}
           {novel && (
-            <li key="__novel" role="option" data-novel aria-selected={active === shown.length}
+            <li key="__novel" id={`${id}-opt-${shown.length}`} role="option" data-novel aria-selected={active === shown.length}
               onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
               className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
                 active === shown.length ? "bg-accent" : "hover:bg-accent")}>
@@ -705,10 +713,10 @@ function PlainLineField(props: TextEditorProps) {
     : validateLayerInput({ id, name: label, input, min, max, symbology }, value);
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
+      <Label id={`${id}-label`} htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
       <div className="flex items-center gap-1.5">
         {choices?.length ? <ChoiceBox id={id} value={value} choices={choices}
-          invalid={!check.ok} onCommit={(text) => onChange([{ ...base, text }])} /> :
+          invalid={!check.ok} describedBy={check.ok ? undefined : `${id}-error`} onCommit={(text) => onChange([{ ...base, text }])} /> :
           <Input id={id} type={input === "number" ? "number" : "text"}
             className="h-7 text-xs" value={value} min={min} max={max}
             // Any decimal the validator takes is valid to the native box too,

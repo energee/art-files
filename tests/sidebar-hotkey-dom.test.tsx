@@ -41,6 +41,13 @@ function inside(html: string): HTMLElement {
   return host.querySelector("[data-target]") as HTMLElement;
 }
 
+it("Ctrl+B toggles with Caps Lock on, when the key reads as an upper-case B (#787)", () => {
+  act(() => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "B", ctrlKey: true, bubbles: true, cancelable: true }));
+  });
+  expect(open).toBe(false);
+});
+
 it("⌘B toggles from inside the inspector Sheet", () => {
   pressCmdB(inside('<div role="dialog"><button data-target>x</button></div>'));
   expect(open).toBe(false);

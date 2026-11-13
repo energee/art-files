@@ -18,6 +18,8 @@ import { pointToUnit } from "../src/rulers";
 import {
   BLEED_STEP_IN, DEFAULT_RENDER, commitBleedIn, displayBleedIn,
 } from "../src/settings";
+import { planLayers } from "../src/planLayers";
+import type { MeasureFace } from "../src/plan";
 import { assets, boxOfLayer, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, planAssets, pageRectPath } from "./fixtures";
 
 /** A press-standard 1/8" bleed — nearly double the shipped one, so anything
@@ -245,5 +247,19 @@ describe("bleed — the PDF boundary", () => {
   it("emits no transform at the shipped bleed, so the bytes are unchanged", async () => {
     const text = await contentStreamText(await buildMaskPdf(await lolevPlan(), assets));
     expect(text).not.toContain("1 0 0 1 4.44 -4.44 cm");
+  });
+});
+
+describe("bleed — the preview's cached plan (#789)", () => {
+  it("re-fits the texture to the new page when the same inputs are planned again", () => {
+    const layers = lolevLayers({ overrides: { background: { asset: "tex" } } });
+    const m: MeasureFace = (t, s, f) => measureBW(t, s, f !== "regular");
+    const plan = { custom: { ...planAssets.custom, tex: { aspect: 2 } } };
+    const page = () => planLayers(layers, m, plan).find((i) => i.kind === "page");
+    const fitted = () => ({ kind: "page", id: "background", role: "background", asset: "tex", ...L.coverFit(2, 1) });
+    expect(page()).toEqual(fitted());
+    // A Settings change replaces none of the three inputs, so the layout memo hits.
+    L.setBleed(WIDE_IN);
+    expect(page()).toEqual(fitted());
   });
 });

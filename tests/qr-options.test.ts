@@ -35,6 +35,11 @@ describe("QR options", () => {
     const b = qrShapes("same", { style: "dots" });
     expect(a).not.toBe(b);
   });
+  it("keeps two payloads at once, so two QR layers do not evict each other (#779)", () => {
+    const a = qrShapes("A");
+    qrShapes("B");
+    expect(qrShapes("A")).toBe(a);
+  });
 });
 
 /** Rasterize square-style shapes (plus a 4-module quiet zone) to RGBA and

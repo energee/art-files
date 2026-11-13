@@ -129,6 +129,17 @@ it("a bare Escape with nothing editable focused still closes the inspector", asy
   expect(rowButton().getAttribute("data-active")).toBeNull();
 });
 
+// #781: the sheet is fixed over the right edge, so the toolbar has to leave
+// the same room for it the preview pane does, or its right end sits underneath.
+it("the preview toolbar makes room for the inspector while it is open", async () => {
+  const toolbar = () => container.querySelector('[aria-label="Zoom percentage"]')!.closest("label")!.parentElement!;
+  expect(toolbar().classList.contains("mr-[300px]")).toBe(true);
+  (document.activeElement as HTMLElement | null)?.blur();
+  await escape(document.body);
+  expect(rowButton().getAttribute("data-active")).toBeNull();
+  expect(toolbar().classList.contains("mr-[300px]")).toBe(false);
+});
+
 const closeButton = () => document.querySelector('[aria-label="Close inspector"]') as HTMLButtonElement | null;
 
 it("the visible close button closes the inspector and clears the selection, like Escape", async () => {

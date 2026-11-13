@@ -40,7 +40,7 @@ import {
   type PDFRef,
   type Rotation,
 } from "pdf-lib";
-import fontkit, { type Font } from "@pdf-lib/fontkit";
+import fontkit, { type Font, type TypeFeatures } from "@pdf-lib/fontkit";
 import type { FontFamilyId } from "../fontCatalog";
 import type { Fill } from "../types";
 import { bridgeOffsets } from "../strokes";
@@ -88,6 +88,9 @@ interface Fonts {
   semibold: PDFFont;
   bold: PDFFont;
   families?: Partial<Record<FontFamilyId, Fonts>>;
+  /** The same faces embedded without ligatures, for letter-spaced runs.
+   *  Present only when the list has one (see newDoc). */
+  tracked?: Fonts;
 }
 
 /** Pinned UTC timestamp for deterministic PDF output — identical input builds byte-identically. */
@@ -318,8 +321,9 @@ function drawItems(
   mode: Mode,
   footprints: Footprints = new Map(),
 ) {
-  const faceFont = (f: Face, family?: FontFamilyId) => {
-    const selected = family ? fonts.families?.[family] : fonts;
+  const faceFont = (f: Face, family?: FontFamilyId, tracked = false) => {
+    const set = tracked ? fonts.tracked! : fonts;
+    const selected = family ? set.families?.[family] : set;
     if (!selected) throw new Error(`Missing PDF font family: ${family}`);
     return selected[f];
   };
@@ -331,7 +335,7 @@ function drawItems(
       : null;
     withTracking(page, r.tracking || undefined, () =>
       strokedText(page, stroke, r.text, {
-        x: r.x, y: y(r.y), size: r.size, font: faceFont(r.face, r.fontFamily), color,
+        x: r.x, y: y(r.y), size: r.size, font: faceFont(r.face, r.fontFamily, !!r.tracking), color,
         ...(r.rotated ? { rotate: degrees(90) } : {}),
       }));
   };
@@ -376,12 +380,15 @@ function drawItems(
 
 /** A family's three faces embedded into `doc`, in face order (sequential,
  *  so the document's object order stays deterministic). Subsetting changes
- *  only what the file carries, never a glyph's width. */
-async function embedFaces(doc: PDFDocument, pack: Assets["fonts"], subset = false): Promise<Record<Face, PDFFont>> {
+ *  only what the file carries, never a glyph's width. `features` are the
+ *  OpenType features the embedded font shapes with (newDoc turns `liga` off). */
+async function embedFaces(
+  doc: PDFDocument, pack: Assets["fonts"], subset = false, features?: TypeFeatures,
+): Promise<Record<Face, PDFFont>> {
   return {
-    regular: await doc.embedFont(pack.regular, { subset }),
-    semibold: await doc.embedFont(pack.semibold, { subset }),
-    bold: await doc.embedFont(pack.bold, { subset }),
+    regular: await doc.embedFont(pack.regular, { subset, features }),
+    semibold: await doc.embedFont(pack.semibold, { subset, features }),
+    bold: await doc.embedFont(pack.bold, { subset, features }),
   };
 }
 
@@ -424,16 +431,26 @@ export async function pdfMeasureFace(
 const atGeometry = <T>(assets: Assets, read: () => T): T =>
   assets.geometry ? L.withGeometry(assets.geometry, read) : read();
 
-async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
+async function newDoc(assets: Assets, items: readonly PlacedLayer[]): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
   const doc = await PDFDocument.create();
   doc.setCreationDate(PDF_EPOCH);
   doc.setModificationDate(PDF_EPOCH);
   doc.registerFontkit(fontkit);
-  const embed = (bytes: Assets["fonts"]): Promise<Fonts> => embedFaces(doc, bytes, true);
-  const fonts = await embed(assets.fonts);
-  for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
-    (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
-  }
+  const embedAll = async (features?: TypeFeatures): Promise<Fonts> => {
+    const embed = (bytes: Assets["fonts"]): Promise<Fonts> => embedFaces(doc, bytes, true, features);
+    const fonts = await embed(assets.fonts);
+    for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
+      (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
+    }
+    return fonts;
+  };
+  const fonts = await embedAll();
+  // The plan charges letter spacing per character, but Tc adds it per shown
+  // glyph, so a ligature (Barlow's f_f_i) would print a tracked run short
+  // (#776). Tracked runs draw from a second, ligature-free embed, as the
+  // canvas preview does under letterSpacing. Embedded only when a run needs
+  // it, so an untracked label's bytes are unchanged.
+  if (items.some((r) => r.kind === "text" && r.tracking)) fonts.tracked = await embedAll({ liga: false });
   // Provenance for the printer's preflight: the release version, never a
   // build time, so identical input still builds identical bytes.
   doc.setProducer(`Label Lab ${version}`);
@@ -488,7 +505,7 @@ const hasPage = (items: readonly PlacedLayer[], embedded: Embedded, role: Placed
  *  every element in list order. Without a background the elements sit on
  *  bare stock, which is what the preview shows before a texture is dropped. */
 export async function buildArtPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
-  const { doc, page, fonts } = await newDoc(assets);
+  const { doc, page, fonts } = await newDoc(assets, items);
   const embedded = await embedRasters(doc, items, assets, "art");
   atGeometry(assets, () => {
     shiftForBleed(page);
@@ -505,7 +522,7 @@ export async function buildArtPdf(items: readonly PlacedLayer[], assets: Assets)
  *  ink on top. The flood MUST land before the elements so metallic knockouts
  *  still win on top of it. */
 export async function buildMaskPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
-  const { doc, page, fonts } = await newDoc(assets);
+  const { doc, page, fonts } = await newDoc(assets, items);
   const embedded = await embedRasters(doc, items, assets, "mask");
   atGeometry(assets, () => {
     page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: rgb(1, 1, 1) });
@@ -598,7 +615,7 @@ function drawWhiteInk(
 /** One print file: unchanged art followed by an outlined, overprinting White
  *  Ink OCG. Colour-profile embedding and PDF/X certification are deferred. */
 export async function buildPrintPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
-  const { doc, page, fonts } = await newDoc(assets);
+  const { doc, page, fonts } = await newDoc(assets, items);
   const embedded = await embedRasters(doc, items, assets, "art");
   atGeometry(assets, () => {
     shiftForBleed(page);
