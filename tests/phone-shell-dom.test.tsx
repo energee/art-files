@@ -164,3 +164,82 @@ it("keeps undo and redo out of a desktop header", async () => {
   expect(headerButton("Undo")).toBeNull();
   expect(headerButton("Redo")).toBeNull();
 });
+
+const sheet = () => document.querySelector('[data-slot="sheet-content"]')!;
+const pane = () => container.querySelector('[data-slot="sidebar-inset"] section > div')!;
+const nameBox = () => document.querySelector("#barcode-name") as HTMLInputElement;
+
+it("raises the inspector from the bottom on an upright phone and keeps it right on a sideways one", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(rowButton());
+  expect(sheet().getAttribute("data-side")).toBe("bottom");
+  expect(sheet().className).toContain("h-[45svh]");
+  expect(sheet().className).toContain("overflow-y-auto"); // Review Focus 4: the sheet scrolls to the focused field
+  expect(pane().className).toContain("mb-[45svh]");
+  expect(pane().className).not.toContain("mr-[300px]");
+  await act(async () => setViewport(844, 390));
+  expect(sheet().getAttribute("data-side")).toBe("right");
+  expect(pane().className).toContain("mr-[300px]");
+  expect(pane().className).not.toContain("mb-[45svh]");
+});
+
+it("keeps the desktop inspector on the right with the pane's right margin", async () => {
+  await mount(1280, 800);
+  await tap(rowButton());
+  expect(sheet().getAttribute("data-side")).toBe("right");
+  expect(pane().className).toContain("mr-[300px]");
+});
+
+// Review Focus 3: rotating the phone, or resizing across 768px, mid-edit.
+it("keeps the selection, the open inspector, a half-typed field and undo across a layout switch", async () => {
+  await mount(1280, 800);
+  await tap(power());
+  await tap(rowButton());
+  const name = nameBox();
+  await act(async () => {
+    name.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "Draft");
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  for (const [width, height, side] of [[390, 844, "bottom"], [844, 390, "right"], [1280, 800, "right"]] as const) {
+    await act(async () => setViewport(width, height));
+    expect(nameBox()).toBe(name);                 // same element: the inspector did not remount
+    expect(name.value).toBe("Draft");
+    expect(document.activeElement).toBe(name);
+    expect(rowButton().getAttribute("data-active")).not.toBeNull();
+    expect(sheet().getAttribute("data-side")).toBe(side);
+  }
+  await act(async () => setViewport(390, 844));
+  await act(async () => { name.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  await tap(headerButton("Undo"));
+  expect(power().getAttribute("aria-pressed")).toBe("false");
+});
+
+// Carry-over from Task 2.3's review: Layers (z-40) must open over the
+// inspector sheet, not under it, and a pick there must still work.
+it("opens Layers over the open inspector on a phone and lets a row be picked", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(rowButton());
+  expect(sheet().className).toContain("z-30");
+  expect(sheet().className).not.toContain("z-50");
+  await openLayers();
+  expect(slot("sidebar-container")!.className).toContain("z-40");
+  await tap(rowButton("collabLead"));
+  expect(rowButton("collabLead").getAttribute("data-active")).not.toBeNull();
+  expect(sheet().getAttribute("data-side")).toBe("bottom");
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+// Desktop safety: at 1024px the sheet stays on the right at the stock z-50;
+// its only new class, data-[side=bottom]:h-[45svh], is inert on the right.
+it("leaves the desktop sheet on the right at the stock z-50", async () => {
+  await mount(1024, 768);
+  await tap(rowButton());
+  expect(sheet().getAttribute("data-side")).toBe("right");
+  expect(sheet().className).toContain("z-50");
+  expect(sheet().className).not.toContain("z-30");
+  expect(sheet().className).toContain("data-[side=right]:w-[300px]");
+  expect(pane().className).not.toContain("mb-[45svh]");
+});

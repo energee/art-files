@@ -428,7 +428,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // resolve per master/label change; the inspector reads the same rows.
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
-  const { phone } = usePhoneLayout();
+  const { phone, narrow } = usePhoneLayout();
   /** Controlled so View → Layers and the palette can toggle and check it;
    *  ⌘B stays the provider's guarded listener. Starts closed on a phone,
    *  where it covers the preview; later size changes leave it as it is. */
@@ -2570,10 +2570,12 @@ export const DocumentEditor = memo(function DocumentEditor({
             // is `m-auto` inside — recentres itself in what is left. Keeping
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
-            // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
+            // against. The margins match the sheet's sizes below: mr-[300px]
+            // its data-[side=right]:w-[300px], mb-[45svh] its
+            // data-[side=bottom]:h-[45svh] on an upright phone.
             className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border bg-background",
               "transition-[margin] duration-200",
-              active && inspected && "mr-[300px]",
+              active && inspected && (narrow ? "mb-[45svh]" : "mr-[300px]"),
               panning && "cursor-grabbing")}
             onContextMenu={(e) => viewMode === "2d" && e.preventDefault()}
             // Clicking the pasteboard — the pane around the label sheet —
@@ -2751,7 +2753,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             {active && <div ref={updateStatusHost} className="ml-auto shrink-0 pl-3" />}
           </div>
         </section>
-        {/* Right inspector: a shadcn Sheet driven by the selection — open
+        {/* Inspector: a shadcn Sheet driven by the selection — on the right,
+            or rising from the bottom under 768px wide — open
             while a layer is selected, closed (Esc, the inspector's close button
             or a click on the empty pasteboard) by clearing it. Non-modal and
             overlay-free so the preview and the Layers list stay clickable
@@ -2773,7 +2776,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               else clearSelection();
             } else if (details.reason === "close-press") clearSelection();
           }}>
-          <SheetContent side="right" showOverlay={false} showCloseButton={false}
+          <SheetContent side={narrow ? "bottom" : "right"} showOverlay={false} showCloseButton={false}
             // Opening follows a selection, so focus stays where the user
             // selected: Base UI's default would land in the rename box and
             // turn Backspace/arrows into text edits instead of delete/nudge.
@@ -2784,8 +2787,12 @@ export const DocumentEditor = memo(function DocumentEditor({
             // Sized on the base's own `data-[side=right]:` variant so
             // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
             // at the 13px root); an unprefixed w-[300px] lost to both on
-            // specificity and left the sheet at 75% below 640px (#132).
-            className="gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none">
+            // specificity and left the sheet at 75% below 640px (#132). The
+            // bottom height replaces the base's data-[side=bottom]:h-auto the
+            // same way. On a phone z-30 puts the sheet under the Layers
+            // overlay (z-40), which would otherwise open behind it.
+            className={cn("gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none data-[side=bottom]:h-[45svh]",
+              phone && "z-30")}>
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
                 unit={unit}
