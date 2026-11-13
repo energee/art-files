@@ -129,22 +129,26 @@ export function Heading(props: {
 
 /** A stacked field (label over a full-width input: InputRow, Choices) with
  *  its override badge at the right end of the label line, so the input
- *  keeps the full width. Side-by-side fields take `badge`
- *  directly (Field, ScrubField), which draws it left of the control. */
+ *  keeps the full width. On a touch screen the badge takes its own column
+ *  beside the field instead, bottom-aligned, so its 44px reset never covers
+ *  the input. Side-by-side fields take `badge` directly (Field, ScrubField),
+ *  which draws it left of the control. */
 export function Row(props: { badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className="group/reset relative">
+    <div className="group/reset relative touch:flex touch:items-end touch:gap-1.5 touch:[&>:first-child]:min-w-0 touch:[&>:first-child]:flex-1">
       {props.children}
-      <span className="absolute right-0 top-0"><BadgeSlot badge={props.badge} /></span>
+      <span className="absolute right-0 top-0 touch:static"><BadgeSlot badge={props.badge} /></span>
     </div>
   );
 }
 
 /** Two fields side by side in one row (X/Y, Line/Letter spacing), each in
  *  an equal column and keeping its own label and badge. Pass the fields
- *  `compact` so their inputs fit the half-width cell. */
+ *  `compact` so their inputs fit the half-width cell. One column on a touch
+ *  screen, where a field's label, input and up to three 44px marks need the
+ *  room. */
 export function FieldPair(props: { children: [ReactNode, ReactNode] }) {
-  return <div className="grid grid-cols-2 gap-2">{props.children}</div>;
+  return <div className="grid grid-cols-2 gap-2 touch:grid-cols-1">{props.children}</div>;
 }
 
 /** A label on the left, a compact control on the right — the layout every
@@ -169,7 +173,9 @@ export function Field(props: { id?: string; label: string; badge?: ReactNode; ch
  *
  *  A reset is offered on demand, not as a standing mark: it shows while its
  *  row (the nearest `group/reset` ancestor) is hovered or holds focus. Every
- *  container a badge is drawn in carries that class.
+ *  container a badge is drawn in carries that class. A touch screen has no
+ *  hover, so there it always shows and is a 44px button, sitting in space its
+ *  row gives it (Row, FieldPair, BadgeSlot's reserve), never over a field.
  *
  *  `paths` are checked in order and the first hit is what Reset restores. A
  *  binding and a bound y are each ONE path to edit.ts's leaf-path walk
@@ -201,9 +207,7 @@ export function Badge(props: {
           className={cn(
             "flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "opacity-0 focus-visible:opacity-100 group-hover/reset:opacity-100 group-focus-within/reset:opacity-100",
-            // Opacity doesn't stop a tap: on touch a hidden reset takes none (under 44px when shown, sized in Phase 4).
-            // Each state that shows it lets taps back in, hover too: a tablet with a hover-capable pen still shows it on hover.
-            "touch:pointer-events-none touch:focus-visible:pointer-events-auto touch:group-focus-within/reset:pointer-events-auto touch:group-hover/reset:pointer-events-auto", m.cls,
+            "touch:size-tap touch:opacity-100", m.cls,
           )}
           title={m.title}
           aria-label={m.aria}

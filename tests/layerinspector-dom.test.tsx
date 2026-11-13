@@ -638,23 +638,20 @@ describe("LayerInspector override badges", () => {
     expect($("#name-size")!.closest(".group\\/reset")!.innerHTML).not.toContain("min-w-6");
   });
 
-  // Opacity does not stop a tap: on a touch screen a hidden reset takes no
-  // taps, so a first tap into a field cannot land on it and reset the value.
-  // It takes them again in each state that shows it: its row holding focus,
-  // or hover (a tablet with a hover-capable pen).
-  it("lets a touch screen tap a reset only while its row shows it", () => {
+  // A touch screen has no hover, so a reset is never hidden there: it shows
+  // wherever its field is overridden, as a 44px button in space of its own,
+  // so a first tap into a field cannot land on it and reset the value.
+  it("gives a touch screen a visible 44px reset with no invisible reach", () => {
     render(text(), { overridden: from([], ["size", "x"]) });
     for (const name of ["Size", "X"]) {
       const reset = byLabel(`Reset ${name} to this label's master value`)!;
       const classes = reset.className.split(" ");
-      expect(classes).toContain("touch:pointer-events-none");
-      expect(classes).toContain("touch:group-focus-within/reset:pointer-events-auto");
-      expect(classes).toContain("touch:focus-visible:pointer-events-auto");
-      expect(classes).toContain("touch:group-hover/reset:pointer-events-auto");
-      // Mouse behaviour: nothing turns pointer events off without touch:.
-      expect(classes).not.toContain("pointer-events-none");
-      // Its size and spacing are as they were before Task 2.6's hit-area
-      // change: no touch-only box or margin to push a fill-the-rest input.
+      expect(classes).toContain("touch:size-tap");
+      expect(classes).toContain("touch:opacity-100");
+      // Shown, so tappable: nothing turns its pointer events off, on touch or not.
+      expect(reset.className).not.toContain("pointer-events-none");
+      // Its box is its target: no touch-only hit area or margin reaching
+      // over a neighbouring input (Task 2.6's mistake).
       expect(reset.className).not.toContain("touch:after:");
       expect(reset.parentElement!.className).not.toMatch(/(^|\s)(touch:)?-?m[trblxy]?-/);
     }
@@ -1127,5 +1124,67 @@ describe("FieldPair", () => {
     // Compact: the input group fills its cell, not a fixed w-24/w-28.
     const group = x.parentElement!;
     expect(group.className).not.toMatch(/\bw-2[48]\b/);
+  });
+});
+
+describe("on a touch screen", () => {
+  const overridden = { variant: new Set<string>(), label: new Set(["x"]) };
+  const resetX = () => $(`button[aria-label="Reset X to this label's master value"]`) as HTMLButtonElement;
+
+  it("shows an override's reset as a 44px button, not only on hover or focus", () => {
+    render(text(), { overridden });
+    const cls = resetX().className;
+    expect(cls).toContain("touch:size-tap");
+    expect(cls).toContain("touch:opacity-100");
+    expect(cls).not.toContain("touch:pointer-events-none");
+    // A mouse still waits for hover or focus.
+    expect(cls).toContain("opacity-0");
+    expect(cls).toContain("group-hover/reset:opacity-100");
+  });
+
+  // Review Focus 4
+  it("a reset acts on a click, never on a press that scrolls away", () => {
+    const { onReset } = render(text(), { overridden });
+    act(() => {
+      resetX().dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+      resetX().dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
+    });
+    expect(onReset).not.toHaveBeenCalled();
+    click(resetX());
+    expect(onReset).toHaveBeenCalledWith("x", "label");
+  });
+
+  // Review Focus 4
+  it("on touch a stacked row's reset sits beside its field, not over it", () => {
+    act(() => { root.render(createElement(Row, { badge: createElement("button", { id: "b" }), children: createElement("div", { id: "field" }) })); });
+    const wrapper = $("#field")!.parentElement!;
+    expect(wrapper.className).toContain("touch:flex");
+    expect(wrapper.className).toContain("touch:[&>:first-child]:flex-1");
+    // The badge's own span (BadgeSlot's sits inside it).
+    expect(wrapper.lastElementChild!.className).toBe("absolute right-0 top-0 touch:static");
+  });
+
+  it("stacks a field pair into one column on touch and reserves a 44px badge column", () => {
+    render(text(), { overridden });
+    const pair = $("#name-x")!.closest(".grid")!;
+    expect(pair.className).toContain("grid-cols-2");
+    expect(pair.className).toContain("touch:grid-cols-1");
+    expect(resetX().closest(".min-w-6")!.className).toContain("touch:min-w-tap");
+  });
+
+  // Base UI's scrub area blocks scrolling on any one-finger touchstart, so on
+  // touch the name takes no pointer input and the finger reaches the panel.
+  // A mouse still scrubs: see "a scrub moves one step per pixel…" above.
+  it("lets a finger scroll the inspector from a field's name", () => {
+    render(text());
+    const classes = ($('label[for="name-size"]') as HTMLElement).className.split(" ");
+    expect(classes).toContain("touch:pointer-events-none");
+    expect(classes).not.toContain("pointer-events-none");
+    expect(classes).toContain("cursor-ew-resize");
+  });
+
+  it("gives the differ mark a 44px target on touch", () => {
+    render(text(), { others: [{ layer: text({ id: "tagline", size: 9 }) }] });
+    expect($("[data-mixed]")!.className).toContain("touch:size-tap");
   });
 });

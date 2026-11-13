@@ -299,7 +299,7 @@ function MixedMark(props: { label: string; onMatch: () => void }) {
   return (
     <button
       type="button" data-mixed="" title={title} aria-label={title} onClick={props.onMatch}
-      className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent touch:size-tap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <EqualNot aria-hidden="true" className="size-3" />
     </button>

@@ -1,6 +1,8 @@
 // ScrubField.tsx — a numeric style field you tune by dragging its label, the
 // gesture Photoshop and Figma use for values judged against a live preview
-// (tracking, stroke width) rather than known in advance. Built on Base UI's
+// (tracking, stroke width) rather than known in advance. With a mouse or pen
+// only: on a touch screen a finger on the label scrolls the panel instead, and
+// the value is typed. Built on Base UI's
 // NumberField, which owns clamping, rounding, arrow keys and the scrub gesture
 // (ScrubArea, Shift/Alt for coarse/fine). NumberRoot below pins the few
 // NumberField defaults that don't suit an editor that writes on every change.
@@ -97,11 +99,12 @@ export function UnitInput(props: { unit: string; unitTitle?: string; placeholder
 /** Where a control's reset (and a multi-selection's mixed mark) goes: LEFT
  *  of the control, so controls end flush with the panel's right padding. It
  *  holds no width open: beside a fixed-width control a mark only uses the gap
- *  after the label. `reserve` keeps the old 24px column for a control that
- *  fills its cell (a FieldPair's compact input), which would otherwise resize
- *  the moment its first change adds a reset (#619). */
+ *  after the label. `reserve` keeps the old 24px column (44px on a touch
+ *  screen, a reset's size there) for a control that fills its cell (a
+ *  FieldPair's compact input), which would otherwise resize the moment its
+ *  first change adds a reset (#619). */
 export function BadgeSlot(props: { badge?: ReactNode; reserve?: boolean }) {
-  return <span className={`flex shrink-0 justify-end ${props.reserve ? "min-w-6" : ""}`}>{props.badge}</span>;
+  return <span className={`flex shrink-0 justify-end ${props.reserve ? "min-w-6 touch:min-w-tap" : ""}`}>{props.badge}</span>;
 }
 
 export function ScrubField(props: {
@@ -142,7 +145,10 @@ export function ScrubField(props: {
         // One step per pixel. At the default 2, NumberField applies only the
         // triggering event's movement, so the rate varied with pointer speed.
         pixelSensitivity={1}
-        className="cursor-ew-resize select-none gap-1 text-xs text-muted-foreground"
+        // On touch the name takes no pointer input, so a finger on it scrolls
+        // the inspector (Base UI's touchstart handler would block that); the
+        // value is typed instead. A mouse or pen still scrubs.
+        className="cursor-ew-resize select-none gap-1 text-xs text-muted-foreground touch:pointer-events-none"
       >
         {props.label}
         {/* Stands in for the OS cursor, which pointer lock hides during a
