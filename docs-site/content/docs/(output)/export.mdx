@@ -39,7 +39,7 @@ In the desktop app:
 - The combined PDF already carries the white ink. If an older `{chosen name}-mask.pdf` from a two-file export sits beside it, the **Saved …** toast becomes a warning so only one file goes to the printer. Label Lab never deletes the old mask.
 - An export builds the label, **Bleed** and **PSD resolution** as they were when it started. If you edit the label or change either setting while it runs, the file keeps the starting values and no **Saved …** toast appears. Export again to pick up the change.
 
-The one-file PDF, one-file PSD, PDF pair and PSD pair destinations are each remembered separately until the tab closes, quits, opens another label, or the label is saved under a new name (Save Label As…). In a browser each output file has its own save dialog or download.
+The one-file PDF, one-file PSD, PDF pair and PSD pair destinations are each remembered separately until the tab closes, quits, opens another label, or the label is saved under a new name (Save Label As…). In a browser each output file has its own save dialog or download. Where there is no save dialog, each file is a download named after the label, and the **Saved …** toast has nothing to show in a folder. A pair is two downloads in a row, and a browser may ask before allowing the second.
 
 Exports do not wait for the preview. They rebuild from full-size assets, preserving PDF vectors and uploaded-image resolution. **Settings → PSD resolution** controls only PSD raster resolution (default 600 DPI).
 
