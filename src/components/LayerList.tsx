@@ -17,6 +17,9 @@ import { isMacOS } from "@/keys";
 // Remove is also the Delete key and the inspector header's button.
 // On a touch screen a long-press opens the same menu, and a row drags by its
 // grip at the right end, so a finger on the rest of the row scrolls the list.
+// On a touch screen the row menu starts with Select, which turns on selection
+// mode: each row tap then toggles that row, until the selection is cleared or
+// Layers closes (App).
 // The header carries the title and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
@@ -78,6 +81,11 @@ export interface LayerListProps {
    *  the reason. Each such row is tinted red with an error dot, and its
    *  tooltips name the reason. */
   invalid?: ReadonlyMap<string, string>;
+  /** Selection mode (touch only): every row tap toggles that row, as a
+   *  ⌘/Ctrl-click does. App ends it when the selection is cleared or Layers closes. */
+  selecting: boolean;
+  /** The row menu's Select (touch only): turn selection mode on. */
+  onStartSelecting: () => void;
 }
 
 /** "Add layer" menu entries — the same icons the rows use for each kind. */
@@ -113,7 +121,7 @@ const COARSE = "(pointer: coarse)";
 /** A row's name button: what a row's keys act on and where its focus rests. */
 const NAME_BUTTON = '[data-slot="sidebar-menu-button"]';
 
-function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, ...p }: {
+function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, touch, ...p }: {
   /** On the name button, and on the grip a touch screen shows. */
   dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
   /** Why its filled value is invalid (it blocks export); unset when valid. */
@@ -130,7 +138,10 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
    *  filtered view), so keyboard reordering stops at the owning container’s ends. */
   atFront: boolean;
   atBack: boolean;
-} & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove" | "onReset">) {
+  /** A finger is the primary pointer: the menu offers Select. */
+  touch: boolean;
+} & Pick<LayerListProps,
+  "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove" | "onReset" | "selecting" | "onStartSelecting">) {
   const { t } = useTranslation();
   const hintId = useId();
   const { layer } = row;
@@ -230,7 +241,7 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
         <ContextMenu.Trigger
           onClick={(e) => {
             if (menuOpen) { e.stopPropagation(); return; }
-            p.onSelect(id, modsOf(e));
+            p.onSelect(id, p.selecting ? { toggle: true } : modsOf(e));
           }}
           className={cn(
             "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -382,6 +393,7 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
         {/* Wide enough that "Send Backward" and its shortcut share a line. */}
         <DropdownMenuContent className="min-w-48"
           finalFocus={() => { const back = !renamePicked.current; renamePicked.current = false; return back; }}>
+          {touch && !p.selecting && <DropdownMenuItem onClick={p.onStartSelecting}>{t("Select")}</DropdownMenuItem>}
           {!multi && <DropdownMenuItem onClick={() => { renamePicked.current = true; setRenaming(true); }}>{t("Rename")}</DropdownMenuItem>}
           <DropdownMenuItem onClick={() => p.onToggle(id, "enabled", inactive)}>{inactive ? t("Show") : t("Hide")}</DropdownMenuItem>
           {!page && <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? t("Unlock") : t("Lock")}</DropdownMenuItem>}
@@ -561,6 +573,9 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               onReorder={reorder}
               onRemove={props.onRemove}
               onReset={props.onReset}
+              touch={touch}
+              selecting={props.selecting}
+              onStartSelecting={props.onStartSelecting}
             />
           ))}
         </SidebarMenu>

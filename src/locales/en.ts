@@ -39,6 +39,7 @@ const en = {
   "Invalid value": "Invalid value",
   "{{name}}: locked": "{{name}}: locked",
   "{{name}}: enabled": "{{name}}: enabled",
+  "Select": "Select",
   "Rename": "Rename",
   "Unlock": "Unlock",
   "Lock": "Lock",

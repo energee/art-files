@@ -57,6 +57,8 @@ function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
     onAdd: vi.fn(),
     onRemove: vi.fn(),
     onReset: vi.fn(),
+    selecting: false,
+    onStartSelecting: vi.fn(),
     ...over,
   };
 }
@@ -510,6 +512,12 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
   });
 
+  it("keeps a mouse's row menu without Select", async () => {
+    render(baseProps());
+    await rightClick("wordmark");
+    expect(menuItems()).not.toContain("Select");
+  });
+
   it("right-click selects through the menu's opening, as a long-press does", async () => {
     const props = render(baseProps());
     await rightClick("wordmark");
@@ -772,6 +780,20 @@ describe("on a touch screen", () => {
   // The finger's lift after a long-press arrives as a click on the row: it
   // must not select again, nor reach the Layers overlay, which closes on a
   // row click.
+  it("offers Select first in a row's menu, and in selection mode a tap toggles", async () => {
+    const props = render(baseProps());
+    await act(async () => {
+      rowFor("wordmark").firstElementChild!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(menuItems()[0]).toBe("Select");
+    await act(async () => { [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')][0].click(); await Promise.resolve(); });
+    expect(props.onStartSelecting).toHaveBeenCalledTimes(1);
+    render({ ...props, selecting: true });
+    click(nameButton("barcode"));
+    expect(props.onSelect).toHaveBeenLastCalledWith("barcode", { toggle: true });
+  });
+
   it("a click that follows a long-press neither selects again nor reaches the list", async () => {
     const outside = vi.fn();
     const props = baseProps();

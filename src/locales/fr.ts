@@ -40,6 +40,7 @@ const fr: Record<keyof typeof en, string> = {
   "Invalid value": "Valeur non valide",
   "{{name}}: locked": "{{name}} : verrouillé",
   "{{name}}: enabled": "{{name}} : activé",
+  "Select": "Sélectionner",
   "Rename": "Renommer",
   "Unlock": "Déverrouiller",
   "Lock": "Verrouiller",

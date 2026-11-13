@@ -48,6 +48,7 @@ afterEach(async () => {
   container.remove();
   localStorage.clear();
   setViewport(1024, 768);
+  vi.restoreAllMocks();
 });
 
 const sidebar = () => container.querySelector('[data-slot="sidebar"]')!;
@@ -57,6 +58,10 @@ const rowButton = (id = "barcode") =>
 const tap = (el: Element | null) => act(async () => { (el as HTMLElement).click(); });
 const openLayers = () => tap(slot("sidebar-trigger"));
 const headerButton = (name: string) => container.querySelector(`header button[aria-label="${name}"]`) as HTMLButtonElement | null;
+const realMatchMedia = window.matchMedia.bind(window);
+/** A finger is the primary pointer: (pointer: coarse) matches. */
+const coarse = () => vi.spyOn(window, "matchMedia").mockImplementation(
+  (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
 const power = () => container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
 
 it("starts with Layers closed on a phone", async () => {
@@ -121,6 +126,78 @@ it("a long-press (contextmenu) on a row keeps Layers open", async () => {
   await openLayers();
   await act(async () => { rowButton().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
   expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+const pressed = (id: string) => rowButton(id).getAttribute("aria-pressed") === "true";
+const startSelecting = (id: string) => act(async () => {
+  rowButton(id).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+  await Promise.resolve();
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent?.trim() === "Select")!.click();
+  await Promise.resolve();
+});
+
+it("Select in a row's menu starts selection mode: taps toggle rows and Layers stays open", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([true, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await tap(rowButton("barcode"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([false, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("clearing the selection ends selection mode", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("barcode")); // the last selected row: the selection empties
+  expect(pressed("barcode")).toBe(false);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  await tap(rowButton("name"));
+  expect(pressed("name")).toBe(true);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+// Review Focus 3
+it("closing Layers ends selection mode; the next tap picks one layer and closes Layers", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await tap(rowButton("name"));
+  await tap(slot("sidebar-backdrop"));
+  await openLayers();
+  await tap(rowButton("description"));
+  expect([pressed("barcode"), pressed("name"), pressed("description")]).toEqual([false, false, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+});
+
+// Review Focus 5
+it("rotating the phone keeps selection mode, the selection and Layers open", async () => {
+  coarse();
+  await mount(390, 844);
+  await openLayers();
+  await startSelecting("barcode");
+  await act(async () => { setViewport(844, 390); });
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(pressed("barcode")).toBe(true);
+  await tap(rowButton("name"));
+  expect([pressed("barcode"), pressed("name")]).toEqual([true, true]);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
+it("a mouse's row menu on a phone-sized window offers no Select", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await act(async () => {
+    rowButton("barcode").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+  });
+  expect([...document.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent?.trim())).not.toContain("Select");
 });
 
 it("tapping the backdrop closes Layers", async () => {

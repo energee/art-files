@@ -40,6 +40,7 @@ const pt: Record<keyof typeof en, string> = {
   "Invalid value": "Valor inválido",
   "{{name}}: locked": "{{name}}: bloqueada",
   "{{name}}: enabled": "{{name}}: ativada",
+  "Select": "Selecionar",
   "Rename": "Renomear",
   "Unlock": "Desbloquear",
   "Lock": "Bloquear",

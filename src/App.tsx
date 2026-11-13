@@ -435,6 +435,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  where it covers the preview; later size changes leave it as it is. */
   const [sidebarOpen, setSidebarOpen] = useState(!phone);
   const layersToggle = useRef<HTMLButtonElement>(null);
+  /** Selection mode (LayerList): row taps toggle. It ends when the selection
+   *  empties or Layers closes, so a later tap on a row picks one layer again. */
+  const [selecting, setSelecting] = useState(false);
+  if (selecting && (!selected.length || !sidebarOpen)) setSelecting(false);
   /** Close Layers. Focus inside the panel moves to the Layers toggle: the
    *  panel goes inert as it closes, and focus would fall to the page. (The
    *  Add layer menu hands focus to the toggle itself, LayerList's addFocus.) */
@@ -2436,6 +2440,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (phone) closeLayers();
   });
   const listRemove = useStableCallback(onRemoveLayer);
+  const listStartSelecting = useStableCallback(() => setSelecting(true));
   /** The row menu's Reset to Master: drops this label's design overrides on
    *  the layer and the rest of the selection, as one undo step. Content
    *  (label.values) stays. A label-only layer is skipped: its override is its
@@ -2525,7 +2530,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             // Picking a layer on a phone uncovers the preview. Here, not in
             // onSelect: that also runs on a long-press, which opens the row menu.
             // A modifier click is building a multi-selection, so Layers stays.
-            if (phone && target.closest("[data-layer-id]") && !(event.shiftKey || event.metaKey || event.ctrlKey)) closeLayers();
+            // So does any row tap in selection mode.
+            if (phone && !selecting && target.closest("[data-layer-id]") && !(event.shiftKey || event.metaKey || event.ctrlKey)) closeLayers();
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master}
@@ -2542,6 +2548,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onReorder={listReorder}
               onAdd={listAdd} addFocus={phone ? layersToggle : undefined} onRemove={listRemove} invalid={flaggedLayers}
               onReset={listReset}
+              selecting={selecting} onStartSelecting={listStartSelecting}
               />
           </SidebarContent>
         </Sidebar>
