@@ -311,7 +311,8 @@ export function useExport({
       fonts, fontFamilies, title, geometry,
       images: { ...images, ...pageImages(art) },
     };
-    const build = (plate: PdfJob["plate"]) => buildPdfOffThread({ plate, items: plan, assets });
+    const build = (plate: PdfJob["plate"], transfer?: ArrayBuffer[]) =>
+      buildPdfOffThread({ plate, items: plan, assets }, undefined, transfer);
     return { art, assets, build };
   }
 
@@ -388,6 +389,9 @@ export function useExport({
           width: pixels.width,
           height: pixels.height,
         };
+        // Only this job reads the mask pixels, so they move to the worker
+        // rather than copy (#780). The pair below must copy: two jobs share it.
+        return build("print", [pixels.data.buffer as ArrayBuffer]);
       }
       return build("print");
     });
