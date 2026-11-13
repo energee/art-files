@@ -194,7 +194,7 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
   }), [changeSplit]);
 
-  // The display list and boxes, measured once per layers/source change. A throw here
+  // The display list and boxes, measured once per layers/source/Bleed change. A throw here
   // (a bad binding, an unparsable payload) is caught by the paint effect
   // below, so the last frame stays up.
   const plan = useMemo<ReturnType<typeof planLayerScene> | Error | null>(() => {
@@ -204,7 +204,9 @@ export const PreviewCompare = forwardRef<
     } catch (err) {
       return err instanceof Error ? err : new Error(String(err));
     }
-  }, [layers, canvasRender]);
+    // bleedIn is unused in here, but the plan reads the page size it sets (#789).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers, canvasRender, bleedIn]);
 
   const hitBoxes = useMemo(() => plan && !(plan instanceof Error)
     ? hitBoxesFromLayout(layers, plan.boxes) : [], [layers, plan]);
