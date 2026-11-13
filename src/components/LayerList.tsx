@@ -487,9 +487,13 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
   const dragHandlers = useMemo(() => {
     const build = (row: LayerRow): React.HTMLAttributes<HTMLElement> => ({
     onPointerDown: (e) => {
-      // On touch only the grip drags, so a finger on the name scrolls the list.
-      if (e.button !== 0 || (touch && e.pointerType === "touch" && !e.currentTarget.hasAttribute("data-grip"))) return;
+      if (e.button !== 0) return;
+      // Cleared on every press, before the touch return below: a finger's
+      // grip drag ends with no click to consume it, and the next tap on a
+      // row must not be the one ignored.
       suppressClick.current = false;
+      // On touch only the grip drags, so a finger on the name scrolls the list.
+      if (touch && e.pointerType === "touch" && !e.currentTarget.hasAttribute("data-grip")) return;
       const peers = peersOf(row);
       drag.current = {
         id: row.layer.id, x: e.clientX, y: e.clientY, active: false,
