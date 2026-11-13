@@ -60,7 +60,8 @@ it.each([
         for (const d of outlineText(font, run))
           page.drawSvgPath(d, { x: 0, y: PAGE.h, color: rgb(0, 0, 0) });
       } else {
-        const embedded = await doc.embedFont(bytes, { subset: true });
+        // As build.ts embeds for a tracked run: no ligatures (#776).
+        const embedded = await doc.embedFont(bytes, { subset: true, features: { liga: false } });
         page.pushOperators(setCharacterSpacing(run.tracking));
         page.drawText(run.text, { x: run.x, y: PAGE.h - run.y, size: run.size, font: embedded, rotate: degrees(rotated ? 90 : 0), color: rgb(0, 0, 0) });
       }
@@ -99,3 +100,15 @@ it.each([
     expect(interiorDifferences).toBe(0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 30_000);
+
+// #776: the plan charges tracking per character, so a tracked run is outlined
+// without ligatures; "office" shaped to o, f_f_i, c, e would lose two gaps.
+it("outlines a tracked run one glyph per character, at the planned width", () => {
+  const size = 20, tracking = 2;
+  const raw = barlow.layout("office").glyphs.reduce((sum, glyph) => sum + glyph.advanceWidth, 0) * size / barlow.unitsPerEm;
+  const planned = raw + tracking * ("office".length - 1);
+  // The ink stops one right side bearing (the final e's) inside the run.
+  const e = barlow.layout("e").glyphs[0];
+  const bearing = (e.advanceWidth - e.bbox.maxX) * size / barlow.unitsPerEm;
+  expect(Math.abs(glyphPaths(barlow, "office", size, false, 0, 0, tracking).bbox.maxX - (planned - bearing))).toBeLessThan(0.5);
+});

@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Letter-spaced text prints at the width the layout shows.** In Barlow Condensed, text with Letter spacing and an fi, fl, ffi or ffl ("office", "Unfiltered") printed narrower than the preview, so a right-aligned line stopped short of its edge and a run after it started late. Letter-spaced text now prints each letter separately, as the preview draws it.
 - **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
 - **Replaced images are released.** An image you replaced is freed once undo and redo can no longer reach it, instead of staying in memory until the tab closes.
 - **Resizing an SVG layer no longer builds up memory.** Only the last few sizes stay cached instead of every size the drag passed through.

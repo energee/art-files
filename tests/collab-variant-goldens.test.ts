@@ -5,6 +5,13 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// PDF hashes re-baselined 2026-11-12 (#776): a label with letter-spaced text
+// (the shipped master has some) embeds its faces a second time without
+// ligatures, and tracked runs draw from that set. Poppins has no ligatures,
+// so nothing moved: 0 px changed at 600 DPI on all four plates, see
+// tests/goldens/collab-{off,on}-{art,mask}-tracked-faces.diff.png. Each PDF
+// grew by the extra font objects only. PSD hashes unchanged.
+//
 // Collab ON mask PDF re-baselined 2026-11-03 (#668): a raster image's White
 // Ink footprint follows its alpha instead of its whole rectangle. The 1x1
 // slot fixture (onePxPng) is fully transparent, so each slot now draws an
@@ -126,8 +133,8 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "9696a852e6b242588e7a641a764c9eff0776516702677ee33e62d7c7187a6b9b", artLen: 71227,
-      mask: "e16db7a3fc2c8e63b18f5d6f881b3f1a1066cc4a2abafb044fd3b7a39a9d4e33", maskLen: 71336,
+      art: "e2153406ddb634c8123f56a601cf440c17d9ab7c19b7d8e7b6c89e8754c5195c", artLen: 74989,
+      mask: "7362f1a9ec087a81cdac935154e4165e8691cc9518a4ae92d8ccca41866496af", maskLen: 75097,
       psd: "4fe3b1b28b2822389ee437c48aaee81fbd73fdd4046220a7fc5925c724f782f4", psdLen: 1169316,
     });
   });
@@ -136,8 +143,8 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "2800cc460d4a758b7f69c8a665b1a2fde8748d5e770a780eb869d92e9ba98590", artLen: 73132,
-      mask: "34bf0aba9b20ed20598f15e6c6109be3a452c28029a8a72b97f863163c342429", maskLen: 73616,
+      art: "848fda23cb46e67fc28e3b6e81e1274280111e5aa52b43210bdcf93e6378a5fa", artLen: 76955,
+      mask: "1160ffe879f6138eea001c80ebe1ab07937131e809f180cf79d2b2041259f47f", maskLen: 77436,
       psd: "8fa9894c061bd463496d54edbfb8b936e65b3071bf5827afdb7c3aba60821aaa", psdLen: 1179336,
     });
   });
