@@ -9,6 +9,7 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **Settings is a page, not a dialog.** Settings (`⌘,`) now takes the main area, with its groups listed in the sidebar where the Layers list was. Back, Esc or `⌘,` again returns to the label.
 - **Two-file export is now "Export as".** The switch became a choice between **One file** and **Art + mask**, so both outcomes are named. Your setting carries over.
+- **Menus without icons.** The File, Edit, Layer and View menus now show only the name and shortcut of each row, in the Mac menu bar and in the browser.
 - **Prompts are bars under the title bar, not boxes in the middle of the window.** Closing a label with unsaved changes, quitting with unsaved labels, and opening a label made with a different master each ask in a bar across the top, with the rest of the window dimmed until you answer. "Recover unsaved work?" and the update messages are bars under the tabs that block nothing: you can keep working and answer when you like.
 ### Added
 - **Label Lab fits a phone.** On a phone's browser the editor keeps the same Layers list, preview, toolbar and inspector. Layers slides in from the side and closes when you pick or add a layer, or press Escape; the inspector opens from the bottom with the label above it, shorter on a short screen so the label stays in view; the menus sit under one ☰ button; Undo and Redo get their own buttons; and notifications drop from the top so they don't cover the inspector.

@@ -46,7 +46,7 @@ const native = vi.hoisted(() => {
     hold: { new: Promise.resolve(), remove: Promise.resolve() } as Record<"new" | "remove", Promise<unknown>>,
     onInstall: () => {},
     api: {
-      MenuItem: class extends Resource {}, IconMenuItem: class extends Resource {},
+      MenuItem: class extends Resource {},
       PredefinedMenuItem: class extends Resource {}, Submenu: class extends Resource {},
       Menu: class extends Resource {}, CheckMenuItem: class extends Resource {},
     },
