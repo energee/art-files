@@ -81,6 +81,35 @@ it("tapping a layer on a phone selects it, opens the inspector and closes Layers
   expect(sidebar().getAttribute("data-state")).toBe("collapsed");
 });
 
+it("a pick that closes Layers on a phone moves focus to the Layers toggle", async () => {
+  await mount(390, 844);
+  await openLayers();
+  await act(async () => { rowButton().focus(); });
+  await tap(rowButton());
+  expect(document.activeElement).not.toBe(document.body);
+  expect(document.activeElement).toBe(slot("sidebar-trigger"));
+});
+
+it("a modifier click on a row keeps Layers open on a phone, for multi-select", async () => {
+  await mount(390, 844);
+  await openLayers();
+  for (const mod of ["shiftKey", "metaKey", "ctrlKey"] as const) {
+    await act(async () => { rowButton().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, [mod]: true })); });
+    expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  }
+});
+
+it("tapping a row's eye on a phone keeps Layers open", async () => {
+  await mount(390, 844);
+  await openLayers();
+  // The eye is labelled "<name>: enabled"; the name button also has aria-pressed.
+  const eye = container.querySelector('[data-layer-id="barcode"] button[aria-label$=": enabled"]');
+  const before = eye!.getAttribute("aria-pressed");
+  await tap(eye);
+  expect(eye!.getAttribute("aria-pressed")).not.toBe(before);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+});
+
 it("a long-press (contextmenu) on a row keeps Layers open", async () => {
   await mount(390, 844);
   await openLayers();
@@ -101,6 +130,8 @@ it("keeps a desktop's Layers beside the preview, resizable, and open after a pic
   expect(slot("sidebar-gap")).not.toBeNull();
   expect(slot("sidebar-resize-handle")).not.toBeNull();
   expect(slot("sidebar-backdrop")).toBeNull();
+  expect(slot("sidebar-container")!.className).not.toContain("z-40");
+  expect(slot("sidebar-container")!.className).not.toContain("max-w-[85vw]");
   await tap(rowButton());
   expect(sidebar().getAttribute("data-state")).toBe("expanded");
 });

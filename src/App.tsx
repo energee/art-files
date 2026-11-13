@@ -2481,7 +2481,15 @@ export const DocumentEditor = memo(function DocumentEditor({
             if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
             // Picking a layer on a phone uncovers the preview. Here, not in
             // onSelect: that also runs on a long-press, which opens the row menu.
-            if (phone && target instanceof Element && target.closest("[data-layer-id]")) setSidebarOpen(false);
+            // A modifier click is building a multi-selection, so Layers stays.
+            if (phone && target instanceof Element && event.currentTarget.contains(target) && target.closest("[data-layer-id]")
+              && !(event.shiftKey || event.metaKey || event.ctrlKey)) {
+              // The panel goes inert as it closes; hand focus to the Layers toggle so it doesn't fall to the page.
+              if (event.currentTarget.contains(document.activeElement))
+                event.currentTarget.closest<HTMLElement>('[data-slot="sidebar-wrapper"]')
+                  ?.querySelector<HTMLElement>('[data-slot="sidebar-trigger"]')?.focus();
+              setSidebarOpen(false);
+            }
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master}
