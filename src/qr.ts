@@ -42,10 +42,14 @@ export interface QrShapes {
   style: "square" | "rounded" | "dots";
 }
 
-// Last-call memo: each preview rebuild asks for the same payload twice (art
-// then mask mode), and repeats it across rebuilds whenever the edit didn't
-// touch the beer name or options — the matrix encode is the expensive step.
-let lastShapes: { key: string; shapes: QrShapes } | null = null;
+// Memo of the most recently used shapes: each preview rebuild asks for the
+// same payload twice (art then mask mode), and repeats it across rebuilds
+// whenever the edit didn't touch the beer name or options — the matrix encode
+// is the expensive step. It holds several, because a label with two QR layers
+// asks for both on every plan and a single slot made each evict the other
+// (#779).
+const QR_SHAPES = 8; // more QR layers than a label carries
+const shapesCache = new Map<string, QrShapes>();
 
 export function qrShapes(data: string, opts?: QrOptions): QrShapes {
   const style = opts?.style ?? "dots";
@@ -56,11 +60,10 @@ export function qrShapes(data: string, opts?: QrOptions): QrShapes {
   // Returned before the memo so an empty layer can't evict a real one's.
   if (!data) return { count: 0, dots: [], finders: [], moduleSize: 0, style };
   const key = `${data}|${style}|${ecLevel}|${rotation}`;
-  if (lastShapes?.key === key) return lastShapes.shapes;
-  const built = buildShapes(data, style, ecLevel);
-  const shapes = rotation === 90 ? rotate90(built) : built;
-  lastShapes = { key, shapes };
-  return shapes;
+  return lruGet(shapesCache, key, QR_SHAPES, () => {
+    const built = buildShapes(data, style, ecLevel);
+    return rotation === 90 ? rotate90(built) : built;
+  });
 }
 
 /** A quarter turn counter-clockwise in unit space (y grows down, so CCW on
@@ -190,7 +193,8 @@ export function qrPath(shapes: QrShapes, size: number, grow = 0): string {
 /** `[qrPath(...)]` with a stable identity: the canvas renderer caches Path2D
  *  per path ARRAY (canvas/draw.ts), so the same shapes at the same size and
  *  grow must hand back the same array plan after plan. Keyed on the shapes
- *  object, which qrShapes memoizes, so entries die with it. Per shapes only
+ *  object, which qrShapes memoizes (its last few, so every QR layer on a
+ *  label keeps its own), so entries die with it. Per shapes only
  *  the two most recently used (size, grow) entries are kept — a plan asks for
  *  at most a fill and a stroke — so a resize drag's intermediate sizes do not
  *  pile up. */
