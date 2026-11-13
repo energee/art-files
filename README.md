@@ -7,6 +7,8 @@ pairs instead (**blue = white ink**, **white = knockout**).
 
 Installers for macOS, Windows and Linux are on
 [GitHub Releases](https://github.com/energee/art-files/releases).
+Label Lab also runs in a browser at <https://energ.ee/art-files/app/>, updated
+with each release.
 
 **How to use the whole app:** [`docs-site/content/docs`](docs-site/content/docs),
 or run the Fumadocs site:
