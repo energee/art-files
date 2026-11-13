@@ -109,3 +109,10 @@ a `Label Lab <version>` Producer.
 All four have **zero changed pixels** at 600 DPI; both PSDs are byte-identical.
 The goldens test pins the version (`vi.mock` of `package.json`), so a release
 bump does not move the PDF digests.
+
+## 2026-11-12 ligature-free faces for letter-spaced text (#776)
+
+`collab-{off,on}-{art,mask}-tracked-faces.diff.png` (2026-11-12, #776) compare
+the four PDF fixtures before and after letter-spaced runs began drawing from a
+second, ligature-free embed of each face. 0 px changed on all four: Poppins has
+no ligatures, so only the font objects in the file grew.

@@ -100,8 +100,10 @@ it("parses only the families the label uses (#736)", async () => {
   await mount(lolevLayers());
   await exported(() => api.buildFull({}, "pair"));
   expect(new Set(cost.fontsLoaded)).toEqual(new Set(["poppins"]));
-  // Three faces each: the plan's measure, the art plate, the mask plate.
-  expect(parses).toHaveBeenCalledTimes(9);
+  // Three faces each: the plan's measure, the art plate, the mask plate. The
+  // Lolev label has letter-spaced text, so each plate embeds its three faces
+  // a second time without ligatures (#776).
+  expect(parses).toHaveBeenCalledTimes(15);
 }, 30_000);
 
 it("still measures a family only one layer picks (#736)", async () => {
