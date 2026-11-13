@@ -1,7 +1,8 @@
 // previewOverlay.ts — PreviewCompare's overlay geometry: label-space points
 // mapped onto the preview frame (pageBox, corner, cqh), the trim guide's
 // dashed stroke and die-cut corners, the selection/resize ticks and their
-// padding, the readout's inch format, and the on-screen ink of a style.
+// padding, a click's page point and the in-place pill's spot, the readout's
+// inch format, and the on-screen ink of a style.
 // Pure values and style objects, no React state. Split out of
 // PreviewCompare.tsx (#433).
 import type { ResizeHandle } from "@/model/edit";
@@ -90,6 +91,34 @@ export const pageBox = (
  *  same points against a wrapper whose aspect ratio is locked to the page,
  *  so this is the right unit on both axes. */
 export const cqh = (pt: number) => `${(pt / PAGE.h) * 100}cqh`;
+
+/** A client point in label-space points, for click-to-select: the canvases
+ *  fill the sheet `currentTarget` exactly and its aspect ratio is locked to
+ *  PAGE.w/PAGE.h, so it maps proportionally off the bounding rect. Undefined
+ *  while the sheet is not laid out (e.g. display:none). */
+export function pagePointOf(
+  e: { clientX: number; clientY: number; currentTarget: HTMLDivElement },
+): { xPt: number; yPt: number } | undefined {
+  const r = e.currentTarget.getBoundingClientRect();
+  if (!r.width || !r.height) return undefined;
+  return {
+    xPt: ((e.clientX - r.left) / r.width) * PAGE.w,
+    yPt: ((e.clientY - r.top) / r.height) * PAGE.h,
+  };
+}
+
+/** Where the in-place pill toolbar goes, in viewport px: over the top-left
+ *  of box `b` (label points), mapped off the sheet's client rect `r` (the
+ *  rect the click math uses), kept 8px inside the window. */
+export function pillPos(r: DOMRect, b: { x: number; y: number }): { left: number; top: number } {
+  const boxLeft = r.left + (b.x / PAGE.w) * r.width;
+  const boxTop = r.top + (b.y / PAGE.h) * r.height;
+  // ponytail: fixed clamp for four toggles; measure if the toolbar grows.
+  return {
+    left: Math.max(8, Math.min(boxLeft, window.innerWidth - 188)),
+    top: Math.max(8, boxTop - 48),
+  };
+}
 
 /** Just pageBox's top-left corner, for an overlay that sizes itself. */
 export const corner = (x: number, y: number): React.CSSProperties => ({

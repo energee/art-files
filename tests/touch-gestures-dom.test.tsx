@@ -4,7 +4,8 @@
 // second finger turns a drag into a pinch and puts the layer back, a cancelled
 // touch reverts like Escape, no click-swallow outlives the next press, and a
 // finger on a tick moves the layer from inside its box and resizes it from
-// outside (a mouse always resizes).
+// outside (a mouse always resizes), and two taps on a text layer within
+// 300ms edit it in place (src/components/doubleTap.ts).
 // Layer geometry and Undo are read off the real document and history.
 // happy-dom has no pointer capture, so each finger's later events are sent to
 // the element it landed on, as capture would.
@@ -73,6 +74,7 @@ beforeEach(async () => {
   zoomLayer = pane.querySelector<HTMLElement>('[style*="transform-origin"]')!;
 }, 60_000);
 afterEach(async () => {
+  vi.restoreAllMocks();
   Element.prototype.setPointerCapture = capture;
   vi.unstubAllGlobals();
   await unmount();
@@ -347,4 +349,116 @@ it("a pen on the pasteboard behaves as the mouse does", async () => {
   pen("pointermove", 2, 350, BOARD_Y - 50);
   pen("pointerup", 2, 350, BOARD_Y - 50);
   expect(zoomLayer.style.transform).toBe("translate(-275px, -218.75px) scale(1.5625)");
+}, 60_000);
+
+// Double-tap to edit in place: the detector reads each finger's lift
+// (Date.now() stepped by the test), not the browser's click/dblclick.
+const tapAt = (id: string, at: number, on: Element = sheet, pointerType = "touch") => {
+  vi.spyOn(Date, "now").mockReturnValue(at);
+  const { x, y } = centre(id);
+  const fire = (type: string) => act(() => {
+    on.dispatchEvent(new PointerEvent(type, { pointerType, pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y, bubbles: true }));
+  });
+  fire("pointerdown"); fire("pointerup");
+  act(() => { on.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })); });
+};
+const editorOf = (name: string) => pane.querySelector(`[aria-label="Edit ${name} text"]`);
+const dblclickAt = (id: string) => {
+  const { x, y } = centre(id);
+  act(() => { sheet.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: x, clientY: y })); });
+};
+const anyEditor = () => pane.querySelector('[aria-label^="Edit "][aria-label$=" text"]');
+
+it("two taps on a text layer within 300ms edit it in place, and the first tap selects", async () => {
+  tapAt("name", 1000);
+  expect(probe.preview!.selected).toEqual(["name"]);
+  expect(anyEditor()).toBeNull();
+  tapAt("name", 1300);
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+it("taps 301ms apart, or on two layers, do not", async () => {
+  tapAt("name", 1000); tapAt("name", 1301);
+  expect(anyEditor()).toBeNull();
+  tapAt("description", 2000); tapAt("name", 2100);
+  expect(anyEditor()).toBeNull();
+}, 60_000);
+
+it("two mouse clicks do not; a double-click still does", async () => {
+  tapAt("name", 1000, sheet, "mouse"); tapAt("name", 1100, sheet, "mouse");
+  expect(anyEditor()).toBeNull();
+  dblclickAt("name");
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+it("a double-tap the browser aims at a tick of the selected layer still opens it", async () => {
+  select("name");
+  tapAt("name", 1000, tick("1,0")); tapAt("name", 1200, tick("1,0"));
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+it("a locked text layer opens as its double-click does", async () => {
+  expect(layer("warning").locked).toBe(true);
+  tapAt("warning", 1000); tapAt("warning", 1200);
+  expect(editorOf(layer("warning").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+// The fixture's only non-text layers (images) draw nothing without their
+// assets, so a non-text layer is covered by startEditing's kind check, the
+// one the desktop double-click has always used.
+it("a double-tap on the pasteboard opens nothing", async () => {
+  const board = (at: number) => {
+    vi.spyOn(Date, "now").mockReturnValue(at);
+    finger(pane, "pointerdown", 1, 400, BOARD_Y); finger(pane, "pointerup", 1, 400, BOARD_Y);
+  };
+  board(2000); board(2100);
+  expect(anyEditor()).toBeNull();
+}, 60_000);
+
+it("a tap then a drag on the same layer opens nothing", async () => {
+  tapAt("name", 1000);
+  const { x, y } = centre("name");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(sheet, "pointermove", 1, x + 20, y);
+  finger(sheet, "pointermove", 1, x, y);
+  finger(sheet, "pointerup", 1, x, y);
+  expect(anyEditor()).toBeNull();
+}, 60_000);
+
+it("a tap joined by a second finger is no tap", async () => {
+  tapAt("warning", 1000);
+  const { x, y } = centre("warning");
+  finger(sheet, "pointerdown", 1, x, y);
+  finger(pane, "pointerdown", 2, 400, BOARD_Y);
+  finger(sheet, "pointerdown", 3, x, y);
+  finger(pane, "pointerup", 2, 400, BOARD_Y);
+  finger(sheet, "pointerup", 3, x, y);
+  finger(sheet, "pointerup", 1, x, y);
+  expect(anyEditor()).toBeNull();
+}, 60_000);
+
+it("a dblclick after a double-tap opened a session leaves it where it is", async () => {
+  tapAt("name", 1000); tapAt("name", 1200);
+  dblclickAt("description");
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+  expect(editorOf(layer("description").name.toLowerCase())).toBeNull();
+}, 60_000);
+
+it("taps inside an open session never reopen it", async () => {
+  tapAt("name", 1000); tapAt("name", 1200);
+  const field = editorOf(layer("name").name.toLowerCase())!;
+  tapAt("name", 1300, field); tapAt("name", 1400, field);
+  expect(editorOf(layer("name").name.toLowerCase())).toBe(field);
+}, 60_000);
+
+it("the mousedown Chrome sends after the opening tap keeps the field focused; one in the field still places the caret", async () => {
+  tapAt("warning", 1000); tapAt("warning", 1200);
+  const field = editorOf(layer("warning").name.toLowerCase())!;
+  const mousedown = (el: Element) => {
+    const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    act(() => { el.dispatchEvent(e); });
+    return e.defaultPrevented;
+  };
+  expect(mousedown(sheet.querySelector("canvas")!)).toBe(true);
+  expect(mousedown(field)).toBe(false);
 }, 60_000);

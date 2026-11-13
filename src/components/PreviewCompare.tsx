@@ -2,7 +2,7 @@
 // the v3 display list (planLayers) by the canvas backend and stacked; a
 // resizable divider reveals the white-ink layer (left side) over the art
 // (right side). Click selects the layer under the cursor (hittestLayers);
-// double-clicking a text layer edits it IN PLACE over the artwork — the
+// double-clicking (or double-tapping) a text layer edits it IN PLACE — the
 // same rich-lines field the sidebar uses (TextEditor's useTextField), sized
 // to the drawn glyphs, a pill toolbar floating above it, or a plain box for
 // a number/code layer — applying live, one undo step per session. Pointer-
@@ -31,11 +31,12 @@ import { modsOf, type SelectMods } from "@/selection";
 import { errMsg } from "@/lib/utils";
 import { lengthLabel, type LengthUnit } from "@/rulers";
 import {
-  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, pageBox,
-  SEL_PAD,
+  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, pageBox, pagePointOf,
+  pillPos, SEL_PAD,
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
 import { InPlacePlainField } from "./InPlacePlainField";
+import { foldTap, type Tap } from "./doubleTap";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -46,7 +47,6 @@ export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
 
 /** Pointer travel (px) before a press becomes a drag; below it is a click. */
 const DRAG_THRESHOLD_PX = 3;
-
 
 /** Drag snap distance to a guide or another layer's edge/middle, in label points. */
 export const SNAP_PT = 6;
@@ -71,7 +71,6 @@ export interface SnapLines {
    *  points — what the drag readout shows. */
   dx: number; dy: number;
 }
-
 
 /** A finger that lands while another is down: only the first finger of a
  *  touch may move or resize a layer; the rest belong to the pane's pinch.
@@ -254,20 +253,6 @@ export const PreviewCompare = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasRender, plan, rasterScale, bleedIn, maskShown]);
 
-  // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
-  // aspect ratio is locked to PAGE.w/PAGE.h, so a click maps to label-space
-  // points proportionally off the bounding rect.
-  function pagePointOf(
-    e: { clientX: number; clientY: number; currentTarget: HTMLDivElement },
-  ): { xPt: number; yPt: number } | undefined {
-    const r = e.currentTarget.getBoundingClientRect();
-    if (!r.width || !r.height) return undefined; // not laid out yet (e.g. display:none)
-    return {
-      xPt: ((e.clientX - r.left) / r.width) * PAGE.w,
-      yPt: ((e.clientY - r.top) / r.height) * PAGE.h,
-    };
-  }
-
   // Which layer under the event, or null — undefined means "can't tell":
   // source not assembled, not laid out, or the click was really the divider.
   function hitOf(e: React.MouseEvent<HTMLDivElement>): string | null | undefined {
@@ -291,9 +276,9 @@ export const PreviewCompare = forwardRef<
     if (id !== undefined) onPick(id, modsOf(e));
   }
 
-  // Inline text editing: double-click a text layer to edit it IN PLACE over
-  // the artwork. Every keystroke goes straight to the document (see
-  // onEditText's doc), so the drawn render is the live feedback.
+  // Inline text editing: double-click (or double-tap) a text layer to edit
+  // it IN PLACE over the artwork. Every keystroke goes straight to the
+  // document (see onEditText's doc), so the drawn render is the feedback.
   const [editing, setEditing] = useState<string | null>(null);
   // The pill toolbar position (viewport px, captured at open).
   const [toolbarPos, setToolbarPos] = useState({ left: 8, top: 8 });
@@ -408,7 +393,17 @@ export const PreviewCompare = forwardRef<
     setSnap(snapped);
     setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
   }
-  function onPointerUp() {
+  // Finger double-tap (doubleTap.ts): where a touch that may be a tap landed; the last tap.
+  const tapFrom = useRef<{ x: number; y: number } | null>(null);
+  const lastTap = useRef<Tap | null>(null);
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch" && e.isPrimary) {
+      const from = tapFrom.current; tapFrom.current = null;
+      const tapped = from && !drag.current?.started && Math.hypot(e.clientX - from.x, e.clientY - from.y) < DRAG_THRESHOLD_PX;
+      const id = tapped ? hitOf(e) ?? null : null;
+      const { open, last } = foldTap(lastTap.current, id, Date.now()); lastTap.current = last;
+      if (open) startEditing(e, id!);
+    }
     swallowClick.current ||= !!drag.current?.started;
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
@@ -486,27 +481,26 @@ export const PreviewCompare = forwardRef<
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [editing]);
 
-  function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
-    const id = hitOf(e);
-    const layer = id ? layers.find((l) => l.id === id) : undefined;
-    if (!id || !layer || layer.kind !== "text" || !canvasRender) return;
+  /** Opens text layer `id` in place, locked too (a lock stops moving, not typing). */
+  function startEditing(e: React.MouseEvent<HTMLDivElement>, id: string) {
+    const layer = layers.find((l) => l.id === id);
+    if (layer?.kind !== "text" || !canvasRender) return;
     if (!layer.input && !layer.choices?.length) {
-      // Anchor the pill over the layer's box, mapped page → viewport px off
-      // the same rect the click math uses. Captured once, because the pill
-      // portals to <body>: App's CSS zoom can't scale it there.
+      // Anchor the pill over the layer's box (captured once: it portals to
+      // <body>, where App's CSS zoom can't scale it).
       const b = boxesById.get(id);
       if (!b) return;
-      const r = e.currentTarget.getBoundingClientRect();
-      const boxLeft = r.left + (b.x / PAGE.w) * r.width;
-      const boxTop = r.top + (b.y / PAGE.h) * r.height;
-      // ponytail: fixed clamp for four toggles; measure if the toolbar grows.
-      setToolbarPos({
-        left: Math.max(8, Math.min(boxLeft, window.innerWidth - 188)),
-        top: Math.max(8, boxTop - 48),
-      });
+      setToolbarPos(pillPos(e.currentTarget.getBoundingClientRect(), b));
     }
     edited.current = false;
     setEditing(id);
+  }
+  // An open session ignores dblclick: on a desktop the click-away has closed
+  // it by then; on touch the one Chrome sends after a double-tap, aimed at a
+  // tick, must not move the new session to another layer.
+  function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
+    const id = editing ? undefined : hitOf(e);
+    if (id) startEditing(e, id);
   }
 
   // Selection changes reuse the scene's boxes; they never remeasure text or codes.
@@ -560,10 +554,16 @@ export const PreviewCompare = forwardRef<
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      // A press starts afresh: no swallow left armed by a drag whose click
-      // never came (a moved touch sends none) eats its click.
-      onPointerDownCapture={() => { swallowClick.current = false; }}
+      // A press starts afresh: no swallow left armed by a drag whose click never
+      // came (a moved touch sends none) eats its click; a finger starts a tap
+      // unless a session is open or another finger is down.
+      onPointerDownCapture={(e) => {
+        swallowClick.current = false;
+        if (e.pointerType === "touch") tapFrom.current = e.isPrimary && !editing ? { x: e.clientX, y: e.clientY } : null;
+      }}
       onPointerUp={onPointerUp}
+      // Keeps the field focused through the mousedown Chrome sends after the tap that opened it (a click-away ends a session first).
+      onMouseDown={(e) => { if (editing && !sessionRef.current?.contains(e.target as Node)) e.preventDefault(); }}
       // A cancelled press (an incoming call, the OS taking the touch) puts
       // the layer back, as Escape and a second finger do.
       onPointerCancel={() => { cancelLayerGesture(); }}
