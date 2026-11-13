@@ -131,7 +131,8 @@ export function Heading(props: {
  *  its override badge at the right end of the label line, so the input
  *  keeps the full width. On a touch screen the badge takes its own column
  *  beside the field instead, bottom-aligned, so its 44px reset never covers
- *  the input. Side-by-side fields take `badge` directly (Field, ScrubField),
+ *  the input; that column's 6px gap is spent even with no badge, since the
+ *  badge span always renders. Side-by-side fields take `badge` directly (Field, ScrubField),
  *  which draws it left of the control. */
 export function Row(props: { badge?: ReactNode; children: ReactNode }) {
   return (

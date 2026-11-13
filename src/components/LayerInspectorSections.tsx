@@ -75,7 +75,9 @@ export const Position = memo(function Position(props: Ctx & {
   );
   // A segmented row is label + three icons + badge, too wide for half of
   // the panel, so in a pair it stacks: label above, control below, its
-  // badge after the control so the control lines up under the label.
+  // badge after the control so the control lines up under the label. On a
+  // touch screen the pair is one full-width column (FieldPair) and the row
+  // stacks the same way.
   const stacked = (node: ReactNode) =>
     <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-1 [&>div>span]:flex-row-reverse">{node}</div>;
   const hGuide = showX && (

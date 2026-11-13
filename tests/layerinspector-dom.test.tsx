@@ -653,6 +653,9 @@ describe("LayerInspector override badges", () => {
       // Its box is its target: no touch-only hit area or margin reaching
       // over a neighbouring input (Task 2.6's mistake).
       expect(reset.className).not.toContain("touch:after:");
+      // A mouse still waits for hover or focus.
+      expect(classes).toContain("opacity-0");
+      expect(classes).toContain("group-hover/reset:opacity-100");
       expect(reset.parentElement!.className).not.toMatch(/(^|\s)(touch:)?-?m[trblxy]?-/);
     }
   });
@@ -1131,17 +1134,6 @@ describe("on a touch screen", () => {
   const overridden = { variant: new Set<string>(), label: new Set(["x"]) };
   const resetX = () => $(`button[aria-label="Reset X to this label's master value"]`) as HTMLButtonElement;
 
-  it("shows an override's reset as a 44px button, not only on hover or focus", () => {
-    render(text(), { overridden });
-    const cls = resetX().className;
-    expect(cls).toContain("touch:size-tap");
-    expect(cls).toContain("touch:opacity-100");
-    expect(cls).not.toContain("touch:pointer-events-none");
-    // A mouse still waits for hover or focus.
-    expect(cls).toContain("opacity-0");
-    expect(cls).toContain("group-hover/reset:opacity-100");
-  });
-
   // Review Focus 4
   it("a reset acts on a click, never on a press that scrolls away", () => {
     const { onReset } = render(text(), { overridden });
@@ -1157,18 +1149,23 @@ describe("on a touch screen", () => {
   // Review Focus 4
   it("on touch a stacked row's reset sits beside its field, not over it", () => {
     act(() => { root.render(createElement(Row, { badge: createElement("button", { id: "b" }), children: createElement("div", { id: "field" }) })); });
+    const classes = $("#field")!.parentElement!.className.split(" ");
+    for (const c of ["touch:flex", "touch:items-end", "touch:[&>:first-child]:min-w-0", "touch:[&>:first-child]:flex-1"]) {
+      expect(classes).toContain(c);
+    }
+    // Ungated, it would change the desktop.
+    expect(classes).not.toContain("flex");
     const wrapper = $("#field")!.parentElement!;
-    expect(wrapper.className).toContain("touch:flex");
-    expect(wrapper.className).toContain("touch:[&>:first-child]:flex-1");
     // The badge's own span (BadgeSlot's sits inside it).
     expect(wrapper.lastElementChild!.className).toBe("absolute right-0 top-0 touch:static");
   });
 
   it("stacks a field pair into one column on touch and reserves a 44px badge column", () => {
     render(text(), { overridden });
-    const pair = $("#name-x")!.closest(".grid")!;
-    expect(pair.className).toContain("grid-cols-2");
-    expect(pair.className).toContain("touch:grid-cols-1");
+    const pair = $("#name-x")!.closest(".grid")!.className.split(" ");
+    expect(pair).toContain("grid-cols-2");
+    expect(pair).toContain("touch:grid-cols-1");
+    expect(pair).not.toContain("grid-cols-1");
     expect(resetX().closest(".min-w-6")!.className).toContain("touch:min-w-tap");
   });
 
@@ -1183,8 +1180,15 @@ describe("on a touch screen", () => {
     expect(classes).toContain("cursor-ew-resize");
   });
 
-  it("gives the differ mark a 44px target on touch", () => {
-    render(text(), { others: [{ layer: text({ id: "tagline", size: 9 }) }] });
-    expect($("[data-mixed]")!.className).toContain("touch:size-tap");
+  it("gives the differ mark a 44px target on touch, kept apart from the reset beside it", () => {
+    render(text(), { overridden: { variant: new Set<string>(), label: new Set(["size"]) }, others: [{ layer: text({ id: "tagline", size: 9 }) }] });
+    const mixed = $("[data-mixed]")!;
+    expect(mixed.className).toContain("touch:size-tap");
+    // Two always-shown 44px targets doing different edits: a gap on touch only.
+    const slot = mixed.parentElement!;
+    expect(slot.contains(byLabel("Reset Size to this label's master value"))).toBe(true);
+    const classes = slot.className.split(" ");
+    expect(classes).toContain("touch:gap-1");
+    expect(classes.some((c) => /^gap-/.test(c))).toBe(false);
   });
 });
