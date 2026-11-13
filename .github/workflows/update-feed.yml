@@ -1,11 +1,14 @@
 # Republish the auto-update feed from ONE NAMED GitHub release, without
-# rebuilding anything. The tag is explicit (blank = the version in package.json
-# on the dispatched ref), never "the latest release": a broken or out-of-order
-# latest release must not be pushed to every installed app (#399).
+# rebuilding the desktop app; the web app is rebuilt from the same tag and
+# published beside the feed (web-app.yml). The tag is explicit (blank = the
+# version in package.json on the dispatched ref), never "the latest release": a
+# broken or out-of-order latest release must not be pushed to every installed
+# app (#399).
 # Exists because the feed publish can fail after a release's binaries are
 # already up (as it did for v0.1.10/v0.1.11), and release.yml's version guard
 # rightly refuses to rebuild an existing version — this is the re-runnable half.
-# Keep the steps in lockstep with release.yml's publish-update-feed job.
+# Keep the steps (including the "Add the web app" step) in lockstep with
+# release.yml's publish-update-feed job.
 name: Republish update feed
 
 on:
@@ -17,8 +20,15 @@ on:
         default: ''
 
 jobs:
+  web-app:
+    uses: ./.github/workflows/web-app.yml
+    with:
+      tag: ${{ inputs.tag }}
+
   publish-update-feed:
     name: Publish update feed to Pages
+    needs: [web-app]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,6 +65,15 @@ jobs:
             --pattern '*-setup.exe' \
             --pattern '*-setup.exe.sig'
           bash scripts/build-update-feed.sh site "$tag"
+
+      # The feed outranks the web app: a failed web build publishes the feed
+      # without app/, and the run still shows failed through the web-app job.
+      - name: Add the web app
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: web-app
+          path: site/app
 
       # Named per attempt: a re-run still sees the earlier attempt's
       # artifact, and deploy-pages refuses two with the same name.

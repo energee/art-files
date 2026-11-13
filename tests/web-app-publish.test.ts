@@ -29,3 +29,24 @@ describe("web-app.yml", () => {
     expect(yml).toMatch(/path: dist\b/);
   });
 });
+
+describe.each(["release.yml", "update-feed.yml"])("%s", (name) => {
+  const yml = read(name);
+  it("builds the web app through the reusable workflow", () => {
+    expect(yml).toContain("uses: ./.github/workflows/web-app.yml");
+  });
+  it("still publishes the feed when the web build fails", () => {
+    expect(yml).toMatch(/publish-update-feed:[\s\S]*?needs:[^\n]*web-app/);
+    expect(yml).toMatch(/publish-update-feed:[\s\S]*?if: \$\{\{ !cancelled\(\)/);
+    expect(yml).toMatch(/name: web-app\n\s+path: site\/app/);
+    expect(yml).toMatch(/Add the web app[\s\S]{0,200}continue-on-error: true/);
+  });
+  it("adds the app before the Pages artifact is uploaded", () => {
+    const app = yml.indexOf("path: site/app");
+    expect(app).toBeGreaterThan(-1);
+    expect(app).toBeLessThan(yml.indexOf("upload-pages-artifact"));
+  });
+});
+it("release.yml no longer calls the repo private", () => {
+  expect(read("release.yml")).not.toMatch(/repo is private|unguessable/);
+});
