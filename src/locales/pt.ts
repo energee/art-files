@@ -156,7 +156,6 @@ const pt: Record<keyof typeof en, string> = {
   "Paste": "Colar",
   "Select All": "Selecionar tudo",
   "Enter Full Screen": "Entrar em tela cheia",
-  "Exit Full Screen": "Sair da tela cheia",
   "Preview: Label": "Pré-visualização: Rótulo",
   "Preview: Mask": "Pré-visualização: Máscara",
   "Preview: Rendered": "Pré-visualização: Renderizado",
