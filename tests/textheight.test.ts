@@ -85,3 +85,14 @@ it("lists the characters a layer's font has no glyph for, once each, ignoring sp
   expect(mixed(text("₹"))).toEqual([]);
   expect(mixed(text("**₹**"))).toEqual([0x20b9]);
 });
+
+/** #775: fontkit caches one Glyph per id, and a composite (é) creates its base
+ *  letter with no codePoints, so the base letter stopped counting as a letter. */
+it.each(["Poppins", "BarlowCondensed"])("measures plain letters the same after an accented letter was measured (%s)", (family) => {
+  const face = (name: string) => readFileSync(new URL(`../src/assets/fonts/${family}-${name}.ttf`, import.meta.url));
+  const pack = { regular: face("Regular"), semibold: face("SemiBold"), bold: face("Bold") };
+  const session = createHeightMeasure(pack);
+  session(text("Olé"));
+  expect(session(text("Ale"))).toEqual(createHeightMeasure(pack)(text("Ale")));
+  expect(session(text("e"))).not.toBeNull();
+});

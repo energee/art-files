@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Minimum height reads right after accented text.** Once a text with an accented letter (such as "Olé") had been measured, the plain letter stopped counting for the rest of the session, so Minimum height read too tall and text could be sized below the minimum you asked for.
 - **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
 - **Replaced images are released.** An image you replaced is freed once undo and redo can no longer reach it, instead of staying in memory until the tab closes.
 - **Resizing an SVG layer no longer builds up memory.** Only the last few sizes stay cached instead of every size the drag passed through.
