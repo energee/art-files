@@ -1,8 +1,9 @@
 // useZoomPan.ts — the preview pane's zoom and pan: wheel-to-zoom, right-drag
-// pan, one-finger pan and two-finger pinch, the typed zoom field and the Zoom In / Out / to Fit steps, plus the
-// zoom handover between the 2D pane and the 3D views (CanView dollies its
-// own camera). The view lives outside React: a gesture writes it to the DOM,
-// and only the settled zoom reaches the editor's state (#714).
+// pan, one-finger pan and two-finger pinch, the typed zoom field and the
+// Zoom In / Out / to Fit steps, plus the zoom handover between the 2D pane
+// and the 3D views (CanView dollies its own camera). The view lives outside
+// React: a gesture writes it to the DOM, and only the settled zoom reaches
+// the editor's state (#714).
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { PREVIEW_OVERSAMPLE } from "@/layout";
 import type { CanViewHandle } from "@/components/CanView";
@@ -65,21 +66,22 @@ export const zoomAbout = (
   return clampView(r, z, v.x + (1 - k) * (ax - v.x), v.y + (1 - k) * (ay - v.y));
 };
 
-/** Two fingers moved from `a0`, `b0` to `a1`, `b1` (pane px from its
- *  top-left): zoom by the change in their spread about the old midpoint and
- *  follow the midpoint, clamped as the wheel is. Written as an offset from
- *  `v` like `zoomAbout`, so a pinch that moves nothing returns `v` exactly. */
+/** Two fingers moved from `a0`, `b0` to `a1`, `b1`: pan by their midpoint's
+ *  move, then zoom by the change in their spread about the new midpoint,
+ *  clamped as the wheel is. Points are finite pane px from its top-left
+ *  (pointer client coordinates minus the pane's left/top); anything else is
+ *  the caller's bug. A pinch that moves nothing returns `v` exactly, and
+ *  fingers closing onto one spot zoom out to the fitted view. */
 export const pinchView = (r: DOMRect, v: View, a0: Point, b0: Point, a1: Point, b1: Point): View => {
   const spread0 = Math.hypot(b0.x - a0.x, b0.y - a0.y);
   const spread1 = Math.hypot(b1.x - a1.x, b1.y - a1.y);
-  // Coincident fingers have no spread to compare: keep the zoom, still follow the midpoint.
-  const z = clampZoom(spread0 ? (v.z * spread1) / spread0 : v.z);
-  const k = z / v.z;
+  // Ratio first, so an unchanged spread keeps v.z bit for bit. Fingers that
+  // start on one spot have no spread to compare: keep the zoom.
+  const z = clampZoom(spread0 ? v.z * (spread1 / spread0) : v.z);
   const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
   const m1 = { x: (a1.x + b1.x) / 2, y: (a1.y + b1.y) / 2 };
-  return clampView(r, z,
-    v.x + (m1.x - m0.x) + (1 - k) * (m0.x - v.x),
-    v.y + (m1.y - m0.y) + (1 - k) * (m0.y - v.y));
+  // The pan is left unclamped so zoomAbout clamps the result once.
+  return zoomAbout(r, { z: v.z, x: v.x + m1.x - m0.x, y: v.y + m1.y - m0.y }, z, m1.x, m1.y);
 };
 
 /** `is2d`: the pane shows the 2D compare (wheel, pan and typed zoom act on

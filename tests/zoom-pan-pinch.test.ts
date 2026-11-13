@@ -35,6 +35,16 @@ it("stops at the bottom of the range, and a fitted view cannot pan", () => {
   expect(pinchView(R, v, P(300, 300), P(500, 300), P(350, 350), P(550, 350))).toEqual(v);
 });
 
+it("a pinch that moves nothing returns the view exactly, so liveView tells nobody", () => {
+  const v = { z: 1.7, x: -100, y: -100 };
+  expect(pinchView(R, v, P(0, 0), P(77, 301), P(0, 0), P(77, 301))).toEqual(v);
+});
+
+it("fingers closing onto one spot zoom to the fitted view", () => {
+  expect(pinchView(R, { z: 2, x: -400, y: -300 }, P(300, 300), P(500, 300), P(400, 300), P(400, 300)))
+    .toEqual({ z: 1, x: 0, y: 0 });
+});
+
 it("treats fingers that start on one spot as a pan, never NaN", () => {
   const v = { z: 2, x: -400, y: -300 };
   expect(pinchView(R, v, P(400, 300), P(400, 300), P(390, 300), P(410, 300))).toEqual(v);
