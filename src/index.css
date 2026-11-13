@@ -26,6 +26,11 @@
 /* `titlebar:` applies only under the macOS desktop overlay title bar, outside
    full screen (no traffic lights there); src/titlebar.ts sets the attributes. */
 @custom-variant titlebar (:root[data-titlebar="overlay"]:not([data-fullscreen]) &);
+/* `touch:` applies wherever the main pointer is a finger: phones, tablets and
+   touch laptops, in either layout (never a mouse, whatever the window size).
+   It pairs with the `tap` size and text tokens below; the root stays 13px, so
+   they are px, not rem. */
+@custom-variant touch (@media (pointer: coarse));
 
 /* The app chrome's heading face (h1-h3 via --font-heading), fetched only when
    a heading renders. Label text never uses it: label families load through
@@ -136,6 +141,10 @@
 :root[data-theme="dark"] { color-scheme: dark; }
 
 @theme inline {
+  /* Finger sizes for `touch:`: a 44px tap target (min-h-tap, size-tap) and
+     16px field text (text-tap), below which iOS zooms into a focused field. */
+  --spacing-tap: 44px;
+  --text-tap: 16px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);

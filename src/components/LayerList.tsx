@@ -92,9 +92,10 @@ function iconFor(layer: Layer): LucideIcon {
   }
 }
 
-/** Every row control keeps a 24px keyboard/pointer target in its fixed column. */
+/** Every row control keeps a 24px keyboard/pointer target in its fixed column
+ *  (44px on a touch screen). */
 const control = cn(
-  "mx-auto grid size-[24px] shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
+  "mx-auto grid size-[24px] touch:size-tap shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
   "hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
   "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3.5",
 );
@@ -491,7 +492,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               <button
                 type="button"
                 data-add-layer aria-label={t("Add layer")}
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] touch:min-h-tap text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
                 <Plus className="size-3" /> {t("Add layer")}
               </button>

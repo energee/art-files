@@ -112,7 +112,7 @@ export function Heading(props: {
 }) {
   const { more } = props;
   return (
-    <div className="group/reset mb-2 mt-7 flex items-center justify-between">
+    <div className="group/reset mb-2 mt-7 flex items-center justify-between touch:min-h-tap">
       <h2 className="text-xs font-medium text-foreground">{props.children}</h2>
       <span className="flex items-center gap-1.5">
         {props.control}
@@ -148,10 +148,11 @@ export function FieldPair(props: { children: [ReactNode, ReactNode] }) {
 }
 
 /** A label on the left, a compact control on the right — the layout every
- *  non-ScrubField row here shares (ScrubField draws its own label). */
+ *  non-ScrubField row here shares (ScrubField draws its own label). 44px
+ *  tall on a touch screen, so a Switch's widened hit area stays in its row. */
 export function Field(props: { id?: string; label: string; badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className="group/reset flex items-center justify-between gap-2">
+    <div className="group/reset flex items-center justify-between gap-2 touch:min-h-tap">
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
       <span className="flex items-center gap-1.5">
         <BadgeSlot badge={props.badge} />

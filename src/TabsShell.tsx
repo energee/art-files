@@ -627,7 +627,7 @@ export default function TabsShell() {
   // useMemo so the strip element is rebuilt only when its content changes,
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
-    <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
+    <div className="flex h-9 touch:h-auto shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
       {/* A tablist (#404) so assistive tech announces the active document;
           each chip's title button is the tab, and names unsaved work (#403).
           ARIA lets a tablist own tabs only (#615), so each × is a mouse
@@ -661,7 +661,7 @@ export default function TabsShell() {
             key={t.id}
             role="presentation"
             className={cn(
-              "group flex h-6.5 min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
+              "group flex h-6.5 touch:h-auto min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
               t.id === state.active
                 ? "bg-background text-foreground shadow-xs"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -678,7 +678,7 @@ export default function TabsShell() {
               }}
               title={t.filePath ?? t.title}
               aria-label={unsaved(t) ? translate("{{name}} (unsaved changes)", { name: t.title }) : undefined}
-              className="min-w-0 flex-1 truncate rounded-sm text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              className="min-w-0 flex-1 truncate rounded-sm text-left text-xs touch:min-h-tap touch:min-w-tap outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t.title}
             </button>
             {/* Mouse only (see the tablist above). An unsaved tab opens
@@ -720,7 +720,7 @@ export default function TabsShell() {
         }}
         aria-label={t("New tab")}
         title={t("New tab ({{shortcut}})", { shortcut: shortcutLabel("⌘N") })}
-        className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        className="shrink-0 rounded-md px-2 py-0.5 touch:size-tap text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         +
       </button>
     </div>

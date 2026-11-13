@@ -272,3 +272,23 @@ it("leaves the desktop sheet on the right at the stock z-50", async () => {
   expect(sheet().className).toContain("data-[side=right]:w-[300px]");
   expect(section().className).not.toContain("mb-[45svh]");
 });
+
+// The preview toolbar makes the same room as the pane: a right margin for the
+// right-hand sheet (desktop, sideways phone), none on an upright phone.
+it.each([[1280, 800, true], [390, 844, false], [844, 390, true]] as const)(
+  "gives the preview toolbar the sheet's right margin at %ix%i only when the sheet is on the right",
+  async (width, height, margin) => {
+    await mount(width, height);
+    if (sidebar().getAttribute("data-state") === "collapsed") await openLayers();
+    await tap(rowButton());
+    expect(toolbar().className.includes("mr-[300px]")).toBe(margin);
+  });
+
+// Task 2.6: on a phone the toolbar wraps onto a second row instead of
+// scrolling; a desktop keeps one row.
+it.each([[390, 844, true], [844, 390, true], [1280, 800, false], [1024, 768, false]] as const)(
+  "wraps the preview toolbar at %ix%i only on a phone",
+  async (width, height, wraps) => {
+    await mount(width, height);
+    expect(toolbar().className.includes("flex-wrap")).toBe(wraps);
+  });
