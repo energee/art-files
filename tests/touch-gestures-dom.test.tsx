@@ -718,3 +718,55 @@ it("a second finger before a tick resize passes the slop turns it into a pinch",
   expect(layers()).toEqual(before);
   expect(canUndo()).toBe(false);
 }, 60_000);
+
+// The tap counter owns touch: Chrome's own dblclick, sent up to its own slop
+// and double-click time, never opens the editor after a touch press.
+it("a browser dblclick after taps the counter rejects opens nothing; a mouse dblclick still opens", async () => {
+  tapAt("name", 1000, sheet, "touch", 11); tapAt("name", 1200, sheet, "touch", 11);
+  dblclickAt("name");
+  expect(anyEditor()).toBeNull();
+  tapAt("description", 2000); tapAt("description", 2400);
+  dblclickAt("description");
+  expect(anyEditor()).toBeNull();
+  tapAt("name", 3000, sheet, "mouse");
+  dblclickAt("name");
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+it("a group move handed from a tick's reach keeps the multi-selection when Chrome's click lands on the tick", async () => {
+  select("name");
+  act(() => { probe.preview!.onPick("styleLine", { shift: true }); });
+  expect([...probe.preview!.selected].sort()).toEqual(["name", "styleLine"]);
+  const { x, y } = centre("name"), t = tick("1,0");
+  finger(t, "pointerdown", 1, x, y);
+  finger(t, "pointermove", 1, x + 12, y);
+  finger(t, "pointerup", 1, x + 12, y);
+  touchClickAt(tick("1,0") ?? t, x + 12, y);
+  expect([...probe.preview!.selected].sort()).toEqual(["name", "styleLine"]);
+}, 60_000);
+
+it("a second finger that taps beside a resting one moves no view, swallows nothing, and a tap after selects", async () => {
+  const before = zoomLayer.style.transform;
+  finger(pane, "pointerdown", 1, 400, BOARD_Y);
+  finger(pane, "pointerdown", 2, 402, BOARD_Y);
+  finger(pane, "pointermove", 2, 404, BOARD_Y);
+  finger(pane, "pointerup", 2, 404, BOARD_Y);
+  expect(zoomLayer.style.transform).toBe(before);
+  finger(pane, "pointerup", 1, 400, BOARD_Y);
+  const n = centre("name");
+  tap(sheet, 3, n.x, n.y);
+  expect(probe.preview!.selected).toEqual(["name"]);
+}, 60_000);
+
+it("a pinch starts once a finger passes the slop, from the fingers' positions then", async () => {
+  finger(pane, "pointerdown", 1, 300, BOARD_Y);
+  finger(pane, "pointerdown", 2, 400, BOARD_Y);
+  finger(pane, "pointermove", 2, 405, BOARD_Y);
+  expect(scale()).toBe(1);
+  finger(pane, "pointermove", 2, 412, BOARD_Y); // past the slop: the pinch starts here
+  expect(scale()).toBe(1);
+  finger(pane, "pointermove", 2, 430, BOARD_Y);
+  expect(scale()).toBeCloseTo(130 / 112, 6);
+  finger(pane, "pointerup", 2, 430, BOARD_Y);
+  finger(pane, "pointerup", 1, 300, BOARD_Y);
+}, 60_000);

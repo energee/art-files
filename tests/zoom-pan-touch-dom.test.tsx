@@ -96,10 +96,13 @@ const viewOf = (layer: HTMLElement) => {
 };
 const pick = (id: string) => act(() => { probe.preview!.onPick(id, {}); });
 const undoDisabled = () => probe.actions.find((c) => c.id === "undo")!.disabled;
-/** Fitted → 2x: fingers 11 and 12 spread from 200 to 400 apart about (400, 300). */
+/** Fitted → 2x: fingers 11 and 12 spread from 200 to 400 apart about (400, 300).
+ *  Finger 11 lands 11px off and its first move, out of the tap slop, starts
+ *  the pinch without moving the view. */
 function pinchTo2x(pane: HTMLElement) {
-  finger(pane, "pointerdown", 11, 300, 300);
+  finger(pane, "pointerdown", 11, 311, 300);
   finger(pane, "pointerdown", 12, 500, 300);
+  finger(pane, "pointermove", 11, 300, 300);
   finger(pane, "pointermove", 11, 200, 300);
   finger(pane, "pointermove", 12, 600, 300);
 }
@@ -149,8 +152,10 @@ it("a lone finger the layer drag took does not pan; a second cancels the drag an
   finger(pane, "pointerdown", 11, 300, 300);
   finger(pane, "pointermove", 11, 320, 300);
   expect(viewOf(layer)).toEqual({ z: 1.5625, x: -225, y: -168.75 });
-  finger(pane, "pointerdown", 12, 500, 300);
+  finger(pane, "pointerdown", 12, 489, 300);
   expect(probe.cancel).toHaveBeenCalledTimes(1);
+  finger(pane, "pointermove", 12, 500, 300); // out of the tap slop: the pinch starts
+  expect(viewOf(layer).z).toBe(1.5625);
   finger(pane, "pointermove", 12, 520, 300);
   expect(viewOf(layer).z).toBeCloseTo((1.5625 * 200) / 180, 10);
 });

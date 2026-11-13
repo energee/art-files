@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { PREVIEW_OVERSAMPLE } from "@/layout";
 import type { CanViewHandle } from "@/components/CanView";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
+import { isTap } from "@/components/doubleTap";
 
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
@@ -238,6 +239,11 @@ export function useZoomPan(
   // no capture of its own.
   const fingers = useRef(new Map<number, Point>());
   const lonePans = useRef(false);
+  /** Where each of two fingers was when the second landed; the pinch starts
+   *  only once one of them leaves the tap slop around it, so a finger resting
+   *  while another taps moves nothing. */
+  const pinchFrom = useRef(new Map<number, Point>());
+  const pinching = useRef(false);
   /** The finger gesture moved the view: swallow the click it ends with. */
   const touchMoved = useRef(false);
   /** Capture phase, so it runs even for a press a tick or a ruler keeps. A
@@ -261,7 +267,10 @@ export function useZoomPan(
     if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
     fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();
-    else preview.current?.cancelLayerGesture();
+    else {
+      preview.current?.cancelLayerGesture();
+      pinchFrom.current = new Map(fingers.current); pinching.current = false;
+    }
   }
   function onTouchMove(e: React.PointerEvent<HTMLDivElement>) {
     const from = fingers.current.get(e.pointerId);
@@ -269,7 +278,10 @@ export function useZoomPan(
     const to = { x: e.clientX, y: e.clientY };
     const r = e.currentTarget.getBoundingClientRect();
     const v = liveView.get();
-    if (fingers.current.size === 2) {
+    if (fingers.current.size === 2 && !pinching.current) {
+      // The move that leaves the slop starts the pinch from here: no jump.
+      pinching.current = !isTap(pinchFrom.current.get(e.pointerId) ?? from, to);
+    } else if (fingers.current.size === 2) {
       const other = [...fingers.current].find(([id]) => id !== e.pointerId)![1];
       const local = (p: Point) => ({ x: p.x - r.left, y: p.y - r.top });
       liveView.set(pinchView(r, v, local(from), local(other), local(to), local(other)));
@@ -281,6 +293,7 @@ export function useZoomPan(
   }
   function onTouchEnd(e: React.PointerEvent<HTMLDivElement>) {
     if (!fingers.current.delete(e.pointerId)) return;
+    pinching.current = false;
     lonePans.current = true; // the finger left after a pinch pans
     setZoom(liveView.get().z);
   }

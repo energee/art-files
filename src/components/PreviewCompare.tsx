@@ -264,7 +264,7 @@ export const PreviewCompare = forwardRef<
   // A finished drag still fires a click; swallow it so moving a multi-selection can't collapse
   // it to the grabbed layer (LayerList's suppressClick, the same guard). A tap's click goes too
   // (tapPicked): the tap picked where the finger lifted (onPointerUp), Chrome aims its click elsewhere.
-  const swallowClick = useRef(false), tapPicked = useRef(false);
+  const swallowClick = useRef(false), tapPicked = useRef(false), pressType = useRef(""); // the last press's pointerType
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
     if (swallowClick.current || tapPicked.current) { swallowClick.current = tapPicked.current = false; return; }
     const id = hitOf(e);
@@ -492,11 +492,11 @@ export const PreviewCompare = forwardRef<
     edited.current = false;
     setEditing(id);
   }
-  // An open session ignores dblclick: on a desktop the click-away has closed
-  // it by then; on touch the one Chrome sends after a double-tap, aimed at a
-  // tick, must not move the new session to another layer.
+  // Mouse and pen only: on touch the tap counter (onPointerUp) decides, and
+  // Chrome's own dblclick, sent past our slop and window, is ignored. An open
+  // session ignores it too: on a desktop the click-away has closed it by then.
   function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
-    const id = editing ? undefined : hitOf(e);
+    const id = editing || pressType.current === "touch" ? undefined : hitOf(e);
     if (id) startEditing(e, id);
   }
 
@@ -555,7 +555,7 @@ export const PreviewCompare = forwardRef<
       // came (a moved touch sends none) eats its click; a first finger starts a
       // tap unless a session is open (an extra one cancels it: cancelLayerGesture).
       onPointerDownCapture={(e) => {
-        swallowClick.current = tapOpened.current = tapPicked.current = false;
+        swallowClick.current = tapOpened.current = tapPicked.current = false; pressType.current = e.pointerType;
         if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
       }}
       onPointerUp={onPointerUp}
@@ -691,7 +691,7 @@ export const PreviewCompare = forwardRef<
               title={t("Drag to resize (shift: keep proportions)")}
               className={b.locked ? h.clsLocked : h.cls}
               // A finger's tap on a layer reaches the sheet's pick, as its press did.
-              onClick={(e) => { if ((e.nativeEvent as PointerEvent).pointerType !== "touch" || !hitOf(e)) e.stopPropagation(); swallowClick.current = false; }}
+              onClick={(e) => { if ((e.nativeEvent as PointerEvent).pointerType !== "touch" || !hitOf(e)) { e.stopPropagation(); swallowClick.current = false; } }}
               onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
               onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
             />
