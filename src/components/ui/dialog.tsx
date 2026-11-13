@@ -42,18 +42,33 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  bar,
+  container,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  /** `"lock"`, a locking bar: the same modal dialog (focus trap, Escape,
+   *  role), laid out as one row under the title bar with the window dimmed
+   *  behind it, for a question the app can't go on without.
+   *  `"plain"`, a bar that blocks nothing: no dimming, in the flow of
+   *  `container` (the tab strip's slot), and keys.ts doesn't count it as a
+   *  dialog. Its Dialog must be `modal={false} disablePointerDismissal`. */
+  bar?: "lock" | "plain"
+  /** Where the popup is portalled; the body when there is none. */
+  container?: HTMLElement | null
 }) {
   const { t } = useTranslation()
   return (
-    <DialogPortal>
-      <DialogOverlay />
+    <DialogPortal container={container ?? undefined}>
+      {bar !== "plain" && <DialogOverlay className={bar ? "supports-backdrop-filter:backdrop-blur-none" : undefined} />}
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        data-bar={bar}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          bar
+            // top-10 is the header's height: the bar sits where the tab strip does.
+            ? (bar === "plain" ? "shrink-0 border-b" : "fixed inset-x-0 top-10 z-50 border-y shadow-sm") + " flex flex-wrap items-center justify-end gap-x-4 gap-y-2 bg-popover px-3 py-2 text-sm text-popover-foreground duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-2 data-closed:animate-out data-closed:fade-out-0 [&_[data-slot=dialog-header]]:min-w-48 [&_[data-slot=dialog-header]]:flex-1 [&_[data-slot=dialog-header]]:gap-1 [&_[data-slot=dialog-title]]:text-sm [&_[data-slot=dialog-description]]:text-xs [&_[data-slot=dialog-footer]]:m-0! [&_[data-slot=dialog-footer]]:flex-row! [&_[data-slot=dialog-footer]]:rounded-none! [&_[data-slot=dialog-footer]]:border-0! [&_[data-slot=dialog-footer]]:bg-transparent! [&_[data-slot=dialog-footer]]:p-0!"
+            : "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

@@ -61,6 +61,7 @@ async function openOrphan(pick: string) {
     await act(async () => { root.render(createElement(DocumentEditor, props)); });
     for (let i = 0; i < 400 && !button(pick); i++) await tick();
     expect(document.body.textContent).toContain("This label was made with a different master");
+    expect(document.querySelector('[data-slot="dialog-content"][data-bar]')).not.toBeNull(); // a locking bar
     await act(async () => { button(pick)!.click(); });
     for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++) await tick();
     await settle(); // the open has settled; a toast lands a tick after its message is sent

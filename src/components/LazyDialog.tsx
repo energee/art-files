@@ -1,5 +1,5 @@
-// LazyDialog.tsx — what a dialog that loads on first open (#410: Settings,
-// the Save Master review, the ⌘K palette) shows before its own chunk
+// LazyDialog.tsx — what a dialog that loads on first open (#410: the Save
+// Master review, the ⌘K palette) shows before its own chunk
 // renders: DialogLoading while the chunk loads, the load-failed message if
 // it never does.
 import { t, useTranslation } from "@/i18n";

@@ -127,7 +127,7 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "file-projects" },
       {
         kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
-          // Settings → Two-file export picks one set: one file each (White
+          // Settings → Export as (Art + mask) picks one set: one file each (White
           // Ink inside), or the art + mask pairs and the single plates.
           { kind: "action", id: "export-pdf", text: "Export PDF", symbol: "doc.on.doc", optional: true },
           { kind: "action", id: "export-pdf-as", text: "Export PDF As…", symbol: "doc.on.doc", optional: true },

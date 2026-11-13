@@ -34,12 +34,21 @@ export interface RenderSettings {
    *  a fixed 8x5in die, so it changes the exported page size without moving a
    *  single element relative to the trim. */
   bleedIn: number;
-  /** Settings → Two-file export: ⌘E / ⇧⌘E save the art + mask PDF and PSD
+  /** Settings → Export as (Art + mask): ⌘E / ⇧⌘E save the art + mask PDF and PSD
    *  pairs (and the single PDF plates show) instead of one PDF / PSD with
    *  White Ink inside. ponytail: the key predates PSDs following it; kept so
    *  stored settings still load. */
   twoFilePdfExport: boolean;
 }
+
+/** The groups on the Settings page, in order: the sidebar lists them
+ *  (SettingsNav) and RenderSettings renders each as `#settings-<id>`. Titles
+ *  are translation keys. */
+export const SETTINGS_GROUPS = [
+  { id: "language", title: "Language" },
+  { id: "output", title: "Output" },
+  { id: "can-preview", title: "Can preview" },
+] as const;
 
 // There is no labelSize/labelWidth here: how big the label sits on the can is
 // the trim's size over the can's, which layout.ts derives
