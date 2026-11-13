@@ -12,6 +12,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Menus without icons.** The File, Edit, Layer and View menus now show only the name and shortcut of each row, in the Mac menu bar and in the browser.
 - **Prompts are bars under the title bar, not boxes in the middle of the window.** Closing a label with unsaved changes, quitting with unsaved labels, and opening a label made with a different master each ask in a bar across the top, with the rest of the window dimmed until you answer. "Recover unsaved work?" and the update messages are bars under the tabs that block nothing: you can keep working and answer when you like.
 ### Added
+- **Label Lab on the web.** The editor is published at energ.ee/art-files/app/ with each release.
 - **Edit several layers at once.** With several layers selected, a change in the inspector now applies to every selected layer that has that control: power, lock, position and colour to all of them, and Typography, Image, Barcode or QR settings when they are all that kind. The header shows the count ("3 layers"), and each change is one undo step. Before, the inspector changed only the last layer you picked. A typed X or Y gives every layer the same value, so layers on the same guide line up. The name, content, bindings and Template field settings are hidden until you select one layer.
 - **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
 
