@@ -118,6 +118,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { baseName, cn, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
+import { usePhoneLayout } from "@/usePhoneLayout";
 import { loadLabelFaces } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import type { PlanAssets } from "@/plan";
@@ -426,9 +427,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   // resolve per master/label change; the inspector reads the same rows.
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
+  const { phone } = usePhoneLayout();
   /** Controlled so View → Layers and the palette can toggle and check it;
-   *  ⌘B stays the provider's guarded listener. */
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+   *  ⌘B stays the provider's guarded listener. Starts closed on a phone,
+   *  where it covers the preview; later size changes leave it as it is. */
+  const [sidebarOpen, setSidebarOpen] = useState(!phone);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -2461,9 +2464,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         </Suspense>
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
-          preview center, inspector sheet right. */}
+          preview center, inspector sheet right. On a phone Layers slides
+          over the preview instead of sitting beside it. */}
       <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
-        <Sidebar>
+        <Sidebar overlay={phone}>
           {/* macOS overlay title bar (src/titlebar.ts): the traffic lights sit
               in the sidebar's top corner, so its content starts below this
               strip, which drags the window. Header height, so the first row
@@ -2475,6 +2479,9 @@ export const DocumentEditor = memo(function DocumentEditor({
           <SidebarContent onClick={(event) => {
             const target = event.target;
             if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+            // Picking a layer on a phone uncovers the preview. Here, not in
+            // onSelect: that also runs on a long-press, which opens the row menu.
+            if (phone && target instanceof Element && target.closest("[data-layer-id]")) setSidebarOpen(false);
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master}

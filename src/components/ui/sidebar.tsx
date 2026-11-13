@@ -147,18 +147,23 @@ function SidebarProvider({
   )
 }
 
-function Sidebar({ className, children, ...props }: React.ComponentProps<"div">) {
-  const { state } = useSidebar()
+// `overlay` (App.tsx sets it on a phone): the sidebar slides over the content
+// instead of taking room beside it, with a backdrop that closes it, no resize
+// handle, and at most 85% of the screen wide.
+function Sidebar({ overlay = false, className, children, ...props }: React.ComponentProps<"div"> & { overlay?: boolean }) {
+  const { state, open, setOpen } = useSidebar()
   return (
     <div className="group peer block text-sidebar-foreground" data-state={state}
       data-collapsible={state === "collapsed" ? "offcanvas" : ""} data-side="left" data-slot="sidebar">
-      <div data-slot="sidebar-gap"
-        className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:w-0" />
+      {!overlay && <div data-slot="sidebar-gap"
+        className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:w-0" />}
+      {overlay && open && <div data-slot="sidebar-backdrop" aria-hidden="true"
+        className="fixed inset-0 z-40 bg-black/30" onClick={() => setOpen(false)} />}
       <div data-slot="sidebar-container" data-side="left" inert={state === "collapsed"}
-        className={cn("fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]", className)}
+        className={cn("fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]", overlay && "z-40 max-w-[85vw]", className)}
         {...props}>
         <div data-sidebar="sidebar" data-slot="sidebar-inner" className="flex size-full flex-col bg-sidebar">{children}</div>
-        <SidebarResizeHandle />
+        {!overlay && <SidebarResizeHandle />}
       </div>
     </div>
   )
