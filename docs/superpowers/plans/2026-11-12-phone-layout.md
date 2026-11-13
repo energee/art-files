@@ -684,6 +684,8 @@ git commit -m "Feat: On a phone, the menus fold under one button and the header 
 Planner's call: no JavaScript for the on-screen keyboard (Review Focus 4). The sheet scrolls inside itself, so the browser's own scroll-to-focused-field reaches every field, and `svh` is what the shell already uses. The real-phone check at the checkpoint decides; if Android Chrome hides the focused field, the fix is adding `interactive-widget=resizes-content` to the viewport meta in `index.html` (a native setting, one attribute); if iOS Safari hides it, stop and report.
 Planner's call: no CSS clamp for the 150px minimum. At 45svh the preview keeps it at every portrait phone size; Task 2.7 measures 390×844 and 320×568 to prove it.
 
+Corrected by the Phase 2 fix wave: at Safari's real small viewports (375×553, 320×460) and with the toolbar wrapped in Rendered and Can, 45svh left the preview 111px and 58px. Sheet and section now both read `--bottom-sheet-height: clamp(180px, calc(100svh - 345px), 45svh)` (src/index.css); the ledger's phone-shell entry has the measurements.
+
 - [ ] **Step 1: Write the failing tests**
 
 ```tsx
