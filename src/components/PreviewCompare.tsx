@@ -313,13 +313,6 @@ export const PreviewCompare = forwardRef<
     };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
-  /** A tick's click stays the tick's (and ends any swallow), except a finger's
-   *  click over a layer: that reaches the sheet as its press did, where a
-   *  tap's pick or a drag's swallow decides it. */
-  function onHandleClick(e: React.MouseEvent<HTMLSpanElement>) {
-    if ((e.nativeEvent as PointerEvent).pointerType === "touch" && hitOf(e)) return;
-    e.stopPropagation(); swallowClick.current = false;
-  }
   function onHandleMove(e: React.PointerEvent<HTMLSpanElement>) {
     const d = resize.current;
     if (d?.pointerId !== e.pointerId) return;
@@ -686,7 +679,9 @@ export const PreviewCompare = forwardRef<
               key={h.key} aria-hidden="true" data-resize-handle={h.key}
               title={t("Drag to resize (shift: keep proportions)")}
               className={b.locked ? h.clsLocked : h.cls}
-              onClick={onHandleClick}
+              // A tick keeps its clicks: a mouse resize's would pick, and a
+              // finger's tap has already picked where it lifted (onPointerUp).
+              onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
               onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
             />

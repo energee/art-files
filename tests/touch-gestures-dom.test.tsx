@@ -818,3 +818,28 @@ it("a mouse click still picks a layer and still deselects on bare sheet", async 
   mouseClick(1, 1);
   expect(probe.preview!.selected).toEqual([]);
 }, 60_000);
+
+// WebKit (iPhones, the macOS app) sends click as a plain MouseEvent, with no
+// pointerType: a tick keeps it, and the tap has already picked at the lift.
+const plainClick = (el: Element, x: number, y: number) => act(() => {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
+});
+it("with a plain MouseEvent click on the tick, a group move keeps the multi-selection", async () => {
+  select("name");
+  act(() => { probe.preview!.onPick("styleLine", { shift: true }); });
+  const { x, y } = centre("name"), t = tick("1,0");
+  finger(t, "pointerdown", 1, x, y);
+  finger(t, "pointermove", 1, x + 12, y);
+  finger(t, "pointerup", 1, x + 12, y);
+  plainClick(tick("1,0") ?? t, x + 12, y);
+  expect([...probe.preview!.selected].sort()).toEqual(["name", "styleLine"]);
+}, 60_000);
+
+it("with a plain MouseEvent click on the tick, a tap on a layer in its reach selects that layer", async () => {
+  select("name");
+  const d = centre("description");
+  finger(tick("1,1"), "pointerdown", 1, d.x, d.y);
+  finger(sheet, "pointerup", 1, d.x, d.y);
+  plainClick(tick("1,1"), d.x, d.y);
+  expect(probe.preview!.selected).toEqual(["description"]);
+}, 60_000);
