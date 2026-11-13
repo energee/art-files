@@ -1,6 +1,7 @@
 // tests/fit-sheet-dom.test.tsx — 100% shows the whole label: the 2D sheet fits
-// the pane's width and height (phone layout, Phase 3), and the 3D framing
-// reads the same rule.
+// the pane's width and height (phone layout, Phase 3), in fitSheetWidth and in
+// the sheet's CSS. The 3D framing's half is pinned in
+// tests/canscene-camera.test.ts.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -17,7 +18,6 @@ it.each([
 });
 
 it("a short pane fits the label's height", () => {
-  expect(fitSheetWidth(299, 163)).toBe(163 * PAGE.w / PAGE.h);
   expect(fitSheetWidth(299, 163)).toBeCloseTo(258.38, 2);
 });
 

@@ -7,6 +7,14 @@
  *  a double-click. */
 export const DOUBLE_TAP_MS = 300;
 
+/** How far (px) a finger may drift between landing and lifting and still
+ *  count as a tap: a real fingertip rolls a few px. */
+export const TAP_SLOP_PX = 10;
+
+/** Whether a touch that landed at `from` and lifted at `to` is a tap. */
+export const isTap = (from: { x: number; y: number }, to: { x: number; y: number }): boolean =>
+  Math.hypot(to.x - from.x, to.y - from.y) <= TAP_SLOP_PX;
+
 /** A tap that may start a double-tap: the layer under the lift, and when. */
 export type Tap = { id: string; at: number };
 

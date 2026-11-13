@@ -16,7 +16,10 @@ import type { Style } from "@/types";
  *  the tick's centre so it reaches away from the layer: on a small layer it
  *  never covers the box, which a finger drags to move. An edge tick's reach
  *  overlaps the corner ticks beside it on a small layer, so the corners
- *  stack on top: no tick's reach covers another tick. */
+ *  stack on top: no tick's reach covers another of the SAME layer's ticks
+ *  (down to the size a layer is drawn at; another layer's ticks, or a
+ *  layer squeezed to a few px, can still overlap). `touch:z-1` also lifts
+ *  the corners above any later `z-auto` sibling in the sheet. */
 export const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
   .filter((hx) => hx || hy)
   .map((hx) => {

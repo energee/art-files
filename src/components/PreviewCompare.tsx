@@ -36,7 +36,7 @@ import {
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
 import { InPlacePlainField } from "./InPlacePlainField";
-import { foldTap, type Tap } from "./doubleTap";
+import { foldTap, isTap, type Tap } from "./doubleTap";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -255,13 +255,13 @@ export const PreviewCompare = forwardRef<
 
   // Which layer under the event, or null — undefined means "can't tell":
   // source not assembled, not laid out, or the click was really the divider.
-  function hitOf(e: React.MouseEvent<HTMLDivElement>): string | null | undefined {
+  function hitOf(e: React.MouseEvent): string | null | undefined {
     if (!canvasRender) return undefined;
     // The handle tracks the pointer while dragging, so at drag-end the
     // synthesized click still lands over it; ignore anything whose target
     // is the handle so finishing a drag can't change the selection.
     if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return undefined;
-    const p = pagePointOf(e);
+    const p = pagePointOf({ clientX: e.clientX, clientY: e.clientY, currentTarget: pageElement.current! });
     if (!p) return undefined;
     return hitTestBoxes(p.xPt, p.yPt, hitBoxes);
   }
@@ -320,23 +320,17 @@ export const PreviewCompare = forwardRef<
   // the move drag on the wrapper: a tick that takes the press stops its
   // propagation, so the wrapper's move never starts. A press the tick does
   // not take (during in-place editing, on a locked layer, an extra finger, a
-  // finger inside the layer's box) bubbles on as any other press would.
+  // finger on any layer) bubbles on as any other press would.
   const resize = useRef<{
     id: string; handle: ResizeHandle; pointerId: number; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;
   } | null>(null);
-  /** Whether the pointer is over layer `id`'s own box. */
-  const insideBox = (e: { clientX: number; clientY: number }, id: string): boolean => {
-    const p = pagePointOf({ clientX: e.clientX, clientY: e.clientY, currentTarget: pageElement.current! });
-    const b = boxesById.get(id);
-    return !!p && !!b && hitTestBoxes(p.xPt, p.yPt, [b]) === id;
-  };
   function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
     if (extraFinger(e) || e.button !== 0 || editing || boxesById.get(id)?.locked) return;
-    // Chrome aims a finger NEAR a tick at the tick, even from inside a small
-    // layer, but the event keeps the finger's own position: inside the box
-    // is handed on to the sheet's move drag, outside resizes.
-    if (e.pointerType === "touch" && insideBox(e, id)) return;
+    // Chrome aims a finger NEAR a tick at the tick, but the event keeps the
+    // finger's own position: on any layer it goes on to the sheet, which
+    // moves and picks that layer; only on bare stock does it resize.
+    if (e.pointerType === "touch" && hitOf(e)) return;
     e.stopPropagation();
     resize.current = {
       id, handle, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false,
@@ -356,7 +350,7 @@ export const PreviewCompare = forwardRef<
   }
   /** The resize's own pointer lifting ends it; its cancel reverts it like
    *  Escape. Any other pointer's up passes through to the pane, and so does
-   *  the lift when no resize ran (a finger inside the box that onHandleDown
+   *  the lift when no resize ran (a finger on a layer that onHandleDown
    *  handed to the sheet): that move ends at the sheet. */
   function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
     if (resize.current?.pointerId !== e.pointerId) return;
@@ -397,9 +391,10 @@ export const PreviewCompare = forwardRef<
   const tapFrom = useRef<{ x: number; y: number } | null>(null);
   const lastTap = useRef<Tap | null>(null);
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.pointerType === "touch" && e.isPrimary) {
+    if (extraFinger(e)) return; // an ignored finger's lift ends nothing
+    if (e.pointerType === "touch") {
       const from = tapFrom.current; tapFrom.current = null;
-      const tapped = from && !drag.current?.started && Math.hypot(e.clientX - from.x, e.clientY - from.y) < DRAG_THRESHOLD_PX;
+      const tapped = from && !drag.current?.started && isTap(from, { x: e.clientX, y: e.clientY });
       const id = tapped ? hitOf(e) ?? null : null;
       const { open, last } = foldTap(lastTap.current, id, Date.now()); lastTap.current = last;
       if (open) startEditing(e, id!);
@@ -565,8 +560,9 @@ export const PreviewCompare = forwardRef<
       // Keeps the field focused through the mousedown Chrome sends after the tap that opened it (a click-away ends a session first).
       onMouseDown={(e) => { if (editing && !sessionRef.current?.contains(e.target as Node)) e.preventDefault(); }}
       // A cancelled press (an incoming call, the OS taking the touch) puts
-      // the layer back, as Escape and a second finger do.
-      onPointerCancel={() => { cancelLayerGesture(); }}
+      // the layer back, as Escape and a second finger do; an ignored extra
+      // finger's cancel leaves the first finger's gesture alone.
+      onPointerCancel={(e) => { if (!extraFinger(e)) cancelLayerGesture(); }}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
       <canvas
@@ -691,7 +687,8 @@ export const PreviewCompare = forwardRef<
               key={h.key} aria-hidden="true" data-resize-handle={h.key}
               title={t("Drag to resize (shift: keep proportions)")}
               className={b.locked ? h.clsLocked : h.cls}
-              onClick={(e) => { e.stopPropagation(); swallowClick.current = false; }}
+              // A finger's tap on a layer reaches the sheet's pick, as its press did.
+              onClick={(e) => { if ((e.nativeEvent as PointerEvent).pointerType !== "touch" || !hitOf(e)) e.stopPropagation(); swallowClick.current = false; }}
               onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
               onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
             />

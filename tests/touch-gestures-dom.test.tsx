@@ -311,10 +311,9 @@ it("a finger the browser aims at a tick but that lands inside the layer moves it
   expect(box("name")).toEqual(moved);
 }, 60_000);
 
-it("a finger on a tick outside the layer resizes it", async () => {
+it("a finger on a tick outside every layer resizes it", async () => {
   select("name");
-  const start = box("name");
-  const x = ((start.x + start.w) / PAGE.w) * W + 6, y = ((start.y + start.h) / PAGE.h) * H + 6;
+  const start = box("name"), { x, y } = pastNameCorner();
   const t = tick("1,1");
   finger(t, "pointerdown", 1, x, y);
   finger(t, "pointermove", 1, x + 20, y + 10);
@@ -336,6 +335,93 @@ it("a mouse on a tick resizes as before, wherever on the tick it lands", async (
   expect(box("name").x).toBeCloseTo(start.x);
 }, 60_000);
 
+// The browser aims a finger near the selection at its tick, but the finger is
+// on another layer: that layer is what it moves and picks. With capture on
+// the sheet the moves and lift arrive there; Chrome still sends the tap's
+// click to the tick (measured), as a touch PointerEvent.
+const touchClick = (el: Element, x: number, y: number) => act(() => {
+  el.dispatchEvent(new PointerEvent("click", { pointerType: "touch", bubbles: true, clientX: x, clientY: y }));
+});
+it("a finger aimed at the selection's tick but on another layer moves that layer", async () => {
+  select("name");
+  const name = box("name"), start = box("description"), d = centre("description");
+  finger(tick("1,1"), "pointerdown", 1, d.x, d.y);
+  finger(sheet, "pointermove", 1, d.x + 20, d.y);
+  finger(sheet, "pointerup", 1, d.x + 20, d.y);
+  expect(box("description").x).toBeGreaterThan(start.x);
+  expect(box("description").w).toBeCloseTo(start.w);
+  expect(box("name")).toEqual(name);
+}, 60_000);
+
+it("a tap aimed at the selection's tick but on another layer picks that layer", async () => {
+  select("name");
+  const d = centre("description");
+  finger(tick("1,1"), "pointerdown", 1, d.x, d.y);
+  finger(sheet, "pointerup", 1, d.x, d.y);
+  touchClick(tick("1,1"), d.x, d.y);
+  expect(probe.preview!.selected).toEqual(["description"]);
+}, 60_000);
+
+it("a tap aimed at a tick but inside its own layer keeps that layer picked", async () => {
+  select("name");
+  act(() => { probe.preview!.onPick("description", { shift: true, toggle: false }); });
+  const n = centre("name");
+  finger(tick("1,1"), "pointerdown", 1, n.x, n.y);
+  finger(sheet, "pointerup", 1, n.x, n.y);
+  touchClick(tick("1,1"), n.x, n.y);
+  expect(probe.preview!.selected).toEqual(["name"]);
+}, 60_000);
+
+it("in a multi-selection, a finger on one selected layer in another's tick reach moves the group", async () => {
+  select("name");
+  act(() => { probe.preview!.onPick("description", { shift: true, toggle: false }); });
+  const name = box("name"), desc = box("description"), d = centre("description");
+  const nameTick = pane.querySelectorAll('[data-resize-handle="1,1"]')[0];
+  finger(nameTick, "pointerdown", 1, d.x, d.y);
+  finger(sheet, "pointermove", 1, d.x + 20, d.y);
+  finger(sheet, "pointerup", 1, d.x + 20, d.y);
+  expect(box("name").x).toBeGreaterThan(name.x);
+  expect(box("description").x).toBeGreaterThan(desc.x);
+  expect(box("name").w).toBeCloseTo(name.w);
+}, 60_000);
+
+/** A point just outside `name`'s bottom-right corner, on bare stock. */
+const pastNameCorner = () => {
+  const b = box("name");
+  const p = { x: ((b.x + b.w) / PAGE.w) * W + 6, y: ((b.y + b.h) / PAGE.h) * H + 6 };
+  const { m, planAssets } = probe.preview!.canvasRender!;
+  const covered = layers().some((l) => {
+    const o = boxOfLayer(l.id, layers(), m, planAssets);
+    return o && p.x >= (o.x / PAGE.w) * W && p.x <= ((o.x + o.w) / PAGE.w) * W && p.y >= (o.y / PAGE.h) * H && p.y <= ((o.y + o.h) / PAGE.h) * H;
+  });
+  expect(covered).toBe(false);
+  return p;
+};
+
+it("an extra finger resting on the label and cancelled by the OS leaves a resize alone", async () => {
+  select("name");
+  const start = box("name"), { x, y } = pastNameCorner(), n = centre("description");
+  finger(tick("1,1"), "pointerdown", 1, x, y);
+  finger(tick("1,1"), "pointermove", 1, x + 20, y + 10);
+  const resized = box("name");
+  expect(resized.w).toBeGreaterThan(start.w);
+  finger(sheet, "pointerdown", 2, n.x, n.y);
+  finger(sheet, "pointercancel", 2, n.x, n.y);
+  expect(box("name")).toEqual(resized);
+  expect(canUndo()).toBe(true);
+}, 60_000);
+
+it("an extra finger lifting mid-resize keeps the size readout up", async () => {
+  select("name");
+  const { x, y } = pastNameCorner(), n = centre("description");
+  finger(tick("1,1"), "pointerdown", 1, x, y);
+  finger(tick("1,1"), "pointermove", 1, x + 20, y + 10);
+  expect(sheet.textContent).toMatch(/W .*H /);
+  finger(sheet, "pointerdown", 2, n.x, n.y);
+  finger(sheet, "pointerup", 2, n.x, n.y);
+  expect(sheet.textContent).toMatch(/W .*H /);
+}, 60_000);
+
 it("a pen on the pasteboard behaves as the mouse does", async () => {
   run("zoom-in"); run("zoom-in");
   const pen = (type: string, button: number, x: number, y: number) => act(() => {
@@ -353,13 +439,13 @@ it("a pen on the pasteboard behaves as the mouse does", async () => {
 
 // Double-tap to edit in place: the detector reads each finger's lift
 // (Date.now() stepped by the test), not the browser's click/dblclick.
-const tapAt = (id: string, at: number, on: Element = sheet, pointerType = "touch") => {
+const tapAt = (id: string, at: number, on: Element = sheet, pointerType = "touch", drift = 0) => {
   vi.spyOn(Date, "now").mockReturnValue(at);
   const { x, y } = centre(id);
-  const fire = (type: string) => act(() => {
-    on.dispatchEvent(new PointerEvent(type, { pointerType, pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y, bubbles: true }));
+  const fire = (type: string, dx = 0) => act(() => {
+    on.dispatchEvent(new PointerEvent(type, { pointerType, pointerId: 1, isPrimary: true, button: 0, clientX: x + dx, clientY: y, bubbles: true }));
   });
-  fire("pointerdown"); fire("pointerup");
+  fire("pointerdown"); fire("pointerup", drift);
   act(() => { on.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })); });
 };
 const editorOf = (name: string) => pane.querySelector(`[aria-label="Edit ${name} text"]`);
@@ -375,6 +461,16 @@ it("two taps on a text layer within 300ms edit it in place, and the first tap se
   expect(anyEditor()).toBeNull();
   tapAt("name", 1300);
   expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+it("a finger lifting up to 10px from where it landed still taps", async () => {
+  tapAt("name", 1000, sheet, "touch", 10); tapAt("name", 1300, sheet, "touch", 10);
+  expect(editorOf(layer("name").name.toLowerCase())).not.toBeNull();
+}, 60_000);
+
+it("a finger lifting 11px from where it landed is no tap", async () => {
+  tapAt("name", 1000, sheet, "touch", 11); tapAt("name", 1300, sheet, "touch", 11);
+  expect(anyEditor()).toBeNull();
 }, 60_000);
 
 it("taps 301ms apart, or on two layers, do not", async () => {
