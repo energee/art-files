@@ -36,7 +36,7 @@ describe("layerRows", () => {
     const row = (id: string) => rows.find((r) => r.layer.id === id);
     expect(row("collabLead")?.variant).toEqual({ id: "collab", name: "Collab", enabled: true });
     expect(row("logo")?.variantOverridden).toEqual({ id: "collab", name: "Collab", enabled: true });
-    expect(row("logo")?.changed).toBeUndefined();
+    expect(row("logo")?.overridden).toBeUndefined();
     expect(row("logo")?.variant?.id).toBe("collab");
     expect(row("name")?.variantOverridden).toBeUndefined();
     expect(variantChips(m, label({ enabledVariants: ["collab"] }))).toEqual([{ id: "collab", name: "Collab", enabled: true }]);
@@ -45,7 +45,7 @@ describe("layerRows", () => {
   it("marks a label override separately from a variant's", () => {
     const { rows } = layerRows(lolevMaster(), label({ overrides: { name: { x: 10 } } }));
     const name = rows.find((r) => r.layer.id === "name");
-    expect(name?.changed).toBe(true);
+    expect(name?.overridden).toBe(true);
     expect(name?.variantOverridden).toBeUndefined();
   });
 
@@ -55,11 +55,22 @@ describe("layerRows", () => {
     const { rows } = layerRows(m, label({ enabledVariants: ["collab"], overrides: { logo: { x: 9 } } }));
     const logo = rows.find((r) => r.layer.id === "logo");
     expect(logo?.variantOverridden?.id).toBe("collab");
-    expect(logo?.changed).toBe(true);
+    expect(logo?.overridden).toBe(true);
   });
 
-  it("a value alone marks the layer as changed by this label", () => {
-    const { rows } = layerRows(lolevMaster(), label({ values: { name: [{ text: "X", fill: "#F3CD80", layer: "metallic" }] } }));
-    expect(rows.find((r) => r.layer.id === "name")?.changed).toBe(true);
+  // Reset to Master puts a layer's design back and keeps its content, so
+  // filling a layer in gives it nothing to reset.
+  it("a value alone is not an override", () => {
+    const { rows } = layerRows(lolevMaster(), label({ values: { name: [{ text: "Peregrine", fill: "#F3CD80", layer: "metallic" }] } }));
+    expect(rows.find((r) => r.layer.id === "name")?.overridden).toBeUndefined();
+  });
+
+  // A label-only layer's override is its only definition: there is no master
+  // value to go back to.
+  it("a label-only layer is not an override", () => {
+    const only = { ...lolevMaster().layers.find((l) => l.id === "name")!, id: "extra", name: "Extra" };
+    const { rows } = layerRows(lolevMaster(), label({ overrides: { extra: only } }));
+    expect(rows.find((r) => r.layer.id === "extra")?.layer.name).toBe("Extra");
+    expect(rows.find((r) => r.layer.id === "extra")?.overridden).toBeUndefined();
   });
 });

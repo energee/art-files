@@ -1,17 +1,29 @@
 ---
 title: Inspector
-description: Edit one layer's content, type, position and colour.
+description: Edit a layer's content, type, position and colour, or several layers at once.
 ---
 
 Pick a layer in the list or on the preview and the right-hand inspector opens. The **✕** at the top right, Esc, or a click on the empty pasteboard clears the selection and shuts it. One panel at a time. Esc inside a field or during a drag only cancels that, and Esc in an on-preview text edit finishes it, keeping what you typed; the inspector stays open.
 
-With several layers selected, the inspector edits only the last one you picked and says so ("Editing Brand only (3 selected)"). Drag, reorder and Delete still act on the whole selection.
-
 Lengths show in the app's one unit: inches, millimetres, points or pixels, picked in the ruler corner or under View → **Units** (see [Preview](/docs/preview#rulers-and-guides)). It is display only; under the hood it's still PDF points. It converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size. Type size and letter spacing stay in points (the typographic unit), stroke width in pixels at 600 DPI (the unit it is saved in, whatever the export resolution) and character height in millimetres; hover a field's unit to see why.
+
+## Several layers at once
+
+With several layers selected, the inspector shows the last one you picked (passing over the texture and mask), headed by the count ("3 layers"), and a change applies to every selected layer that has that control:
+
+- **Show**, **lock**, Position and Color apply to all of them. A typed X or Y gives every layer that value, measured from its own guide, so layers on the same guide line up.
+- Typography, Image, Barcode and QR settings show only when every selected layer is that kind.
+- The name, the content box, bindings and Template field settings belong to one layer, so they are hidden. Select one layer to change them.
+
+A layer keeps what it has no control for: a bound layer keeps its binding, an image doesn't rotate, and page art takes only Show. Each change is one undo step.
+
+A **≠** beside a control means the selected layers differ there; the field shows the last-picked layer's value. Click the ≠ to give all of them that value. A reset (↶) clears this label's change on every selected layer that has one.
+
+Show and lock on a selected row in the Layers list act on the whole selection too, as drag, reorder and Delete do.
 
 ## Header
 
-Kind icon, the layer's name, then **power** and **lock** icon buttons, so they work with the Layers sidebar hidden (`⌘B`). Power controls the same saved visibility setting as the list's Show eye. Page art (texture and mask) has no lock: it can't be dragged anyway.
+Kind icon, the layer's name, then **Show** (the list's eye), **Lock** and **Remove** buttons, so they work with the Layers sidebar hidden (`⌘B`). With several layers selected, each acts on all of them. Page art (texture and mask) has no lock: it can't be dragged anyway.
 
 The name box renames the way a Layers row does: type, then press Enter or click away to rename (one undo step). Esc puts the old name back. An empty name is never saved; leaving the box empty restores the name.
 
@@ -54,11 +66,13 @@ QR: square size, style (square, rounded, dots), and error correction (L, M, Q, H
 
 - **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. On a text layer it recolours every line at once. Those have to scan. Colours are 3- or 6-digit hex (`#fff` reads as `#ffffff`) or CMYK percentages typed into the same field as `cmyk(15,25,70,5)`. A CMYK colour prints exactly those inks; the preview, the PSD and tinted raster images show an RGB approximation. Picking from the colour picker switches back to hex. Saved swatches keep CMYK colours as CMYK. A hand-edited `.label` or `.master` with a named colour such as `gold` is refused on open, naming the layer.
 - **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it — on a text layer, under every line; a line or run given the toolbar's White ink underlay is on white ink either way. Raster images (PNG, JPEG) always print on white ink (a PNG only under its non-transparent pixels), so their Metallic toggle is greyed out and its tooltip says to use an SVG for metallic art. With Fill set to **no ink** the toggle is greyed out: there is nothing to plate.
-- **Stroke.** One reset badge: beside the switch while the stroke is off, beside its colour while it is on. Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline. A barcode can also turn on **Solid background**: the stroke colour fills the whole barcode box, quiet zone included, instead of only outlining the bars and digits.
+- **Stroke.** One reset: beside the switch while the stroke is off, beside its colour while it is on. Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline. A barcode can also turn on **Solid background**: the stroke colour fills the whole barcode box, quiet zone included, instead of only outlining the bars and digits.
 
-## Override badges
+## Resetting a value
 
-Badges sit just left of the control they reset. A **filled dot** means an enabled variant sets this property. A **ring** means this label overrides it; set the value back to the master's and the ring goes away. Each badge resets only its own source, so clearing your beer's edit cannot rewrite the shipped variant.
+A field looks the same whether or not this label changed it. Point at a changed field, or tab into it, and a reset (↶) appears just left of the control; click it to go back to the master's value. Setting the value back by hand does the same. To reset a whole layer, right-click its row in the Layers list and choose **Reset to Master**.
+
+A teal ↶ means an enabled variant sets the property. Clicking it changes the master file, and its tooltip says so. Each reset clears only its own source, so clearing your beer's edit cannot rewrite the shipped variant.
 
 ## Fill contract
 
