@@ -657,9 +657,12 @@ export default function TabsShell() {
           tabs[(i + step + tabs.length) % tabs.length].focus();
         }}>
         {state.tabs.map((t, i) => (
+          // A tap on the chip's own box (its padding, or an inactive tab's
+          // control spot, which takes no taps on touch) switches to the tab.
           <div
             key={t.id}
             role="presentation"
+            onClick={(e) => { if (e.target === e.currentTarget) activate(t.id); }}
             className={cn(
               "group flex h-6.5 touch:h-auto min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
               t.id === state.active

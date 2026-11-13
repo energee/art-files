@@ -40,6 +40,7 @@ const de: Record<keyof typeof en, string> = {
   "{{name}}: locked": "{{name}}: gesperrt",
   "{{name}}: enabled": "{{name}}: aktiviert",
   "Selecting layers. Tap a layer to add or remove it.": "Ebenen auswählen. Tippen Sie auf eine Ebene, um sie hinzuzufügen oder zu entfernen.",
+  "Selection finished.": "Auswahl beendet.",
   "Select": "Auswählen",
   "Rename": "Umbenennen",
   "Unlock": "Entsperren",

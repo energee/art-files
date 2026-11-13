@@ -851,7 +851,7 @@ describe("on a touch screen", () => {
   // otherwise open the menu under a drag that paused before moving.
   it("holding the grip still opens no menu, and the drag that follows reorders", async () => {
     const props = render(baseProps());
-    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLButtonElement;
+    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLElement;
     grip.setPointerCapture = vi.fn();
     const target = rowFor("barcode");
     vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
@@ -870,11 +870,13 @@ describe("on a touch screen", () => {
 
   it("drags a row by its grip, and leaves its name to scroll the list", () => {
     const props = render(baseProps({ selected: ["wordmark"] }));
-    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLButtonElement;
-    // Out of the tab order and the accessibility tree: Bring Forward, Send
-    // Backward and Alt+↑/↓ reorder without it.
+    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLElement;
+    // Not focusable (a tap must not put focus inside its aria-hidden box)
+    // and out of the accessibility tree: Bring Forward, Send Backward and
+    // Alt+↑/↓ reorder without it.
     expect(grip.getAttribute("aria-hidden")).toBe("true");
-    expect(grip.tabIndex).toBe(-1);
+    expect(grip.tagName).toBe("SPAN");
+    expect(grip.hasAttribute("tabindex")).toBe(false);
     expect(grip.className).toContain("hidden touch:grid touch-none");
     expect(nameButton("wordmark").className).toContain("touch-none touch:touch-pan-y");
     grip.setPointerCapture = vi.fn();

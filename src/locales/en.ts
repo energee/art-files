@@ -39,6 +39,7 @@ const en = {
   "{{name}}: locked": "{{name}}: locked",
   "{{name}}: enabled": "{{name}}: enabled",
   "Selecting layers. Tap a layer to add or remove it.": "Selecting layers. Tap a layer to add or remove it.",
+  "Selection finished.": "Selection finished.",
   "Select": "Select",
   "Rename": "Rename",
   "Unlock": "Unlock",

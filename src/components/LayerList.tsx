@@ -82,7 +82,9 @@ export interface LayerListProps {
    *  tooltips name the reason. */
   invalid?: ReadonlyMap<string, string>;
   /** Selection mode (touch only): every row tap toggles that row, as a
-   *  ⌘/Ctrl-click does. App ends it when the selection is cleared or Layers closes. */
+   *  ⌘/Ctrl-click does. App derives it: it ends when the selection changes
+   *  any other way (cleared, a pick on the label, Add layer, Remove), when no
+   *  live layer is selected, or when Layers closes. */
   selecting: boolean;
   /** The row menu's Select (touch only): turn selection mode on. */
   onStartSelecting: () => void;
@@ -123,7 +125,7 @@ const NAME_BUTTON = '[data-slot="sidebar-menu-button"]';
 
 function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, touch, ...p }: {
   /** On the name button, and on the grip a touch screen shows. */
-  dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
+  dragHandlers: React.HTMLAttributes<HTMLElement>;
   /** Why its filled value is invalid (it blocks export); unset when valid. */
   invalid?: string;
   dropEdge?: "top" | "bottom";
@@ -384,17 +386,18 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
               {inactive ? <EyeOff /> : <Eye />}
             </button>
             {/* Touch only: it carries the drag so the name can scroll the
-                list; a mouse drags the name. Hidden from the keyboard and
-                assistive tech, which reorder through the menu and Alt+↑/↓.
+                list; a mouse drags the name. A span, not a button, so a tap
+                never focuses it inside its aria-hidden box: the keyboard and
+                assistive tech reorder through the menu and Alt+↑/↓.
                 A held finger here must not start the trigger's long-press
                 (its touchstart; Android's contextmenu), which would open the
                 menu under a drag that paused before moving. */}
-            <button type="button" data-grip tabIndex={-1} aria-hidden
+            <span data-grip aria-hidden
               {...dragHandlers} onTouchStart={stop}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
               className={cn(control, "hidden touch:grid touch-none")}>
               <GripVertical />
-            </button>
+            </span>
           </div>
         </ContextMenu.Trigger>
         {/* Wide enough that "Send Backward" and its shortcut share a line.
@@ -445,6 +448,13 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
     props.onStartSelecting();
     announce(t("Selecting layers. Tap a layer to add or remove it."));
   };
+  // The mode ends outside the list (App derives it), so its end is heard
+  // here, as the prop turns off.
+  const [wasSelecting, setWasSelecting] = useState(props.selecting);
+  if (wasSelecting !== props.selecting) {
+    setWasSelecting(props.selecting);
+    if (!props.selecting) announce(t("Selection finished."));
+  }
   // Rows grouped by owning container (master, or the variant that added the
   // layer), in VISIBLE order (front first): a layer only reorders among its
   // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
@@ -477,7 +487,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
   // Built once per rows/onReorder change (not per render): the handlers only
   // touch refs and setDrop, so a keystroke elsewhere re-uses the same objects.
   const dragHandlers = useMemo(() => {
-    const build = (row: LayerRow): React.HTMLAttributes<HTMLButtonElement> => ({
+    const build = (row: LayerRow): React.HTMLAttributes<HTMLElement> => ({
     onPointerDown: (e) => {
       // On touch only the grip drags, so a finger on the name scrolls the list.
       if (e.button !== 0 || (touch && e.pointerType === "touch" && !e.currentTarget.hasAttribute("data-grip"))) return;

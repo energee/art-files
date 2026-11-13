@@ -449,9 +449,11 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  Tab order and the screen reader (`inert`). The Layers toggle and the
    *  panel stay reachable, so Escape, the toggle and the backdrop still close it. */
   const covered = phone && sidebarOpen;
-  /** Close Layers. Focus inside the panel moves to the Layers toggle: the
-   *  panel goes inert as it closes, and focus would fall to the page. (The
-   *  Add layer menu hands focus to the toggle itself, LayerList's addFocus.) */
+  /** Close Layers: every close runs this (Escape, a row tap, Add layer, and
+   *  through the provider's onOpenChange the backdrop, the toggle and ⌘B).
+   *  Focus inside the panel moves to the Layers toggle: the panel goes inert
+   *  as it closes, and focus would fall to the page. (The Add layer menu
+   *  hands focus to the toggle itself, LayerList's addFocus.) */
   const closeLayers = useStableCallback(() => {
     if (document.activeElement?.closest('[data-slot="sidebar-container"]')) layersToggle.current?.focus();
     setSidebarOpen(false);
@@ -2529,20 +2531,23 @@ export const DocumentEditor = memo(function DocumentEditor({
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. On a phone Layers slides
           over the preview instead of sitting beside it. */}
-      <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
+      <SidebarProvider hotkey={active} open={sidebarOpen}
+        onOpenChange={(open) => (open ? setSidebarOpen(true) : closeLayers())} className="min-h-0 h-full">
         <Sidebar overlay={phone}>
           {/* macOS overlay title bar (src/titlebar.ts): the traffic lights sit
               in the sidebar's top corner, so its content starts below this
               strip, which drags the window. Header height, so the first row
               lines up with the tab strip. Hidden everywhere else. */}
           <div data-tauri-drag-region className="hidden h-10 shrink-0 titlebar:block" />
-          {/* Click on empty sidebar space deselects. React bubbles a
-              PORTALED menu's click (Add layer, the master picker) through
-              here too, so only a target really inside the sidebar counts. */}
+          {/* Click on empty sidebar space deselects, except in selection
+              mode, where a finger that misses a row must not lose a
+              selection built tap by tap. React bubbles a PORTALED menu's
+              click (Add layer, the master picker) through here too, so only
+              a target really inside the sidebar counts. */}
           <SidebarContent onClick={(event) => {
             const target = event.target;
             if (!(target instanceof Element && event.currentTarget.contains(target))) return;
-            if (!target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+            if (!selecting && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
             // Picking a layer on a phone uncovers the preview. Here, not in
             // onSelect: that also runs on a long-press, which opens the row menu.
             // A modifier click is building a multi-selection, so Layers stays.

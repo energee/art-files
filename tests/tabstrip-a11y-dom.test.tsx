@@ -236,6 +236,16 @@ it("on touch, an inactive unsaved tab's • takes no taps; once active its contr
   expect(draft().querySelector("span")!.className).not.toContain("touch:hidden");
 });
 
+// On touch an inactive tab's control takes no taps, so a tap on its spot
+// (or the chip's padding) lands on the chip itself, which switches to it.
+it("a tap on an inactive tab's chip, off its title, switches to it and closes nothing", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  expect(tabs()[0].getAttribute("aria-selected")).toBe("false");
+  await act(async () => { tabs()[0].parentElement!.click(); });
+  expect(tabs()).toHaveLength(2);
+  expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
+});
+
 it("names the platform's New Tab shortcut on the + button", () => {
   // happy-dom's user agent is not a Mac's.
   expect(document.querySelector('[aria-label="New tab"]')?.getAttribute("title")).toBe("New tab (Ctrl+N)");

@@ -40,6 +40,7 @@ const pt: Record<keyof typeof en, string> = {
   "{{name}}: locked": "{{name}}: bloqueada",
   "{{name}}: enabled": "{{name}}: ativada",
   "Selecting layers. Tap a layer to add or remove it.": "Selecionando camadas. Toque em uma camada para adicioná-la ou removê-la.",
+  "Selection finished.": "Seleção concluída.",
   "Select": "Selecionar",
   "Rename": "Renomear",
   "Unlock": "Desbloquear",
