@@ -13,9 +13,9 @@
 // assets/io.ts; the .label Save/Save As binding is useProjectSave.ts.
 //
 // There is ONE mode (spec 2026-09-04: Removed): the Layers list (LayerList)
-// with its Changed filter replaces Fill mode, and the inspector
-// (LayerInspector) edits the selected layer. Every edit lands in the LABEL —
-// a property edit as an override, a text/image/code edit as a fill value
+// replaces Fill mode, and the inspector (LayerInspector) edits the selected
+// layers. Every edit lands in the LABEL — a property edit as an override, a
+// text/image/code edit as a fill value
 // (model/edit.ts's patchLayers / setContentIn). The master is the template
 // and changes only through the reviewed Save Master, so it never drifts
 // under an operator filling a label. Master and label edits share one undo
@@ -49,9 +49,10 @@ import type {
 } from "@/model/layers";
 import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } from "@/model/resolveLayers";
-import type { DeepPartial } from "@/model/merge";
+import { getPath, type DeepPartial } from "@/model/merge";
+import { isPage, sharedPatch, sharesPath, type Peer } from "@/model/multiEdit";
 import {
-  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, isLabelOnly,
   applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -426,7 +427,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // resolve per master/label change; the inspector reads the same rows.
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
-  const [changedOnly, setChangedOnly] = useState(false);
   /** Controlled so View → Layers and the palette can toggle and check it;
    *  ⌘B stays the provider's guarded listener. */
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -477,8 +477,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     const order = rows.map((r) => r.layer.id).reverse();
     setSelection((s) => resolveSelect(s, id, mods, order));
   };
-  // The layer the inspector edits: the most recently picked one.
-  const inspected = selected.length ? rowById.get(selected[selected.length - 1]) : undefined;
+  // The layer the inspector shows: the most recently picked one, passing
+  // over page art while another layer is selected. Page art has no Position
+  // or Style, so a range ending on Background would otherwise leave the sheet
+  // with nothing the selection shares.
+  const picked = [...selected].reverse().flatMap((id) => rowById.get(id) ?? []);
+  const inspected = picked.find((row) => !isPage(row.layer)) ?? picked[0];
   // The layer being edited in place on the preview, if any (reported by
   // PreviewCompare). While set, planLayers skips it via the render source's
   // skip set so the editor's live DOM text IS the layer — no doubled glyphs.
@@ -648,6 +652,21 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  a group drag patches every selected layer per pointermove. */
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
     edit((d) => patchLayers(d, entries), coalesce);
+  /** An image layer holding raster art (PNG/JPEG), which has no plate toggle. */
+  const isRaster = (l: Layer) =>
+    l.kind === "image" && (customImages[l.asset]?.image.kind ?? "svg") !== "svg";
+  /** The other selected layers a change to layer `id` may also reach: the
+   *  rest of the selection when `id` is in it (gestureIds), as multiEdit.ts
+   *  reads them. */
+  const peersOf = (id: string): Peer[] => gestureIds(selected, id).flatMap((k) => {
+    const row = k === id ? undefined : rowById.get(k);
+    return row ? [{ layer: row.layer, raster: isRaster(row.layer) }] : [];
+  });
+  /** patch for an inspector or Layers-row change: `p` on `layer`, and its
+   *  share on every other selected layer that has the same control
+   *  (multiEdit.ts's sharedPatch), as one undo step. */
+  const patchShared = (layer: Layer, p: DeepPartial<Layer>) =>
+    patchMany(sharedPatch(layer, peersOf(layer.id), p));
   /** A layer's CONTENT: always a fill value into the label, for any layer. */
   const setContent = (layer: Layer, value: LayerValue, coalesce?: Coalesce) =>
     edit((d) => setContentIn(d, layer.id, value), coalesce);
@@ -729,7 +748,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   const resetOverride = (path: string, source: "variant" | "label") => {
     if (!inspected) return;
     const id = inspected.layer.id;
-    if (source === "label") { editLabel((l) => clearLabelOverride(l, id, path)); return; }
+    if (source === "label") {
+      // Like an edit, a label reset reaches every selected layer that has the
+      // control and overrides it. A variant reset rewrites the master, so it
+      // stays with the one layer whose badge was clicked.
+      const also = peersOf(id).filter((o) => sharesPath(inspected.layer, o, path)).map((o) => o.layer.id);
+      editLabel((l) => also.reduce((next, k) =>
+        getPath(next.overrides?.[k], path) === undefined ? next : clearLabelOverride(next, k, path),
+      clearLabelOverride(l, id, path)));
+      return;
+    }
     edit((d) => {
       let m = d.master;
       for (const v of m.variants) {
@@ -2369,13 +2397,24 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Stable identities for the memoized panels, so a keystroke re-renders only
   // the inspector and the canvas (#605).
   const listSelect = useStableCallback(pick);
-  const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) =>
-    patch(id, { [prop]: value }));
+  // Show and lock on a selected row act on the whole selection, as its
+  // drag, reorder and Delete do.
+  const listToggle = useStableCallback((id: string, prop: "enabled" | "locked", value: boolean) => {
+    const row = rowById.get(id);
+    if (row) patchShared(row.layer, { [prop]: value });
+  });
   const listRename = useStableCallback((id: string, name: string) => patch(id, { name }));
   const listReorder = useStableCallback((id: string, delta: number) =>
     editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta)));
   const listAdd = useStableCallback(onAddLayer);
   const listRemove = useStableCallback(onRemoveLayer);
+  /** The row menu's Reset to Master: drops this label's design overrides on
+   *  the layer and the rest of the selection, as one undo step. Content
+   *  (label.values) stays. A label-only layer is skipped: its override is its
+   *  only definition, so clearing it would delete the layer. */
+  const listReset = useStableCallback((id: string) =>
+    editLabel((l) => gestureIds(selected, id).reduce((next, k) =>
+      next.overrides?.[k] && !isLabelOnly(master, next, k) ? clearLabelOverride(next, k) : next, l)));
   const rulerMargin = useStableCallback((margin: number) =>
     editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } })));
   const rulerAdd = useStableCallback(addManualGuide);
@@ -2457,7 +2496,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onRename={listRename}
               onReorder={listReorder}
               onAdd={listAdd} onRemove={listRemove} invalid={flaggedLayers}
-              changedOnly={changedOnly} onChangedOnly={setChangedOnly}
+              onReset={listReset}
               />
           </SidebarContent>}
         </Sidebar>
@@ -2763,7 +2802,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 onMore={(section) => (section === "typography" ? setMoreTypography : setMorePosition)((open) => !open)}
                 layerNames={rows.map((r) => ({ id: r.layer.id, name: r.layer.name }))}
                 overridden={overridden}
-                onChange={(p) => patch(inspected.layer.id, p)}
+                onChange={(p) => patchShared(inspected.layer, p)}
                 onReset={resetOverride}
                 onUnbind={() => onUnbind(inspected.layer.id)}
                 onBind={(to, side) => {
@@ -2774,11 +2813,11 @@ export const DocumentEditor = memo(function DocumentEditor({
                   {contentFor(inspected.layer)}
                   {pastDie.has(inspected.layer.id) && <p className="pt-1 text-xs text-destructive-text">{t("Runs past the label edge")}</p>}
                 </>}
-                rasterArt={inspected.layer.kind === "image"
-                  && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
+                rasterArt={isRaster(inspected.layer)}
                 fontFamily={family}
-                selectionCount={selected.length}
+                others={peersOf(inspected.layer.id)}
                 offVariant={inspected.variant && !inspected.variant.enabled ? inspected.variant.name : undefined}
+                onRemove={() => onRemoveLayer(inspected.layer.id)}
                 showCloseButton />
             )}
           </SheetContent>

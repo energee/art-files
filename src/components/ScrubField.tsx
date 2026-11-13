@@ -93,12 +93,14 @@ export function UnitInput(props: { unit: string; unitTitle?: string; placeholder
   );
 }
 
-/** The override badge's column, held open while no badge shows, so every
- *  control lines up and none shifts when its reset dot appears (#619). It
- *  sits LEFT of the control, so controls end flush with the panel's right
- *  padding, matching the labels' left edge. */
-export function BadgeSlot(props: { badge?: ReactNode }) {
-  return <span className="flex min-w-6 shrink-0 justify-end">{props.badge}</span>;
+/** Where a control's reset (and a multi-selection's mixed mark) goes: LEFT
+ *  of the control, so controls end flush with the panel's right padding. It
+ *  holds no width open: beside a fixed-width control a mark only uses the gap
+ *  after the label. `reserve` keeps the old 24px column for a control that
+ *  fills its cell (a FieldPair's compact input), which would otherwise resize
+ *  the moment its first change adds a reset (#619). */
+export function BadgeSlot(props: { badge?: ReactNode; reserve?: boolean }) {
+  return <span className={`flex shrink-0 justify-end ${props.reserve ? "min-w-6" : ""}`}>{props.badge}</span>;
 }
 
 export function ScrubField(props: {
@@ -125,14 +127,14 @@ export function ScrubField(props: {
   /** The input fills the field's cell instead of its fixed width — set
    *  inside a FieldPair, where two fields share one row. */
   compact?: boolean;
-  /** The override badge, drawn in its slot just left of the input. */
+  /** The reset for an overridden value, drawn just left of the input. */
   badge?: ReactNode;
   onChange: (v: number) => void;
 }) {
   const { t } = useTranslation();
   return (
     <NumberRoot {...props} onChange={(v) => { if (v !== null) props.onChange(v); }}
-      className="flex items-center justify-between gap-2">
+      className="group/reset flex items-center justify-between gap-2">
       <NumberField.ScrubArea
         render={<Label htmlFor={props.id} />}
         title={t("Drag to change")}
@@ -149,7 +151,7 @@ export function ScrubField(props: {
         </NumberField.ScrubAreaCursor>
       </NumberField.ScrubArea>
       <span className={`flex items-center gap-1.5 ${props.compact ? "min-w-0 flex-1" : ""}`}>
-        <BadgeSlot badge={props.badge} />
+        <BadgeSlot badge={props.badge} reserve={props.compact} />
         <UnitInput unit={props.unit} unitTitle={props.unitTitle} compact={props.compact} />
       </span>
     </NumberRoot>

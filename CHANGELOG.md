@@ -10,9 +10,20 @@ that section to the new version (see .agents/release-steward.md).
 - **Settings is a page, not a dialog.** Settings (`⌘,`) now takes the main area, with its groups listed in the sidebar where the Layers list was. Back, Esc or `⌘,` again returns to the label.
 - **Two-file export is now "Export as".** The switch became a choice between **One file** and **Art + mask**, so both outcomes are named. Your setting carries over.
 - **Prompts are bars under the title bar, not boxes in the middle of the window.** Closing a label with unsaved changes, quitting with unsaved labels, and opening a label made with a different master each ask in a bar across the top, with the rest of the window dimmed until you answer. "Recover unsaved work?" and the update messages are bars under the tabs that block nothing: you can keep working and answer when you like.
+### Added
+- **Edit several layers at once.** With several layers selected, a change in the inspector now applies to every selected layer that has that control: power, lock, position and colour to all of them, and Typography, Image, Barcode or QR settings when they are all that kind. The header shows the count ("3 layers"), and each change is one undo step. Before, the inspector changed only the last layer you picked. A typed X or Y gives every layer the same value, so layers on the same guide line up. The name, content, bindings and Template field settings are hidden until you select one layer.
+- **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
 
 ### Fixed
 - **Accented text pasted from a file name now exports.** Text copied from a macOS file name stores "é" as a plain letter plus a separate accent mark. It looked right in the preview, but Poppins refused to export it and named a character you could not see, and Barlow Condensed printed the accent to the right of its letter. The accent is now joined to its letter, as a keyboard types it, so the text prints as previewed and gives the same QR link and export file name either way.
+
+### Changed
+- **A quieter Layers list.** The list no longer marks which layers a label changed from its master, and the Changed filter is gone: the list is for building the label, and the Save Master review still lists what changed. Each row is its name, an eye, and a lock only when the layer is locked (click it to unlock). The trash column is gone, so long names have more room.
+- **Right-click a layer for everything you can do to it.** The menu now holds Rename, Hide, Lock, Bring Forward, Send Backward, Reset to Master and Remove, with their shortcuts. It selects the row first and acts on the whole selection. Reset to Master puts a layer's position, type and colour back and keeps what you typed into it.
+- **Remove moved to the inspector header,** beside Show and Lock, where one button acts on every selected layer. The header's power icon is now the same eye the list uses. Delete and Backspace still remove.
+- **Reset appears when you point at a field.** The dots beside changed fields are gone, along with the gap that was kept for them. Point at a field this label changed, or tab into it, and a reset arrow appears.
+- **Power and lock on a selected Layers row act on the whole selection.** Clicking either on one of several selected rows, or Lock in its right-click menu, now changes all of them, as drag, reorder and Delete already did.
+- **Horizontal guide buttons match Vertical guide.** Left and right are now arrows pointing at a line, like top and bottom.
 
 ## [0.1.120] - 2026-11-12
 
