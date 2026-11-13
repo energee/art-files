@@ -41,7 +41,7 @@ export function RenderSettings({ value, onChange }: { value: Settings; onChange:
       <ScrubField id="doc-bleed" label={t("Bleed")} unit={'"'} value={displayBleedIn(value.bleedIn)}
         min={0} max={0.5} step={BLEED_STEP_IN} dragStep={BLEED_DRAG_STEP_IN}
         onChange={(bleedIn) => set({ bleedIn })} />
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 touch:min-h-tap">
         <label htmlFor="two-file-pdf" className="text-xs text-muted-foreground">{t("Two-file export (art + mask)")}</label>
         <Switch id="two-file-pdf" nativeButton render={<button type="button" />}
           aria-label={t("Two-file export (art + mask)")} checked={value.twoFilePdfExport}

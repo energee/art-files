@@ -484,7 +484,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
       {/* Title, then Add layer. Variants used to sit here as toggle chips;
           they live in the master Select now, which names the version the
           canvas is drawing. */}
-      <SidebarGroupLabel className="gap-1.5">
+      <SidebarGroupLabel className="gap-1.5 touch:h-auto">
         <span className="flex-1">{t("Layers")}</span>
         <DropdownMenu>
           <DropdownMenuTrigger

@@ -13,8 +13,9 @@ function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
       {...props}
     >
       {/* On a touch screen the after: box widens the hit area to 44px
-          without growing the drawn track; the row around it (Field,
-          Heading) is 44px tall there, so the box stays inside its row. */}
+          without growing the drawn track. Every row that holds a switch
+          (the inspector's Field and Heading, the Settings dialog's
+          two-file row) is 44px tall there, so the box stays in its row. */}
       {/* A white thumb in both schemes: the tracks (--input, --switch-on)
           are mid-to-dark either way. */}
       <SwitchPrimitive.Thumb

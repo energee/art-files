@@ -2522,7 +2522,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             the sidebar is collapsed. */}
         <header data-tauri-drag-region={overlayTitlebar() ? "" : undefined}
           className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2 titlebar:h-10">
-          <SidebarTrigger className="size-6 touch:size-tap titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
+          <SidebarTrigger className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
@@ -2549,11 +2549,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               inspector would cover them. */}
           {phone && (
             <div className={cn("flex items-center gap-1", narrow && "ml-auto")}>
-              <Button variant="ghost" size="icon-sm" className="size-6 touch:size-tap" aria-label={byId("undo").label}
+              <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("undo").label}
                 disabled={byId("undo").disabled} onClick={byId("undo").run}>
                 <Undo2 />
               </Button>
-              <Button variant="ghost" size="icon-sm" className="size-6 touch:size-tap" aria-label={byId("redo").label}
+              <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("redo").label}
                 disabled={byId("redo").disabled} onClick={byId("redo").run}>
                 <Redo2 />
               </Button>
@@ -2690,10 +2690,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
           {/* Preview toolbar, in every view. It makes the same room for the
               inspector sheet as the pane above. On a phone it wraps onto a
-              second row instead of scrolling sideways; on a touch screen it
-              grows to fit its 44px controls. */}
+              second row instead of scrolling sideways, its fixed height
+              becoming a minimum to fit it, mouse or finger; on a touch screen it
+              also grows to fit its 44px controls. */}
           <div className={cn("flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2 touch:h-auto",
-            phone && "flex-wrap", "transition-[margin] duration-200",
+            phone && "h-auto min-h-8 flex-wrap", "transition-[margin] duration-200",
             active && inspected && !narrow && "mr-[300px]")}>
             {/* The "%" sits inside the border so the readout is one control;
                 clicking it focuses the input. */}

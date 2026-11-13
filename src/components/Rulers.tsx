@@ -463,7 +463,7 @@ export const Rulers = memo(function Rulers(props: {
                 centred in the painted corner. */}
             <PopoverTrigger
               style={{ height: RULER_SIZE, width: RULER_SIZE }}
-              className="pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 touch:min-h-tap touch:min-w-tap touch:pr-6 touch:pb-6 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 touch:min-h-tap touch:min-w-tap touch:pr-6 touch:pb-6 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 touch:hover:bg-transparent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               title={t("Ruler settings ({{unit}})", { unit })} aria-label={t("Ruler settings, current unit {{unit}}", { unit })}>
               {unit}
             </PopoverTrigger>

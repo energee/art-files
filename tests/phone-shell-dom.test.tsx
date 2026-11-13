@@ -291,4 +291,7 @@ it.each([[390, 844, true], [844, 390, true], [1280, 800, false], [1024, 768, fal
   async (width, height, wraps) => {
     await mount(width, height);
     expect(toolbar().className.includes("flex-wrap")).toBe(wraps);
+    // A wrapped second row needs the height released with or without touch:
+    // a phone-sized window driven by a mouse has no touch:h-auto.
+    expect(toolbar().className.split(" ").includes("h-8")).toBe(!wraps);
   });
