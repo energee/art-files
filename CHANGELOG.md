@@ -9,6 +9,7 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **Settings is a page, not a dialog.** Settings (`⌘,`) now takes the main area, with its groups listed in the sidebar where the Layers list was. Back, Esc or `⌘,` again returns to the label.
 - **Two-file export is now "Export as".** The switch became a choice between **One file** and **Art + mask**, so both outcomes are named. Your setting carries over.
+- **Prompts are bars under the title bar, not boxes in the middle of the window.** Closing a label with unsaved changes, quitting with unsaved labels, and opening a label made with a different master each ask in a bar across the top, with the rest of the window dimmed until you answer. "Recover unsaved work?" and the update messages are bars under the tabs that block nothing: you can keep working and answer when you like.
 
 ### Fixed
 - **Accented text pasted from a file name now exports.** Text copied from a macOS file name stores "é" as a plain letter plus a separate accent mark. It looked right in the preview, but Poppins refused to export it and named a character you could not see, and Barlow Condensed printed the accent to the right of its letter. The accent is now joined to its letter, as a keyboard types it, so the text prints as previewed and gives the same QR link and export file name either way.

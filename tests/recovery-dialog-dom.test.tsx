@@ -59,12 +59,19 @@ afterEach(async () => {
   container.remove();
 });
 
+import { dialogOpen } from "../src/keys";
 const dialog = () => Array.from(document.querySelectorAll('[role="dialog"]'))
   .find((d) => d.textContent?.includes("Recover unsaved work?")) ?? null;
 const press = async (label: string) => {
   const button = Array.from(dialog()!.querySelectorAll("button")).find((b) => b.textContent === label)!;
   await act(async () => { button.click(); });
 };
+
+it("is a plain bar: nothing dims and the label's shortcuts keep working", () => {
+  expect(dialog()!.getAttribute("data-bar")).toBe("plain");
+  expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
+  expect(dialogOpen()).toBe(false);
+});
 
 it("Restore opens each snapshot with its key and leaves the drop to the editor", async () => {
   expect(dialog()!.textContent).toContain("alpha.label");

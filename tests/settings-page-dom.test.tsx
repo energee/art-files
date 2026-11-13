@@ -57,7 +57,7 @@ it("shows the groups in the sidebar and the fields in the main area, with no dia
   expect(container.querySelector("#master-picker")).toBeNull();
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   // The workspace tab strip's slot is hidden with the label.
-  expect(tabStrip.className).toBe("hidden");
+  expect(tabStrip.className).toContain("data-tab-strip:hidden");
   for (const g of SETTINGS_GROUPS) expect(page()!.querySelector(`#settings-${g.id}`)).not.toBeNull();
 });
 
