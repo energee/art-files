@@ -629,7 +629,7 @@ export default function TabsShell() {
   // useMemo so the strip element is rebuilt only when its content changes,
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
-    <div className="flex h-9 touch:h-auto shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
+    <div data-tab-strip className="flex h-9 touch:h-auto shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
       {/* A tablist (#404) so assistive tech announces the active document;
           each chip's title button is the tab, and names unsaved work (#403).
           ARIA lets a tablist own tabs only (#615), so each × is a mouse
@@ -792,7 +792,7 @@ export default function TabsShell() {
           dismissed, while Save has the master review up. Escape can't dismiss
           it mid-Save: that Save would still close the tab (#705). */}
       <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && !saving && cancelClose()}>
-        <DialogContent showCloseButton={false}>
+        <DialogContent bar="lock" showCloseButton={false}>
           <DialogHeader>
             {/* A window close or quit (⌘Q, Dock → Quit) ends the app, so the
                 prompt says so rather than offering to keep the tab (#552). */}
@@ -818,9 +818,10 @@ export default function TabsShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Escape / outside click only hides it: the snapshots stay for the next launch. */}
-      <Dialog open={recoverable.length > 0} onOpenChange={(open) => !open && setRecoverable([])}>
-        <DialogContent showCloseButton={false}>
+      {/* A plain bar under the tabs: the label stays usable. Escape only
+          hides it: the snapshots stay for the next launch. */}
+      <Dialog modal={false} disablePointerDismissal open={recoverable.length > 0} onOpenChange={(open) => !open && setRecoverable([])}>
+        <DialogContent bar="plain" container={stripHost} showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>{t("Recover unsaved work?")}</DialogTitle>
             <DialogDescription>
@@ -835,7 +836,7 @@ export default function TabsShell() {
       </Dialog>
       {/* More than one unsaved tab: one question before the per-tab prompts. */}
       <Dialog open={sweepCount > 0} onOpenChange={(open) => !open && cancelClose()}>
-        <DialogContent showCloseButton={false}>
+        <DialogContent bar="lock" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>{t("Review unsaved changes before quitting?")}</DialogTitle>
             <DialogDescription>{t("Your changes will be lost if you don't save them.")}</DialogDescription>
@@ -849,7 +850,7 @@ export default function TabsShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <DesktopUpdater beforeRestart={readyToExit} checkRequest={checkRequest} statusHost={updateStatusHost}
+      <DesktopUpdater beforeRestart={readyToExit} checkRequest={checkRequest} statusHost={updateStatusHost} barHost={stripHost}
         onInstalled={() => setUpdateInstalled(true)} />
     </>
   );

@@ -176,6 +176,12 @@ describe("resolveLayers", () => {
     expect(byId<QrLayer>(r.layers, "qr").value).toBe("HOPS CITRA"); // name draws uppercase
   });
 
+  it("a decomposed and a composed spelling of one name give the same {name|slug} (#788)", () => {
+    const qr = (name: string) =>
+      byId<QrLayer>(resolveLayers(lolevMaster(), [], { name: [line(name)] }).layers, "qr").value;
+    expect(qr("Cafe\u0301 Ole\u0301")).toBe(qr("Caf\u00e9 Ol\u00e9"));
+  });
+
   it("keeps the unexpanded template in `format` so an editor never round-trips the expansion", () => {
     const r = resolveLayers(lolevMaster(), [], { name: [line("Ultra Juice")] });
     const q = byId<QrLayer>(r.layers, "qr");

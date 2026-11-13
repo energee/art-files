@@ -15,9 +15,8 @@ function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
       {/* On a touch screen the after: box widens the hit area to at least
           44px without growing the drawn track. It is placed from inside the
           1px border, so its insets carry that pixel too. Every row that
-          holds a switch (the inspector's Field and Heading, the Settings
-          dialog's two-file row) is 44px tall there, so the box stays in its
-          row; Field also leaves a wider gap before it on touch, so a reset
+          holds a switch (the inspector's Field and Heading) is 44px tall
+          there, so the box stays in its row; Field also leaves a wider gap before it on touch, so a reset
           beside it keeps its own taps. */}
       {/* A white thumb in both schemes: the tracks (--input, --switch-on)
           are mid-to-dark either way. */}
