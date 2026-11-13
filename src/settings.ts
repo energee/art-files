@@ -119,10 +119,11 @@ export function addColor(list: string[], hex: string): string[] {
 // Persistence. Two keys rather than one blob, so a swatch save never has to
 // read-modify-write the render knobs (or vice versa). Reads are guarded — a
 // hand-mangled entry, or a test without localStorage, falls back to the
-// defaults rather than crashing boot — while writes are plain: there is
-// nothing useful to do about a failed localStorage write here. (masters.ts
-// guards its index writes, because Save Master awaits them after the file is
-// already written — #407.)
+// defaults rather than crashing boot. Writes are best-effort too: when the
+// browser refuses one (storage blocked or full), the value lasts this session
+// only. An unguarded write threw from the shell's mount effect and took the
+// whole app down to the error screen (#778). (masters.ts guards its index
+// writes as well — #407.)
 // ---------------------------------------------------------------------------
 
 export const RENDER_KEY = "labellab.render";
@@ -155,7 +156,8 @@ export function loadRenderSettings(): RenderSettings {
 }
 
 export function saveRenderSettings(render: RenderSettings): void {
-  localStorage.setItem(RENDER_KEY, JSON.stringify(render));
+  try { localStorage.setItem(RENDER_KEY, JSON.stringify(render)); }
+  catch { /* full or blocked storage: the settings last this session only */ }
 }
 
 function loadSwatches(): string[] {
@@ -181,13 +183,15 @@ function subscribeSwatches(listener: () => void): () => void {
 
 /** Replace the swatch list, persist it, and re-render every subscriber. Starts
  *  from storage, not the shared copy: another browser window may have saved a
- *  swatch since, and this write must not drop it (#701). */
+ *  swatch since, and this write must not drop it (#701). A refused write still
+ *  re-renders the subscribers; the swatch then lasts this session only (#778). */
 export function setSwatches(update: (current: string[]) => string[]): void {
   const stored = loadSwatches();
   const next = update(stored);
   if (next === stored) return; // addColor's "already saved" — nothing to write
   swatches = next;
-  localStorage.setItem(SWATCHES_KEY, JSON.stringify(next));
+  try { localStorage.setItem(SWATCHES_KEY, JSON.stringify(next)); }
+  catch { /* full or blocked storage: the swatches last this session only */ }
   for (const l of listeners) l();
 }
 
