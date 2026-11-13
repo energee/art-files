@@ -41,7 +41,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
-import { LABEL_EXT, type LabelAsset } from "@/labelfile";
+import { LABEL_EXT, readArchiveFile, type LabelAsset } from "@/labelfile";
 import { masterFilter, masterTypes, isAbort } from "@/filePickers";
 import { confirmOverwrite, openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
@@ -121,7 +121,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { baseName, cn, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
-import { usePhoneLayout } from "@/usePhoneLayout";
+import { COARSE, useMedia, usePhoneLayout } from "@/usePhoneLayout";
 import { loadLabelFaces } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import type { PlanAssets } from "@/plan";
@@ -243,7 +243,7 @@ type LabelSource = { name: string; bytes: Uint8Array; path?: string; master?: Re
 /** A texture or mask slot's state setter, or fillEmpty's wrapper of one. */
 type SetSlot = (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void;
 const fileSource = async (f: File): Promise<LabelSource> =>
-  ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+  ({ name: f.name, bytes: await readArchiveFile(f) });
 
 /** "rendered" is the flat label in the 3D scene (CanSceneMode "flat"). */
 type ViewMode = "2d" | "can" | "rendered";
@@ -431,6 +431,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const { phone, narrow } = usePhoneLayout();
+  const coarse = useMedia(COARSE);
   /** Controlled so View → Layers and the palette can toggle and check it;
    *  ⌘B stays the provider's guarded listener. Starts closed on a phone,
    *  where it covers the preview; later size changes leave it as it is. */
@@ -1874,7 +1875,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       if ("path" in target) await openMasterBytes(await readNativeFile(target.path), target.path, target);
       else {
         const file = await target.handle.getFile();
-        await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
+        await openMasterBytes(await readArchiveFile(file), file.name, target);
       }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
@@ -1968,7 +1969,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         [bytes, path] = [await readNativeFile(target.path), target.path];
       } else {
         const file = await target.handle.getFile();
-        [bytes, path] = [new Uint8Array(await file.arrayBuffer()), ""];
+        [bytes, path] = [await readArchiveFile(file), ""];
       }
     } catch (err) {
       if (!isAbort(err)) reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) }));
@@ -2588,7 +2589,10 @@ export const DocumentEditor = memo(function DocumentEditor({
             6px down to centre the glyph on their 16px midline), so it neither
             moves with the sidebar nor sits under them. Anything else the
             header gains starts at its own left edge, under the lights while
-            the sidebar is collapsed. */}
+            the sidebar is collapsed. Its 57px height on a phone's touch
+            screen is restated by hand as BELOW_HEADER
+            (src/components/ui/sonner.tsx), which starts the toasts below it:
+            change one, change the other. */}
         <header data-tauri-drag-region={overlayTitlebar() ? "" : undefined}
           className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2 titlebar:h-10">
           <SidebarTrigger ref={layersToggle} className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
@@ -2606,13 +2610,15 @@ export const DocumentEditor = memo(function DocumentEditor({
           <span role="status" data-export-blocked-status className="sr-only">
             {blocked ? t("Export blocked: {{reason}}", { reason: blockedWhy }) : ""}
           </span>
-          {/* Open Master's fallback — see masterInput/openMasterPicker. */}
-          <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
+          {/* Open Master's fallback — see masterInput/openMasterPicker. No
+              `accept` on a touch screen, where a phone's picker can grey out a
+              custom extension; the open refuses a wrong file. */}
+          <input ref={masterInput} type="file" accept={coarse ? undefined : MASTER_EXT} hidden
             onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
+              void readArchiveFile(f).then((bytes) => openMasterBytes(bytes, f.name, {}))
                 .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
           {/* A phone has no keyboard for ⌘Z: Undo and Redo get buttons. At

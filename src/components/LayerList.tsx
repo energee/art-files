@@ -35,7 +35,7 @@ import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/i18n";
-import { useMedia } from "@/usePhoneLayout";
+import { COARSE, useMedia } from "@/usePhoneLayout";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -118,8 +118,6 @@ const control = cn(
 );
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
-/** A finger is the primary pointer: rows drag by their grip, not their name. */
-const COARSE = "(pointer: coarse)";
 /** A row's name button: what a row's keys act on and where its focus rests. */
 const NAME_BUTTON = '[data-slot="sidebar-menu-button"]';
 
@@ -177,8 +175,6 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
   // Whether the row menu is open; the click a long-press's lift sends
   // arrives then and is dropped.
   const [menuOpen, setMenuOpen] = useState(false);
-  // iOS sends no contextmenu, so the row selects itself as its menu opens.
-  const selectOnOpen = (open: boolean) => { if (open && !isSelected) p.onSelect(id, {}); };
   // A row selected from the canvas may sit below the fold of a short window.
   const itemRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -239,7 +235,11 @@ function Row({ row, isSelected, multi, atFront, atBack, dragHandlers, dropEdge, 
           long-press's lift sends stops here: it neither selects again nor
           closes the phone's Layers overlay. */}
       <ContextMenu.Root
-        onOpenChange={(open) => { setMenuOpen(open); selectOnOpen(open); }}
+        onOpenChange={(open) => {
+          setMenuOpen(open);
+          // iOS sends no contextmenu, so the row selects itself as its menu opens.
+          if (open && !isSelected) p.onSelect(id, {});
+        }}
       >
         <ContextMenu.Trigger
           onClick={(e) => {
@@ -489,9 +489,13 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
   const dragHandlers = useMemo(() => {
     const build = (row: LayerRow): React.HTMLAttributes<HTMLElement> => ({
     onPointerDown: (e) => {
-      // On touch only the grip drags, so a finger on the name scrolls the list.
-      if (e.button !== 0 || (touch && e.pointerType === "touch" && !e.currentTarget.hasAttribute("data-grip"))) return;
+      if (e.button !== 0) return;
+      // Cleared on every press, before the touch return below: a finger's
+      // grip drag ends with no click to consume it, and the next tap on a
+      // row must not be the one ignored.
       suppressClick.current = false;
+      // On touch only the grip drags, so a finger on the name scrolls the list.
+      if (touch && e.pointerType === "touch" && !e.currentTarget.hasAttribute("data-grip")) return;
       const peers = peersOf(row);
       drag.current = {
         id: row.layer.id, x: e.clientX, y: e.clientY, active: false,

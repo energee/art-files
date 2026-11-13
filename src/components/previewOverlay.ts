@@ -118,17 +118,17 @@ export const pageBox = (
 export const cqh = (pt: number) => `${(pt / PAGE.h) * 100}cqh`;
 
 /** A client point in label-space points, for click-to-select: the canvases
- *  fill the sheet `currentTarget` exactly and its aspect ratio is locked to
- *  PAGE.w/PAGE.h, so it maps proportionally off the bounding rect. Undefined
- *  while the sheet is not laid out (e.g. display:none). */
+ *  fill `sheet` exactly and its aspect ratio is locked to PAGE.w/PAGE.h, so
+ *  it maps proportionally off the bounding rect. Undefined while the sheet
+ *  is not laid out (e.g. display:none). */
 export function pagePointOf(
-  e: { clientX: number; clientY: number; currentTarget: HTMLDivElement },
+  sheet: HTMLElement, clientX: number, clientY: number,
 ): { xPt: number; yPt: number } | undefined {
-  const r = e.currentTarget.getBoundingClientRect();
+  const r = sheet.getBoundingClientRect();
   if (!r.width || !r.height) return undefined;
   return {
-    xPt: ((e.clientX - r.left) / r.width) * PAGE.w,
-    yPt: ((e.clientY - r.top) / r.height) * PAGE.h,
+    xPt: ((clientX - r.left) / r.width) * PAGE.w,
+    yPt: ((clientY - r.top) / r.height) * PAGE.h,
   };
 }
 

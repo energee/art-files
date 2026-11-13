@@ -11,9 +11,7 @@ import { PAGE } from "@/layout";
 import type { ResizeHandle } from "@/model/edit";
 import { modsOf, type SelectMods } from "@/selection";
 import type { SnapLines } from "./previewOverlay";
-import { extraFinger, foldTap, isTap, stillPress, type Tap } from "./touchPress";
-
-type Point = { x: number; y: number };
+import { extraFinger, foldTap, isTap, stillPress, type Point, type Tap } from "./touchPress";
 
 export function useSheetPress({
   pageElement, boxesById, editing, hitOf, startEditing, onPick, onDrag, onResize, onDragCancel,
@@ -246,7 +244,7 @@ export function useSheetPress({
    *  identity for the editor's life: they read refs only. */
   const gesture = useMemo(() => ({
     layerGestureArmed: () => !!(drag.current || resize.current),
-    cancelLayerGesture: () => { cancelLayerGesture(); },
+    cancelLayerGesture,
     endTap: () => { tapFrom.current = null; },
     resizeFinger: () => {
       const d = resize.current;

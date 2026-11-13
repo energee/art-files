@@ -890,6 +890,25 @@ describe("on a touch screen", () => {
     expect(props.onReorder).toHaveBeenCalledTimes(1);
   });
 
+  // A finger's grip drag ends with no click, so nothing consumes the
+  // drag's "ignore the next click"; the next tap's own press clears it.
+  it("the first tap on a row after a grip drag selects it", () => {
+    const props = render(baseProps());
+    const grip = rowFor("wordmark").querySelector("[data-grip]") as HTMLElement;
+    grip.setPointerCapture = vi.fn();
+    const target = rowFor("barcode");
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+    press(grip, "pointerdown", 100);
+    press(grip, "pointermove", 21);
+    press(grip, "pointerup", 21);
+    press(nameButton("barcode"), "pointerdown", 40);
+    press(nameButton("barcode"), "pointerup", 40);
+    // detail 1 is a real tap's click; el.click() sends 0, which is never ignored.
+    act(() => { nameButton("barcode").dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); });
+    expect(props.onSelect).toHaveBeenCalledWith("barcode", { shift: false, toggle: false });
+  });
+
   it("a mouse still drags a row by its name", () => {
     const props = render(baseProps({ selected: ["wordmark"] }));
     const name = nameButton("wordmark");

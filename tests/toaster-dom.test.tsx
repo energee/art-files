@@ -105,6 +105,27 @@ it("sits at the top centre under 768px wide", () => {
   }
 });
 
+// …and below the header, so a toast never covers its Layers, ☰, Undo and Redo
+// (a tap there landed on the toast). The workspace tab strip under the header
+// may be covered. Sonner reads --mobile-offset-* under 600px, --offset-* above.
+it("drops below the header under 768px wide, and keeps its desktop offsets above", () => {
+  const offsets = () => {
+    const style = (document.querySelector("[data-sonner-toaster]") as HTMLElement).style;
+    return [style.getPropertyValue("--offset-top"), style.getPropertyValue("--mobile-offset-top"), style.getPropertyValue("--offset-bottom")];
+  };
+  mount();
+  show(() => notify.success("Saved"));
+  expect(offsets()).toEqual(["24px", "16px", "24px"]);
+  setViewport(390, 844);
+  try {
+    mount();
+    show(() => notify.success("Saved"));
+    expect(offsets()).toEqual(["76px", "76px", "24px"]);
+  } finally {
+    setViewport(1024, 768);
+  }
+});
+
 it("follows the app theme", () => {
   document.documentElement.dataset.theme = "dark";
   mount();

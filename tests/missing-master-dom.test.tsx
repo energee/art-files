@@ -6,7 +6,7 @@
 // which closes a tab made just for the open; a failed Locate keeps its
 // error on screen (an error toast), and so does a browser with no picker to
 // Locate with. A located v1 master is refused, naming the release that
-// updates it.
+// updates it, and an oversized file is refused before it is read.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -103,6 +103,23 @@ it("Locate shows why it failed instead of quietly asking again", async () => {
     expect(r.cancelled).toBe(false);
   } finally {
     delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  }
+}, 30_000);
+
+// A file far bigger than any .master is refused by its size before it is read.
+it("Locate refuses an oversized file unread, naming it", async () => {
+  const file = new File([], "movie.mov");
+  Object.defineProperty(file, "size", { value: 300 * 1024 * 1024 });
+  const read = vi.fn(() => { throw new Error("the oversized file was read"); });
+  file.arrayBuffer = read;
+  vi.stubGlobal("showOpenFilePicker", async () => [{ name: "movie.mov", getFile: async () => file }]);
+  try {
+    const r = await openOrphan("Locate");
+    expect(r.title).not.toBe("Orphan");
+    expect(r.toasts).toEqual(['Could not open master: Archive is too large: "movie.mov" exceeds the 128 MiB file or 256 MiB total limit.']);
+    expect(read).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
   }
 }, 30_000);
 

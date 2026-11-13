@@ -2,6 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 import { t } from "@/i18n";
 import { baseName } from "@/lib/utils";
+import { COARSE } from "@/usePhoneLayout";
 // files.ts — native desktop file-dialog and file I/O boundary. All
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
@@ -84,7 +85,10 @@ type FileOptions = {
   types: { description: string; accept: Record<string, string[]> }[];
 };
 
-/** Null means cancelled; undefined means use the caller's file-input fallback. */
+/** Null means cancelled; undefined means use the caller's file-input fallback.
+ *  On a touch screen the browser picker is given no `types`: a phone's picker
+ *  filters by MIME type and can grey out a .label or .master it has no type
+ *  for. The loaders refuse a wrong file with a message. */
 export async function openThrough(options: FileOptions): Promise<FileTarget | null | undefined> {
   try {
     if (isTauri()) {
@@ -93,7 +97,7 @@ export async function openThrough(options: FileOptions): Promise<FileTarget | nu
     }
     const pick = openPicker();
     if (!pick) return undefined;
-    const [handle] = await pick({ types: options.types });
+    const [handle] = await pick(window.matchMedia(COARSE).matches ? {} : { types: options.types });
     return handle ? { handle } : null;
   } catch (error) {
     if (isAbort(error)) return null;

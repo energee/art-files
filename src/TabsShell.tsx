@@ -21,6 +21,7 @@ import {
   type Tab, type TabsState,
 } from "@/tabs";
 import { LABEL_EXT, isLabelName } from "@/labelfile";
+import { COARSE, useMedia } from "@/usePhoneLayout";
 import { commitFieldDraft, shortcutLabel } from "@/keys";
 import { notify } from "@/notify";
 import { canRebind, dropRecovery, earlierSnapshots, noteDiscard, recoveryKey, recoveryWritten, type Recoverable } from "@/recovery";
@@ -167,6 +168,7 @@ export default function TabsShell() {
   // Updates… becomes Restart to Update (same click, DesktopUpdater decides).
   const [updateInstalled, setUpdateInstalled] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const coarse = useMedia(COARSE);
 
   const anyUnsaved = state.tabs.some(unsaved);
   const anyExporting = state.tabs.some((t) => t.exporting);
@@ -776,8 +778,10 @@ export default function TabsShell() {
           its props (see tabStripHost). */}
       {stripHost && createPortal(tabStrip, stripHost)}
       {/* Hidden-input Open fallback (browser without FS-Access): bytes, no
-          save identity. Desktop never lands here — it uses the native dialog. */}
-      <input ref={fileInput} type="file" accept={LABEL_EXT} className="hidden"
+          save identity. Desktop never lands here — it uses the native dialog.
+          No `accept` on a touch screen, where a phone's picker can grey out a
+          custom extension; the open refuses a wrong file. */}
+      <input ref={fileInput} type="file" accept={coarse ? undefined : LABEL_EXT} className="hidden"
         onChange={(e) => {
           const f = e.currentTarget.files?.[0];
           e.currentTarget.value = "";

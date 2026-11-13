@@ -5,7 +5,7 @@
 // turns (#690), and a Save's finish leaves alone a binding an Open made (#693).
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { useProjectSave } from "@/useProjectSave";
 
 it("saveProject resolves false and reports the error when packing throws", async () => {
@@ -257,4 +257,37 @@ it("an edit during Save As still binds the tab to the new file", async () => {
   await act(async () => { await expect(saving).resolves.toBe(true); });
   expect(s.api().filePath).toBe("/w/x.label");
   s.cleanup();
+});
+
+// Phone layout, Phase 5 (Task 5.3). With no save picker (iOS Safari, Firefox)
+// nothing is bound, so every Save is a fresh download under the label's name.
+// Each marks the label saved: the browser gives no word on whether a download
+// finished. Measured in Task 5.1: probe-ale.label downloaded twice.
+it("with no file picker, each Save downloads the label again under its name and binds nothing", async () => {
+  vi.resetModules();
+  vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => false }));
+  const downloads: string[] = [];
+  vi.doMock("@/assets/io", () => ({ saveBytes: (_bytes: Uint8Array, name: string) => { downloads.push(name); } }));
+  const { useProjectSave: hook } = await import("@/useProjectSave");
+  const onSaved = vi.fn(() => true);
+  let api: ReturnType<typeof hook> | undefined;
+  function Probe() {
+    api = hook({ pack: () => new Uint8Array([1]), exportBase: "probe-ale", onSaved, onError: vi.fn() });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  // Cleaned up even when an assertion below fails, so no mock or root leaks.
+  onTestFinished(() => {
+    act(() => root.unmount());
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/assets/io");
+  });
+  await act(async () => { root.render(createElement(Probe)); });
+  // Inside act, so a binding's state update would render before filePath is read.
+  await act(async () => { await expect(api!.saveProject()).resolves.toBe(true); });
+  await act(async () => { await expect(api!.saveProject()).resolves.toBe(true); });
+  expect(downloads).toEqual(["probe-ale.label", "probe-ale.label"]);
+  expect(onSaved).toHaveBeenCalledTimes(2);
+  expect(api!.boundHandle()).toBeNull();
+  expect(api!.filePath).toBeNull();
 });

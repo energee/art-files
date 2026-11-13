@@ -132,8 +132,8 @@ export function Heading(props: {
  *  keeps the full width. On a touch screen the badge takes its own column
  *  beside the field instead, bottom-aligned, so its 44px reset never covers
  *  the input; that column's 6px gap is spent even with no badge, since the
- *  badge span always renders. Side-by-side fields take `badge` directly (Field, ScrubField),
- *  which draws it left of the control. */
+ *  badge span always renders. Side-by-side fields take `badge` directly
+ *  (Field, ScrubField), which draws it left of the control. */
 export function Row(props: { badge?: ReactNode; children: ReactNode }) {
   return (
     <div className="group/reset relative touch:flex touch:items-end touch:gap-1.5 touch:[&>:first-child]:min-w-0 touch:[&>:first-child]:flex-1">

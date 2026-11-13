@@ -3557,12 +3557,1194 @@ Do not push.
 
 Stop. Report: the commits, the Task 4.1 decisions and which branches were built, the before and after readings, the pixel-compare counts, and the three deferred items (divider and guide handles, ruler corner, a second finger's tap). Describe selection mode in plain words (Select in a layer's menu; taps toggle; ends when nothing is selected or Layers closes) so the user can overrule it, since its mockup was skipped. Ask the user to try on a real phone (`npm run dev -- --host`, over Wi-Fi): press and hold a layer, hold then drag it, scroll a long Layers list, drag by the grip, Rename from the menu, Select then tap several layers, close Layers and tap a row, rotate in selection mode, tap a reset while the field is not focused, scroll the inspector from a field's name, remove a guide with its ×, close a tab and a notification, tap a suggestion with the keyboard up, drag the compare divider and a guide, and tap with one finger while another rests. Then ask whether to push and open the PR, and against which base.
 
-## Phase 5 — Open, save and export on a phone (outline)
+## Phase 5 — Open, save and export on a phone
 
-| Task | Files | Test (written first) | Deliverable |
-|---|---|---|---|
-| 5.1 Open | `src/filePickers.ts`, `src/files.ts`, the inputs in `App.tsx` and `TabsShell.tsx` | unit test of the picker options on touch | `.master` and `.label` can be picked on iOS Safari and Android Chrome; drop `accept` on touch if iOS greys the files out. |
-| 5.2 Save and export | `src/assets/io.ts`, `src/useProjectSave.ts` | measured on real phones | Save Label, Save Master, PDF and PSD arrive as downloads. Fix only what fails. |
-| 5.3 Tap to choose | `FileDrop.tsx`, `AssetDropOverlay.tsx`, `TabsShell.tsx` | DOM test | Every drop target also opens a file picker on tap. |
+Branch `feat/phone-files`, worktree `.agents/worktrees/web-app-pages` (already created, stacked on `feat/phone-touch-paths` at `b2f9fc99`). Line numbers below are as of `b2f9fc99`; re-find each by the quoted code if it has moved. Binary-impacting (Task 5.2 changes `src/`, and so does any Task 5.3/5.4 branch), so Task 5.5 adds `CHANGELOG.md` bullets for what landed; `check-release.mjs` runs against the stack parent, `feat/phone-touch-paths`.
 
-Final checkpoint: the spec's done list, end to end, at 390×844 with touch emulation and on a real phone.
+**Order.** Task 5.1 first: it measures unchanged code, and Tasks 5.3 and 5.4 build only from its decisions. Tasks 5.2, 5.3 and 5.4 touch disjoint files and may run in parallel after it (5.2: `src/usePhoneLayout.ts`, `src/components/LayerList.tsx`, `src/files.ts`, `src/TabsShell.tsx`, `src/App.tsx`, `tests/files.test.ts`, `tests/tabs-browser-open-dom.test.tsx`, `tests/phone-files-dom.test.tsx`; 5.3: `tests/use-project-save-dom.test.tsx`, `tests/use-export-dom.test.tsx`, and only on a branch `src/useProjectSave.ts`, `src/useExport.ts`, `src/assets/io.ts`; 5.4: `tests/filedrop-dom.test.tsx`, and only on a branch `src/components/FileDrop.tsx`). Task 5.5 is last.
+
+**"Fix only what fails."** Tasks 5.3 and 5.4 each add pin tests and then fix only what Task 5.1's decisions name. When no row names them, the implementer commits the pins and reports "nothing to fix, measured", quoting the readings. That is an expected outcome, not a shortfall.
+
+**What this phase can and cannot prove.** No phone is available. Every measurement runs in desktop Chrome over CDP, at 390×844 with touch emulation. The iOS code path is chosen by feature detection, so Chrome with `showOpenFilePicker`/`showSaveFilePicker` deleted before the app loads runs the same app code iOS Safari runs: the hidden `<input type="file">` and the `saveBytes` download. That proves the fallback **code path**. It proves nothing about iOS's own behaviour: how the iOS picker treats `accept`, where Safari puts a download and what it names it, whether a blob download of a large PDF or PSD completes, a phone's memory during PSD export, whether a tab backgrounded during an export is killed, and whether WebKit honours a programmatic `input.click()` or anchor download after an `await`. Those go on the real-phone list in Task 5.5's ledger entry and at the checkpoint, and the docs and changelog claim nothing about real phones.
+
+**Found while planning** (code read at `b2f9fc99`; these shape the tasks):
+
+- **Open.** Open Label (`TabsShell.tsx:355–369` `openProjectPicker`) and Open Master (`App.tsx:1852–1866` `openMasterPicker`) call `openThrough` (`files.ts:87–102`). With no `showOpenFilePicker` it returns `undefined`, and the caller clicks a hidden input: `TabsShell.tsx:780` `accept={LABEL_EXT}` (`.label`), `App.tsx:2604` `accept={MASTER_EXT}` (`.master`). The input's `onChange` clears its value, so the same file can be picked twice, and does nothing when no file is chosen. A cancelled picker therefore says nothing. A dismissed browser picker is `AbortError`, also silent (`isAbort`).
+- **Wrong files are already refused, readably.** Checked with the real loaders on `docs/audits/2026-10-26-evidence/fixtures/dark.png` and `masters/lolev.master`: `unpackLabel(png)` and `unpackLabel(master)` throw "Not a .label file: missing label.json/config.json", and `unpackMaster(png)` throws "Not a .master file: missing master.json". The toasts read "Could not open label: …" and "Could not open master: …" (`App.tsx:1916–1918`, `1708–1715`). A failed label open retries quietly twice first (`openWithRetry`, 0/300/1200ms), so its toast lands about 1.5s after the pick. `openMasterBytes` parses before it touches the document (`App.tsx:1782–1786`).
+- **Open Recent** is left out of the browser menu (`AppMenu.tsx:301–302`: "Open Recent lists desktop paths, which a browser cannot reopen."). It needs a path, and a browser has only handles or bytes, so there is nothing to show on a phone.
+- **Drop a file on the window**: `.label` (`TabsShell.tsx:319–337`) and texture/mask (`AssetDropOverlay.tsx`). A phone has no file drag. The tap equivalents already exist: Open Label… for a `.label`, and the Texture and Metallic mask wells (the Background and Metallic mask layers' inspectors) for page art.
+- **Every image well already opens a picker on tap.** `FileDrop.tsx:108–119` renders a **Browse** button (`size="xs"`, which is `touch:min-h-tap`, 44px on touch) that calls react-dropzone's `open()`. In react-dropzone 20.2.0, `useFsAccessApi` defaults to `false` (`node_modules/react-dropzone/dist/index.js:404`), so it clicks the dropzone's own `<input type="file">` on every platform. Wells: Texture (`App.tsx:2338`, PNG/JPEG/WebP), Metallic mask (`:2343`, PNG/WebP), Image (`:2348`, SVG/PNG/JPEG). The app opens no font files. Their `accept` lists MIME types as well as extensions, so the iOS picker offers Photos and Files for them.
+- **The master library in a browser** is two stores, both origin-scoped (not path-scoped, so the `/art-files/app/` sub-path does not change them). The index is localStorage rows `labellab.master:<id>` plus `labellab.lastMaster` (`masters.ts:26–28`). The bytes are IndexedDB `labellab`/`masters`, capped at 20 masters (`masterCache.ts:19–23`). Open Master caches the bytes before it writes the index row (`rememberMaster`, `masters.ts:114–148`). In a browser, `resolveMaster` has no path to read (`readMasterFile` returns null off Tauri), so it falls through to the cached bytes (`masters.ts:361–379`). A master opened on a phone therefore survives a reload, in that browser, for as long as the browser keeps the site's storage. Each master costs its `.master` file's size in IndexedDB (`masters/lolev.master` is 9,218 bytes; one with a photo texture is megabytes). Every storage write is guarded (masterCache resolves null; masters.ts wraps each `setItem`; crash recovery, `recovery.ts`, writes through the same masterCache helper), so private browsing or a full quota costs only the library and recovery, never the open or the save.
+- **Save.** Save Label (`useProjectSave.ts:107–139`), Save Master (`App.tsx:1678–1684`) and every export (`useExport.ts:186–193` `saveVia`) go through `saveThrough` (`files.ts:115–147`). With no `showSaveFilePicker` and no bound target, it calls `saveBytes` (`assets/io.ts:232–236`: a blob URL, an anchor click with `download=<name>`, revoked after 60s) and returns `{ name, bytes, target: undefined }`. The consequences follow:
+  - nothing is bound, so **every** Save Label is a fresh download under `exportBase + ".label"` (Chrome names repeats `name (1).label`);
+  - `onSaved()` runs, so the label is marked saved and its recovery snapshot dropped once the download has been handed to the browser. The app cannot know whether it finished.
+  - the overwrite and "changed on disk" checks are skipped cleanly: `confirmOverwrite` runs only when `projectPath.current` (desktop) is set (`useProjectSave.ts:110`), and Save Master's targets are `null`.
+  - Save Label As… and Export … As… download exactly what Save Label and Export do.
+- **Export.** A build runs in a worker before the save (`useExport.ts:323–360`), so the download starts long after the tap. `saveThrough` already sends a picker's `SecurityError` (expired user activation) to the download (`files.ts:131–135`, pinned by `tests/files.test.ts` "downloads when the picker refuses with a non-abort error"). A second export while one builds returns at once (`exportRunning`, `useExport.ts:237, 327`), and its menu rows are disabled (`exportBusy`, `App.tsx:2213–2235`). The success toast's action is `revealAction(path)`, which is `undefined` off Tauri (`reveal.ts:24–25`; pinned by `tests/use-export-dom.test.tsx` "… with no action in the browser"), so a browser toast offers no "Show in Finder". The art + mask pair is off by default (`settings.ts:69` `twoFilePdfExport: false`), and with no picker it is two downloads in a row from one tap.
+- **The missing-master dialog's Locate…** (`App.tsx:1924–1966`, the no-picker line at 1948) with no picker reports "Could not open master: this browser has no file picker. Use File → Open Master… first." and opens nothing.
+- **☰ → File on a phone in a browser** (`AppMenu.tsx:115–145`, rendered by `WebEntries`, with predefined and recent rows dropped): New Tab, Open Label…, Close Tab, Save Label (disabled when clean), Save Label As…, Open Master…, Save Master… (disabled until the master changes; it opens the Save Master review first), Save Master As…, and Export ▸ Export PDF, Export PDF As…, Export PSD, Export PSD As… (the pairs' six rows instead, with Two-file export on). The ⌘ glyphs show beside rows but nothing depends on them; every command is a row. Check for Updates and the application menu are native-only (the native application menu, `AppMenu.tsx:425–479`; `DesktopUpdater` behind `isTauri`). Reveal is browser-safe as above.
+- **Sub-path.** The workers are `new URL("./worker.ts", import.meta.url)` (`pdf/offThread.ts:28`, `psd/offThread.ts:28`, `three/metalnessMask.ts:43`), and the 3D assets use `import.meta.env.BASE_URL` (`three/canScene.ts:90, 96`). No file path in this phase builds an absolute URL. Task 5.5 re-checks export at the sub-path against a production build.
+- **Android Chrome.** It has the File System Access pickers: Chrome's own article lists Android among supported platforms, the web-features explorer dates Chrome Android support to Chrome 132 (2025-01-14), and the blink-dev "Intent to Ship: File System Access on Android and WebView" thread covers it, though that thread also discusses `showSaveFilePicker` bugs on Android. I am moderately sure. So Android Chrome takes the **picker** path (the desktop Chrome path), not the iOS fallback. Its picker is Android's document picker, which filters by MIME type. `labelTypes()`/`masterTypes()` offer `application/zip` + `.label`/`.master`, and Android has no MIME type for those extensions. Sources: developer.chrome.com/docs/capabilities/web-apis/file-system-access; web-platform-dx.github.io/web-features-explorer/features/file-system-access; groups.google.com/a/chromium.org/g/blink-dev/c/x3IcFv2jY6c.
+
+Planner's call: **the fallback inputs drop `accept` on a touch screen, and the browser open picker drops `types` there.** Whether a custom-extension `accept` (`.label`, `.master`) greys those files out in the iOS picker **cannot be established** from documented platform behaviour. WebKit's bug tracker has conflicting reports: an extension-only `accept` greying everything out, one unknown extension accepting any file, and MIME-type filtering fixed in iOS 13 (bugs.webkit.org 190982, 229456). The same doubt applies to Android's MIME-filtered picker. The fix is planned anyway because it is **harmless on every platform**: the loaders already refuse a wrong file with a readable message and leave the document as it was (above), a mouse keeps its filter, and the Tauri dialogs are untouched.
+
+Planner's call: the gate is `(pointer: coarse)` alone, not "coarse and no picker API". The fallback input opens only where `openThrough` found no picker, and the picker's `types` matter only where it found one, so each place already sits behind the API check. Adding it again would be a second condition that never changes the result.
+
+Planner's call: the `(pointer: coarse)` literal moves from `LayerList.tsx:122` into `src/usePhoneLayout.ts` as `export const COARSE`, because `LayerList.tsx`, `TabsShell.tsx`, `App.tsx` and `files.ts` will all read it. A fourth copy of one media query is the drift `principles.md` DRY names.
+
+Planner's call: the hidden inputs are still clicked after `await openThrough(…)`, which is one microtask later than the tap. Chrome's user activation lasts seconds, so the measurement here cannot fail. WebKit's handling after an `await` is not something this phase can measure or cite. Moving the click earlier would duplicate `openThrough`'s Tauri/picker test in two callers. It goes on the real-phone list instead. If a real iPhone shows Open doing nothing, that is a one-line move with a known shape.
+
+Planner's call: a download counts as a save. The label is marked saved and its recovery snapshot dropped (`onSaved`), as in desktop Safari and Firefox today. The browser gives the page no signal that a download finished or was declined. Unchanged here, and asked at the checkpoint.
+
+Planner's call: Save Label As… and Export … As… stay in ☰ → File in a browser with no picker, though each downloads what its plain row does. Spec Anti-goals: the same menu at every size, no phone-only copies.
+
+Planner's call: **Locate…** with no picker is not in this phase. It is not on the done list (open a master, then a label made with it). Its message already names the way through (Open Master first), and making it pick through the hidden input means wrapping that input's `change`/`cancel` in a promise inside the open chain, which is new machinery for an error path. Task 5.1 records what it says, and it goes to the user.
+
+Planner's call: the art + mask pair's two downloads from one tap are not changed. The pair is off by default, behind Settings → Two-file export. A second automatic download can meet the browser's "download multiple files" prompt, as it already does in desktop Safari and Firefox. A zip or a second tap would be a new feature, and the share sheet is out unless a download cannot work. Task 5.1 measures it, and it goes to the user.
+
+Planner's call: the wells keep their `accept`. It names MIME types, which iOS honours (Photos and Files are both offered). By widespread report, iOS hands a photo-library HEIC to a page as JPEG when `accept` does not list HEIC; a real phone confirms it. A `.heic` from the Files app is refused with the well's existing "Choose … for Texture." message, as on desktop. Large-photo memory is a real-phone check; Task 5.1 times a 4032×3024 JPEG in Chrome.
+
+Planner's call: paste is not in this phase. Pasting an image into a well behaves the same at every size (react-dropzone's own handling), and no done-list item needs it.
+
+Planner's call: WebKit's 7-day cap on a site's script-writable storage (IndexedDB and localStorage, cleared after seven days of Safari use without visiting the site; WebKit blog, "Full Third-Party Cookie Blocking and More", 2020) can empty a phone's master library and recovery. There is no fix without installing the app, and offline install is a spec Non-goal. Real-phone list only.
+
+Planner's call: Task 5.3 or 5.4 commits that only add pin tests use `Docs:`. Such a commit changes nothing a user gets and records measured behaviour, so the release steward classes it non-binary. `Fix:` is reserved for a commit that changes `src/`.
+
+Planner's call: the picker path (Android Chrome and desktop Chrome) is measured with `showOpenFilePicker`/`showSaveFilePicker` replaced, before the app loads, by stubs that return real `FileSystemFileHandle`s from the origin private file system (OPFS). The app's handle code runs for real: `getFile`, `createWritable`, rewriting the same handle on a second Save. Neither Android's picker UI nor user-activation expiry is exercised: the stubs never throw `SecurityError`, so an export writes to the stub where real Chrome would fall back to a download.
+
+### Review Focus
+
+Conditions most likely to bite a real person, each pinned to a test:
+
+1. **Choosing a file of the wrong type, now that a phone's picker lists everything.** A photo picked in Open Master is refused with "Could not open master: Not a .master file: missing master.json" and the master stays. Task 5.2, test "a wrong file picked on a touch screen is refused with a message, and the master stays".
+2. **Cancelling the picker.** Closing the fallback picker with no file, or dismissing a browser picker, changes nothing and says nothing. Task 5.2, tests "a picker closed with no file changes nothing" and "a dismissed picker is a cancel, not an error".
+3. **Saving twice in a row with no picker.** Each Save Label downloads the label again under the same name, binds nothing, and marks it saved. Task 5.3, test "with no file picker, each Save downloads the label again under its name and binds nothing".
+4. **Exporting while a previous export is still building.** The second request does nothing and one file is saved. Task 5.3, test "an export asked for while another is building does nothing, and one file is saved".
+5. **A storage write refused in private browsing.** With every localStorage write refused and no IndexedDB, Open Master through the fallback still switches the document. Task 5.2, test "with storage refused, Open Master still switches".
+
+### File structure
+
+| File | Responsibility |
+|---|---|
+| `src/usePhoneLayout.ts` (modify) | Export `COARSE`, the touch-screen media query |
+| `src/components/LayerList.tsx` (modify) | Read `COARSE` from `usePhoneLayout.ts` instead of its own copy |
+| `src/files.ts` (modify) | `openThrough`: no `types` for the browser picker on a touch screen |
+| `src/TabsShell.tsx` (modify) | Open Label's fallback input: no `accept` on a touch screen |
+| `src/App.tsx` (modify) | Open Master's fallback input: no `accept` on a touch screen |
+| `tests/files.test.ts`, `tests/tabs-browser-open-dom.test.tsx` (modify), `tests/phone-files-dom.test.tsx` (create) | Open on a touch screen; Review Focus 1, 2, 5 |
+| `tests/use-project-save-dom.test.tsx`, `tests/use-export-dom.test.tsx` (modify) | Review Focus 3, 4; any Task 5.3 branch |
+| `tests/filedrop-dom.test.tsx` (modify) | Browse opens the well's own input; any Task 5.4 branch |
+| `.agents/mockups/phone-files/probe.mjs` (create, gitignored) | The measuring script |
+| `.agents/ledger.md`, `docs-site/content/docs/(concepts)/files.mdx`, `(output)/export.mdx`, `getting-started.mdx`, `CHANGELOG.md` (modify) | Measurements, docs, release notes |
+
+### Task 5.1: Record the baseline with real taps, file choosers and downloads
+
+**Files:**
+- Create (gitignored, not committed): `.agents/mockups/phone-files/probe.mjs`, and its outputs in the same folder (`<label>.json`, `<label>-downloads/<scenario>/…`, `fixtures/`, `<label>-desktop-{fresh,well}.png`)
+- Modify: `.agents/ledger.md` (append entry `## 2026-11-13 phone-files`)
+
+**Interfaces:**
+- Consumes: `.agents/mockups/phone-touch-paths/probe.mjs` lines 1–203 (the CDP harness: `newTab`, `send`, `page`, `READY`, `READ`, `SELECT`, `UNDO_STEPS`, `touch`, `moveFingers`, `swipe`, `tap`, `mouse`, `screenshot`, `paneHash`), lines 263–268 (`CENTRE`), 287–297 (`SET_FIELD`) and 327–331 (`key`). Fixtures: `masters/lolev.master` (master id `lolev`, name "Lolev"; layers include `background`, `mask`, `logo`, `name`), `docs/audits/2026-10-26-evidence/fixtures/dark.png`, and `src/assets/logo2025.svg`. Two fixtures are made by the probe itself: `fixtures/fixture.label`, saved by the app through the iOS path in scenario `ios.makeLabel`, and `fixtures/photo-12mp.jpg`, a 4032×3024 JPEG drawn by Chrome and captured as a download in `ios.makePhoto`.
+- Produces: `probe.mjs` (Task 5.5 runs it unchanged), `before.json` (dev server), `before-prod.json` (production build at `/art-files/app/`), `before-2.json` (desktop screenshots only, the noise floor), and the Step 5 decisions table filled in. Tasks 5.3 and 5.4 build from that table.
+
+Planner's call: a new probe beside the Phase 4 one, built from its harness, so that probe stays reproducible as recorded.
+Planner's call: readings here are discrete (names, counts, equality), so one run per server is enough. Only the desktop screenshots get a second run, for the pixel noise floor.
+
+- [ ] **Step 1: Start the servers**
+
+Run (background): `npm run dev -- --port 5194 --strictPort`. Then build and serve the production app at the real sub-path:
+
+```bash
+npm run build -- --base=/art-files/app/
+npx vite preview --base=/art-files/app/ --port 5196 --strictPort   # background
+```
+
+5173 belongs to another session. If 5194 or 5196 is busy, use the next free port and record it. Port 9333 must be free (`lsof -iTCP:9333 -sTCP:LISTEN` prints nothing). Google Chrome at `/Applications/Google Chrome.app`.
+
+- [ ] **Step 2: Write the probe**
+
+Copy `.agents/mockups/phone-touch-paths/probe.mjs` lines 1–203 into `.agents/mockups/phone-files/probe.mjs`. Make three changes to the copy:
+1. Replace its first nine comment lines with the header below.
+2. Add `existsSync, copyFileSync, readFileSync, readdirSync` to the `node:fs` import.
+3. In `newTab`'s `ws.onmessage`, change `if (!p) return;` to `if (!p) { if (msg.method) onEvent(msg); return; }`.
+
+Header:
+
+```js
+// probe.mjs — Phase 5 (files) measurement: drives headless Chrome over CDP at
+// 390x844 with touch, and at 1280x800 with a mouse, through every open, save
+// and export path. "ios" runs with the File System Access pickers deleted
+// before the app loads (the code path iOS Safari takes); "android" and
+// "desktop" run with them replaced by stubs over the origin private file
+// system (the handle path Chrome takes). File choosers are intercepted
+// (Page.fileChooserOpened + DOM.setFileInputFiles); downloads land in
+// <out>/<label>-downloads/<scenario>/ (Browser.setDownloadBehavior).
+// Usage: node probe.mjs <app url> <out dir> <label>. PROBE_ONLY=ios.doneList,desktop
+// runs just those; PROBE_CDP=9340 picks another DevTools port.
+```
+
+Then append, exactly:
+
+```js
+// ---- events, the browser session, downloads, file choosers
+const listeners = new Set();
+function onEvent(msg) { for (const l of listeners) l(msg); }
+let bws, bseq = 0;
+const bpending = new Map();
+/** A command on the browser target (downloads are browser-wide). */
+async function browser(method, params = {}) {
+  if (!bws) {
+    const { webSocketDebuggerUrl } = await (await fetch(`http://127.0.0.1:${PORT}/json/version`)).json();
+    bws = new WebSocket(webSocketDebuggerUrl);
+    await new Promise((r) => { bws.onopen = r; });
+    bws.onmessage = (m) => {
+      const msg = JSON.parse(m.data);
+      const p = bpending.get(msg.id);
+      if (p) { bpending.delete(msg.id); if (msg.error) p.reject(new Error(msg.error.message)); else p.resolve(msg.result); }
+      else if (msg.method) onEvent(msg);
+    };
+  }
+  return new Promise((resolve, reject) => {
+    const id = ++bseq;
+    bpending.set(id, { resolve, reject });
+    bws.send(JSON.stringify({ id, method, params }));
+  });
+}
+let downloads = [], choosers = [], failed = [], dialogs = [];
+listeners.add((m) => {
+  if (m.method === "Browser.downloadWillBegin") downloads.push({ guid: m.params.guid, name: m.params.suggestedFilename, state: "started", at: Date.now() });
+  if (m.method === "Browser.downloadProgress") {
+    const d = downloads.find((x) => x.guid === m.params.guid);
+    if (d) { d.state = m.params.state; d.bytes = m.params.totalBytes; d.ms = Date.now() - d.at; }
+  }
+  if (m.method === "Page.fileChooserOpened") choosers.push(m.params);
+  if (m.method === "Network.responseReceived" && m.params.response.status >= 400) failed.push(`${m.params.response.status} ${m.params.response.url}`);
+  if (m.method === "Network.loadingFailed" && !m.params.canceled) failed.push(`${m.params.errorText} ${m.params.requestId}`);
+  if (m.method === "Page.javascriptDialogOpening") {
+    dialogs.push(`${m.params.type}: ${m.params.message}`);
+    void send("Page.handleJavaScriptDialog", { accept: true });
+  }
+});
+const shown = () => downloads.map(({ name, state, bytes, ms }) => ({ name, state, bytes, ms }));
+/** Wait until `n` downloads have completed (or `ms` passes); returns them all. */
+async function untilDownloads(n, ms = 180000) {
+  const t0 = Date.now();
+  while (downloads.filter((d) => d.state === "completed").length < n && Date.now() - t0 < ms) await sleep(250);
+  return shown();
+}
+
+const ROOT = new URL("../../../", import.meta.url).pathname; // the worktree
+const FIX = {
+  master: join(ROOT, "masters/lolev.master"),
+  png: join(ROOT, "docs/audits/2026-10-26-evidence/fixtures/dark.png"),
+  svg: join(ROOT, "src/assets/logo2025.svg"),
+  label: join(out, "fixtures/fixture.label"),
+  photo: join(out, "fixtures/photo-12mp.jpg"),
+};
+mkdirSync(join(out, "fixtures"), { recursive: true });
+
+/** After `act()`, the file chooser it opened (null within 3s means none). `file`
+ *  is set into it; null leaves it unanswered, which is what a cancel looks like
+ *  to the page. Reads the input's `accept` first. */
+async function choose(act, file) {
+  const before = choosers.length;
+  const acted = await act();
+  for (let i = 0; i < 30 && choosers.length === before; i++) await sleep(100);
+  const c = choosers[before];
+  if (!c) return { opened: false, acted };
+  const { object } = await send("DOM.resolveNode", { backendNodeId: c.backendNodeId });
+  const { result } = await send("Runtime.callFunctionOn", {
+    objectId: object.objectId, returnByValue: true,
+    functionDeclaration: "function () { return this.hasAttribute('accept') ? this.accept : null; }",
+  });
+  if (file) await send("DOM.setFileInputFiles", { files: [file], backendNodeId: c.backendNodeId });
+  await sleep(2500); // a wrong .label's toast waits out openWithRetry's 1.5s of quiet retries
+  return { opened: true, accept: result.value, mode: c.mode };
+}
+
+// ---- the two picker setups, installed before the app's first script
+const NO_PICKER = `for (const o of [window, Window.prototype]) for (const k of ["showOpenFilePicker", "showSaveFilePicker", "showDirectoryPicker"]) delete o[k];`;
+const OPFS_PICKER = `(() => {
+  const dir = () => navigator.storage.getDirectory();
+  window.__picks = [];
+  const record = (kind, opts) => window.__picks.push({ kind, opts: JSON.parse(JSON.stringify(opts ?? {})) });
+  window.showOpenFilePicker = async (opts) => {
+    record("open", opts);
+    const name = window.__nextOpen;
+    if (!name) throw new DOMException("The user aborted a request.", "AbortError");
+    return [await (await dir()).getFileHandle(name)];
+  };
+  window.showSaveFilePicker = async (opts) => {
+    record("save", opts);
+    return (await dir()).getFileHandle(opts.suggestedName, { create: true });
+  };
+})();`;
+
+// ---- in-page helpers
+const ENV = () => ({ coarse: matchMedia("(pointer: coarse)").matches, openPicker: "showOpenFilePicker" in window, savePicker: "showSaveFilePicker" in window });
+const WIPE = async () => {
+  localStorage.clear();
+  for (const db of await indexedDB.databases()) indexedDB.deleteDatabase(db.name);
+  const root = await navigator.storage.getDirectory();
+  for await (const name of root.keys()) await root.removeEntry(name);
+};
+const OPFS_PUT = async (name, b64) => {
+  const h = await (await navigator.storage.getDirectory()).getFileHandle(name, { create: true });
+  const w = await h.createWritable();
+  await w.write(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  await w.close();
+};
+const OPFS_LIST = async () => {
+  const out = {};
+  for await (const [name, h] of (await navigator.storage.getDirectory()).entries()) {
+    const f = await h.getFile();
+    out[name] = { size: f.size, modified: f.lastModified };
+  }
+  return out;
+};
+/** A menu row's own text: its label without the shortcut glyphs. */
+const MENU_ROWS = () => [...document.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"]')]
+  .filter((el) => el.getClientRects().length)
+  .map((el) => {
+    const text = [...el.childNodes].filter((n) => !(n.nodeType === 1 && n.matches('[data-slot="menubar-shortcut"]')))
+      .map((n) => n.textContent).join("").trim();
+    const b = el.getBoundingClientRect();
+    return { text, disabled: el.hasAttribute("data-disabled") || el.getAttribute("aria-disabled") === "true", at: [b.left + b.width / 2, b.top + b.height / 2], h: Math.round(b.height) };
+  });
+const STATE = () => ({
+  layers: [...document.querySelectorAll("[data-layer-id]")].map((r) => r.dataset.layerId),
+  master: document.querySelector("#master-picker")?.textContent.trim() ?? null,
+  tabs: [...document.querySelectorAll('[role="tablist"] [role="tab"]')].map((t) => t.textContent.trim()),
+  toasts: [...document.querySelectorAll("[data-sonner-toast]")].map((t) => ({
+    title: t.querySelector("[data-title]")?.textContent ?? null,
+    buttons: [...t.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent.trim()),
+  })),
+  dialog: document.querySelector('[role="dialog"], [role="alertdialog"]')?.textContent.slice(0, 200) ?? null,
+  library: Object.keys(localStorage).filter((k) => k.startsWith("labellab.master:")).sort(),
+});
+const IDB_MASTERS = () => new Promise((resolve) => {
+  const req = indexedDB.open("labellab");
+  req.onerror = () => resolve(null);
+  req.onsuccess = () => {
+    const db = req.result;
+    if (!db.objectStoreNames.contains("masters")) { db.close(); resolve(0); return; }
+    const count = db.transaction("masters").objectStore("masters").count();
+    count.onsuccess = () => { db.close(); resolve(count.result); };
+  };
+});
+/** Name's X and its text, read through its inspector (selects Name first). */
+const VALUES = () => ({
+  x: document.querySelector("#name-x")?.value ?? null,
+  text: document.querySelector("#name-content")?.innerText.trim() ?? null,
+});
+const WELL = (label) => {
+  const browse = document.querySelector(`button[aria-label="Browse ${label}"]`);
+  const well = browse?.closest("[data-file-drop]");
+  const b = browse?.getBoundingClientRect();
+  return browse ? { file: well.querySelector(".truncate")?.textContent ?? null, browse: [Math.round(b.width), Math.round(b.height)], alert: well.parentElement.querySelector('[role="alert"]')?.textContent ?? null } : null;
+};
+const DIALOG_BUTTON = (text) => {
+  const el = [...document.querySelectorAll('[role="dialog"] button, [role="alertdialog"] button')].find((b) => b.textContent.trim() === text);
+  if (!el) return null;
+  const b = el.getBoundingClientRect();
+  return [b.left + b.width / 2, b.top + b.height / 2];
+};
+
+// ---- node helpers
+const results = { label, url, at: new Date().toISOString() };
+const only = process.env.PROBE_ONLY?.split(",");
+let phone = true;
+const press = async (p) => {
+  if (phone) return tap(p);
+  await mouse("mouseMoved", ...p);
+  await mouse("mousePressed", ...p, { button: "left", buttons: 1, clickCount: 1 });
+  await mouse("mouseReleased", ...p, { button: "left", buttons: 0, clickCount: 1 });
+};
+async function run(group, name, body) {
+  if (only && !only.includes(group) && !only.includes(`${group}.${name}`)) return;
+  console.error(`${group}: ${name}`);
+  results[group] ??= {};
+  try { results[group][name] = await body(); } catch (err) { results[group][name] = { error: String(err), downloads: shown() }; }
+}
+/** A fresh tab on a wiped origin, with the picker setup `mode` ("ios" | "picker")
+ *  installed before the app loads, at `size`, a finger for a phone. Downloads
+ *  for this scenario go to their own folder, returned. */
+async function boot(mode, scenario, size = [390, 844]) {
+  phone = size[0] < 768 || size[1] < 500;
+  downloads = []; choosers = []; failed = []; dialogs = [];
+  await newTab();
+  await send("Page.enable");
+  await send("Network.enable");
+  await send("Page.setInterceptFileChooserDialog", { enabled: true });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: mode === "ios" ? NO_PICKER : OPFS_PICKER });
+  const dir = join(out, `${label}-downloads`, scenario);
+  mkdirSync(dir, { recursive: true });
+  await browser("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dir, eventsEnabled: true });
+  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await send("Emulation.setDeviceMetricsOverride", phone
+    ? { width: size[0], height: size[1], deviceScaleFactor: 3, mobile: true }
+    : { width: size[0], height: size[1], deviceScaleFactor: 1, mobile: false });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: phone, maxTouchPoints: phone ? 5 : 1 });
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+  await send("Page.navigate", { url });
+  await sleep(500);
+  await page(WIPE);
+  await reload();
+  return { dir, env: await page(ENV) };
+}
+async function reload() {
+  await send("Page.reload", { ignoreCache: false });
+  await sleep(500);
+  if (!await page(READY)) throw new Error("label never rendered");
+}
+/** Tap (or click) through the menu: ☰ on a phone, the named menu on a desktop,
+ *  then each row of `path`. Stops at a missing or disabled row and says so. */
+async function menu(...path) {
+  const trigger = phone ? await page(CENTRE, 'header [data-slot="menubar-trigger"]')
+    : await page((t) => { const el = [...document.querySelectorAll('[data-slot="menubar-trigger"]')].find((x) => x.textContent.trim() === t); const b = el.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; }, path[0]);
+  await press(trigger); await sleep(400);
+  for (const text of phone ? path : path.slice(1)) {
+    const row = (await page(MENU_ROWS)).find((r) => r.text === text);
+    if (!row) { const rows = await page(MENU_ROWS); await closeMenus(); return { missing: text, rows }; }
+    if (row.disabled) { await closeMenus(); return { disabled: text }; }
+    await press(row.at); await sleep(500);
+  }
+  return { ok: true };
+}
+async function closeMenus() { for (let i = 0; i < 3; i++) await key("Escape", "Escape", 27); }
+/** Every row under ☰ (phone) or a desktop menu, after opening `path`'s submenus. */
+async function rowsAt(...path) {
+  const opened = await menu(...path);
+  const rows = (await page(MENU_ROWS)).map(({ text, disabled, h }) => ({ text, disabled, h }));
+  await closeMenus();
+  return { opened, rows };
+}
+const latest = () => {
+  const done = downloads.filter((d) => d.state === "completed");
+  return done.length ? done[done.length - 1].name : null;
+};
+/** Change something on the label: Name's X and its text, by finger. */
+async function edit(x, text) {
+  await page(SELECT, "name");
+  await page(SET_FIELD, "#name-x", x);
+  const p = await page(CENTRE, "#name-content");
+  await press(p); await sleep(300);
+  await page(() => { document.execCommand("selectAll"); });
+  await send("Input.insertText", { text });
+  await page(() => document.activeElement?.blur());
+  await sleep(500);
+}
+async function exportOne(row, n) {
+  const t0 = Date.now();
+  const opened = await menu("File", "Export", row);
+  const busy = (await rowsAt("File", "Export")).rows.find((r) => r.text === row);
+  const list = await untilDownloads(n);
+  return { opened, busyWhileBuilding: busy?.disabled ?? null, ms: Date.now() - t0, downloads: list, state: await page(STATE) };
+}
+const b64 = (path) => readFileSync(path).toString("base64");
+async function dropFile([x, y], file) {
+  const data = { items: [], files: [file], dragOperationsMask: 1 };
+  for (const type of ["dragEnter", "dragOver", "drop"]) { await send("Input.dispatchDragEvent", { type, x, y, data }); await sleep(100); }
+  await sleep(2500);
+}
+
+// ---- ios: the File System Access pickers deleted (the code path iOS Safari takes), 390x844, touch
+await run("ios", "makeLabel", async () => {
+  const { dir, env } = await boot("ios", "makeLabel");
+  const open = await choose(() => menu("File", "Open Master…"), FIX.master);
+  await edit("1", "Fixture Ale");
+  const save = await menu("File", "Save Label");
+  const list = await untilDownloads(1);
+  if (latest()) copyFileSync(join(dir, latest()), FIX.label);
+  return { env, open, save, downloads: list, fixture: existsSync(FIX.label) };
+});
+await run("ios", "makePhoto", async () => {
+  const { dir } = await boot("ios", "makePhoto");
+  await page(() => {
+    const c = document.createElement("canvas"); c.width = 4032; c.height = 3024;
+    const g = c.getContext("2d");
+    for (let i = 0; i < 400; i++) { g.fillStyle = `hsl(${i * 37 % 360} 60% 50%)`; g.fillRect(Math.random() * 4032, Math.random() * 3024, 300, 300); }
+    return new Promise((r) => c.toBlob((b) => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "photo-12mp.jpg"; a.click(); r(); }, "image/jpeg", 0.9));
+  });
+  const list = await untilDownloads(1);
+  if (latest()) copyFileSync(join(dir, latest()), FIX.photo);
+  return { downloads: list, fixture: existsSync(FIX.photo) };
+});
+await run("ios", "fileMenu", async () => {
+  const { env } = await boot("ios", "fileMenu");
+  return { env, top: await rowsAt(), file: await rowsAt("File"), export: await rowsAt("File", "Export") };
+});
+await run("ios", "openMaster", async () => {
+  await boot("ios", "openMaster");
+  const before = await page(STATE);
+  const chooser = await choose(() => menu("File", "Open Master…"), FIX.master);
+  return { before, chooser, after: await page(STATE), idbMasters: await page(IDB_MASTERS) };
+});
+await run("ios", "openMasterWrong", async () => {
+  await boot("ios", "openMasterWrong");
+  const chooser = await choose(() => menu("File", "Open Master…"), FIX.png);
+  return { chooser, after: await page(STATE) };
+});
+await run("ios", "openLabelWrong", async () => {
+  await boot("ios", "openLabelWrong");
+  const chooser = await choose(() => menu("File", "Open Label…"), FIX.master);
+  return { chooser, after: await page(STATE) };
+});
+await run("ios", "openCancel", async () => {
+  await boot("ios", "openCancel");
+  const before = await page(STATE);
+  const chooser = await choose(() => menu("File", "Open Label…"), null);
+  return { chooser, before, after: await page(STATE) };
+});
+await run("ios", "missingMaster", async () => {
+  if (!existsSync(FIX.label)) return { error: "no fixture.label (ios.makeLabel failed)" };
+  await boot("ios", "missingMaster"); // a wiped browser: lolev is not in the library
+  const chooser = await choose(() => menu("File", "Open Label…"), FIX.label);
+  const dialog = (await page(STATE)).dialog;
+  const locate = await page(DIALOG_BUTTON, "Locate .master…");
+  if (locate) { await press(locate); await sleep(1000); }
+  return { chooser, dialog, after: await page(STATE) };
+});
+await run("ios", "doneList", async () => {
+  if (!existsSync(FIX.label)) return { error: "no fixture.label (ios.makeLabel failed)" };
+  const { dir, env } = await boot("ios", "doneList");
+  const r = { env };
+  r.openMaster = await choose(() => menu("File", "Open Master…"), FIX.master);
+  r.openLabel = await choose(() => menu("File", "Open Label…"), FIX.label);
+  await page(SELECT, "name");
+  r.afterOpen = { ...(await page(STATE)), ...(await page(VALUES)) };
+  await edit("1.25", "Probe Ale");
+  r.saveLabel1 = { menu: await menu("File", "Save Label"), downloads: await untilDownloads(1) };
+  r.saveLabel1.rowAfter = (await rowsAt("File")).rows.find((x) => x.text === "Save Label");
+  r.addLayer = await menu("Layer", "Add Text Layer");
+  r.saveMaster = { menu: await menu("File", "Save Master…") };
+  await sleep(800);
+  r.saveMaster.dialog = (await page(STATE)).dialog;
+  const confirm = await page(DIALOG_BUTTON, "Save Master");
+  if (confirm) await press(confirm);
+  r.saveMaster.downloads = await untilDownloads(2);
+  r.saveLabel2 = { menu: await menu("File", "Save Label"), downloads: await untilDownloads(3) };
+  if (r.saveLabel2.menu.disabled) r.saveLabel2 = { menu: await menu("File", "Save Label As…"), downloads: await untilDownloads(3), as: true };
+  const savedLabel = latest();
+  await page(SELECT, "name");
+  r.snapshot = { ...(await page(STATE)), ...(await page(VALUES)) };
+  r.exportPdf = await exportOne("Export PDF", 4);
+  r.exportPsd = await exportOne("Export PSD", 5);
+  r.failed = [...failed];
+  // Reload with storage kept, then open the label the last Save downloaded.
+  await reload();
+  r.reload = { ...(await page(STATE)), idbMasters: await page(IDB_MASTERS), dialogs: [...dialogs] };
+  r.reopen = await choose(() => menu("File", "Open Label…"), join(dir, savedLabel));
+  await page(SELECT, "name");
+  r.reopened = { ...(await page(STATE)), ...(await page(VALUES)) };
+  const pick = ({ layers, master, x, text }) => JSON.stringify({ layers, master, x, text });
+  r.roundTrip = { savedLabel, equal: pick(r.snapshot) === pick(r.reopened) };
+  return r;
+});
+await run("ios", "exportPair", async () => {
+  await boot("ios", "exportPair");
+  await page(() => localStorage.setItem("labellab.render", JSON.stringify({ twoFilePdfExport: true })));
+  await reload();
+  await choose(() => menu("File", "Open Master…"), FIX.master);
+  const t0 = Date.now();
+  const opened = await menu("File", "Export", "Export PDFs");
+  return { opened, downloads: await untilDownloads(2, 120000), ms: Date.now() - t0, state: await page(STATE) };
+});
+await run("ios", "wells", async () => {
+  await boot("ios", "wells");
+  await choose(() => menu("File", "Open Master…"), FIX.master);
+  const out = {};
+  for (const [id, wellLabel, file] of [["background", "Texture", FIX.png], ["mask", "Metallic mask", FIX.png], ["logo", "Image", FIX.svg], ["background", "Texture", FIX.photo], ["mask", "Metallic mask", FIX.photo]]) {
+    await page(SELECT, id);
+    const before = await page(WELL, wellLabel);
+    const p = await page(CENTRE, `button[aria-label="Browse ${wellLabel}"]`);
+    const t0 = Date.now();
+    const chooser = p ? await choose(() => press(p), file) : { opened: false, noBrowse: true };
+    out[`${id}:${file.split("/").pop()}`] = { before, chooser, after: await page(WELL, wellLabel), ms: Date.now() - t0 };
+  }
+  return out;
+});
+
+// ---- android: pickers present (stubs over OPFS; Chrome's handle path), 390x844, touch
+await run("android", "doneList", async () => {
+  if (!existsSync(FIX.label)) return { error: "no fixture.label (ios.makeLabel failed)" };
+  const { env } = await boot("picker", "android-doneList");
+  await page(OPFS_PUT, "lolev.master", b64(FIX.master));
+  await page(OPFS_PUT, "fixture.label", b64(FIX.label));
+  const r = { env };
+  await page(() => { window.__nextOpen = "lolev.master"; });
+  r.openMaster = await menu("File", "Open Master…"); await sleep(1500);
+  await page(() => { window.__nextOpen = "fixture.label"; });
+  r.openLabel = await menu("File", "Open Label…"); await sleep(2500);
+  r.afterOpen = await page(STATE);
+  await edit("1.25", "Probe Ale");
+  const opfs0 = await page(OPFS_LIST);
+  await menu("File", "Save Label"); await sleep(1500);
+  const opfs1 = await page(OPFS_LIST);
+  await edit("1.5", "Probe Ale Two");
+  await menu("File", "Save Label"); await sleep(1500);
+  const opfs2 = await page(OPFS_LIST);
+  r.saves = { opfs0, opfs1, opfs2 };
+  await menu("File", "Export", "Export PDF");
+  for (let i = 0; i < 240 && !Object.keys(await page(OPFS_LIST)).some((n) => n.endsWith(".pdf")); i++) await sleep(500);
+  r.picks = await page(() => window.__picks);
+  r.opfs = await page(OPFS_LIST);
+  r.state = await page(STATE);
+  r.downloads = shown();
+  return r;
+});
+await run("android", "cancel", async () => {
+  await boot("picker", "android-cancel");
+  const before = await page(STATE);
+  await page(() => { window.__nextOpen = null; });
+  await menu("File", "Open Label…"); await sleep(1500);
+  return { before, after: await page(STATE), picks: await page(() => window.__picks) };
+});
+
+// ---- desktop: pickers present (stubs), 1280x800, mouse
+await run("desktop", "files", async () => {
+  if (!existsSync(FIX.label)) return { error: "no fixture.label (ios.makeLabel failed)" };
+  const { env } = await boot("picker", "desktop", [1280, 800]);
+  await screenshot("desktop-fresh");
+  await page(OPFS_PUT, "lolev.master", b64(FIX.master));
+  await page(OPFS_PUT, "fixture.label", b64(FIX.label));
+  const r = { env };
+  await page(() => { window.__nextOpen = "fixture.label"; });
+  r.open = await menu("File", "Open Label…"); await sleep(2500);
+  r.afterOpen = await page(STATE);
+  await page(SELECT, "name");
+  await page(SET_FIELD, "#name-x", "1.25");
+  const o0 = await page(OPFS_LIST);
+  r.save = await menu("File", "Save Label"); await sleep(1500);
+  const o1 = await page(OPFS_LIST);
+  r.saveAs = await menu("File", "Save Label As…"); await sleep(1500);
+  const o2 = await page(OPFS_LIST);
+  r.opfs = { o0, o1, o2 };
+  await page(() => { window.__nextOpen = "lolev.master"; });
+  r.openMaster = await menu("File", "Open Master…"); await sleep(1500);
+  r.addLayer = await menu("Layer", "Add Text Layer");
+  r.saveMaster = await menu("File", "Save Master…"); await sleep(800);
+  const confirm = await page(DIALOG_BUTTON, "Save Master");
+  if (confirm) { await press(confirm); await sleep(1500); }
+  r.exportPdf = await menu("File", "Export", "Export PDF");
+  for (let i = 0; i < 240 && !Object.keys(await page(OPFS_LIST)).some((n) => n.endsWith(".pdf")); i++) await sleep(500);
+  r.exportPsd = await menu("File", "Export", "Export PSD");
+  for (let i = 0; i < 480 && !Object.keys(await page(OPFS_LIST)).some((n) => n.endsWith(".psd")); i++) await sleep(500);
+  r.picks = await page(() => window.__picks);
+  r.opfsAfter = await page(OPFS_LIST);
+  r.toasts = (await page(STATE)).toasts;
+  // Drops: a .label anywhere on the window, then a PNG on the left half.
+  const tabs0 = (await page(STATE)).tabs;
+  await dropFile([640, 400], FIX.label);
+  r.dropLabel = { before: tabs0, after: (await page(STATE)).tabs };
+  await dropFile([300, 400], FIX.png);
+  await page(SELECT, "background");
+  r.dropTexture = await page(WELL, "Texture");
+  await screenshot("desktop-well");
+  r.failed = [...failed];
+  return r;
+});
+
+writeFileSync(join(out, `${label}.json`), JSON.stringify(results, null, 2));
+console.log(JSON.stringify(results));
+ws.close();
+bws?.close();
+chrome.kill();
+process.exit(0);
+```
+
+What the readings mean: `chooser.opened` is whether the tap opened a file chooser, and `accept` is the input's `accept` (`null` when it has none). `downloads[].name` is the file name Chrome was offered, and `state` "completed" means the bytes landed. `STATE.library` is the localStorage index rows and `idbMasters` the cached master files. `rowAfter.disabled` true means Save Label went grey, i.e. the label reads as saved. `opfs` maps each file the picker stubs hold to its size and `modified` time. `picks` is what the app asked each picker for (`types`, `suggestedName`). `failed` lists every 4xx/5xx or failed request.
+
+- [ ] **Step 3: Run it on both servers**
+
+```bash
+node .agents/mockups/phone-files/probe.mjs http://localhost:5194/ .agents/mockups/phone-files before
+node .agents/mockups/phone-files/probe.mjs http://localhost:5196/art-files/app/ .agents/mockups/phone-files before-prod
+PROBE_ONLY=desktop node .agents/mockups/phone-files/probe.mjs http://localhost:5194/ .agents/mockups/phone-files before-2
+```
+
+Expected (predicted from the code at `b2f9fc99`; record the actual readings, not these):
+
+| Scenario | Expected before |
+|---|---|
+| `ios.*.env` | `coarse` true, `openPicker` false, `savePicker` false |
+| `ios.makeLabel` | `open.opened` true, `accept` ".master"; one download `fixture-ale.label`, completed; `fixture` true |
+| `ios.makePhoto` | one download `photo-12mp.jpg`; `fixture` true |
+| `ios.fileMenu` | `file.rows`: New Tab, Open Label…, Close Tab, Save Label (disabled), Save Label As…, Open Master…, Save Master… (disabled), Save Master As…, Export; no Open Recent. `export.rows`: Export PDF, Export PDF As…, Export PSD, Export PSD As…. `top.rows`: the menus as submenu rows (File, Edit, Layer, View, and Help if the browser build has one); no Check for Updates or About anywhere |
+| `ios.openMaster` | `chooser` opened, `accept` ".master"; `after.master` "Lolev", `library` includes `labellab.master:lolev`; `idbMasters` 1 |
+| `ios.openMasterWrong` | `accept` ".master"; one toast "Could not open master: Not a .master file: missing master.json"; `master` unchanged ("Starter") |
+| `ios.openLabelWrong` | `accept` ".label"; one toast "Could not open label: Not a .label file: missing label.json/config.json"; `tabs` as before (one tab) |
+| `ios.openCancel` | `chooser` opened; `after` equals `before` (no toast, same tabs) |
+| `ios.missingMaster` | `dialog` names "This label was made with a different master"; after Locate…, a toast "Could not open master: this browser has no file picker. Use File → Open Master… first." |
+| `ios.doneList` | `openMaster`/`openLabel` opened with `.master`/`.label` accepts; `afterOpen` master "Lolev", text "Fixture Ale", x "1"; `saveLabel1` download `probe-ale.label`, `rowAfter.disabled` true; `saveMaster.dialog` contains "Save Master", download `lolev.master`; `saveLabel2` download `probe-ale (1).label`; `exportPdf` download `probe-ale.pdf` completed, `busyWhileBuilding` true, its toast "Saved probe-ale.pdf" with only a close button; `exportPsd` likewise `.psd`; `failed` []; `reload.library` includes lolev, `idbMasters` 1, `dialogs` []; `reopen` opened; `roundTrip.equal` true |
+| `ios.exportPair` | two downloads `<base>.pdf` and `<base>-mask.pdf`, named after the label as it stands, or one plus a blocked second (Chrome's multiple-downloads rule); record which |
+| `ios.wells` | every `chooser.opened` true; accepts `image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp` (Texture), `image/png,.png,image/webp,.webp` (mask), `image/svg+xml,.svg,image/png,.png,image/jpeg,.jpg,.jpeg` (Image), recorded as Chrome reports them; `browse` 44 tall; `after.file` the file's name; `mask:photo-12mp.jpg` refused (react-dropzone rejects a JPEG for the mask: `alert` "Choose …") ; `background:photo-12mp.jpg` loaded, `ms` recorded |
+| `android.doneList` | `env.openPicker` true; `picks[0]` `{ kind: "open", opts: { types: [{ description: "Label master", accept: { "application/zip": [".master"] } }] } }`; `picks[1]` the same for `.label`; `saves`: `fixture.label` size or `modified` changes between `opfs0`, `opfs1` and `opfs2` with no `save` pick for Save Label (it rewrites the opened handle); a `save` pick `suggestedName` "probe-ale-two.pdf"; `downloads` [] |
+| `android.cancel` | one open pick; `after` equals `before` |
+| `desktop.files` | `env.coarse` false; Save rewrites `fixture.label` (`o1` differs from `o0`, no save pick); Save As makes a save pick with `suggestedName` "fixture-ale.label" and the stub's file of that name; Save Master writes `lolev.master` (opened handle); a `.pdf` and a `.psd` in `opfsAfter`; toasts "Saved …" with no Show in Finder; `dropLabel.after` gains or reuses a tab named for the label; `dropTexture.file` "dark.png"; `failed` [] |
+| `before-prod` | the same as `before`, `failed` [] (workers, fonts and chunks load under `/art-files/app/`) |
+
+Compare `before-desktop-{fresh,well}.png` with `before-2-desktop-{fresh,well}.png` using Task 3.7 Step 4's script with `dir = ".agents/mockups/phone-files"`, and record the counts as the noise floor.
+
+- [ ] **Step 4: If the probe itself misfires**
+
+A reading that is `{ error }`, or a tap that landed on nothing (`menu` returned `missing` for a row the code shows), is a probe defect, not a finding. Fix the probe (the aim, a wait, a selector), run again, and record the fix in the ledger as Phase 4 did for its `INTO_VIEW` fixes. Do not record a misfire as a reading.
+
+- [ ] **Step 5: Fill in the decisions**
+
+Each row's reading decides what its task does. Write the outcome into the ledger entry as `decision:` lines, one per row, quoting the reading.
+
+| Path | Reading (from `before.json`; `before-prod.json` must agree) | Works when | If it works | If not |
+|---|---|---|---|---|
+| Open Master (fallback) | `ios.openMaster` | chooser opened, master "Lolev", library has lolev | Task 5.2 as planned | **Stop and report**: the fallback input or `openMasterBytes` fails in a plain browser, which desktop Safari shares; Task 5.2 rests on it |
+| Open Label (fallback) | `ios.doneList.openLabel`, `afterOpen` | opened; text "Fixture Ale", x "1" | Task 5.2 as planned | **Stop and report**, as above |
+| Wrong file | `ios.openMasterWrong`, `ios.openLabelWrong` | the two toasts above; master and tabs unchanged | Task 5.2's Review Focus 1 test pins it | **Stop and report**: Task 5.2's "refused with a message" rests on it |
+| Cancel | `ios.openCancel`, `android.cancel` | `after` equals `before` | Task 5.2's Review Focus 2 tests pin it | **Stop and report** |
+| Open Recent | `ios.fileMenu.file.rows` | no "Open Recent" | Nothing | **Stop and report** (`WebEntries` guard broken) |
+| ☰ → File rows | `ios.fileMenu` | the rows listed in Step 3 | Task 5.5 documents them | A desktop-only row present (Check for Updates, About): **stop and report** |
+| Library across a reload | `ios.doneList.reload`, `reopened.master` | lolev listed, `idbMasters` ≥ 1, reopened on "Lolev" | Nothing | **Stop and report** (master cache) |
+| Save Label, first | `ios.doneList.saveLabel1` | one download `probe-ale.label`, completed; `rowAfter.disabled` true | Task 5.3 pins it (Review Focus 3) | No download: **stop and report**. `rowAfter.disabled` false: record it (the label stays unsaved after a download), no fix, and it joins the checkpoint's questions |
+| Save Label, again | `ios.doneList.saveLabel2` | a second download of the same base name | Task 5.3 pins it | **Stop and report** |
+| Save Master | `ios.doneList.saveMaster` | review dialog, then one `.master` download | Nothing | **Stop and report** |
+| Export PDF / PSD | `ios.doneList.exportPdf`, `exportPsd` | completed download named `<base>.pdf`/`.psd`; `busyWhileBuilding` true; toast with no Show in Finder | Task 5.3 pins Review Focus 4 | No download: **Task 5.3 branch E** (below). A Show in Finder button: **stop and report** (`revealAction` guard) |
+| Pair | `ios.exportPair.downloads` | two completed | Nothing | Fewer: record the shortfall and Chrome's state for the second file; no task (Planner's call above); it joins the checkpoint's questions |
+| Round trip | `ios.doneList.roundTrip.equal` | true | Nothing | **Stop and report**: a label that does not reopen as saved is a data-loss bug on every browser |
+| Wells | `ios.wells` | each chooser opened with a MIME `accept`; `browse` height ≥ 44; file shown; 12MP photo loaded | Task 5.4 pins it | A well whose Browse is absent or under 44px tall on touch: **Task 5.4 branch B**. A chooser that does not open: **stop and report** |
+| Locate… | `ios.missingMaster` | the "no file picker" toast | Recorded; Planner's call above | Anything else: record it for the checkpoint |
+| Android open | `android.doneList.picks` | open picks carry `types` | Task 5.2 drops `types` on touch, as planned | No open pick: **stop and report** (probe or `openThrough`) |
+| Android save | `android.doneList.saves` | Save Label rewrites the opened handle with no save pick | Nothing | **Stop and report** |
+| Desktop | `desktop.files` | as Step 3 | The Task 5.5 comparison baseline | **Stop and report**: a desktop path broken before this phase is a separate defect, out of scope; file it in the ledger |
+| Sub-path | `before-prod` | equals `before`; `failed` [] | Nothing | **Stop and report** (a Phase 1 regression) |
+
+- [ ] **Step 6: Record and commit**
+
+Append to `.agents/ledger.md`, in the format of the `2026-11-13 phone-touch-paths` entry:
+- `finding: [user request] open, save and export on a phone (phone layout plan, Phase 5)`
+- `status: in-progress`
+- `attempted-in: .agents/worktrees/web-app-pages @ feat/phone-files, measured at <git rev-parse --short HEAD>`
+- `delta: baseline`, with the three probe commands and both server commands
+- the statement "the `ios` group proves the fallback code path in Chrome, not iOS Safari's behaviour"
+- one `evidence` line per scenario (the readings in Step 3's columns)
+- the two pixel noise-floor counts
+- the Step 5 `decision:` lines
+
+```bash
+git add .agents/ledger.md
+git commit -m "Docs: Record the open, save and export baseline"
+```
+
+### Task 5.2: On a touch screen, Open lists every file
+
+**Files:**
+- Modify: `src/usePhoneLayout.ts` (constants, 9–10)
+- Modify: `src/components/LayerList.tsx` (import, 38; `COARSE`, 121–122)
+- Modify: `src/files.ts` (`openThrough`, 87–102)
+- Modify: `src/TabsShell.tsx` (`fileInput`, 169; the hidden input, 778–785)
+- Modify: `src/App.tsx` (`usePhoneLayout` import, 123; `usePhoneLayout()`, 432; the hidden input, 2603–2611)
+- Test: `tests/files.test.ts`, `tests/tabs-browser-open-dom.test.tsx` (modify), `tests/phone-files-dom.test.tsx` (create)
+
+**Interfaces:**
+- Produces: `export const COARSE = "(pointer: coarse)";` in `src/usePhoneLayout.ts`, documented `/** A finger is the primary pointer: a touch screen. */`. `LayerList.tsx` deletes its own `const COARSE` (and the doc line above it) and adds `COARSE` to its existing `import { useMedia } from "@/usePhoneLayout";` (line 38).
+- `openThrough(options: FileOptions): Promise<FileTarget | null | undefined>`: signature unchanged. Its browser branch becomes `const [handle] = await pick(window.matchMedia(COARSE).matches ? {} : { types: options.types });`.
+- `TabsShell`: `const coarse = useMedia(COARSE);` beside `fileInput`; the input's `accept={coarse ? undefined : LABEL_EXT}`.
+- `DocumentEditor` (App.tsx): `const coarse = useMedia(COARSE);` beside `usePhoneLayout()`; the master input's `accept={coarse ? undefined : MASTER_EXT}`.
+- No other signature changes. The loaders' messages are unchanged: they are the check.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/files.test.ts`, add `openThrough` to the `@/files` import, and add after `describe("browser saveThrough", …)`:
+
+```ts
+describe("browser openThrough", () => {
+  const options = {
+    filter: { name: "Label", extensions: ["label"] },
+    types: [{ description: "Label", accept: { "application/zip": [".label"] } }],
+  };
+  afterEach(() => { vi.unstubAllGlobals(); });
+  /** A browser with the open picker; `coarse` says whether a finger is the pointer. */
+  const browser = (coarse: boolean, pick = vi.fn().mockResolvedValue([{ name: "a.label" }])) => {
+    vi.stubGlobal("window", { showOpenFilePicker: pick, matchMedia: (q: string) => ({ matches: coarse && q === "(pointer: coarse)" }) });
+    return pick;
+  };
+
+  it("asks a mouse's picker for the file's type", async () => {
+    const pick = browser(false);
+    await expect(openThrough(options)).resolves.toEqual({ handle: { name: "a.label" } });
+    expect(pick).toHaveBeenCalledWith({ types: options.types });
+  });
+
+  it("on a touch screen asks for no type, so no file is greyed out", async () => {
+    const pick = browser(true);
+    await openThrough(options);
+    expect(pick).toHaveBeenCalledWith({});
+  });
+
+  // Review Focus 2
+  it("a dismissed picker is a cancel, not an error", async () => {
+    browser(true, vi.fn().mockRejectedValue(new DOMException("cancelled", "AbortError")));
+    await expect(openThrough(options)).resolves.toBeNull();
+  });
+
+  it("with no picker, hands the open to the caller's file input", async () => {
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
+    await expect(openThrough(options)).resolves.toBeUndefined();
+  });
+});
+```
+
+In `tests/tabs-browser-open-dom.test.tsx`:
+- add `let container: HTMLDivElement;`, and have `beforeEach` create the root on it (`container = document.createElement("div"); root = createRoot(container);`);
+- add `vi.restoreAllMocks();` to `afterEach`;
+- then add:
+
+```ts
+const realMatchMedia = window.matchMedia.bind(window);
+/** A finger is the primary pointer: (pointer: coarse) matches. */
+const coarse = () => vi.spyOn(window, "matchMedia").mockImplementation(
+  (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
+const fallback = () => container.querySelector('input[type="file"]') as HTMLInputElement;
+
+it("with a mouse the Open Label fallback asks for a .label", () => {
+  expect(fallback().getAttribute("accept")).toBe(".label");
+});
+
+it("on a touch screen the Open Label fallback lists every file", async () => {
+  coarse();
+  await act(async () => { root.render(createElement(TabsShell)); });
+  expect(fallback().hasAttribute("accept")).toBe(false);
+});
+```
+
+Create `tests/phone-files-dom.test.tsx`:
+
+```tsx
+// phone-files-dom.test.tsx — Open Master on a phone (phone layout, Phase 5).
+// A phone's file picker can grey out a .master it has no type for, so on a
+// touch screen the Open Master fallback input lists every file and the loader
+// is the check: a wrong file is refused with a message and the document stays.
+// Closing the picker with no file changes nothing, and a browser that refuses
+// every storage write (private browsing, a full quota) still opens the master.
+// @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, expect, it, vi } from "vitest";
+import { DEFAULT_RENDER } from "../src/settings";
+import { setViewport } from "./viewport";
+import { mountToaster, toastTitles, unmountToaster } from "./real-timer-toaster";
+
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => false, invoke: vi.fn() }));
+vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
+vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
+vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
+vi.mock("../src/fonts", () => ({
+  loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
+  labelFontCss: () => "sans-serif",
+}));
+const { DocumentEditor } = await import("../src/App");
+
+let container: HTMLDivElement;
+let root: Root;
+const realMatchMedia = window.matchMedia.bind(window);
+/** A finger is the primary pointer: (pointer: coarse) matches. */
+const coarse = () => vi.spyOn(window, "matchMedia").mockImplementation(
+  (q: string) => realMatchMedia(q === "(pointer: coarse)" ? "(min-width: 0px)" : q));
+
+const mount = async (width: number, height: number) => {
+  setViewport(width, height);
+  await mountToaster();
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(DocumentEditor, {
+      active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+      saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+      onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+      onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+    }));
+  });
+};
+afterEach(async () => {
+  await act(async () => { root.unmount(); });
+  container.remove();
+  await unmountToaster();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  localStorage.clear();
+  setViewport(1024, 768);
+});
+
+/** Open Master's fallback: the editor's one file input outside an image well. */
+const fallback = () => [...container.querySelectorAll('input[type="file"]')]
+  .find((input) => !input.closest("[data-file-drop]")) as HTMLInputElement;
+/** Answer the fallback's picker with `file`, or close it with none. */
+const choose = (file: File | null) => act(async () => {
+  Object.defineProperty(fallback(), "files", { value: file ? [file] : [], configurable: true });
+  fallback().dispatchEvent(new Event(file ? "change" : "cancel", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 50));
+});
+const masterName = () => container.querySelector("#master-picker")!.textContent;
+const lolev = () => new File([readFileSync(new URL("../masters/lolev.master", import.meta.url))], "lolev.master");
+const photo = () => new File([readFileSync(new URL("../docs/audits/2026-10-26-evidence/fixtures/dark.png", import.meta.url))], "photo.png", { type: "image/png" });
+
+it("with a mouse the Open Master fallback asks for a .master", async () => {
+  await mount(1280, 800);
+  expect(fallback().getAttribute("accept")).toBe(".master");
+});
+
+it("on a touch screen the Open Master fallback lists every file", async () => {
+  coarse();
+  await mount(390, 844);
+  expect(fallback().hasAttribute("accept")).toBe(false);
+});
+
+it("on a touch screen a .master picked from every file opens", async () => {
+  coarse();
+  await mount(390, 844);
+  await choose(lolev());
+  await vi.waitFor(() => expect(masterName()).toContain("Lolev"));
+});
+
+// Review Focus 1
+it("a wrong file picked on a touch screen is refused with a message, and the master stays", async () => {
+  coarse();
+  await mount(390, 844);
+  const before = masterName();
+  await choose(photo());
+  await vi.waitFor(() => expect(toastTitles()).toContain("Could not open master: Not a .master file: missing master.json"));
+  expect(masterName()).toBe(before);
+});
+
+// Review Focus 2
+it("a picker closed with no file changes nothing", async () => {
+  coarse();
+  await mount(390, 844);
+  const before = masterName();
+  await choose(null);
+  expect(toastTitles()).toEqual([]);
+  expect(masterName()).toBe(before);
+});
+
+// Review Focus 5
+it("with storage refused, Open Master still switches", async () => {
+  coarse();
+  await mount(390, 844);
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("full", "QuotaExceededError"); });
+  vi.stubGlobal("indexedDB", undefined);
+  await choose(lolev());
+  await vi.waitFor(() => expect(masterName()).toContain("Lolev"));
+  expect(toastTitles().filter((title) => title?.startsWith("Could not"))).toEqual([]);
+});
+```
+
+(If `toastTitles()` returns titles in another shape, match it as `tests/failed-open-dom.test.tsx:120–124` does. If the starter master's picker text is not readable as `#master-picker`'s `textContent`, read it the way `tests/masterpicker-dom.test.tsx` does.)
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/files.test.ts tests/tabs-browser-open-dom.test.tsx tests/phone-files-dom.test.tsx`
+Expected: these FAIL: "on a touch screen asks for no type" (called with `{ types }`), and both "on a touch screen … lists every file" (accept is `.label`/`.master`). The rest pass already; they pin the rules this change rests on.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments to write or update:
+- `openThrough`'s doc gains: "On a touch screen the browser picker is given no `types`: a phone's picker filters by MIME type and can grey out a .label or .master it has no type for. The loaders refuse a wrong file with a message."
+- The TabsShell input's comment ("Hidden-input Open fallback …") gains: "No `accept` on a touch screen, where a phone's picker can grey out a custom extension; the open refuses a wrong file."
+- The App master input's comment ("Open Master's fallback …") gains the same sentence.
+- `COARSE` keeps LayerList's doc line, moved with it.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/files.test.ts tests/tabs-browser-open-dom.test.tsx tests/phone-files-dom.test.tsx tests/layerlist-dom.test.tsx tests/missing-master-dom.test.tsx tests/failed-open-dom.test.tsx tests/tabs-open-dom.test.tsx`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/usePhoneLayout.ts src/components/LayerList.tsx src/files.ts src/TabsShell.tsx src/App.tsx tests/files.test.ts tests/tabs-browser-open-dom.test.tsx tests/phone-files-dom.test.tsx
+git commit -m "Fix: On a touch screen, Open Label and Open Master list every file and refuse a wrong one"
+```
+
+### Task 5.3: Save and export with no file picker
+
+**Files:**
+- Test: `tests/use-project-save-dom.test.tsx`, `tests/use-export-dom.test.tsx` (modify)
+- Modify, only on branch E: `src/assets/io.ts` (`download` 216–222, `saveBytes` 228–236)
+
+**Interfaces:**
+- Consumes: Task 5.1's rows "Save Label, first", "Save Label, again" and "Export PDF / PSD".
+- Produces: two pin tests. On branch E only, a change confined to `download`/`saveBytes` with their signatures unchanged (`download(url: string, name: string): void`, `saveBytes(bytes: Uint8Array, name: string, type: string): void`).
+
+Branch E (only if Task 5.1 recorded **no download** for Export PDF or PSD while Save Label downloaded): Save and export share `saveBytes`, so the difference is the build before the export's anchor click. Write a failing test in `tests/use-export-dom.test.tsx` that reproduces what the probe's console and `downloads` show. Fix it in `download`/`saveBytes`, the one place every browser save goes through. Then run the probe's `ios.doneList` again (`PROBE_ONLY=ios.makeLabel,ios.doneList`) and record the result. A failure the probe cannot explain is reported, not guessed at.
+
+- [ ] **Step 1: Write the tests**
+
+In `tests/use-project-save-dom.test.tsx`, add:
+
+```ts
+// Review Focus 3. With no save picker (iOS Safari, Firefox) nothing is bound,
+// so every Save is a fresh download under the label's name. Each marks the
+// label saved: the browser gives no word on whether a download finished.
+it("with no file picker, each Save downloads the label again under its name and binds nothing", async () => {
+  vi.resetModules();
+  vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => false }));
+  const downloads: string[] = [];
+  vi.doMock("@/assets/io", () => ({ saveBytes: (_bytes: Uint8Array, name: string) => { downloads.push(name); } }));
+  const { useProjectSave: hook } = await import("@/useProjectSave");
+  const onSaved = vi.fn(() => true);
+  let api: ReturnType<typeof hook> | undefined;
+  function Probe() {
+    api = hook({ pack: () => new Uint8Array([1]), exportBase: "probe-ale", onSaved, onError: vi.fn() });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => { root.render(createElement(Probe)); });
+  await expect(api!.saveProject()).resolves.toBe(true);
+  await expect(api!.saveProject()).resolves.toBe(true);
+  expect(downloads).toEqual(["probe-ale.label", "probe-ale.label"]);
+  expect(onSaved).toHaveBeenCalledTimes(2);
+  expect(api!.boundHandle()).toBeNull();
+  expect(api!.filePath).toBeNull();
+  act(() => root.unmount());
+  vi.doUnmock("@tauri-apps/api/core");
+  vi.doUnmock("@/assets/io");
+});
+```
+
+In `tests/use-export-dom.test.tsx`, add:
+
+```tsx
+// Review Focus 4. An export asked for while one builds (a second tap on a slow
+// phone) does nothing; its menu rows are disabled meanwhile (App's exportBusy).
+it("an export asked for while another is building does nothing, and one file is saved", async () => {
+  let release!: (saved: Saved) => void;
+  save.next = [() => new Promise<Saved>((resolve) => { release = resolve; })];
+  mount(<Probe />);
+  let first!: Promise<void>;
+  await act(async () => { first = api.buildFull(); });
+  await untilRequests(1);
+  await act(async () => { await api.buildFull(); await api.exportPsd(); await api.exportPdfPlate("art"); });
+  expect(names()).toEqual(["Lupula.pdf"]);
+  expect(api.exporting).toBe("pdf");
+  await finish(async () => { release({ name: "Lupula.pdf", bytes: new Uint8Array() }); await first; });
+  expect(names()).toEqual(["Lupula.pdf"]);
+  expect(text()).toContain("Saved Lupula.pdf");
+}, 30000);
+```
+
+- [ ] **Step 2: Run them**
+
+Run: `npx vitest run tests/use-project-save-dom.test.tsx tests/use-export-dom.test.tsx`
+Expected: PASS. Both pin rules the code already keeps (Task 5.1's readings say so). If either fails, it has found a defect: report it with the failure, do not change the test to pass.
+
+- [ ] **Step 3: Branch E, only if Task 5.1 decided it**
+
+As above. Otherwise skip, and write "branch E: not needed, measured (`ios.doneList.exportPdf` and `exportPsd` downloaded)" in the ledger.
+
+- [ ] **Step 4: Commit**
+
+Without branch E:
+
+```bash
+git add tests/use-project-save-dom.test.tsx tests/use-export-dom.test.tsx
+git commit -m "Docs: Pin Save and export with no file picker, measured"
+```
+
+With branch E, add `src/assets/io.ts` to the `git add` and use the subject `Fix: An export downloads in a browser with no save dialog`.
+
+### Task 5.4: Every image well opens a picker on tap
+
+**Files:**
+- Test: `tests/filedrop-dom.test.tsx` (modify)
+- Modify, only on branch B: `src/components/FileDrop.tsx` (the Browse button, 108–119)
+
+**Interfaces:**
+- Consumes: Task 5.1's "Wells" row.
+- Produces: one pin test. On branch B only, Browse's classes gain `touch:min-h-tap touch:min-w-tap` (the tokens Phase 2 added, `src/index.css:151–153`), with no signature change.
+
+Branch B (only if Task 5.1 recorded a well whose Browse is absent or under 44px tall on touch): write a failing test asserting the Browse button's class carries `touch:min-h-tap`. If Browse is absent, write one asserting it renders; absent would mean the well itself is gone, which is a stop. Then add the classes.
+
+- [ ] **Step 1: Write the test**
+
+In `tests/filedrop-dom.test.tsx`, add (outside the overlay `describe`; it renders its own root):
+
+```tsx
+// Phone layout, Phase 5: a phone has no file drag, so each well's Browse is
+// how a finger loads art. It opens the well's own file input (react-dropzone's,
+// not the File System Access picker), which lists the well's image types.
+it("Browse opens the well's own file input, asking for the well's image types", () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const wellRoot = createRoot(host);
+  onTestFinished(() => { act(() => wellRoot.unmount()); host.remove(); });
+  act(() => {
+    wellRoot.render(createElement(FileDrop, {
+      label: "Texture", onFile: vi.fn(),
+      accept: { "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] },
+    }));
+  });
+  const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+  const click = vi.spyOn(input, "click").mockImplementation(() => {});
+  act(() => { (host.querySelector('button[aria-label="Browse Texture"]') as HTMLButtonElement).click(); });
+  expect(click).toHaveBeenCalledTimes(1);
+  for (const type of ["image/png", ".png", "image/jpeg", ".jpg", "image/webp"]) expect(input.accept).toContain(type);
+});
+```
+
+- [ ] **Step 2: Run it**
+
+Run: `npx vitest run tests/filedrop-dom.test.tsx`
+Expected: PASS (a pin). A failure is a defect: report it.
+
+- [ ] **Step 3: Branch B, only if Task 5.1 decided it**
+
+As above. Otherwise skip, and write "branch B: not needed, measured (`ios.wells`: every Browse ≥ 44px and opened its chooser)" in the ledger.
+
+- [ ] **Step 4: Commit**
+
+Without branch B:
+
+```bash
+git add tests/filedrop-dom.test.tsx
+git commit -m "Docs: Pin Browse as each image well's tap path, measured"
+```
+
+With branch B, add `src/components/FileDrop.tsx` to the `git add` and use the subject `Fix: Each image well's Browse takes a fingertip`.
+
+### Task 5.5: Measure again, run the done list, check the desktop, document
+
+**Files:**
+- Modify: `.agents/ledger.md` (the `2026-11-13 phone-files` entry)
+- Modify: `docs-site/content/docs/(concepts)/files.mdx` (Labels 6–16), `(output)/export.mdx` (36, 42), `getting-started.mdx` (10)
+- Modify: `CHANGELOG.md` (`## [Unreleased]`)
+
+- [ ] **Step 1: Run the probe on the finished branch, on both servers**
+
+Restart the dev server on the finished branch if it was stopped. Rebuild the production app first (`npm run build -- --base=/art-files/app/`, then restart `vite preview` as in Task 5.1 Step 1). `probe.mjs` is unchanged since Task 5.1.
+
+```bash
+node .agents/mockups/phone-files/probe.mjs http://localhost:5194/ .agents/mockups/phone-files after
+node .agents/mockups/phone-files/probe.mjs http://localhost:5196/art-files/app/ .agents/mockups/phone-files after-prod
+```
+
+Expected: every reading equal to `before.json`/`before-prod.json`, except:
+
+| Scenario | Expected after |
+|---|---|
+| `ios.openMaster`, `ios.openMasterWrong`, `ios.makeLabel`, `ios.missingMaster`, `ios.doneList.openMaster`, `ios.doneList.reopen` (Open Master/Label fallback) | `chooser.accept` `null` (no `accept` on touch) |
+| `ios.openLabelWrong`, `ios.openCancel`, `ios.doneList.openLabel` | `chooser.accept` `null` |
+| `ios.openMasterWrong`, `ios.openLabelWrong` | the same refusal toasts, document and tabs unchanged |
+| `android.doneList.picks` | the open picks' `opts` `{}` (no `types`); save picks unchanged |
+| `ios.wells` | unchanged (or, with branch B, every `browse` ≥ 44 tall) |
+| `desktop.files` | every reading equal to `before.json`: the open picks still carry `types` (`env.coarse` false), Save rewrites the same handle, Save As picks, Save Master writes, both exports land, both drops behave |
+| `before-prod`/`after-prod` | equal to each other's dev runs; `failed` [] |
+
+A row that misses is a defect in the task that owns it: fix it there (same commit style) and run the probe again.
+
+- [ ] **Step 2: The done list and the round trip, read off the run**
+
+The done list (spec Goals, "save and export", by finger at 390×844 with the pickers deleted) is `after.json` and `after-prod.json` → `ios.doneList`. Record each step as a line:
+- open a master: `openMaster`, `afterOpen.master` "Lolev"
+- open a label: `openLabel`, `afterOpen.text` "Fixture Ale"
+- change something: X 1.25 and the name "Probe Ale"
+- Save Label: `saveLabel1`
+- Save Master: `saveMaster`
+- export PDF: `exportPdf`
+- export PSD: `exportPsd`
+- reload and reopen: `reload`, `reopen`, `roundTrip.equal` true
+
+Repeat the list for the picker path: `android.doneList`. Expected: all present and true on both servers.
+
+- [ ] **Step 3: Compare the desktop screenshots**
+
+Task 3.7 Step 4's script with `dir = ".agents/mockups/phone-files"` and these pairs, for `fresh` and `well`: `before-desktop-<state>` vs `before-2-desktop-<state>` (the noise floor) and `before-desktop-<state>` vs `after-desktop-<state>`. Expected: each before/after count at or under its noise floor. If more, view both images, find the class or style that reached the mouse layout and fix it; do not accept a difference.
+
+- [ ] **Step 4: Docs**
+
+- `files.mdx`, after line 10 ("On Chromium and in the desktop app, Save is a real dialog … falls back to a download."), add a paragraph: "Where the browser has no save dialog, each Save downloads the label again under the same name, and the label counts as saved once the download starts. On a phone or tablet, Open Label… and Open Master… list every file, not only labels and masters; a file that isn't one is refused with a message and your work stays as it was. Open Recent is in the desktop app only."
+- `files.mdx`, line 16 (dropping a `.label` on the window): append "A phone has no file drag: use File → Open Label…."
+- `files.mdx`, `## Dropping texture and mask images`, after line 33 ("Clicking a field still opens its picker."): "On a phone or tablet, tap the field's **Browse**."
+- `export.mdx`, line 42 ("In a browser each output file has its own save dialog or download."): append "Where there is no save dialog, each file is a download named after the label, and the **Saved …** toast has nothing to show in a folder." Line 36 needs no change (Show in Finder is already "on the desktop").
+- `getting-started.mdx`, line 10: append "On a phone or tablet it has the same menus. Open and save go through the browser's own file picker and downloads, and the master library is kept in that browser."
+- `grep -rn -i "download\|Open Recent\|browser" docs-site/content` and correct any other sentence this phase made untrue.
+
+No sentence claims anything about iOS or Android specifically: nothing here was measured on one.
+
+- [ ] **Step 5: CHANGELOG**
+
+Under `## [Unreleased]` → `### Fixed`, add:
+
+- **Open Label and Open Master on a phone or tablet.** On a touch screen they no longer ask the file picker to show only labels or masters. A file that isn't one is refused with a message, and your work stays as it was.
+
+Only with branch E, also under `### Fixed`: "- **Exports download in every browser.** Where a browser has no save dialog, Export PDF and Export PSD download the file." Only with branch B: "- **Bigger Browse buttons on a phone.** Each image field's Browse is big enough for a finger." No version bump. Tasks 5.3 and 5.4 without branches add nothing (tests only).
+
+- [ ] **Step 6: Full checks**
+
+```bash
+npx tsc --noEmit && npm run lint && npm test && npx --yes knip@6.38.0 && node scripts/check-release.mjs feat/phone-touch-paths
+(cd docs-site && npm run types:check && npm run build)
+```
+
+Expected: all pass.
+
+- [ ] **Step 7: Ledger and commit**
+
+Update the `2026-11-13 phone-files` entry:
+- `status: done`, `measured at <short SHA>`
+- `delta:` each scenario's before → after reading, and the done-list lines from Step 2 (dev and production)
+- the four pixel-compare counts and the desktop readings side by side
+- `release: binary-impacting; one bullet queued under [Unreleased] (plus one for each branch built); no version bump`
+- `not measured (needs a real phone)`, one item each:
+  - **iOS Safari**:
+    - whether `.label`/`.master` show and can be picked with no `accept`, and with it (to settle the Planner's call);
+    - whether Open… opens the picker at all (the input is clicked one `await` after the tap);
+    - where Safari puts each download, what it names it (does a `.label` gain `.zip`?), and whether it asks first;
+    - whether a download that starts after a long PDF or PSD build, not inside the tap, is allowed;
+    - whether a PSD export completes or runs out of memory;
+    - whether a tab backgrounded during an export survives;
+    - the round trip from the Files app;
+    - a HEIC photo picked into Texture (converted to JPEG?);
+    - a 12MP photo's memory;
+    - the master library after a reload, in a private tab, and after seven days away (WebKit's storage cap);
+    - Locate… in the missing-master dialog (expected: the "no file picker" message);
+    - an art + mask pair's second download.
+  - **Android Chrome**:
+    - whether the File System Access pickers are present on the test phone's Chrome version;
+    - whether `.label`/`.master` show in its open picker with no `types`;
+    - whether Save Label rewrites the opened file;
+    - the save picker's file names;
+    - an export after a long build (expected: a download, via `SecurityError`).
+
+```bash
+git add .agents/ledger.md docs-site/content/docs CHANGELOG.md
+git commit -m "Docs: Describe open, save and export on a phone and record their measurements"
+```
+
+Do not push.
+
+### Phase 5 checkpoint
+
+Stop. Report:
+- the commits;
+- the Task 5.1 decisions, and which branches (E, B) were built, or "nothing to fix, measured";
+- the done list and round trip, from both the dev server and the production build at `/art-files/app/`;
+- the desktop before and after readings and the pixel-compare counts.
+
+Then put these to the user, each with the default the plan shipped:
+- **Should a download count as a save?** Default: yes, as before.
+- **The art + mask pair's second download.** Default: unchanged.
+- **Locate… with no file picker.** Default: its message, which names Open Master first.
+
+Ask the user to run the real-phone list from the ledger on an iPhone in Safari and on an Android phone in Chrome (`npm run dev -- --host` over Wi-Fi, or the published app once released). Then ask whether to push and open the PR, and against which base.
+
+**Final checkpoint.** The spec's whole done list, end to end, at 390×844 with touch emulation and then on a real phone in Safari and in Chrome:
+- open a master;
+- select a layer and edit its text;
+- move and resize it;
+- change its style;
+- multi-select;
+- reorder;
+- undo;
+- save and export.
+
+Throughout, the preview stays visible while the inspector is open, nothing scrolls sideways, tap targets are at least 44px, and the desktop at 1280×800 with a mouse is unchanged. Each phase's real-phone list is cleared or carried as a named open item.
