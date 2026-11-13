@@ -547,18 +547,25 @@ it("taps inside an open session never reopen it", async () => {
   expect(editorOf(layer("name").name.toLowerCase())).toBe(field);
 }, 60_000);
 
-it("the mousedown Chrome sends after the opening tap is default-prevented, so the field keeps focus; one in the field is not", async () => {
+it("the mousedowns Chrome sends after the opening tap are default-prevented, in the field too: focus stays, no word gets selected", async () => {
   tapAt("warning", 1000); tapAt("warning", 1200);
   const field = editorOf(layer("warning").name.toLowerCase())!;
   expect(document.activeElement).toBe(field);
   const mousedown = (el: Element) => {
-    const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true, detail: 2 });
     act(() => { el.dispatchEvent(e); });
     return e.defaultPrevented;
   };
   expect(mousedown(sheet.querySelector("canvas")!)).toBe(true);
   expect(document.activeElement).toBe(field);
+  // The double-tap's own second mousedown lands in the field: a native
+  // double-click there would select the word under it.
+  expect(mousedown(field)).toBe(true);
+  // A later, deliberate press in the field selects as the platform does.
+  const { x, y } = centre("warning");
+  finger(field, "pointerdown", 1, x, y);
   expect(mousedown(field)).toBe(false);
+  finger(field, "pointerup", 1, x, y);
 }, 60_000);
 
 it("a mouse press on another layer during a double-click session closes it, selects that layer, and keeps its mousedown", async () => {
@@ -678,4 +685,36 @@ it("a mouse click still picks from the click's own position", async () => {
   mouse("pointerdown"); mouse("pointerup");
   act(() => { sheet.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: b.x, clientY: b.y })); });
   expect(probe.preview!.selected).toEqual(["description"]);
+}, 60_000);
+
+// Two fingers on or around a small selected layer pinch; a resize owns its
+// gesture only once it has travelled past the tap slop.
+it("two fingers on a selected layer's side ticks, inside its box, pinch", async () => {
+  select("description");
+  const before = structuredClone(layers()), { x, y } = centre("description");
+  finger(tick("-1,0"), "pointerdown", 1, x - 3, y);
+  finger(tick("1,0"), "pointerdown", 2, x + 3, y);
+  finger(tick("-1,0"), "pointermove", 1, x - 40, y);
+  finger(tick("1,0"), "pointermove", 2, x + 40, y);
+  expect(scale()).toBeGreaterThan(1);
+  finger(tick("-1,0"), "pointerup", 1, x - 40, y);
+  finger(tick("1,0"), "pointerup", 2, x + 40, y);
+  expect(layers()).toEqual(before);
+  expect(canUndo()).toBe(false);
+}, 60_000);
+
+it("a second finger before a tick resize passes the slop turns it into a pinch", async () => {
+  select("description");
+  const before = structuredClone(layers()), t = tick("1,1");
+  finger(t, "pointerdown", 1, 100, 100);
+  finger(t, "pointermove", 1, 106, 100);
+  expect(layers()).toEqual(before); // a finger resizes nothing within the slop
+  finger(pane, "pointerdown", 2, 400, BOARD_Y);
+  finger(t, "pointermove", 1, 60, 100);
+  finger(pane, "pointermove", 2, 500, BOARD_Y);
+  expect(scale()).toBeGreaterThan(1);
+  finger(pane, "pointerup", 2, 500, BOARD_Y);
+  finger(t, "pointerup", 1, 60, 100);
+  expect(layers()).toEqual(before);
+  expect(canUndo()).toBe(false);
 }, 60_000);

@@ -63,7 +63,7 @@ function renderRulers(over: Partial<Parameters<typeof Rulers>[0]> = {}) {
   const previewRef: { current: PreviewCompareHandle } = {
     current: {
       showArt() {}, showMask() {}, getPageElement: () => page,
-      layerGestureArmed: () => false, cancelLayerGesture() {},
+      layerGestureArmed: () => false, cancelLayerGesture() {}, releaseResizeFinger: () => null,
     },
   };
   const props: Parameters<typeof Rulers>[0] = {
@@ -353,7 +353,7 @@ function transformedPane() {
   container.appendChild(pane);
   const previewRef = { current: {
     showArt() {}, showMask() {}, getPageElement: () => page,
-    layerGestureArmed: () => false, cancelLayerGesture() {},
+    layerGestureArmed: () => false, cancelLayerGesture() {}, releaseResizeFinger: () => null,
   } };
   /** Where a guide must sit for the view, straight from the browser's rect. */
   const expectedLeft = (point: number) => {

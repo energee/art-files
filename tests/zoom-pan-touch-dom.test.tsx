@@ -26,7 +26,7 @@ vi.mock("../src/components/PreviewCompare", async () => {
     PreviewCompare: (props: PreviewProps & { ref?: import("react").Ref<PreviewCompareHandle> }) => {
       useImperativeHandle(props.ref, () => ({
         showArt() {}, showMask() {}, getPageElement: () => null,
-        layerGestureArmed: () => probe.armed, cancelLayerGesture: () => probe.cancel!(),
+        layerGestureArmed: () => probe.armed, cancelLayerGesture: () => probe.cancel!(), releaseResizeFinger: () => null,
       }));
       probe.renders++; probe.preview = props; return null;
     },

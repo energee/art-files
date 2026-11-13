@@ -250,9 +250,14 @@ export function useZoomPan(
   }
   function onTouchDown(e: React.PointerEvent<HTMLDivElement>) {
     if (!is2d || fingers.current.size === 2) return;
-    // An extra finger whose first went to a control that keeps it (a resize
-    // tick, a ruler, the divider) belongs to that gesture: ignored.
-    if (!e.isPrimary && !fingers.current.size) return;
+    // An extra finger whose first went to a control that keeps it (a ruler,
+    // the divider, a resize past the tap slop) belongs to that gesture:
+    // ignored. A resize still within the slop gives its finger up to pinch.
+    if (!e.isPrimary && !fingers.current.size) {
+      const first = preview.current?.releaseResizeFinger();
+      if (!first) return;
+      fingers.current.set(first.pointerId, { x: first.x, y: first.y });
+    }
     if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
     fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();

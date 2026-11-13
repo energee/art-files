@@ -36,7 +36,7 @@ import {
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
 import { InPlacePlainField } from "./InPlacePlainField";
-import { foldTap, isTap, type Tap } from "./doubleTap";
+import { extraFinger, foldTap, isTap, stillPress, type Tap } from "./doubleTap";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -44,9 +44,6 @@ import { foldTap, isTap, type Tap } from "./doubleTap";
  *  raster work for nothing (#395). */
 export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
   maskShown ? ["art", "mask"] : ["art"];
-
-/** Mouse/pen travel (px) before a press drags (a finger: past TAP_SLOP_PX); below it, a click. */
-const DRAG_THRESHOLD_PX = 3;
 
 /** Drag snap distance to a guide or another layer's edge/middle, in label points. */
 export const SNAP_PT = 6;
@@ -72,11 +69,6 @@ export interface SnapLines {
   dx: number; dy: number;
 }
 
-/** A finger that lands while another is down: only the first finger of a
- *  touch may move or resize a layer; the rest belong to the pane's pinch.
- *  (A mouse or a pen is always primary.) */
-const extraFinger = (e: React.PointerEvent) => e.pointerType === "touch" && !e.isPrimary;
-
 /** Wheel/pinch events arrive every frame. Keep the CSS transform immediate,
  *  then replace its backing bitmap once the gesture pauses. */
 const RASTER_DEBOUNCE_MS = 160;
@@ -92,6 +84,9 @@ export interface PreviewCompareHandle {
    *  moved (onDragCancel), clears the snap lines and readout, and drops it
    *  so later moves do nothing. */
   cancelLayerGesture: () => void;
+  /** A tick resize that has not started (a finger within the tap slop) gives
+   *  its finger to the pane's pinch: dropped, its press point returned. */
+  releaseResizeFinger: () => { pointerId: number; x: number; y: number } | null;
 }
 
 export const PreviewCompare = forwardRef<
@@ -321,6 +316,7 @@ export const PreviewCompare = forwardRef<
   // propagation, so the wrapper's move never starts. A press the tick does
   // not take (during in-place editing, on a locked layer, an extra finger, a
   // finger on any layer) bubbles on as any other press would.
+  // A finger resizes only past the tap slop; before that a second finger pinches (releaseResizeFinger).
   const resize = useRef<{
     id: string; handle: ResizeHandle; pointerId: number; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;
@@ -340,9 +336,8 @@ export const PreviewCompare = forwardRef<
   function onHandleMove(e: React.PointerEvent<HTMLSpanElement>) {
     const d = resize.current;
     if (d?.pointerId !== e.pointerId) return;
-    const dxPx = e.clientX - d.startClientX;
-    const dyPx = e.clientY - d.startClientY;
-    if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
+    const dxPx = e.clientX - d.startClientX, dyPx = e.clientY - d.startClientY;
+    if (!d.started && stillPress(e.pointerType, { x: d.startClientX, y: d.startClientY }, { x: e.clientX, y: e.clientY })) return;
     const first = !d.started;
     d.started = true;
     setSnap(onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first));
@@ -379,8 +374,7 @@ export const PreviewCompare = forwardRef<
     const d = drag.current;
     if (!d) return;
     const dxPx = e.clientX - d.startClientX, dyPx = e.clientY - d.startClientY;
-    // Nothing moves (no undo step) below the threshold, and a finger moves nothing while it could still be a tap.
-    if (!d.started && (e.pointerType === "touch" ? isTap({ x: d.startClientX, y: d.startClientY }, at) : Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX)) return;
+    if (!d.started && stillPress(e.pointerType, { x: d.startClientX, y: d.startClientY }, at)) return; // no undo step
     const first = !d.started;
     d.started = true;
     const dx = dxPx / d.pxPerPtX;
@@ -437,6 +431,12 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
     layerGestureArmed: () => !!(drag.current || resize.current),
     cancelLayerGesture: () => { cancelLayerGesture(); },
+    releaseResizeFinger: () => {
+      const d = resize.current;
+      if (!d || d.started) return null;
+      resize.current = null;
+      return { pointerId: d.pointerId, x: d.startClientX, y: d.startClientY };
+    },
   }), [changeSplit, cancelLayerGesture]);
 
   // No source, no preview: end the session and free both plates' backing
@@ -559,9 +559,9 @@ export const PreviewCompare = forwardRef<
         if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
       }}
       onPointerUp={onPointerUp}
-      // Keeps the field focused through the mousedown Chrome sends after
-      // the tap that opened it, where the field does not cover the finger.
-      onMouseDown={(e) => { if (tapOpened.current && !sessionRef.current?.contains(e.target as Node)) e.preventDefault(); }}
+      // The mousedowns Chrome sends after the tap that opened the field would blur it
+      // (off the field) or select a word (on it, as a double-click): the field opens with a caret.
+      onMouseDown={(e) => { if (tapOpened.current) e.preventDefault(); }}
       // A cancelled press (an incoming call, the OS taking the touch) puts
       // the layer back, as Escape and a second finger do; an ignored extra
       // finger's cancel leaves the first finger's gesture alone.
