@@ -241,11 +241,11 @@ export const PreviewCompare = forwardRef<
   }
 
   // A finished drag still fires a click; swallow it so moving a multi-selection can't collapse
-  // it to the grabbed layer (LayerList's suppressClick, the same guard). A tap's click goes too
-  // (tapPicked): the tap picked where the finger lifted (onPointerUp), Chrome aims its click elsewhere.
-  const swallowClick = useRef(false), tapPicked = useRef(false), pressType = useRef(""); // the last press's pointerType
+  // it to the grabbed layer (LayerList's suppressClick, the same guard). On touch only our own tap
+  // picks (onPointerUp, under the finger): Chrome's click, aimed elsewhere or after no tap, picks nothing.
+  const swallowClick = useRef(false), pressType = useRef(""); // the last press's pointerType
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (swallowClick.current || tapPicked.current) { swallowClick.current = tapPicked.current = false; return; }
+    if (swallowClick.current || pressType.current === "touch") { swallowClick.current = false; return; }
     const id = hitOf(e);
     if (id !== undefined) onPick(id, modsOf(e));
   }
@@ -379,7 +379,7 @@ export const PreviewCompare = forwardRef<
    *  first finger starts a tap unless a session is open (an extra one cancels
    *  it: cancelLayerGesture). */
   function onPressCapture(e: React.PointerEvent<HTMLDivElement>) {
-    swallowClick.current = tapOpened.current = tapPicked.current = false; pressType.current = e.pointerType;
+    swallowClick.current = tapOpened.current = false; pressType.current = e.pointerType;
     if (e.isPrimary) tapFrom.current = e.pointerType === "touch" && !editing ? { x: e.clientX, y: e.clientY } : null;
   }
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
@@ -387,7 +387,7 @@ export const PreviewCompare = forwardRef<
     if (e.pointerType === "touch") {
       const from = tapFrom.current; tapFrom.current = null;
       const hit = from && !drag.current?.started && isTap(from, { x: e.clientX, y: e.clientY }) ? hitOf(e) : undefined;
-      if (hit !== undefined) { onPick(hit, {}); tapPicked.current = true; } // under the finger, not the click
+      if (hit !== undefined) onPick(hit, {}); // under the finger, not the click
       const { open, last } = foldTap(lastTap.current, hit ?? null, e.timeStamp); lastTap.current = last;
       if (open && hit) { tapOpened.current = true; startEditing(e, hit); }
     }

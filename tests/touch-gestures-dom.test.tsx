@@ -791,3 +791,30 @@ it("a tap on a handle between two taps on a layer breaks the double-tap", async 
   tapAt("name", 1200);
   expect(anyEditor()).toBeNull();
 }, 60_000);
+
+// On touch only our own tap picks (at the lift): the click Chrome sends after
+// a press the tap rules rejected selects nothing and deselects nothing.
+it.each([["a locked layer", () => centre("warning")], ["bare sheet", () => ({ x: 1, y: 1 })]])(
+  "a finger press on %s that drifts 12px then gets a click leaves the selection alone", async (_, at) => {
+    select("name");
+    const { x, y } = at();
+    finger(sheet, "pointerdown", 1, x, y);
+    finger(sheet, "pointermove", 1, x + 12, y);
+    finger(sheet, "pointerup", 1, x + 12, y);
+    act(() => { sheet.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x + 12, clientY: y })); });
+    expect(probe.preview!.selected).toEqual(["name"]);
+  }, 60_000);
+
+it("a mouse click still picks a layer and still deselects on bare sheet", async () => {
+  const mouseClick = (x: number, y: number) => act(() => {
+    for (const type of ["pointerdown", "pointerup"]) {
+      sheet.dispatchEvent(new PointerEvent(type, { pointerType: "mouse", pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y, bubbles: true }));
+    }
+    sheet.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
+  });
+  const w = centre("warning");
+  mouseClick(w.x, w.y);
+  expect(probe.preview!.selected).toEqual(["warning"]);
+  mouseClick(1, 1);
+  expect(probe.preview!.selected).toEqual([]);
+}, 60_000);
