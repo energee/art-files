@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **Translation library update, no visible change.** i18next 27 and react-i18next 18; the app's text and languages behave as before.
+
 ## [0.1.121] - 2026-11-13
 
 ### Added
