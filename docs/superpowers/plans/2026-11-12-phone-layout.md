@@ -891,15 +891,1371 @@ Do not push.
 
 Stop. Report: the commits, the before and after numbers, the pixel-compare counts, and anything left under 44px. Ask the user to run the shell on a real phone (`npm run dev -- --host`, over Wi-Fi) and check: Layers opens, picks and closes; ☰ reaches every menu; Undo and Redo; the inspector from the bottom with the preview above it; **typing in an inspector field near the bottom with the on-screen keyboard up keeps that field visible (Review Focus 4)**; rotate mid-edit (Review Focus 3); nothing scrolls sideways. Then ask whether to push and open the PR, and against which base.
 
-## Phase 3 — Touch gestures on the canvas (outline)
+## Phase 3 — Touch gestures on the canvas
 
-| Task | Files | Test (written first) | Deliverable |
-|---|---|---|---|
-| 3.1 Pinch math | `src/useZoomPan.ts` | `tests/zoom-pan-pinch.test.ts` | A pure function that takes the current view and the previous and current positions of two pointers and returns the new view, zooming about their midpoint and clamped like the wheel path. |
-| 3.2 Finger pan and pinch wiring | `src/useZoomPan.ts`, `src/App.tsx` (pane handlers) | DOM test with synthetic touch pointer events | One finger on empty pasteboard pans; two fingers pinch; the pane sets `touch-action: none`. Mouse behaviour (wheel, right-drag) unchanged. |
-| 3.3 Resize handles | `src/components/previewOverlay.ts` | existing overlay tests extended | 44px hit area on touch without visual growth. |
-| 3.4 Double-tap to edit | `src/components/PreviewCompare.tsx` | DOM test | Two taps on the same text layer within 300ms start in-place editing, only if `dblclick` proves unreliable on a real phone (check first). |
-| 3.5 Can view | `src/components/CanView.tsx`, `src/three/canScene.ts` | measured on a real phone | Orbit, zoom and pan by touch; fix only what fails. |
+Branch `feat/phone-gestures`, worktree `.agents/worktrees/web-app-pages` (already created, stacked on `feat/phone-shell` at `d074a89d`). Line numbers below are as of `d074a89d`; re-find each by the quoted code if it has moved. Binary-impacting (`src/` changes), so Task 3.7 adds `CHANGELOG.md` bullets; `check-release.mjs` runs against the stack parent, `feat/phone-shell`.
+
+**Order.** Task 3.1 first (the baseline must be measured on unchanged code). Task 3.3 touches only `src/useZoomPan.ts` and its new test, so it may run in parallel with Task 3.2. Tasks 3.4, 3.5 and 3.6 run one after another after both: 3.2, 3.4, 3.5 and 3.6 all edit `src/components/PreviewCompare.tsx`, and 3.2 and 3.4 both edit `src/App.tsx`. Task 3.7 is last. `PreviewCompare.tsx` is 705 lines against the 750-line budget in `tests/module-size.test.ts`; this phase adds about 30.
+
+Found while planning, by running the Task 3.1 probe against `d074a89d` in headless Chrome with CDP touch input at 390×844 (these shape the tasks):
+- **Nothing on the canvas works by finger today.** One finger on the pasteboard at 200%: the view does not move, and the browser cancels the pointer (`pointercancel`). Two fingers: the *page* zooms (`visualViewport.scale` 5), the view stays at 100%. A finger drag out of the top ruler: no guide, `pointercancel`. All three are the browser taking the touch because nothing sets `touch-action`.
+- **On a small selected layer a finger resizes instead of moving.** "Description" selected at 390×844 is 23×23 px. A finger at its centre lands on the right-middle resize tick: Chrome's touch adjustment aims the `pointerdown` at the nearest tap target (the tick), though the event's `clientX/Y` stay at the finger (logged: target `tick 1,0`, at 48,197, inside the box). The drag grew the layer from 23.3 to 53.2 px wide. A two-finger pinch on it hit ticks `-1,0` and `1,0` and resized it too.
+- **Double-tap.** Chrome delivers `dblclick` for a touch double-tap (the 34×201 px Warning layer opened in place). On the small Description layer the same double-tap delivered `dblclick` but aimed it, and both clicks, at the tick, so nothing opened. That is the spec's "does not deliver `dblclick` reliably": Task 3.6 adds the 300 ms two-tap detector, read from raw `pointerup` positions.
+- **What already works by finger:** the compare divider (0 → 28, it already sets `touch-none`); a tap on a ruler corner opens Ruler settings; the Can view: one finger orbits, two pinch (100 → 250%) and pan, the page does not zoom. No Can view code changes.
+- **Fit.** At 320×568 and 844×390 with a layer selected the label is taller than the pane (pane 320×196, sheet 299×188.6 below a ruler; pane 544×241, sheet 523×329.9). The sheet is `m-auto w-full` with a locked aspect ratio, capped at `PREVIEW_MAX_W` (900): width-driven only. At 1280×800 the sheet is 900 wide (fresh) and 703 wide (selected) in a pane 712 tall, so a height bound is never reached there.
+- `canScene`'s `framingDistance` (`src/three/canScene.ts:736–743`) predicts the 2D sheet's height from the same width-only rule, so 100% means one thing in every view; it must follow the new rule.
+- `useZoomPan` is called (`src/App.tsx:559–562`) before `previewRef` is declared (`App.tsx:589`).
+- `tests/rulers-dom.test.tsx:64` builds a typed `PreviewCompareHandle` literal; it must gain the two new members.
+- Precedent for an invisible enlarged hit area: `src/components/ui/switch.tsx` (`touch:after:absolute touch:after:-inset-… touch:after:content-['']`). Task 3.5 reuses it. The `tap` spacing token (44px) and the `touch:` variant exist (`src/index.css:33, 153`). Root font is 13px, so `size-11` is 35.75px, not 44: use `tap`.
+
+Planner's call: the probe is a Node script driving its own headless Chrome over CDP (`Input.dispatchTouchEvent`), not the chrome-devtools MCP tools Phase 2 used: those have no multi-finger input. It uses Node 24's built-in `WebSocket` and `fetch`, so no dependency.
+Planner's call: one-finger pan, pinch, guide drags and the divider all need nothing but `touch-action: none` on the pane plus the pan/pinch handlers; `touch-action` applies to everything inside the pane (rulers, sheet, in-place field), so no child gets its own.
+
+### Review Focus
+
+Conditions most likely to bite a real person, each pinned to a test:
+
+1. **A pinch with a layer selected.** The selection and the open inspector must survive, and no undo step may appear. Task 3.4, test "pinching and panning keep the selection and add no undo step".
+2. **A finger resting on the canvas while another taps.** The tap must still be a tap (select or deselect), and the view must not move. Task 3.4, test "a resting finger does not turn a tap into a gesture".
+3. **A pinch at the zoom limits.** Past 250% or below 100% nothing moves and nobody is told (#726). Task 3.3 (top and bottom of the range, pure) and Task 3.4, test "a pinch below the bottom of the range reaches no listener".
+4. **Double-tap on a locked or hidden layer.** Locked text opens in place, as a double-click on it does today; a hidden layer draws nothing and so nothing opens. Task 3.6, tests "a locked text layer opens as its double-click does" and "a hidden layer opens nothing".
+5. **Rotating the phone mid-pinch.** The OS cancels one finger and the pane changes size; the other finger keeps panning, clamped to the new pane. Task 3.4, test "a cancelled finger mid-pinch leaves the other panning, inside the pane's new size".
+
+### File structure
+
+| File | Responsibility |
+|---|---|
+| `src/layout.ts` (modify) | `fitSheetWidth()`: the sheet's fitted width for a pane, both dimensions |
+| `src/components/PreviewCompare.tsx` (modify) | Sheet fits height too; handle gains `layerGestureArmed` / `cancelLayerGesture`; a finger inside a layer's box moves it even when aimed at a tick; divider hit area; double-tap |
+| `src/App.tsx` (modify) | Zoom layer is the sheet's size container; pane `touch-none` and click-capture; `previewRef` handed to `useZoomPan` |
+| `src/three/canScene.ts` (modify) | 3D framing follows `fitSheetWidth` |
+| `src/useZoomPan.ts` (modify) | `pinchView()` (pure); finger pan and pinch on the pane |
+| `src/components/previewOverlay.ts` (modify) | Resize ticks: 44px outward hit area on touch |
+| `src/components/Rulers.tsx` (modify) | Manual guide handles: 44px hit area on touch |
+| `tests/fit-sheet-dom.test.tsx` (create) | `fitSheetWidth` values; the sheet's CSS width cap |
+| `tests/zoom-pan-pinch.test.ts` (create) | `pinchView` |
+| `tests/zoom-pan-touch-dom.test.tsx` (create) | Finger pan and pinch rules in a mounted `DocumentEditor` |
+| `tests/preview-touch-dom.test.tsx` (create) | `PreviewCompare` under touch: handle, ticks, double-tap |
+| `tests/zoom-pan-render-dom.test.tsx`, `tests/rulers-dom.test.tsx` (modify) | Zoom layer container; handle literal; guide hit areas |
+| `.agents/mockups/phone-gestures/probe.mjs` (create, gitignored) | The measuring script |
+| `.agents/ledger.md`, `docs-site/content/docs/(authoring)/preview.mdx`, `(authoring)/editing.mdx`, `(reference)/shortcuts.mdx`, `CHANGELOG.md` (modify) | Measurements, docs, release notes |
+
+### Task 3.1: Record the baseline with real touch input
+
+**Files:**
+- Create (gitignored, not committed): `.agents/mockups/phone-gestures/probe.mjs`, and its outputs in the same folder
+- Modify: `.agents/ledger.md` (append entry `## 2026-11-12 phone-gestures`)
+
+**Interfaces:**
+- Produces: `probe.mjs` (Task 3.7 runs it unchanged), the baseline JSON `before.json` and `before-2.json`, and desktop screenshots `before-desktop-{fresh,selected}.png`, `before-2-desktop-{fresh,selected}.png`.
+
+Planner's call: the probe opens a fresh tab per scenario and closes the old one through `/json/close`: an edited document's unsaved-changes prompt otherwise blocks the next navigation (seen while planning).
+Planner's call: the whole probe runs twice for the baseline, so run-to-run noise (screenshots and gesture readings) is known before anything is compared.
+
+- [ ] **Step 1: Start the dev server**
+
+Run (background): `npm run dev -- --port 5190 --strictPort` (5173 belongs to another session). If 5190 is busy, use the next free port and record it. Port 9333 must be free for the probe's Chrome (`lsof -iTCP:9333 -sTCP:LISTEN` prints nothing). Google Chrome must be at `/Applications/Google Chrome.app`.
+
+- [ ] **Step 2: Write the probe**
+
+`.agents/mockups/phone-gestures/probe.mjs`, exactly:
+
+```js
+// probe.mjs — Phase 3 (touch gestures) measurement: drives a headless Chrome
+// over CDP with real touch input (Input.dispatchTouchEvent) at phone sizes and
+// real mouse input at 1280x800, and prints one JSON object of readings.
+// Usage: node probe.mjs <app url> <out dir> <label>
+// Writes <out dir>/<label>-desktop-{fresh,selected}.png and <label>.json.
+// PROBE_ONLY=drag,pinch runs just those scenarios (add "desktop" for the mouse part).
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const [url, out, label] = process.argv.slice(2);
+if (!url || !out || !label) throw new Error("usage: node probe.mjs <app url> <out dir> <label>");
+mkdirSync(out, { recursive: true });
+const PORT = 9333;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const chrome = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", [
+  "--headless=new", `--remote-debugging-port=${PORT}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), "probe-"))}`,
+  "--no-first-run", "--hide-scrollbars", "--enable-unsafe-swiftshader", "about:blank",
+], { stdio: "ignore" });
+
+// One tab per scenario: a fresh tab has no unsaved-changes prompt to block
+// navigation, and closing the old one through /json/close skips it.
+const http = (path) => fetch(`http://127.0.0.1:${PORT}${path}`, { method: "PUT" });
+let ws, target, seq = 0;
+const pending = new Map();
+async function newTab() {
+  if (target) { ws.close(); await http(`/json/close/${target.id}`); }
+  target = undefined;
+  for (let i = 0; i < 100 && !target; i++) {
+    try { target = await (await http("/json/new?about:blank")).json(); } catch { await sleep(100); }
+  }
+  ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((r) => { ws.onopen = r; });
+  ws.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    const p = pending.get(msg.id);
+    if (!p) return;
+    pending.delete(msg.id);
+    if (msg.error) p.reject(new Error(msg.error.message)); else p.resolve(msg.result);
+  };
+}
+const send = (method, params = {}) => new Promise((resolve, reject) => {
+  const id = ++seq;
+  const timer = setTimeout(() => { pending.delete(id); reject(new Error(`${method} timed out`)); }, 30000);
+  pending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
+  ws.send(JSON.stringify({ id, method, params }));
+});
+/** Run `fn(...args)` in the page; returns its (awaited) value. */
+async function page(fn, ...args) {
+  const r = await send("Runtime.evaluate", {
+    expression: `(${fn})(...${JSON.stringify(args)})`, awaitPromise: true, returnByValue: true,
+  });
+  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
+  return r.result.value;
+}
+
+// ---- in-page helpers (serialised into the page; no closures over Node values)
+const READY = async () => {
+  for (let i = 0; i < 100 && document.readyState !== "complete"; i++) await new Promise((r) => setTimeout(r, 100));
+  await document.fonts.ready;
+  for (let i = 0; i < 100 && (!document.querySelector('[data-slot="label-sheet"]') || document.body.textContent.includes("rendering label")); i++) await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => setTimeout(r, 500));
+  window.__events = { click: 0, dblclick: 0, pointercancel: 0, contextmenu: 0, down: [] };
+  const name = (el) => `${el.tagName}${el.dataset?.resizeHandle ? `[tick ${el.dataset.resizeHandle}]` : ""}${el.dataset?.slot ? `[${el.dataset.slot}]` : ""}`;
+  document.addEventListener("pointerdown", (e) => { window.__events.down.push(`${e.pointerType}:${name(e.target)}@${Math.round(e.clientX)},${Math.round(e.clientY)}`); }, true);
+  for (const type of ["click", "dblclick", "pointercancel", "contextmenu"]) document.addEventListener(type, () => { window.__events[type]++; }, true);
+  return !document.body.textContent.includes("rendering label");
+};
+const READ = () => {
+  const pane = document.querySelector('[data-slot="sidebar-inset"] section > div');
+  const sheet = document.querySelector('[data-slot="label-sheet"]');
+  const rect = (el) => {
+    if (!el) return null;
+    const b = el.getBoundingClientRect();
+    return [b.left, b.top, b.width, b.height].map((n) => Math.round(n * 10) / 10);
+  };
+  const focus = document.activeElement;
+  return {
+    transform: pane.querySelector('[style*="transform-origin"]').style.transform,
+    zoomField: document.querySelector('input[aria-label="Zoom percentage"]').value,
+    pageZoom: Math.round(visualViewport.scale * 1000) / 1000,
+    pageScroll: [scrollX, scrollY, Math.round(visualViewport.offsetLeft), Math.round(visualViewport.offsetTop)],
+    selected: [...document.querySelectorAll("[data-layer-id]")]
+      .filter((row) => row.querySelector('[data-slot="sidebar-menu-button"][data-active]'))
+      .map((row) => row.dataset.layerId),
+    outline: rect(document.querySelector("[data-resize-handle]")?.parentElement),
+    pane: rect(pane), sheet: rect(sheet),
+    editing: !!sheet?.querySelector('[contenteditable="true"], textarea, input'),
+    focus: focus ? `${focus.tagName}${focus.isContentEditable ? "[contenteditable]" : ""}` : null,
+    selectionText: String(getSelection()),
+    split: document.querySelector('[data-slot="resizable-handle"]')?.getAttribute("aria-valuenow") ?? null,
+    guides: document.querySelectorAll('[data-slot="rulers"] [role="button"][data-guide-control]').length,
+    popover: !!document.querySelector('[data-slot="popover-content"]'),
+    events: { ...window.__events, down: window.__events.down.slice(-4) },
+  };
+};
+/** Pick a layer through its Layers row (opens Layers first if closed). */
+const SELECT = async (id) => {
+  if (document.querySelector('[data-slot="sidebar"]').dataset.state === "collapsed") {
+    document.querySelector('[data-slot="sidebar-trigger"]').click();
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  document.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`).click();
+  await new Promise((r) => setTimeout(r, 600));
+};
+/** Screen points the gestures aim at. */
+const POINTS = () => {
+  const centre = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; };
+  const pane = document.querySelector('[data-slot="sidebar-inset"] section > div').getBoundingClientRect();
+  const sheet = document.querySelector('[data-slot="label-sheet"]').getBoundingClientRect();
+  // First point down the pane's centre line that is neither the label nor a ruler.
+  let pasteboard = null;
+  for (let y = pane.top + 30; y < pane.bottom - 5 && !pasteboard; y += 5) {
+    const el = document.elementFromPoint(pane.left + pane.width / 2, y);
+    if (el && pane.width && !el.closest('[data-slot="label-sheet"], [data-slot="rulers"]')
+      && el.closest('[data-slot="sidebar-inset"] section > div')) pasteboard = [pane.left + pane.width / 2, y];
+  }
+  return {
+    pane: [pane.left + pane.width / 2, pane.top + pane.height / 2],
+    paneTopLeft: [pane.left, pane.top],
+    sheet: [sheet.left + sheet.width / 2, sheet.top + sheet.height / 2],
+    sheetLeft: [sheet.left + 2, sheet.top + sheet.height / 2],
+    layer: centre(document.querySelector("[data-resize-handle]")?.parentElement),
+    tick: centre(document.querySelector('[data-resize-handle="1,1"]')),
+    pasteboard,
+  };
+};
+/** What a finger 14px out diagonally from the bottom-right tick, and one at
+ *  (34, 34) inside the pane's top-left corner, would land on. */
+const HITS = () => {
+  const describe = (el) => el ? `${el.tagName}${el.dataset.resizeHandle ? `[tick ${el.dataset.resizeHandle}]` : ""}${el.getAttribute("aria-label") ? `[${el.getAttribute("aria-label")}]` : ""}${el.dataset.slot ? `[${el.dataset.slot}]` : ""}` : null;
+  const tick = document.querySelector('[data-resize-handle="1,1"]')?.getBoundingClientRect();
+  const pane = document.querySelector('[data-slot="sidebar-inset"] section > div').getBoundingClientRect();
+  return {
+    tickSize: tick ? [Math.round(tick.width * 10) / 10, Math.round(tick.height * 10) / 10] : null,
+    tickPlus14: tick ? describe(document.elementFromPoint(tick.left + tick.width / 2 + 14, tick.top + tick.height / 2 + 14)) : null,
+    corner34: describe(document.elementFromPoint(pane.left + 34, pane.top + 34)),
+  };
+};
+const ZOOM_TO = async (pct) => {
+  const field = document.querySelector('input[aria-label="Zoom percentage"]');
+  field.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(field, String(pct));
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.blur();
+  await new Promise((r) => setTimeout(r, 300));
+};
+/** Header Undo presses until it disables (phone only; null on a desktop). */
+const UNDO_STEPS = async () => {
+  const button = () => document.querySelector('header button[aria-label="Undo"]');
+  if (!button()) return null;
+  let n = 0;
+  while (!button().disabled && n < 20) { button().click(); n++; await new Promise((r) => setTimeout(r, 100)); }
+  return n;
+};
+const CAN = async () => {
+  [...document.querySelectorAll('[role=group][aria-label="View mode"] button')].find((b) => b.textContent.trim() === "Can").click();
+  const scene = () => [...document.querySelectorAll('[data-slot="sidebar-inset"] section > div canvas')]
+    .some((c) => !c.closest('[data-slot="label-sheet"]'));
+  for (let i = 0; i < 100 && !scene(); i++) await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => setTimeout(r, 3000));
+  return scene();
+};
+
+// ---- input
+const touch = (type, points) => send("Input.dispatchTouchEvent", {
+  type, touchPoints: points.map(([x, y, id]) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 })),
+});
+/** Fingers move together in `steps` frames; each path is [x0, y0, x1, y1, id]. */
+async function moveFingers(paths, steps = 10) {
+  for (let s = 1; s <= steps; s++) {
+    await touch("touchMove", paths.map(([x0, y0, x1, y1, id]) => [x0 + (x1 - x0) * s / steps, y0 + (y1 - y0) * s / steps, id]));
+    await sleep(16);
+  }
+}
+async function swipe(paths, steps = 10) {
+  await touch("touchStart", paths.map(([x0, y0, , , id]) => [x0, y0, id]));
+  await sleep(30);
+  await moveFingers(paths, steps);
+  await touch("touchEnd", []);
+  await sleep(400);
+}
+async function tap([x, y]) { await touch("touchStart", [[x, y, 0]]); await sleep(40); await touch("touchEnd", []); }
+const mouse = (type, x, y, extra = {}) => send("Input.dispatchMouseEvent", { type, x, y, ...extra });
+async function screenshot(name) {
+  const { data } = await send("Page.captureScreenshot", { format: "png" });
+  writeFileSync(join(out, `${label}-${name}.png`), Buffer.from(data, "base64"));
+}
+async function paneHash() {
+  const p = await page(() => { const b = document.querySelector('[data-slot="sidebar-inset"] section > div').getBoundingClientRect(); return { x: b.left, y: b.top, width: b.width, height: b.height }; });
+  const { data } = await send("Page.captureScreenshot", { format: "png", clip: { ...p, scale: 1 } });
+  return createHash("sha1").update(data).digest("hex").slice(0, 10);
+}
+
+async function open(phone, [width, height] = phone ? [390, 844] : [1280, 800]) {
+  await newTab();
+  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await send("Emulation.setDeviceMetricsOverride", phone
+    ? { width, height, deviceScaleFactor: 3, mobile: true }
+    : { width, height, deviceScaleFactor: 1, mobile: false });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: phone, maxTouchPoints: phone ? 5 : 1 });
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+  await send("Page.navigate", { url });
+  await sleep(500);
+  await page(() => localStorage.clear());
+  await send("Page.reload", { ignoreCache: false });
+  await sleep(500);
+  if (!await page(READY)) throw new Error("label never rendered");
+  return page(() => matchMedia("(pointer: coarse)").matches);
+}
+
+const result = { label, url, at: new Date().toISOString() };
+const phone = {};
+const only = process.env.PROBE_ONLY?.split(",");
+const run = async (name, body) => {
+  if (only && !only.includes(name)) return;
+  console.error(`phone: ${name}`);
+  try { phone[name] = await body(); } catch (err) { phone[name] = { error: String(err) }; }
+};
+
+// ---- phone 390x844, touch
+await run("fresh", async () => ({ coarse: await open(true), read: await page(READ), hits: await page(HITS) }));
+await run("pan", async () => {
+  await open(true);
+  await page(ZOOM_TO, 200);
+  const before = await page(READ), p = (await page(POINTS)).pasteboard;
+  if (!p) return { before, error: "no pasteboard point at 200%" };
+  await swipe([[p[0], p[1], p[0] - 60, p[1] - 80, 0]]);
+  return { at: p, before, after: await page(READ), undo: await page(UNDO_STEPS) };
+});
+await run("pinch", async () => {
+  await open(true);
+  const before = await page(READ), [x, y] = (await page(POINTS)).sheet;
+  await swipe([[x - 40, y, x - 100, y, 0], [x + 40, y, x + 100, y, 1]]);
+  return { at: [x, y], before, after: await page(READ), undo: await page(UNDO_STEPS) };
+});
+await run("drag", async () => {
+  await open(true);
+  await page(SELECT, "description");
+  const before = await page(READ), [x, y] = (await page(POINTS)).layer;
+  await swipe([[x, y, x + 30, y + 20, 0]]);
+  return { at: [x, y], before, after: await page(READ), undo: await page(UNDO_STEPS) };
+});
+await run("secondFinger", async () => {
+  await open(true);
+  await page(SELECT, "description");
+  const before = await page(READ), pts = await page(POINTS), [x, y] = pts.layer, [sx, sy] = pts.sheet;
+  await touch("touchStart", [[x, y, 0]]);
+  await moveFingers([[x, y, x + 20, y, 0]], 5);
+  const midDrag = await page(READ);
+  await touch("touchStart", [[x + 20, y, 0], [sx, sy + 40, 1]]);
+  await moveFingers([[x + 20, y, x - 20, y, 0], [sx, sy + 40, sx, sy + 100, 1]], 10);
+  await touch("touchEnd", []);
+  await sleep(400);
+  return { before, midDrag, after: await page(READ), undo: await page(UNDO_STEPS) };
+});
+await run("liftOne", async () => {
+  await open(true);
+  const [x, y] = (await page(POINTS)).sheet;
+  await touch("touchStart", [[x - 40, y, 0], [x + 40, y, 1]]);
+  await moveFingers([[x - 40, y, x - 100, y, 0], [x + 40, y, x + 100, y, 1]]);
+  const pinched = await page(READ);
+  await touch("touchEnd", [[x + 100, y, 1]]); // CDP: a touchEnd listing a point lifts just that finger
+  await moveFingers([[x - 100, y, x - 160, y, 0]]);
+  const after = await page(READ);
+  await touch("touchEnd", []);
+  await sleep(400);
+  return { pinched, after, end: await page(READ) };
+});
+await run("pinchOnLayer", async () => {
+  await open(true);
+  await page(SELECT, "description");
+  const before = await page(READ), [x, y] = (await page(POINTS)).layer;
+  await swipe([[x - 10, y, x - 80, y, 0], [x + 10, y, x + 80, y, 1]]);
+  return { before, after: await page(READ), undo: await page(UNDO_STEPS) };
+});
+for (const id of ["description", "warning"]) {
+  await run(`doubleTap-${id}`, async () => {
+    await open(true);
+    await page(SELECT, id);
+    const before = await page(READ), p = (await page(POINTS)).layer;
+    await tap(p); await sleep(120); await tap(p); await sleep(600);
+    return { before, after: await page(READ) };
+  });
+}
+await run("resize", async () => {
+  await open(true);
+  await page(SELECT, "description");
+  const before = await page(READ), hits = await page(HITS), [x, y] = (await page(POINTS)).tick;
+  await swipe([[x, y, x + 20, y + 10, 0]]);
+  return { hits, before, after: await page(READ), undo: await page(UNDO_STEPS) };
+});
+await run("guide", async () => {
+  await open(true);
+  const before = await page(READ), [left, top] = (await page(POINTS)).paneTopLeft;
+  await swipe([[left + 150, top + 12, left + 150, top + 132, 0]]);
+  return { before, after: await page(READ) };
+});
+await run("split", async () => {
+  await open(true);
+  const before = await page(READ), [x, y] = (await page(POINTS)).sheetLeft;
+  await swipe([[x, y, x + 100, y, 0]]);
+  return { before, after: await page(READ) };
+});
+await run("corner", async () => {
+  await open(true);
+  const before = await page(READ), [left, top] = (await page(POINTS)).paneTopLeft;
+  await tap([left + 34, top + 34]); await sleep(400);
+  return { before, after: await page(READ) };
+});
+await run("can", async () => {
+  await open(true);
+  if (!await page(CAN)) return { error: "no 3D canvas" };
+  const [x, y] = (await page(POINTS)).pane, h0 = await paneHash(), z0 = (await page(READ)).zoomField;
+  await swipe([[x, y, x + 80, y, 0]]);
+  const h1 = await paneHash();
+  await swipe([[x - 40, y, x - 100, y, 0], [x + 40, y, x + 100, y, 1]]);
+  const z1 = (await page(READ)).zoomField, h2 = await paneHash();
+  await swipe([[x - 40, y, x, y + 40, 0], [x + 40, y, x + 80, y + 40, 1]]);
+  const h3 = await paneHash();
+  return { orbitChanged: h0 !== h1, zoom: [z0, z1], pinchChanged: h1 !== h2, panChanged: h2 !== h3, pageZoom: (await page(READ)).pageZoom };
+});
+await run("fit", async () => {
+  const sizes = {};
+  for (const size of [[390, 844], [320, 568], [844, 390]]) {
+    await open(true, size);
+    await page(SELECT, "description");
+    const { pane, sheet } = await page(READ);
+    // Whole label in view: the sheet's bottom and right edges inside the pane.
+    sizes[size.join("x")] = { pane, sheet, whole: sheet[1] + sheet[3] <= pane[1] + pane[3] + 0.5 && sheet[0] + sheet[2] <= pane[0] + pane[2] + 0.5 };
+  }
+  return sizes;
+});
+result.phone = phone;
+
+// ---- desktop 1280x800, mouse
+const desktop = {};
+if (!only || only.includes("desktop")) try {
+  desktop.coarse = await open(false);
+  await screenshot("desktop-fresh");
+  await page(async () => {
+    document.querySelector('[data-layer-id] [data-slot="sidebar-menu-button"]').click();
+    await new Promise((r) => setTimeout(r, 600));
+  });
+  await screenshot("desktop-selected");
+  await open(false);
+  const [x, y] = (await page(POINTS)).pane;
+  for (let i = 0; i < 3; i++) { await mouse("mouseWheel", x, y, { deltaX: 0, deltaY: -100 }); await sleep(50); }
+  await sleep(300);
+  desktop.wheel = await page(READ);
+  await mouse("mouseMoved", x, y);
+  await mouse("mousePressed", x, y, { button: "right", buttons: 2, clickCount: 1 });
+  for (let s = 1; s <= 5; s++) await mouse("mouseMoved", x - 12 * s, y - 8 * s, { button: "right", buttons: 2 });
+  await mouse("mouseReleased", x - 60, y - 40, { button: "right", buttons: 0, clickCount: 1 });
+  await sleep(300);
+  desktop.rightDrag = await page(READ);
+  await open(false);
+  await page(SELECT, "description");
+  const [lx, ly] = (await page(POINTS)).layer;
+  await mouse("mouseMoved", lx, ly);
+  for (const clickCount of [1, 2]) {
+    await mouse("mousePressed", lx, ly, { button: "left", buttons: 1, clickCount });
+    await mouse("mouseReleased", lx, ly, { button: "left", buttons: 0, clickCount });
+  }
+  await sleep(600);
+  desktop.doubleClick = await page(READ);
+} catch (err) { desktop.error = String(err); }
+result.desktop = desktop;
+
+writeFileSync(join(out, `${label}.json`), JSON.stringify(result, null, 2));
+console.log(JSON.stringify(result));
+ws.close();
+chrome.kill();
+process.exit(0);
+```
+
+What each scenario reads: `transform` is the view (the zoom layer's inline transform); `pageZoom` and `pageScroll` say whether the browser zoomed or scrolled the page itself; `outline` is the selected layer's selection box on screen (x, y, w, h); `undo` is how many header Undo presses it took to empty the history after the gesture (phone only); `events.down` names the element each `pointerdown` targeted and where the finger was.
+
+- [ ] **Step 3: Run it twice**
+
+```bash
+node .agents/mockups/phone-gestures/probe.mjs http://localhost:5190/ .agents/mockups/phone-gestures before
+node .agents/mockups/phone-gestures/probe.mjs http://localhost:5190/ .agents/mockups/phone-gestures before-2
+```
+
+Each run takes about six minutes. Expected (measured while planning at `d074a89d`; record the actual numbers, not these):
+
+| Scenario | Expected before |
+|---|---|
+| `fresh` | `coarse` true; `transform` `translate(0px, 0px) scale(1)`; `corner34` the Ruler settings button |
+| `pan` | `before.transform` `translate(-195px, -347.5px) scale(2)`; `after.transform` the same; `pointercancel` 1; `undo` 0 |
+| `pinch` | `after.transform` unchanged at scale 1; `after.pageZoom` about 5 (the page zoomed); `undo` 0 |
+| `drag` | `events.down` `touch:SPAN[tick 1,0]`; outline 23.3 → about 53 wide, x unchanged (a resize, not a move); `undo` 1 |
+| `secondFinger`, `pinchOnLayer` | outline width changed (ticks resized it); `undo` 1 |
+| `liftOne` | `pageZoom` about 5; `transform` scale 1 throughout |
+| `doubleTap-description` | `dblclick` 1, `editing` false, both downs on a tick |
+| `doubleTap-warning` | `editing` true, `focus` `DIV[contenteditable]` |
+| `resize` | `tickSize` [6.5, 6.5]; `tickPlus14` `CANVAS`; outline 23.3 → about 45 wide; `undo` 1 |
+| `guide` | `guides` 0 → 0; `pointercancel` 1 |
+| `split` | `split` "0" → "28" |
+| `corner` | `popover` true |
+| `can` | `orbitChanged`, `pinchChanged`, `panChanged` true; `zoom` ["100", "250"]; `pageZoom` 1 |
+| `fit` | 390x844 `whole` true, sheet [21, 153.2, 369, 232.8]; 320x568 `whole` false; 844x390 `whole` false |
+| `desktop` | `coarse` false; `wheel.transform` `translate(-768px, -532.875px) scale(2.5)`; `rightDrag.transform` `translate(-828px, -572.875px) scale(2.5)`; `doubleClick.editing` true |
+
+Compare `before.json` with `before-2.json` scenario by scenario and the two screenshot pairs with the Task 3.7 Step 4 script. Record any difference as the noise floor; Task 3.7 compares against it.
+
+- [ ] **Step 4: Phone layout numbers (Global Constraints)**
+
+Run the Phase 2 Task 2.1 procedure (chrome-devtools MCP) at 390×844 phone for **fresh** and **selected** and keep the JSON: `preview`, `pageScroll`, `under44`, `smallestFieldFont`. Expected as Phase 2 left them: preview 369x233, page 390/390, under44 0, font 16.
+
+- [ ] **Step 5: Record and commit**
+
+Append to `.agents/ledger.md`, in the format of the `2026-11-12 phone-shell` entry: `finding: [user request] canvas touch gestures (phone layout plan, Phase 3)`, `status: in-progress`, `attempted-in: .agents/worktrees/web-app-pages @ feat/phone-gestures, measured at <git rev-parse --short HEAD>`, `delta: baseline`, the probe's one-line command, one `evidence` line per scenario (the readings in the table's columns, from `before.json`), the run-to-run differences, and the Step 4 JSON.
+
+```bash
+git add .agents/ledger.md
+git commit -m "Docs: Record the canvas touch baseline"
+```
+
+### Task 3.2: 100% shows the whole label
+
+**Files:**
+- Modify: `src/layout.ts` (after `PREVIEW_MAX_W`, 87–91)
+- Modify: `src/components/PreviewCompare.tsx` (the sheet's `style`, 509–518)
+- Modify: `src/App.tsx` (the zoom layer's `style`, 2652–2655, and its comment 2644–2648)
+- Modify: `src/three/canScene.ts` (`framingDistance` 736–743 and its comment 721–735; the `PREVIEW_MAX_W` import at 15)
+- Test: `tests/fit-sheet-dom.test.tsx` (create), `tests/zoom-pan-render-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Produces in `src/layout.ts`: `export const fitSheetWidth = (paneW: number, paneH: number): number => Math.min(paneW, PREVIEW_MAX_W, paneH * PAGE.w / PAGE.h);` with a doc comment: the 2D sheet's on-screen width in a pane of that content size, filling the width up to `PREVIEW_MAX_W` unless the pane is too short for the label's height; PreviewCompare states the same rule in CSS, canScene frames to it.
+- Produces in `PreviewCompare`: the sheet's `maxWidth` becomes `` `min(${PREVIEW_MAX_W}px, ${(100 * PAGE.w) / PAGE.h}cqh)` ``. Everything else on the sheet is unchanged.
+- Produces in `App.tsx`: the zoom layer's style gains `containerType: "size"`, so `cqh` inside it is the zoom layer's content height (the pane less the ruler padding).
+- Produces in `canScene.ts`: `const sheetHeight = fitSheetWidth(w, h) * (PAGE.h / PAGE.w);`.
+
+Planner's call: CSS, not a measured width in JS: a container query on the zoom layer keeps the sheet's size out of React, as the view is (#714), and re-fits on every pane resize for free. The zoom layer already carries a transform, which already makes it the containing block that `container-type`'s layout containment would add.
+Planner's call: the 3D framing follows the same rule (`fitSheetWidth`), so 100% still frames the label at the 2D sheet's height on a short pane. Without it the Can view at 844×390 would frame the label taller than the pane.
+Planner's call: no change to `clampView` or the zoom range: 100% stays "fitted"; only what fitted means changes. At 1280×800 the height bound is never the smaller one (900 and 703 wide against about 688 × 1.585), so the desktop renders identically; Step 5 proves it.
+
+- [ ] **Step 1: Write the failing tests**
+
+```tsx
+// tests/fit-sheet-dom.test.tsx — 100% shows the whole label: the 2D sheet fits
+// the pane's width and height (phone layout, Phase 3), and the 3D framing
+// reads the same rule.
+// @vitest-environment happy-dom
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { expect, it, vi } from "vitest";
+import { PreviewCompare } from "../src/components/PreviewCompare";
+import { fitSheetWidth, PAGE, PREVIEW_MAX_W } from "../src/layout";
+
+it.each([
+  [1003, 688, 900],  // desktop 1280x800, fresh: the 900px cap
+  [703, 688, 703],   // desktop, layer selected: the width
+  [390, 2000, 390],  // a tall pane: the width
+])("a %ix%i pane fits a sheet %i wide", (w, h, expected) => {
+  expect(fitSheetWidth(w, h)).toBe(expected);
+});
+
+it("a short pane fits the label's height", () => {
+  expect(fitSheetWidth(299, 163)).toBe(163 * PAGE.w / PAGE.h);
+  expect(fitSheetWidth(299, 163)).toBeCloseTo(258.38, 2);
+});
+
+it("the sheet states the same rule in CSS, against its container's height", () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  act(() => {
+    root.render(createElement(PreviewCompare, {
+      canvasRender: null, layers: [], editLayerOf: (l) => l, selected: [], onPick: vi.fn(),
+      onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCommit: vi.fn(),
+      onDrag: () => ({ x: null, y: null, dx: 0, dy: 0 }), onDragCancel: vi.fn(), onResize: vi.fn(),
+      onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: 0, unit: "in",
+    }));
+  });
+  const sheet = container.querySelector<HTMLElement>('[data-slot="label-sheet"]')!;
+  expect(sheet.style.maxWidth).toBe(`min(${PREVIEW_MAX_W}px, ${(100 * PAGE.w) / PAGE.h}cqh)`);
+  act(() => { root.unmount(); });
+  vi.unstubAllGlobals();
+});
+```
+
+In `tests/zoom-pan-render-dom.test.tsx`, add:
+
+```tsx
+it("the zoom layer is the sheet's size container, so cqh is the pane's height", async () => {
+  const { layer } = await mountEditor();
+  expect(layer.style.containerType).toBe("size");
+});
+```
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/fit-sheet-dom.test.tsx tests/zoom-pan-render-dom.test.tsx`
+Expected: FAIL: `fitSheetWidth` is not exported; `maxWidth` is `900px`; `containerType` is `""`.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments: PreviewCompare's style comment names `fitSheetWidth` as the same rule and says `cqh` is the zoom layer's height; App's zoom layer comment gains one sentence (it is the sheet's size container, so Fit shows the whole label); canScene's `framingDistance` comment "The 2D sheet is width-driven (it fills the pane up to PREVIEW_MAX_W …)" becomes "The 2D sheet's width is fitSheetWidth: the pane's width up to PREVIEW_MAX_W, less when the pane is too short for the label". Drop `PREVIEW_MAX_W` from canScene's import if nothing else there uses it.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/fit-sheet-dom.test.tsx tests/zoom-pan-render-dom.test.tsx tests/core.test.ts tests/inplace-editor-dom.test.tsx`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Measure**
+
+`PROBE_ONLY=fit,desktop node .agents/mockups/phone-gestures/probe.mjs http://localhost:5190/ .agents/mockups/phone-gestures fit`
+Expected: `fit` 390x844 sheet [21, 153.2, 369, 232.8] (unchanged), 320x568 and 844x390 `whole` true; `fit-desktop-fresh.png` and `fit-desktop-selected.png` differ from `before-desktop-*.png` by no more than the noise floor (Task 3.7 Step 4 script). If not, stop: the desktop changed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/layout.ts src/components/PreviewCompare.tsx src/App.tsx src/three/canScene.ts tests/fit-sheet-dom.test.tsx tests/zoom-pan-render-dom.test.tsx
+git commit -m "Fix: 100% shows the whole label on a short pane"
+```
+
+### Task 3.3: Pinch math
+
+**Files:**
+- Modify: `src/useZoomPan.ts` (after `zoomAbout`, 57–65; the `View` type at 20–22 stays where it is)
+- Test: `tests/zoom-pan-pinch.test.ts` (create)
+
+**Interfaces:**
+- Produces: `export const pinchView = (r: DOMRect, v: View, a0: { x: number; y: number }, b0: { x: number; y: number }, a1: { x: number; y: number }, b1: { x: number; y: number }): View` — two fingers moved from `a0`, `b0` to `a1`, `b1` (pane px, from the pane's top-left): zoom by the change in their spread about the old midpoint, follow the midpoint, clamp with `clampZoom` then `clampView`, exactly as the wheel does. Not exported: `View` stays file-local (callers pass object literals).
+
+Body (the algorithm; written as an offset from `v` like `zoomAbout`, so a pinch that moves nothing returns `v`'s numbers exactly):
+
+```ts
+export const pinchView = (r: DOMRect, v: View, a0: Point, b0: Point, a1: Point, b1: Point): View => {
+  const spread0 = Math.hypot(b0.x - a0.x, b0.y - a0.y);
+  const spread1 = Math.hypot(b1.x - a1.x, b1.y - a1.y);
+  // Coincident fingers have no spread to compare: keep the zoom, still follow the midpoint.
+  const z = clampZoom(spread0 ? (v.z * spread1) / spread0 : v.z);
+  const k = z / v.z;
+  const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
+  const m1 = { x: (a1.x + b1.x) / 2, y: (a1.y + b1.y) / 2 };
+  return clampView(r, z,
+    v.x + (m1.x - m0.x) + (1 - k) * (m0.x - v.x),
+    v.y + (m1.y - m0.y) + (1 - k) * (m0.y - v.y));
+};
+```
+
+with `type Point = { x: number; y: number };` beside `View` (file-local).
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// tests/zoom-pan-pinch.test.ts — two fingers zoom about their midpoint and
+// pan with it, clamped as the wheel is (phone layout, Phase 3).
+import { expect, it } from "vitest";
+import { pinchView, zoomAbout } from "../src/useZoomPan";
+
+const R = { x: 0, y: 0, left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600 } as DOMRect;
+const P = (x: number, y: number) => ({ x, y });
+
+it("doubling the spread about a still midpoint zooms 2x about it, as the wheel would", () => {
+  const v = { z: 1, x: 0, y: 0 };
+  const next = pinchView(R, v, P(300, 300), P(500, 300), P(200, 300), P(600, 300));
+  expect(next).toEqual({ z: 2, x: -400, y: -300 });
+  expect(next).toEqual(zoomAbout(R, v, 2, 400, 300));
+});
+
+it("moving both fingers together pans by the midpoint's move", () => {
+  expect(pinchView(R, { z: 2, x: -400, y: -300 }, P(300, 300), P(500, 300), P(320, 310), P(520, 310)))
+    .toEqual({ z: 2, x: -380, y: -290 });
+});
+
+it("zooms and pans in one move", () => {
+  expect(pinchView(R, { z: 1, x: 0, y: 0 }, P(300, 300), P(500, 300), P(250, 350), P(650, 350)))
+    .toEqual({ z: 2, x: -350, y: -250 });
+});
+
+// Review Focus 3: at the limits nothing moves (so liveView tells nobody, #726).
+it("stops at the top of the range without drifting", () => {
+  const v = { z: 2.5, x: -600, y: -450 };
+  expect(pinchView(R, v, P(300, 300), P(500, 300), P(200, 300), P(600, 300))).toEqual(v);
+});
+
+it("stops at the bottom of the range, and a fitted view cannot pan", () => {
+  const v = { z: 1, x: 0, y: 0 };
+  expect(pinchView(R, v, P(300, 300), P(500, 300), P(350, 300), P(450, 300))).toEqual(v);
+  expect(pinchView(R, v, P(300, 300), P(500, 300), P(350, 350), P(550, 350))).toEqual(v);
+});
+
+it("treats fingers that start on one spot as a pan, never NaN", () => {
+  const v = { z: 2, x: -400, y: -300 };
+  expect(pinchView(R, v, P(400, 300), P(400, 300), P(390, 300), P(410, 300))).toEqual(v);
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `npx vitest run tests/zoom-pan-pinch.test.ts`
+Expected: FAIL, `pinchView` is not exported.
+
+- [ ] **Step 3: Implement**
+
+As above, with a doc comment that says what the four points are and that it clamps as the wheel does. Update the file's header comment: "wheel-to-zoom, right-drag pan" becomes "wheel-to-zoom, right-drag pan, one-finger pan and two-finger pinch".
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx vitest run tests/zoom-pan-pinch.test.ts tests/zoom-pan-render-dom.test.tsx`
+Expected: PASS (6 + existing). `npx tsc --noEmit`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/useZoomPan.ts tests/zoom-pan-pinch.test.ts
+git commit -m "Feat: Add the pinch math for zooming the preview with two fingers"
+```
+
+### Task 3.4: Pan with one finger, pinch with two
+
+**Files:**
+- Modify: `src/components/PreviewCompare.tsx` (`PreviewCompareHandle` 80–85; `useImperativeHandle` 191–195; the Escape effect 398–411)
+- Modify: `src/useZoomPan.ts` (signature 69–73; right-drag pan 175–201; the return 203–206)
+- Modify: `src/App.tsx` (move `const previewRef = useRef<PreviewCompareHandle>(null);` from 589 to just before the `useZoomPan` call at 559; pass it; the pane `div` at 2608–2640 and its comment)
+- Modify: `tests/rulers-dom.test.tsx` (the handle literal at 64)
+- Test: `tests/zoom-pan-touch-dom.test.tsx` (create), `tests/preview-touch-dom.test.tsx` (create)
+
+**Interfaces:**
+- Consumes: `pinchView` (Task 3.3), `clampView`, `liveView`.
+- Produces on `PreviewCompareHandle`:
+  - `layerGestureArmed: () => boolean` — a press is down on a layer (move) or a tick (resize), started or not.
+  - `cancelLayerGesture: () => void` — ends that gesture exactly as Escape does: calls `onDragCancel` if it had moved (so App undoes its one step), clears the snap lines and readout, and drops it so later moves do nothing.
+  Both come from one `const cancelLayerGesture = useCallback((): boolean => …, [onDragCancel])` that returns whether it undid a started gesture; the Escape effect calls it and, when it returns true, does its `preventDefault()` and `swallowClick.current = true` as today.
+- Produces: `useZoomPan(is2d: boolean, previewPane: RefObject<HTMLDivElement | null>, canView: RefObject<CanViewHandle | null>, preview: RefObject<PreviewCompareHandle | null>)`. `onPanStart`, `onPanMove`, `onPanEnd` keep their names and take the `React.PointerEvent<HTMLDivElement>`; the return gains `onPaneClickCapture: (e: React.MouseEvent) => void`.
+- Produces in `App.tsx`: the pane `div` gains `touch-none` in its class list and `onClickCapture={onPaneClickCapture}`.
+
+The rules (each is a test below):
+- Only `pointerType === "touch"` takes the new path; mouse and pen run today's code unchanged (right button pans, nothing else).
+- A finger whose target is inside `[data-slot="rulers"], [contenteditable="true"], input, textarea` is not counted: the rulers' strips and guide handles, and the text being edited, own it. (Resize ticks and the divider stop `pointerdown` propagation, so the pane never sees them.)
+- One finger pans, unless `preview.current?.layerGestureArmed()` is true when it lands (the layer drag took it).
+- A second finger cancels any layer gesture (`cancelLayerGesture()`), and the two fingers pinch.
+- A third finger is ignored until the fingers lift.
+- When a finger of a pinch lifts or is cancelled, the other pans.
+- Views change only `liveView`; React hears the zoom once, when a finger lifts (`setZoom(liveView.get().z)`, which React drops when unchanged, so a pan never renders). No undo step: the view is not the document.
+- The click that follows a finger gesture that moved the view is swallowed in capture, so a pan never deselects (the pane's click) or picks (the sheet's click). A gesture that moved nothing leaves its click alone.
+
+Body for the touch path (the state is the algorithm; place it after the right-drag pan and route to it from the three handlers with `if (e.pointerType === "touch") return onTouch…(e);` as their first line, after `onPanStart`'s reset):
+
+```ts
+  // Fingers on the pane (touch only), by pointerId, at their last event: one
+  // pans unless the layer drag took it, two pinch, a third is ignored. Each
+  // touch is captured to the element it landed on by the browser, and its
+  // moves bubble here, so the pane takes no capture of its own.
+  const fingers = useRef(new Map<number, Point>());
+  const lonePans = useRef(false);
+  /** The finger gesture moved the view: swallow the click it ends with. */
+  const touchMoved = useRef(false);
+  function onTouchDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!is2d || fingers.current.size === 2) return;
+    if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();
+    else preview.current?.cancelLayerGesture();
+  }
+  function onTouchMove(e: React.PointerEvent<HTMLDivElement>) {
+    const from = fingers.current.get(e.pointerId);
+    if (!from) return;
+    const to = { x: e.clientX, y: e.clientY };
+    const r = e.currentTarget.getBoundingClientRect();
+    const v = liveView.get();
+    if (fingers.current.size === 2) {
+      const other = [...fingers.current].find(([id]) => id !== e.pointerId)![1];
+      const local = (p: Point) => ({ x: p.x - r.left, y: p.y - r.top });
+      liveView.set(pinchView(r, v, local(from), local(other), local(to), local(other)));
+    } else if (lonePans.current) {
+      liveView.set(clampView(r, v.z, v.x + to.x - from.x, v.y + to.y - from.y));
+    }
+    fingers.current.set(e.pointerId, to);
+    if (liveView.get() !== v) touchMoved.current = true;
+  }
+  function onTouchEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (!fingers.current.delete(e.pointerId)) return;
+    lonePans.current = true; // the finger left after a pinch pans
+    setZoom(liveView.get().z);
+  }
+  function onPaneClickCapture(e: React.MouseEvent) {
+    if (!touchMoved.current) return;
+    touchMoved.current = false;
+    e.stopPropagation();
+  }
+```
+
+`const OWNS_ITS_FINGER = '[data-slot="rulers"], [contenteditable="true"], input, textarea';` at module level with a one-line comment. `onPanStart` begins with `if (!fingers.current.size) touchMoved.current = false;` so a new gesture (finger or mouse) never inherits an old swallow.
+
+Planner's call: a second finger cancels the layer drag through the Escape path, so the layer returns and no undo step remains, rather than keeping the move. Pinches usually start on the label, which is mostly layers, and the first finger lands a few ms early; keeping its move would nudge a layer on most pinches. (Measured before: a pinch over Description resized it.)
+Planner's call: a finger on a resize tick owns the gesture; a second finger does nothing until it lifts. The tick stops propagation, so the pane never saw the first finger and cannot pinch with it.
+Planner's call: one finger on bare stock or on a locked layer pans: "pasteboard" is read as anything the move drag does not take, or a zoomed-in label (which fills the pane) could not be panned with one finger at all.
+Planner's call: the zoom is published to React when a finger lifts, not after the wheel's 100 ms settle: a lift is the gesture's end, so no timer is needed.
+
+- [ ] **Step 1: Write the failing PreviewCompare tests**
+
+`tests/preview-touch-dom.test.tsx` — mount like `tests/inplace-editor-dom.test.tsx` (`measure`, `planAssets`, `boxOfLayer`; the sheet's rect stubbed to `W` 800 × `H = W * PAGE.h / PAGE.w`; `sheet.setPointerCapture = () => {}`), through `function mount({ layers = ALL, selected = [] }: { layers?: Layer[]; selected?: string[] } = {})` where `const ALL = lolevLayers()`, called in `beforeEach` with no options and again by any test that needs other layers or a selection: it renders into the same root and reassigns the file's `let sheet` (stubbing its rect and `setPointerCapture` each time). It passes `ref: handle` as a prop (`createElement(PreviewCompare, { ...props, ref: handle })`), `onDrag` and `onResize` as `vi.fn(() => ({ x: null, y: null, dx: 0, dy: 0 }))`, `onDragCancel` as `vi.fn()`. Helpers (`centre` always reads `ALL`, so a test can aim at a layer it left out):
+
+```tsx
+const centre = (id: string) => {
+  const b = boxOfLayer(id, ALL, measure, planAssets)!;
+  return { x: ((b.x + b.w / 2) / PAGE.w) * W, y: ((b.y + b.h / 2) / PAGE.h) * H };
+};
+const fire = (el: Element, type: string, x: number, y: number, pointerType = "touch") => act(() => {
+  el.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, pointerType, clientX: x, clientY: y }));
+});
+```
+
+```tsx
+it("arms on a finger on an unlocked layer, not on bare stock, and disarms on lift", () => {
+  const { x, y } = centre("name");
+  fire(sheet, "pointerdown", x, y);
+  expect(handle.current!.layerGestureArmed()).toBe(true);
+  fire(sheet, "pointerup", x, y);
+  expect(handle.current!.layerGestureArmed()).toBe(false);
+  fire(sheet, "pointerdown", 1, 1);
+  expect(handle.current!.layerGestureArmed()).toBe(false);
+});
+
+it("cancelLayerGesture undoes a drag that moved, once, and stops it", () => {
+  const { x, y } = centre("name");
+  fire(sheet, "pointerdown", x, y);
+  fire(sheet, "pointermove", x + 20, y);
+  expect(onDrag).toHaveBeenCalledTimes(1);
+  act(() => handle.current!.cancelLayerGesture());
+  expect(onDragCancel).toHaveBeenCalledTimes(1);
+  fire(sheet, "pointermove", x + 40, y);
+  expect(onDrag).toHaveBeenCalledTimes(1);
+  expect(handle.current!.layerGestureArmed()).toBe(false);
+});
+
+it("cancelling a press that never moved undoes nothing", () => {
+  const { x, y } = centre("name");
+  fire(sheet, "pointerdown", x, y);
+  act(() => handle.current!.cancelLayerGesture());
+  expect(onDragCancel).not.toHaveBeenCalled();
+  expect(handle.current!.layerGestureArmed()).toBe(false);
+});
+
+it("Escape mid-drag still undoes it (the shared path)", () => {
+  const { x, y } = centre("name");
+  fire(sheet, "pointerdown", x, y, "mouse");
+  fire(sheet, "pointermove", x + 20, y, "mouse");
+  act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  expect(onDragCancel).toHaveBeenCalledTimes(1);
+});
+```
+
+- [ ] **Step 2: Write the failing pane tests**
+
+`tests/zoom-pan-touch-dom.test.tsx` — copy `tests/zoom-pan-render-dom.test.tsx`'s mocks, `PANE`, `mountEditor`, `settle` and `run`, with one change: the `PreviewCompare` stand-in also exposes a handle, so the pane's rules are tested without the real hit test (add `import type { PreviewCompareHandle } from "../src/components/PreviewCompare";`):
+
+```tsx
+const probe = vi.hoisted(() => ({
+  renders: 0, preview: null as PreviewProps | null, actions: [] as Command[], view: null as LiveView | null,
+  armed: false, cancel: null as null | (() => void),
+}));
+vi.mock("../src/components/PreviewCompare", async () => {
+  const { useImperativeHandle } = await import("react");
+  return {
+    SNAP_PT: 6,
+    PreviewCompare: (props: PreviewProps & { ref?: import("react").Ref<PreviewCompareHandle> }) => {
+      useImperativeHandle(props.ref, () => ({
+        showArt() {}, showMask() {}, getPageElement: () => null,
+        layerGestureArmed: () => probe.armed, cancelLayerGesture: () => probe.cancel!(),
+      }));
+      probe.renders++; probe.preview = props; return null;
+    },
+  };
+});
+```
+
+`beforeEach`: `probe.armed = false; probe.cancel = vi.fn(() => { probe.armed = false; });`. Helpers:
+
+```tsx
+const finger = (el: Element, type: string, id: number, clientX: number, clientY: number) => act(() => {
+  el.dispatchEvent(new PointerEvent(type, { pointerType: "touch", pointerId: id, button: 0, clientX, clientY, bubbles: true }));
+});
+const click = (el: Element) => act(() => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+const viewOf = (layer: HTMLElement) => {
+  const m = /translate\((\S+)px, (\S+)px\) scale\((\S+)\)/.exec(layer.style.transform)!;
+  return { x: Number(m[1]), y: Number(m[2]), z: Number(m[3]) };
+};
+const pick = (id: string) => act(() => { probe.preview!.onPick(id, {}); });
+const undoDisabled = () => probe.actions.find((c) => c.id === "undo")!.disabled;
+/** Fitted → 2x: fingers 11 and 12 spread from 200 to 400 apart about (400, 300). */
+function pinchTo2x(pane: HTMLElement) {
+  finger(pane, "pointerdown", 11, 300, 300);
+  finger(pane, "pointerdown", 12, 500, 300);
+  finger(pane, "pointermove", 11, 200, 300);
+  finger(pane, "pointermove", 12, 600, 300);
+}
+```
+
+Two Zoom In steps from fitted give `{ z: 1.5625, x: -225, y: -168.75 }` on the 800×600 pane (zoomed about its centre).
+
+```tsx
+it("asks the browser for no scrolling or zooming of its own", async () => {
+  const { pane } = await mountEditor();
+  expect(pane.className).toContain("touch-none");
+});
+
+it("one finger on the pasteboard pans, without rendering the editor", async () => {
+  const { pane, layer } = await mountEditor();
+  run("zoom-in"); run("zoom-in");
+  const before = probe.renders;
+  finger(pane, "pointerdown", 11, 400, 300);
+  finger(pane, "pointermove", 11, 380, 290);
+  finger(pane, "pointermove", 11, 370, 280);
+  expect(probe.renders - before).toBe(0);
+  finger(pane, "pointerup", 11, 370, 280);
+  expect(viewOf(layer)).toEqual({ z: 1.5625, x: -255, y: -188.75 });
+});
+
+it("two fingers pinch about their midpoint and publish the zoom when one lifts", async () => {
+  const { pane, layer, field } = await mountEditor();
+  const before = probe.renders;
+  pinchTo2x(pane);
+  expect(probe.renders - before).toBe(0);
+  const v = viewOf(layer);
+  expect(v.z).toBeCloseTo(2, 10); expect(v.x).toBeCloseTo(-400, 10); expect(v.y).toBeCloseTo(-300, 10);
+  expect(field.value).toBe("200");
+  finger(pane, "pointerup", 12, 600, 300);
+  expect(probe.preview!.zoom).toBeCloseTo(2, 10);
+});
+
+it("the finger left after a pinch pans", async () => {
+  const { pane, layer } = await mountEditor();
+  pinchTo2x(pane);
+  finger(pane, "pointerup", 12, 600, 300);
+  finger(pane, "pointermove", 11, 160, 300);
+  const v = viewOf(layer);
+  expect(v.z).toBeCloseTo(2, 10); expect(v.x).toBeCloseTo(-440, 10); expect(v.y).toBeCloseTo(-300, 10);
+});
+
+it("a lone finger the layer drag took does not pan; a second cancels the drag and pinches", async () => {
+  const { pane, layer } = await mountEditor();
+  run("zoom-in"); run("zoom-in");
+  probe.armed = true;
+  finger(pane, "pointerdown", 11, 300, 300);
+  finger(pane, "pointermove", 11, 320, 300);
+  expect(viewOf(layer)).toEqual({ z: 1.5625, x: -225, y: -168.75 });
+  finger(pane, "pointerdown", 12, 500, 300);
+  expect(probe.cancel).toHaveBeenCalledTimes(1);
+  finger(pane, "pointermove", 12, 520, 300);
+  expect(viewOf(layer).z).toBeCloseTo((1.5625 * 200) / 180, 10);
+});
+
+it("a third finger is ignored", async () => {
+  const { pane, layer } = await mountEditor();
+  pinchTo2x(pane);
+  const at = layer.style.transform;
+  finger(pane, "pointerdown", 13, 100, 100);
+  finger(pane, "pointermove", 13, 50, 50);
+  finger(pane, "pointerup", 13, 50, 50);
+  expect(layer.style.transform).toBe(at);
+});
+
+it("a finger on a ruler or on the text being edited does not pan", async () => {
+  const { pane, layer } = await mountEditor();
+  run("zoom-in"); run("zoom-in");
+  const rulers = Object.assign(document.createElement("div"), { innerHTML: "<div></div>" });
+  rulers.dataset.slot = "rulers";
+  const field = document.createElement("div");
+  field.setAttribute("contenteditable", "true");
+  pane.append(rulers, field);
+  for (const el of [rulers.firstElementChild!, field]) {
+    finger(el, "pointerdown", 11, 400, 300);
+    finger(el, "pointermove", 11, 350, 250);
+    finger(el, "pointerup", 11, 350, 250);
+  }
+  expect(viewOf(layer)).toEqual({ z: 1.5625, x: -225, y: -168.75 });
+});
+
+it("a pan's trailing click keeps the selection; a still tap's click deselects", async () => {
+  const { pane } = await mountEditor();
+  run("zoom-in"); run("zoom-in");
+  pick("description");
+  finger(pane, "pointerdown", 11, 400, 300);
+  finger(pane, "pointermove", 11, 380, 300);
+  finger(pane, "pointerup", 11, 380, 300);
+  click(pane);
+  expect(probe.preview!.selected).toEqual(["description"]);
+  finger(pane, "pointerdown", 11, 400, 300);
+  finger(pane, "pointerup", 11, 400, 300);
+  click(pane);
+  expect(probe.preview!.selected).toEqual([]);
+});
+
+// Review Focus 1
+it("pinching and panning keep the selection and add no undo step", async () => {
+  const { pane } = await mountEditor();
+  pick("description");
+  expect(undoDisabled()).toBe(true);
+  pinchTo2x(pane);
+  finger(pane, "pointerup", 12, 600, 300);
+  finger(pane, "pointermove", 11, 150, 250);
+  finger(pane, "pointerup", 11, 150, 250);
+  expect(probe.preview!.selected).toEqual(["description"]);
+  expect(undoDisabled()).toBe(true);
+});
+
+// Review Focus 2
+it("a resting finger does not turn a tap into a gesture", async () => {
+  const { pane, layer } = await mountEditor();
+  pick("description");
+  finger(pane, "pointerdown", 11, 100, 100);
+  finger(pane, "pointerdown", 12, 500, 300);
+  finger(pane, "pointerup", 12, 500, 300);
+  click(pane);
+  finger(pane, "pointerup", 11, 100, 100);
+  expect(viewOf(layer)).toEqual({ z: 1, x: 0, y: 0 });
+  expect(probe.preview!.selected).toEqual([]);
+});
+
+// Review Focus 3 (the pure limits are in tests/zoom-pan-pinch.test.ts)
+it("a pinch below the bottom of the range reaches no listener", async () => {
+  const { pane } = await mountEditor();
+  let notified = 0;
+  const stop = probe.view!.subscribe(() => { notified++; });
+  finger(pane, "pointerdown", 11, 300, 300);
+  finger(pane, "pointerdown", 12, 500, 300);
+  finger(pane, "pointermove", 11, 350, 300);
+  stop();
+  expect(notified).toBe(0);
+});
+
+// Review Focus 5: rotating the phone cancels a finger and resizes the pane.
+it("a cancelled finger mid-pinch leaves the other panning, inside the pane's new size", async () => {
+  const { pane, layer } = await mountEditor();
+  pinchTo2x(pane);
+  pane.getBoundingClientRect = () => ({ ...PANE, right: 844, bottom: 241, width: 844, height: 241 }) as DOMRect;
+  finger(pane, "pointercancel", 12, 600, 300);
+  finger(pane, "pointermove", 11, -800, 300);
+  const v = viewOf(layer);
+  expect(v.z).toBeCloseTo(2, 10); expect(v.x).toBeCloseTo(-844, 10); expect(v.y).toBeCloseTo(-241, 10);
+});
+
+it("a mouse's left drag still does not pan, and fingers leave a 3D view's camera alone", async () => {
+  const { pane, layer } = await mountEditor();
+  run("zoom-in"); run("zoom-in");
+  act(() => {
+    pane.dispatchEvent(new PointerEvent("pointerdown", { pointerType: "mouse", pointerId: 1, button: 0, clientX: 400, clientY: 300, bubbles: true }));
+    pane.dispatchEvent(new PointerEvent("pointermove", { pointerType: "mouse", pointerId: 1, button: 0, clientX: 350, clientY: 250, bubbles: true }));
+    pane.dispatchEvent(new PointerEvent("pointerup", { pointerType: "mouse", pointerId: 1, button: 0, clientX: 350, clientY: 250, bubbles: true }));
+  });
+  expect(viewOf(layer)).toEqual({ z: 1.5625, x: -225, y: -168.75 });
+  run("view-can");
+  const at = probe.view!.get();
+  finger(pane, "pointerdown", 11, 400, 300);
+  finger(pane, "pointermove", 11, 300, 200);
+  expect(probe.view!.get()).toBe(at);
+});
+```
+
+The fitted view is `translate(0px, 0px) scale(1)`, which `viewOf` reads as `{ z: 1, x: 0, y: 0 }`. In `tests/rulers-dom.test.tsx:64` add `layerGestureArmed: () => false, cancelLayerGesture() {}` to the handle literal.
+
+- [ ] **Step 3: Run them to verify they fail**
+
+Run: `npx vitest run tests/preview-touch-dom.test.tsx tests/zoom-pan-touch-dom.test.tsx`
+Expected: FAIL: `layerGestureArmed` is not a function; no `touch-none`; fingers do not move the view. (`tsc` also fails on the rulers literal until Step 4.)
+
+- [ ] **Step 4: Implement**
+
+As in Interfaces and the body above. Comments: the handle members' doc comments as in Interfaces; the Escape effect's comment says it shares `cancelLayerGesture` with a second finger; `useZoomPan`'s right-drag comment gains "Fingers: below"; the pane comment in `App.tsx` replaces "Panning is right-button only, so a left click here is never the tail of a drag" with: a mouse pans with the right button; a finger gesture that moved the view swallows its trailing click (`onPaneClickCapture`), so this click is a tap or a left click, and `touch-none` keeps the browser from scrolling or zooming the page instead.
+
+- [ ] **Step 5: Run to verify they pass**
+
+Run: `npx vitest run tests/preview-touch-dom.test.tsx tests/zoom-pan-touch-dom.test.tsx tests/zoom-pan-render-dom.test.tsx tests/rulers-dom.test.tsx tests/preview-pointercancel-dom.test.tsx tests/gesture-races-dom.test.tsx tests/app-v3-dom.test.tsx`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/components/PreviewCompare.tsx src/useZoomPan.ts src/App.tsx tests/preview-touch-dom.test.tsx tests/zoom-pan-touch-dom.test.tsx tests/rulers-dom.test.tsx
+git commit -m "Feat: Pan the preview with one finger and pinch to zoom with two"
+```
+
+### Task 3.5: Finger-sized handles, and a finger inside a small layer moves it
+
+**Files:**
+- Modify: `src/components/previewOverlay.ts` (`HANDLES`, 11–22)
+- Modify: `src/components/PreviewCompare.tsx` (`onHandleDown` 336–341, `onHandleUp` 353–359, the divider's class at 535)
+- Modify: `src/components/Rulers.tsx` (the manual guide handle's class, 403–406)
+- Test: `tests/preview-touch-dom.test.tsx` (modify), `tests/rulers-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Produces in `previewOverlay.ts`: each unlocked tick's `cls` gains, after the existing classes, `touch:after:absolute touch:after:size-tap touch:after:content-['']` and its outward placement: horizontally `touch:after:right-1` (hx −1), `touch:after:left-1` (hx 1) or `touch:after:left-1/2 touch:after:-translate-x-1/2` (hx 0); vertically `touch:after:bottom-1` (hy −1), `touch:after:top-1` (hy 1) or `touch:after:top-1/2 touch:after:-translate-y-1/2` (hy 0). `clsLocked` is unchanged. The tick is `size-2` (0.5rem), so `right-1`/`left-1` (0.25rem) puts the 44px area's inner edge at the tick's centre: it reaches outward, away from the layer.
+- Produces in `PreviewCompare`: a file-local `const insideBox = (e: { clientX: number; clientY: number }, id: string): boolean` — whether the pointer is over layer `id`'s own box (`pagePointOf` against `pageElement.current`, then `hitTestBoxes` with that one box). `onHandleDown` returns early, without `stopPropagation`, when `e.pointerType === "touch" && insideBox(e, id)`, so the press bubbles to the sheet's move drag. `onHandleUp` returns at once when `resize.current` is null (no resize to end), so a move that started on a tick ends at the sheet. The divider gains `touch:w-tap`.
+- Produces in `Rulers.tsx`: the manual guide handle gains `touch:w-tap touch:-translate-x-1/2` (vertical) or `touch:h-tap touch:-translate-y-1/2` (horizontal).
+
+Planner's call: on touch the layer's box moves and the ring outside it resizes. Chrome aims a press near a tick at the tick (measured: a finger at a 23px layer's centre resized it), so the tick hands an inside press back by position; the 44px area reaches outward only, or on a small layer it would cover the whole box.
+Planner's call: the divider's 44px also covers the label's left 22px at a split of 0 on touch; dragging from there reveals the mask, which is what the divider is for. It has no visible change.
+Planner's call: manual guide handles get 44px on touch (they are drag targets); the ruler strips stay 24px, since growing them would grow the rulers or cover the label, and a strip is a band you drag from, so only its height is aimed.
+Planner's call: the ruler corner's 44px touch target, which covers 20×20px of the pane past the rulers (a tap there opens Ruler settings, measured), is not in this phase: nothing is lost but a pan starting in that square, and any fix would shrink a target Phase 2 grew on purpose.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/preview-touch-dom.test.tsx` (the tick tests call `mount({ selected: ["name"] })` first; stub `setPointerCapture` on each tick they fire at):
+
+```tsx
+const tick = (key: string) => container.querySelector(`[data-resize-handle="${key}"]`)!;
+
+it("a finger the browser aims at a tick but that lands inside the layer moves it", () => {
+  const { x, y } = centre("name");
+  fire(tick("1,0"), "pointerdown", x, y);
+  fire(tick("1,0"), "pointermove", x + 20, y);
+  expect(onResize).not.toHaveBeenCalled();
+  expect(onDrag).toHaveBeenCalledWith("name", expect.any(Number), 0, true);
+  fire(tick("1,0"), "pointerup", x + 20, y);
+  expect(handle.current!.layerGestureArmed()).toBe(false);
+});
+
+it("a finger on a tick outside the layer resizes it", () => {
+  const b = boxOfLayer("name", ALL, measure, planAssets)!;
+  const x = ((b.x + b.w) / PAGE.w) * W + 6, y = ((b.y + b.h) / PAGE.h) * H + 6;
+  fire(tick("1,1"), "pointerdown", x, y);
+  fire(tick("1,1"), "pointermove", x + 20, y + 10);
+  expect(onResize).toHaveBeenCalledTimes(1);
+  expect(onDrag).not.toHaveBeenCalled();
+});
+
+it("a mouse on a tick resizes as before, wherever on the tick it lands", () => {
+  const { x, y } = centre("name");
+  fire(tick("1,0"), "pointerdown", x, y, "mouse");
+  fire(tick("1,0"), "pointermove", x + 20, y, "mouse");
+  expect(onResize).toHaveBeenCalledTimes(1);
+  expect(onDrag).not.toHaveBeenCalled();
+});
+
+it("gives the divider a finger-wide hit area", () => {
+  expect(container.querySelector('[data-slot="resizable-handle"]')!.className).toContain("touch:w-tap");
+});
+```
+
+And a pure block in the same file:
+
+```tsx
+import { HANDLES } from "../src/components/previewOverlay";
+const handleCls = (key: string) => HANDLES.find((h) => h.key === key)!;
+
+it("resize ticks reach 44px outward on touch and look the same", () => {
+  for (const h of HANDLES) {
+    expect(h.cls).toContain("absolute size-2 rounded-[1px] border border-sky-400 bg-background");
+    expect(h.cls).toContain("touch:after:size-tap");
+    expect(h.clsLocked).not.toContain("touch:after");
+  }
+  expect(handleCls("-1,-1").cls).toContain("touch:after:right-1");
+  expect(handleCls("-1,-1").cls).toContain("touch:after:bottom-1");
+  expect(handleCls("1,1").cls).toContain("touch:after:left-1");
+  expect(handleCls("1,1").cls).toContain("touch:after:top-1");
+  expect(handleCls("0,-1").cls).toContain("touch:after:left-1/2 touch:after:-translate-x-1/2");
+  expect(handleCls("0,-1").cls).toContain("touch:after:bottom-1");
+});
+```
+
+In `tests/rulers-dom.test.tsx`:
+
+```tsx
+it("gives manual guide handles a finger-wide hit area", () => {
+  renderRulers();
+  expect(container.querySelector('[aria-label^="Vertical manual guide;"]')!.className).toContain("touch:w-tap");
+  expect(container.querySelector('[aria-label^="Horizontal manual guide;"]')!.className).toContain("touch:h-tap");
+});
+```
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/preview-touch-dom.test.tsx tests/rulers-dom.test.tsx`
+Expected: the inside-the-box finger resizes (`onResize` called); class assertions fail; the outside-tick and mouse tests pass.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Comments: `HANDLES` doc says the tick's touch area is 44px, reaching away from the layer, invisible (`::after`, as `ui/switch.tsx` does); `onHandleDown` says why a finger inside the box is handed back (Chrome aims nearby presses at the tick; the event keeps the finger's position); `onHandleUp` says why it returns when no resize ran.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/preview-touch-dom.test.tsx tests/rulers-dom.test.tsx tests/preview-pointercancel-dom.test.tsx tests/gesture-races-dom.test.tsx tests/app-v3-dom.test.tsx tests/module-size.test.ts`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/previewOverlay.ts src/components/PreviewCompare.tsx src/components/Rulers.tsx tests/preview-touch-dom.test.tsx tests/rulers-dom.test.tsx
+git commit -m "Fix: A finger moves a small layer instead of resizing it, and handles get finger-sized reach"
+```
+
+### Task 3.6: Double-tap a text layer to edit it
+
+**Files:**
+- Modify: `src/components/PreviewCompare.tsx` (after `DRAG_THRESHOLD_PX` at 47–48; `onPointerDown`/`onPointerUp` 361–391; `onDoubleClick` 452–473)
+- Test: `tests/preview-touch-dom.test.tsx` (modify)
+
+**Interfaces:**
+- Produces: `const DOUBLE_TAP_MS = 300;` (doc comment: two finger taps on the same layer this close open it in place, like a double-click). `function startEditing(e: React.MouseEvent<HTMLDivElement>, id: string): void` — the body of today's `onDoubleClick` after its hit test (the text-kind check, the pill position, `edited.current = false`, `setEditing(id)`); `onDoubleClick` becomes `const id = hitOf(e); if (id) startEditing(e, id);`. `onDoubleClick` also returns at once while a session is open (`if (editing) return;`): on a desktop the click-away has already closed it by then, so nothing changes there; on touch the `dblclick` Chrome sends after a double-tap, aimed at a tick, must not move the new session to another layer. A `lastTap = useRef<{ id: string; at: number } | null>(null)`. In `onPointerUp`, for a real `pointerup` with `pointerType === "touch"`, no open session (`!editing`) and a press that did not become a drag (`!drag.current?.started`), before `drag.current` is cleared:
+
+```ts
+    const id = hitOf(e) ?? null;
+    const prev = lastTap.current, now = Date.now();
+    if (id && prev?.id === id && now - prev.at <= DOUBLE_TAP_MS) { lastTap.current = null; startEditing(e, id); }
+    else lastTap.current = id ? { id, at: now } : null;
+```
+
+Planner's call: the detector reads raw `pointerup` positions, not `click` or `dblclick`: Chrome delivers `dblclick` on a touch double-tap but aims it, and the clicks, at a resize tick near a small selected layer (measured), so their positions miss the layer. `pointerup` keeps the finger's position. The `dblclick` path stays for the mouse and wherever it already works; a `dblclick` that follows lands on the open field, whose wrapper stops it.
+Planner's call: `Date.now()`, so tests step the clock with `vi.spyOn(Date, "now")`.
+Planner's call: no taps are counted while a session is open: two taps inside the field place the caret; re-running `startEditing` there would reset `edited` and lose the session's commit.
+Planner's call: a locked text layer opens, as `onDoubleClick` opens it today (lock stops moving, not typing).
+
+- [ ] **Step 1: Write the failing tests**
+
+```tsx
+const tapAt = (id: string, at: number, pointerType = "touch", on: Element = sheet) => {
+  vi.spyOn(Date, "now").mockReturnValue(at);
+  const { x, y } = centre(id);
+  fire(on, "pointerdown", x, y, pointerType);
+  fire(on, "pointerup", x, y, pointerType);
+  act(() => { on.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })); });
+};
+const editorOf = (name: string) => document.querySelector(`[aria-label="Edit ${name} text"]`);
+
+it("two taps on a text layer within 300ms edit it in place", () => {
+  tapAt("name", 1000); tapAt("name", 1300);
+  expect(editorOf("name")).not.toBeNull();
+});
+
+it("taps 301ms apart, or on two layers, do not", () => {
+  tapAt("name", 1000); tapAt("name", 1301);
+  expect(editorOf("name")).toBeNull();
+  tapAt("volume", 2000); tapAt("name", 2100);
+  expect(editorOf("name")).toBeNull();
+});
+
+it("two mouse clicks do not; a double-click still does", () => {
+  tapAt("name", 1000, "mouse"); tapAt("name", 1100, "mouse");
+  expect(editorOf("name")).toBeNull();
+  const { x, y } = centre("name");
+  act(() => { sheet.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: x, clientY: y })); });
+  expect(editorOf("name")).not.toBeNull();
+});
+
+it("a double-tap the browser aims at a tick of the selected layer still opens it", () => {
+  mount({ selected: ["name"] });
+  tapAt("name", 1000, "touch", tick("1,0")); tapAt("name", 1200, "touch", tick("1,0"));
+  expect(editorOf("name")).not.toBeNull();
+});
+
+// Review Focus 4
+it("a locked text layer opens as its double-click does", () => {
+  // "warning" is locked in the Lolev fixture
+  tapAt("warning", 1000); tapAt("warning", 1200);
+  expect(editorOf("warning")).not.toBeNull();
+});
+
+it("a hidden layer opens nothing", () => {
+  mount({ layers: ALL.filter((l) => l.id !== "name") }); // App passes only the layers that draw
+  tapAt("name", 1000); tapAt("name", 1200);
+  expect(editorOf("name")).toBeNull();
+});
+
+it("a dblclick after a double-tap opened a session leaves it where it is", () => {
+  tapAt("name", 1000); tapAt("name", 1200);
+  const { x, y } = centre("volume");
+  act(() => { sheet.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: x, clientY: y })); });
+  expect(editorOf("name")).not.toBeNull();
+  expect(editorOf("volume")).toBeNull();
+});
+```
+
+`afterEach`: `vi.restoreAllMocks()`.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run tests/preview-touch-dom.test.tsx`
+Expected: the double-tap tests and the dblclick-after test FAIL (no editor); the 301ms, mouse and hidden tests pass.
+
+- [ ] **Step 3: Implement**
+
+As in Interfaces. Update the file's header comment ("double-clicking a text layer edits it IN PLACE" gains "or double-tapping it") and the comment above `onDoubleClick`.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `npx vitest run tests/preview-touch-dom.test.tsx tests/inplace-editor-dom.test.tsx tests/preview-empty-text-dom.test.tsx tests/module-size.test.ts`
+Expected: PASS. Then `npx tsc --noEmit && npm run lint`: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/PreviewCompare.tsx tests/preview-touch-dom.test.tsx
+git commit -m "Feat: Double-tap a text layer to edit it on the label"
+```
+
+### Task 3.7: Measure again, check the desktop, document
+
+**Files:**
+- Modify: `.agents/ledger.md` (the `2026-11-12 phone-gestures` entry)
+- Modify: `docs-site/content/docs/(authoring)/preview.mdx` (`## Zoom and pan`, 18–23), `docs-site/content/docs/(authoring)/editing.mdx` (`## Typing`, 16), `docs-site/content/docs/(reference)/shortcuts.mdx` (Pan and Zoom rows, 58–59)
+- Modify: `CHANGELOG.md` (`## [Unreleased]`)
+
+- [ ] **Step 1: Run the probe on the finished branch**
+
+Same dev server, same command: `node .agents/mockups/phone-gestures/probe.mjs http://localhost:5190/ .agents/mockups/phone-gestures after` (`probe.mjs` unchanged since Task 3.1). Expected:
+
+| Scenario | Expected after |
+|---|---|
+| `pan` | `after.transform` `translate(-255px, -427.5px) scale(2)` (moved exactly −60, −80); `pageZoom` 1; `pointercancel` 0; `undo` 0 |
+| `pinch` | `after.zoomField` "250" (spread 80 → 200, capped); `pageZoom` 1; `undo` 0 |
+| `drag` | outline w and h unchanged (23.3 × 22.6); x and y moved by 30 and 20, each within 4px (a snap may pull it); `undo` 1 |
+| `secondFinger` | `undo` 0 (the drag was undone); `selected` ["description"]; `pageZoom` 1; scale not 1 |
+| `liftOne` | `pinched` scale 2.5; `after` the same scale, translate x 60 less than `pinched` (or clamped at −585); `pageZoom` 1 |
+| `pinchOnLayer` | `undo` 0; `selected` ["description"]; scale above 1; `pageZoom` 1 |
+| `doubleTap-description` | `editing` true; `focus` `DIV[contenteditable]`; `selectionText` "" |
+| `doubleTap-warning` | `editing` true; `selectionText` "" |
+| `resize` | `tickSize` [6.5, 6.5]; `tickPlus14` `SPAN[tick 1,1]`; outline 20 ± 4 px wider; `undo` 1 |
+| `guide` | `guides` 1; `pointercancel` 0 |
+| `split` | "28" (± 1) |
+| `corner` | unchanged (deferred) |
+| `can` | unchanged: all three true, `pageZoom` 1 |
+| `fit` | `whole` true at all three sizes; 390x844 sheet [21, 153.2, 369, 232.8] |
+| `desktop` | `wheel`, `rightDrag` and `doubleClick` identical to `before.json` (transforms, `editing`, `outline`) |
+
+A row that misses is a defect in the task that owns it: fix it there (same commit style) and run the probe again. If `doubleTap-*` shows a non-empty `selectionText` (the trailing `dblclick` selected a word), fix it in Task 3.6's code by collapsing the selection to the end in a sheet `onDoubleClickCapture` that runs only when the double-tap opened the session within the last 300 ms, with a test, and measure again.
+
+- [ ] **Step 2: Phone layout numbers**
+
+The Phase 2 Task 2.1 procedure at 390×844 for **fresh** and **selected**, as in Task 3.1 Step 4. Expected: identical to the baseline.
+
+- [ ] **Step 3: Desktop mouse behaviour**
+
+The probe's `desktop` block is the mouse check: wheel zoom, right-drag pan and double-click edit, each a measured reading compared with `before.json`. Expected: equal.
+
+- [ ] **Step 4: Compare the desktop screenshots**
+
+```bash
+node -e '
+const { PNG } = require("pngjs"); const fs = require("fs");
+const dir = ".agents/mockups/phone-gestures";
+for (const [a, b] of [["before-desktop-fresh", "before-2-desktop-fresh"], ["before-desktop-selected", "before-2-desktop-selected"],
+                      ["before-desktop-fresh", "after-desktop-fresh"], ["before-desktop-selected", "after-desktop-selected"]]) {
+  const x = PNG.sync.read(fs.readFileSync(`${dir}/${a}.png`)), y = PNG.sync.read(fs.readFileSync(`${dir}/${b}.png`));
+  if (x.width !== y.width || x.height !== y.height) { console.log(a, b, "size differs"); continue; }
+  let diff = 0;
+  for (let i = 0; i < x.data.length; i += 4) if (x.data.readUInt32BE(i) !== y.data.readUInt32BE(i)) diff++;
+  console.log(a, "vs", b, "differing pixels:", diff);
+}'
+```
+
+Expected: each before/after pair differs by no more than its before/before-2 pair. If more, view both images, find the change and fix the class or style that reached the desktop; do not accept a difference.
+
+- [ ] **Step 5: Docs**
+
+- `preview.mdx`, `## Zoom and pan`: after the right-button bullet, add: "- On a touch screen, drag with one finger where there is no layer to pan, and pinch with two fingers to zoom. One finger on a layer moves it, as the mouse does." Change "Type a figure. `100` fits the view" to "Type a figure. `100` fits the whole label in the pane".
+- `editing.mdx`, `## Typing`: "Double-click a text layer on the preview" becomes "Double-click (or double-tap) a text layer on the preview".
+- `shortcuts.mdx`: the Pan row's right column becomes "Right-button drag, or one finger"; the Zoom row's "Scroll or pinch. Type a % in the status bar" stays.
+- No other page describes canvas gestures (`grep -rn -i "pinch\|right-button\|double-click a text" docs-site/content` to confirm).
+
+- [ ] **Step 6: CHANGELOG**
+
+Under `## [Unreleased]` → `### Added`, after the existing bullets:
+
+- **Pan and zoom the label with your fingers.** On a phone or tablet, drag with one finger to move around the label and pinch with two to zoom. The page no longer zooms instead.
+- **Double-tap to type on the label.** Double-tapping a text layer edits it in place, as a double-click does.
+
+Under `### Fixed`, first:
+
+- **100% shows the whole label.** In a short window, or on a phone held sideways, the bottom of the label was cut off at 100% until you zoomed or panned.
+- **A finger moves a small layer.** Dragging a small selected layer with a finger resized it instead of moving it. The resize handles now take a touch just outside the layer, with room for a finger, and guides and the Label/Mask divider can be dragged by finger too.
+
+No version bump.
+
+- [ ] **Step 7: Full checks**
+
+```bash
+npx tsc --noEmit && npm run lint && npm test && npx --yes knip@6.38.0 && node scripts/check-release.mjs feat/phone-shell
+(cd docs-site && npm run types:check && npm run build)
+```
+
+Expected: all pass.
+
+- [ ] **Step 8: Ledger and commit**
+
+Update the `2026-11-12 phone-gestures` entry: `status: done`, `measured at <short SHA>`, `delta:` each scenario's before → after reading, the Step 2 phone numbers, the four pixel-compare counts, the desktop mouse readings, `release: binary-impacting; four bullets queued under [Unreleased]`, and `not measured (needs a real phone)`: iOS Safari's double-tap (whether `pointerup` arrives for both taps, and whether the page zooms on double-tap despite `touch-none`), Android Chrome with a real finger's touch radius (larger than the probe's 4px, so more presses are aimed at ticks), the ruler strips at 24px under a finger, rotating mid-pinch, and the Can view by finger on a real GPU.
+
+```bash
+git add .agents/ledger.md docs-site/content/docs CHANGELOG.md
+git commit -m "Docs: Describe the canvas touch gestures and record their measurements"
+```
+
+Do not push.
+
+### Phase 3 checkpoint
+
+Stop. Report: the commits, the before and after readings, the pixel-compare counts, and the deferred ruler corner. Ask the user to try on a real phone (`npm run dev -- --host`, over Wi-Fi): pan with one finger, pinch, rest one finger and tap with another, drag a small layer, resize from just outside it, double-tap a text layer, drag out a guide, slide the divider, rotate mid-pinch, orbit and pinch the Can view. Then ask whether to push and open the PR, and against which base.
 
 ## Phase 4 — Touch paths for hover, right-click, double-click and keyboard actions (outline)
 

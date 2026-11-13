@@ -1,11 +1,14 @@
 // useZoomPan.ts — the preview pane's zoom and pan: wheel-to-zoom, right-drag
-// pan, the typed zoom field and the Zoom In / Out / to Fit steps, plus the
-// zoom handover between the 2D pane and the 3D views (CanView dollies its
-// own camera). The view lives outside React: a gesture writes it to the DOM,
-// and only the settled zoom reaches the editor's state (#714).
+// pan, one-finger pan and two-finger pinch, the typed zoom field and the
+// Zoom In / Out / to Fit steps, plus the zoom handover between the 2D pane
+// and the 3D views (CanView dollies its own camera). The view lives outside
+// React: a gesture writes it to the DOM, and only the settled zoom reaches
+// the editor's state (#714).
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { PREVIEW_OVERSAMPLE } from "@/layout";
 import type { CanViewHandle } from "@/components/CanView";
+import type { PreviewCompareHandle } from "@/components/PreviewCompare";
+import { isTap } from "@/components/touchPress";
 
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
@@ -17,9 +20,14 @@ export const ZOOM_FACTOR = 1.25;
 /** Quiet time after a wheel tick before the zoom is published to React. */
 const ZOOM_SETTLE_MS = 100;
 
+/** A finger landing in one of these is theirs, not the pane's: the rulers'
+ *  strips and guide handles, and the text being edited in place. */
+const OWNS_ITS_FINGER = '[data-slot="rulers"], [contenteditable="true"], input, textarea';
+
 /** The pane's transform: scale `z` about its top-left, then offset by (x, y)
  *  screen px. z === 1 is the fitted view. */
 type View = { z: number; x: number; y: number };
+type Point = { x: number; y: number };
 
 /** The current view, held outside React so a wheel tick or pan move does not
  *  render the editor. `get`/`subscribe` fit useSyncExternalStore. */
@@ -64,12 +72,33 @@ export const zoomAbout = (
   return clampView(r, z, v.x + (1 - k) * (ax - v.x), v.y + (1 - k) * (ay - v.y));
 };
 
+/** Two fingers moved from `a0`, `b0` to `a1`, `b1`: pan by their midpoint's
+ *  move, then zoom by the change in their spread about the new midpoint,
+ *  clamped as the wheel is. Points are finite pane px from its top-left
+ *  (pointer client coordinates minus the pane's left/top); anything else is
+ *  the caller's bug. A pinch that moves nothing returns `v` exactly, and
+ *  fingers closing onto one spot zoom out to the fitted view. */
+export const pinchView = (r: DOMRect, v: View, a0: Point, b0: Point, a1: Point, b1: Point): View => {
+  const spread0 = Math.hypot(b0.x - a0.x, b0.y - a0.y);
+  const spread1 = Math.hypot(b1.x - a1.x, b1.y - a1.y);
+  // Ratio first, so an unchanged spread keeps v.z bit for bit. Fingers that
+  // start on one spot have no spread to compare: keep the zoom.
+  const z = clampZoom(spread0 ? v.z * (spread1 / spread0) : v.z);
+  const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
+  const m1 = { x: (a1.x + b1.x) / 2, y: (a1.y + b1.y) / 2 };
+  // The pan is left unclamped so zoomAbout clamps the result once.
+  return zoomAbout(r, { z: v.z, x: v.x + m1.x - m0.x, y: v.y + m1.y - m0.y }, z, m1.x, m1.y);
+};
+
 /** `is2d`: the pane shows the 2D compare (wheel, pan and typed zoom act on
- *  it); otherwise zoom goes to the 3D camera through `canView`. */
+ *  it); otherwise zoom goes to the 3D camera through `canView`. `preview`
+ *  says whether a finger landed on a layer drag, and cancels it when a
+ *  second finger turns the touch into a pinch. */
 export function useZoomPan(
   is2d: boolean,
   previewPane: RefObject<HTMLDivElement | null>,
   canView: RefObject<CanViewHandle | null>,
+  preview: RefObject<PreviewCompareHandle | null>,
 ) {
   const [liveView] = useState(createLiveView);
   const zoomLayer = useRef<HTMLDivElement>(null);
@@ -174,10 +203,11 @@ export function useZoomPan(
 
   // Drag-to-pan on the right button — the same button OrbitControls pans
   // with in the 3D views. A pan leaves the zoom alone, so React never hears
-  // about it.
+  // about it. Fingers: below.
   const panFrom = useRef<{ x: number; y: number; r: DOMRect } | null>(null);
   const [panning, setPanning] = useState(false);
   function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch") return onTouchDown(e);
     if (e.button !== 2 || !is2d) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     panFrom.current = {
@@ -186,6 +216,7 @@ export function useZoomPan(
     setPanning(true);
   }
   function onPanMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch") return onTouchMove(e);
     const from = panFrom.current;
     if (!from) return;
     const dx = e.clientX - from.x, dy = e.clientY - from.y;
@@ -194,14 +225,100 @@ export function useZoomPan(
     const v = liveView.get();
     liveView.set(clampView(from.r, v.z, v.x + dx, v.y + dy));
   }
-  function onPanEnd() {
+  function onPanEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch") return onTouchEnd(e);
     if (!panFrom.current) return;
     panFrom.current = null;
     setPanning(false);
   }
 
+  // Fingers on the pane (touch only), by pointerId, at their last event: one
+  // pans unless the layer drag took it, two pinch, a third is ignored. The
+  // browser captures each touch to the element it landed on (while that
+  // element stays in the DOM), and its moves bubble here, so the pane takes
+  // no capture of its own.
+  const fingers = useRef(new Map<number, Point>());
+  const lonePans = useRef(false);
+  /** The pending pinch: where each of two fingers was when the second
+   *  landed. The pinch starts, and this goes null, once one of them leaves
+   *  the tap slop around it, so a finger resting while another taps moves
+   *  nothing. */
+  const pinchFrom = useRef<Map<number, Point> | null>(null);
+  /** The finger gesture moved the view: swallow the click it ends with. */
+  const touchMoved = useRef(false);
+  /** Capture phase, so it runs even for a press a tick or a ruler keeps. A
+   *  primary touch means no other finger is down, so any id still listed
+   *  missed its lift; a press with no finger down starts a new gesture,
+   *  which never inherits an old swallow. */
+  function onPanePointerDownCapture(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "touch" && e.isPrimary) fingers.current.clear();
+    if (!fingers.current.size) touchMoved.current = false;
+  }
+  function onTouchDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!is2d || fingers.current.size === 2) return;
+    // A finger on a control that keeps its own fingers (a ruler, a field,
+    // text being edited in place) is that control's. Checked first, so such
+    // a finger never takes over an unstarted resize below.
+    if (e.target instanceof Element && e.target.closest(OWNS_ITS_FINGER)) return;
+    if (!e.isPrimary) preview.current?.endTap(); // a press joined by a second finger is no tap
+    // An extra finger while none of ours is down: its first went to a control
+    // that keeps it (a ruler, the divider, a resize past the tap slop), so it
+    // is ignored, unless it is a resize still within the slop: that finger
+    // joins the pinch, and the tick keeps resizing with it until one starts.
+    if (!e.isPrimary && !fingers.current.size) {
+      const first = preview.current?.resizeFinger();
+      if (!first || first.started) return;
+      fingers.current.set(first.pointerId, { x: first.x, y: first.y });
+    }
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (fingers.current.size === 1) lonePans.current = !preview.current?.layerGestureArmed();
+    // The first finger's drag or resize goes on until the pinch starts.
+    else pinchFrom.current = new Map(fingers.current);
+  }
+  function onTouchMove(e: React.PointerEvent<HTMLDivElement>) {
+    const from = fingers.current.get(e.pointerId);
+    if (!from || !is2d) return;
+    const to = { x: e.clientX, y: e.clientY };
+    const r = e.currentTarget.getBoundingClientRect();
+    const v = liveView.get();
+    if (fingers.current.size === 2 && pinchFrom.current) {
+      // The move that leaves the slop starts the pinch from here (no jump),
+      // and puts back the first finger's drag or resize.
+      if (!isTap(pinchFrom.current.get(e.pointerId)!, to)) {
+        pinchFrom.current = null;
+        preview.current?.cancelLayerGesture();
+      }
+    } else if (fingers.current.size === 2) {
+      const other = [...fingers.current].find(([id]) => id !== e.pointerId)![1];
+      const local = (p: Point) => ({ x: p.x - r.left, y: p.y - r.top });
+      liveView.set(pinchView(r, v, local(from), local(other), local(to), local(other)));
+    } else if (lonePans.current) {
+      liveView.set(clampView(r, v.z, v.x + to.x - from.x, v.y + to.y - from.y));
+    }
+    fingers.current.set(e.pointerId, to);
+    if (liveView.get() !== v) touchMoved.current = true;
+  }
+  function onTouchEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (!fingers.current.delete(e.pointerId)) return;
+    // Lifted before a pinch started: a tick resize takes its finger back and
+    // a drag goes on. The finger left after a pinch (which dropped both) pans.
+    const resizing = preview.current?.resizeFinger();
+    if (resizing) fingers.current.delete(resizing.pointerId);
+    lonePans.current = !preview.current?.layerGestureArmed();
+    setZoom(liveView.get().z);
+  }
+  /** Capture-phase click on the pane: the click that ends a finger gesture
+   *  which moved the view never reaches the pane (deselect) or the sheet
+   *  (pick). */
+  function onPaneClickCapture(e: React.MouseEvent) {
+    if (!touchMoved.current) return;
+    touchMoved.current = false;
+    e.stopPropagation();
+  }
+
   return {
     zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
     zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
+    onPanePointerDownCapture, onPaneClickCapture,
   };
 }

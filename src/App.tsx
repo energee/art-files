@@ -101,7 +101,8 @@ import {
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
-import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
+import { PreviewCompare, SNAP_PT, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import type { SnapLines, SnapMark } from "@/components/previewOverlay";
 import { Rulers } from "@/components/Rulers";
 import type { CanViewHandle } from "@/components/CanView";
 import {
@@ -573,10 +574,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   const previewPane = useRef<HTMLDivElement>(null);
   usePreviewToastAnchor(previewPane, active);
   const canView = useRef<CanViewHandle>(null);
+  const previewRef = useRef<PreviewCompareHandle>(null);
   const {
     zoom, liveView, zoomLayer, zoomField, camZoomPct, carried, onCameraChange,
     zoomDraft, setZoomDraft, zoomTo, applyTypedZoom, panning, onPanStart, onPanMove, onPanEnd,
-  } = useZoomPan(viewMode === "2d", previewPane, canView);
+    onPanePointerDownCapture, onPaneClickCapture,
+  } = useZoomPan(viewMode === "2d", previewPane, canView, previewRef);
   // The 3D scene's mode: Rendered shows the flat label, Can its count.
   let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
   if (viewMode === "rendered") canSceneMode = "flat";
@@ -603,7 +606,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       else previewRef.current?.showMask();
     });
   };
-  const previewRef = useRef<PreviewCompareHandle>(null);
   // Rulers, guides and the length unit are view state: they assist the
   // operator but are not label content, so none enters history/exports. All
   // persist per operator (useViewPrefs.ts). The one unit drives the rulers, the inspector's
@@ -2650,7 +2652,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             // When the sheet is at the bottom the section above makes room.
             // The preview toolbar under the pane carries the same right margin
             // and transition, or its right end would sit under the sheet.
-            className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border bg-background",
+            className={cn("relative flex min-h-0 flex-1 touch-none overflow-hidden border-l border-sidebar-border bg-background",
               "transition-[margin] duration-200",
               active && inspected && !narrow && "mr-[300px]",
               panning && "cursor-grabbing")}
@@ -2659,8 +2661,13 @@ export const DocumentEditor = memo(function DocumentEditor({
             // deselects, which is what closes the inspector (its `open` is
             // derived from the selection). The sheet's own misses already
             // deselect via PreviewCompare's hit test; this covers the gap
-            // outside it. Panning is right-button only, so a left click here
-            // is never the tail of a drag.
+            // outside it. A mouse pans with the right button, and a finger
+            // gesture that moved the view swallows its trailing click
+            // (onPaneClickCapture), so this click is a tap or a left click.
+            // touch-none keeps the browser from scrolling or zooming the
+            // page instead.
+            onPointerDownCapture={onPanePointerDownCapture}
+            onClickCapture={onPaneClickCapture}
             onClick={(e) => {
               if (viewMode !== "2d") return;
               const t = e.target;
@@ -2678,12 +2685,15 @@ export const DocumentEditor = memo(function DocumentEditor({
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
                 their own camera. Padded, not offset, by the rulers so Fit
                 keeps the label clear of them while the transform's origin
-                stays the pane's top-left. useZoomPan writes the transform. */}
+                stays the pane's top-left. useZoomPan writes the transform.
+                It is the sheet's size container, so Fit shows the whole
+                label: the sheet caps its width by this div's height (cqh). */}
             <div
               ref={zoomLayer}
               className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
                 transformOrigin: "0 0",
+                containerType: "size",
                 ...(showRulers && { paddingTop: RULER_SIZE, paddingLeft: RULER_SIZE }),
               }}>
             <PreviewCompare ref={previewRef} unit={unit}

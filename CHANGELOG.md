@@ -12,6 +12,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Menus without icons.** The File, Edit, Layer and View menus now show only the name and shortcut of each row, in the Mac menu bar and in the browser.
 - **Prompts are bars under the title bar, not boxes in the middle of the window.** Closing a label with unsaved changes, quitting with unsaved labels, and opening a label made with a different master each ask in a bar across the top, with the rest of the window dimmed until you answer. "Recover unsaved work?" and the update messages are bars under the tabs that block nothing: you can keep working and answer when you like.
 ### Added
+- **Pan and zoom the label with your fingers.** On a phone or tablet, drag with one finger where there is no layer to move around the label, and pinch with two to zoom. The page no longer scrolls or zooms instead. Pinching with a second finger during a layer drag puts the layer back; a second finger that only brushes the screen leaves the drag alone.
+- **Double-tap to type on the label.** Double-tapping a text layer edits it in place, as a double-click does.
 - **Label Lab fits a phone.** On a phone's browser the editor keeps the same Layers list, preview, toolbar and inspector. Layers slides in from the side and closes when you pick or add a layer, or press Escape; the inspector opens from the bottom with the label above it, shorter on a short screen so the label stays in view; the menus sit under one ☰ button; Undo and Redo get their own buttons; and notifications drop from the top so they don't cover the inspector.
 - **Bigger controls on phones and tablets.** Buttons, menu rows, list options, suggestions and checkbox rows are finger-sized, and text fields use 16-pixel text. The small reset buttons beside changed fields stay small for now.
 - **Label Lab on the web.** The editor is published at energ.ee/art-files/app/ with each release.
@@ -19,6 +21,8 @@ that section to the new version (see .agents/release-steward.md).
 - **See where selected layers differ.** A **≠** beside a control means the selected layers don't share that value. Click it to give them all the value shown.
 
 ### Fixed
+- **100% shows the whole label.** In a short window, or on a phone held sideways, the bottom of the label was cut off at 100% until you zoomed or panned. The 3D views frame the same way.
+- **A finger moves a small layer.** Dragging a small selected layer with a finger resized it instead of moving it. A finger inside a layer now moves it, and a touch just outside a corner or edge resizes it, unless another layer lies under the finger (then use the size fields, or zoom in).
 - **Quieter developer console, no visible change.** Selecting a layer no longer logs a React missing-key warning from the inspector's Position section. The app behaves exactly as before.
 - **Accented text pasted from a file name now exports.** Text copied from a macOS file name stores "é" as a plain letter plus a separate accent mark. It looked right in the preview, but Poppins refused to export it and named a character you could not see, and Barlow Condensed printed the accent to the right of its letter. The accent is now joined to its letter, as a keyboard types it, so the text prints as previewed and gives the same QR link and export file name either way.
 

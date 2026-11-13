@@ -1,25 +1,60 @@
 // previewOverlay.ts — PreviewCompare's overlay geometry: label-space points
 // mapped onto the preview frame (pageBox, corner, cqh), the trim guide's
 // dashed stroke and die-cut corners, the selection/resize ticks and their
-// padding, the readout's inch format, and the on-screen ink of a style.
-// Pure values and style objects, no React state. Split out of
-// PreviewCompare.tsx (#433).
+// padding, a click's page point and the in-place pill's spot, the snap
+// marks a drag reports (SnapMark, SnapLines) and their colours, the
+// readout's inch format, and the on-screen ink of a style.
+// Values, style objects and layout reads (the sheet's rect, the window's
+// width); no React state. Split out of PreviewCompare.tsx (#433).
 import type { ResizeHandle } from "@/model/edit";
 import { ART, cssFill, PAGE } from "@/layout";
 import type { Style } from "@/types";
 
 /** The eight selection ticks, which double as resize handles. hx/hy name
  *  the grabbed edge (-1 left/top, 0 not grabbed, 1 right/bottom); position
- *  and cursor follow from them. */
+ *  and cursor follow from them. On touch an unlocked tick's hit area is 44px,
+ *  an invisible `::after` (as ui/switch.tsx does) whose inner edge sits at
+ *  the tick's centre so it reaches away from the layer: on a small layer it
+ *  never covers the box, which a finger drags to move. An edge tick's reach
+ *  overlaps the corner ticks beside it on a small layer, so the corners
+ *  stack on top: no tick's reach covers another of the SAME layer's ticks
+ *  (down to the size a layer is drawn at; another layer's ticks, or a
+ *  layer squeezed to a few px, can still overlap). `touch:z-1` also lifts
+ *  the corners above any later `z-auto` sibling in the sheet. */
 export const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
   .filter((hx) => hx || hy)
   .map((hx) => {
     const at = `${hy < 0 ? "-top-[3px]" : hy > 0 ? "-bottom-[3px]" : "top-1/2 -translate-y-1/2"} ${
       hx < 0 ? "-left-[3px]" : hx > 0 ? "-right-[3px]" : "left-1/2 -translate-x-1/2"}`;
+    const reach = `touch:after:absolute touch:after:size-tap touch:after:content-[''] ${
+      hx < 0 ? "touch:after:right-1" : hx > 0 ? "touch:after:left-1" : "touch:after:left-1/2 touch:after:-translate-x-1/2"} ${
+      hy < 0 ? "touch:after:bottom-1" : hy > 0 ? "touch:after:top-1" : "touch:after:top-1/2 touch:after:-translate-y-1/2"}${
+      hx && hy ? " touch:z-1" : ""}`;
     const cursor = !hx ? "cursor-ns-resize" : !hy ? "cursor-ew-resize" : hx === hy ? "cursor-nwse-resize" : "cursor-nesw-resize";
     const base = `absolute size-2 rounded-[1px] border border-sky-400 bg-background ${at}`;
-    return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor}`, clsLocked: base };
+    return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor} ${reach}`, clsLocked: base };
   }));
+
+/** Blue for a page guide (the master's margins/centre, or a manual one),
+ *  fuchsia for another layer's edge or middle — the Photoshop/Sketch
+ *  convention, and the only way to tell at a glance WHICH kind of alignment
+ *  the drag caught. App classifies the line (SnapMark.guide); comparing
+ *  coordinates here could not tell a manual guide from a layer edge, nor an
+ *  X guide's value landing on a Y line. */
+export const snapColor = (mark: SnapMark) => (mark.guide ? "bg-info" : "bg-primary");
+
+/** A snap that happened: the line (guide space), how far the indicator
+ *  segment runs along it — from the moving box to the far end of what it
+ *  lined up with — and whether a page guide, rather than another layer's
+ *  edge, is the only thing that offered it. */
+export interface SnapMark { at: number; from: number; to: number; guide: boolean }
+
+export interface SnapLines {
+  x: SnapMark | null; y: SnapMark | null;
+  /** The distance the drag ACTUALLY travelled after snapping, in label
+   *  points — what the drag readout shows. */
+  dx: number; dy: number;
+}
 
 /** Breathing room between a layer's measured box and its selection
  *  outline, in screen px. */
@@ -81,6 +116,34 @@ export const pageBox = (
  *  same points against a wrapper whose aspect ratio is locked to the page,
  *  so this is the right unit on both axes. */
 export const cqh = (pt: number) => `${(pt / PAGE.h) * 100}cqh`;
+
+/** A client point in label-space points, for click-to-select: the canvases
+ *  fill the sheet `currentTarget` exactly and its aspect ratio is locked to
+ *  PAGE.w/PAGE.h, so it maps proportionally off the bounding rect. Undefined
+ *  while the sheet is not laid out (e.g. display:none). */
+export function pagePointOf(
+  e: { clientX: number; clientY: number; currentTarget: HTMLDivElement },
+): { xPt: number; yPt: number } | undefined {
+  const r = e.currentTarget.getBoundingClientRect();
+  if (!r.width || !r.height) return undefined;
+  return {
+    xPt: ((e.clientX - r.left) / r.width) * PAGE.w,
+    yPt: ((e.clientY - r.top) / r.height) * PAGE.h,
+  };
+}
+
+/** Where the in-place pill toolbar goes, in viewport px: over the top-left
+ *  of box `b` (label points), mapped off the sheet's client rect `r` (the
+ *  rect the click math uses), kept 8px inside the window. */
+export function pillPos(r: DOMRect, b: { x: number; y: number }): { left: number; top: number } {
+  const boxLeft = r.left + (b.x / PAGE.w) * r.width;
+  const boxTop = r.top + (b.y / PAGE.h) * r.height;
+  // ponytail: fixed clamp for four toggles; measure if the toolbar grows.
+  return {
+    left: Math.max(8, Math.min(boxLeft, window.innerWidth - 188)),
+    top: Math.max(8, boxTop - 48),
+  };
+}
 
 /** Just pageBox's top-left corner, for an overlay that sizes itself. */
 export const corner = (x: number, y: number): React.CSSProperties => ({
