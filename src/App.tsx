@@ -439,6 +439,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  empties or Layers closes, so a later tap on a row picks one layer again. */
   const [selecting, setSelecting] = useState(false);
   if (selecting && (!selected.length || !sidebarOpen)) setSelecting(false);
+  /** Layers is open over the editor on a phone: what it covers leaves the
+   *  Tab order and the screen reader (`inert`). The Layers toggle and the
+   *  panel stay reachable, so Escape, the toggle and the backdrop still close it. */
+  const covered = phone && sidebarOpen;
   /** Close Layers. Focus inside the panel moves to the Layers toggle: the
    *  panel goes inert as it closes, and focus would fall to the page. (The
    *  Add layer menu hands focus to the toggle itself, LayerList's addFocus.) */
@@ -2568,9 +2572,11 @@ export const DocumentEditor = memo(function DocumentEditor({
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
-          {active && <AppMenu actions={menuCommands}
-            onNativeError={menuError}
-            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={menuChecked} />}
+          {active && <div className="contents" inert={covered}>
+            <AppMenu actions={menuCommands}
+              onNativeError={menuError}
+              onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={menuChecked} />
+          </div>}
           {/* The blocked-export reason's announcement, mounted before the
               label is blocked so a screen reader hears it appear. The visible
               explanation is the toast an export attempt shows. */}
@@ -2592,7 +2598,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               field's held typing first and then run the command as it stands
               after that (runAfterDraft). */}
           {phone && (
-            <div className={cn("flex items-center gap-1", narrow && "ml-auto")}>
+            <div className={cn("flex items-center gap-1", narrow && "ml-auto")} inert={covered}>
               <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("undo").label}
                 disabled={byId("undo").disabled} onClick={() => runAfterDraft("undo")}>
                 <Undo2 />
@@ -2605,8 +2611,8 @@ export const DocumentEditor = memo(function DocumentEditor({
           )}
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}
-      {active && <div className="contents" ref={tabStripHost} />}
-      <div className="flex min-h-0 flex-1">
+      {active && <div className="contents" ref={tabStripHost} inert={covered} />}
+      <div className="flex min-h-0 flex-1" inert={covered}>
         {/* Under 768px wide the inspector rises from the bottom: the section
             (preview pane and toolbar) keeps the sheet's height clear, so the
             toolbar rests on the sheet. Both read --bottom-sheet-height
@@ -2843,7 +2849,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               else clearSelection();
             } else if (details.reason === "close-press") clearSelection();
           }}>
-          <SheetContent side={narrow ? "bottom" : "right"} showOverlay={false} showCloseButton={false}
+          <SheetContent side={narrow ? "bottom" : "right"} showOverlay={false} showCloseButton={false} inert={covered}
             // Opening follows a selection, so focus stays where the user
             // selected: Base UI's default would land in the rename box and
             // turn Backspace/arrows into text edits instead of delete/nudge.

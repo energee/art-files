@@ -43,6 +43,9 @@ function SheetContent({
   // Local patch: lets a non-modal sheet (the label editor's inspector) skip
   // the backdrop entirely, so the rest of the app stays clickable.
   showOverlay = true,
+  // Local patch: `inert` goes on the portal, not the popup, so Base UI's
+  // focus guards beside the popup leave the Tab order with it.
+  inert,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left"
@@ -51,7 +54,7 @@ function SheetContent({
 }) {
   const { t } = useTranslation()
   return (
-    <SheetPortal>
+    <SheetPortal inert={inert}>
       {showOverlay && <SheetOverlay />}
       <SheetPrimitive.Popup
         data-slot="sheet-content"

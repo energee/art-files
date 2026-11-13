@@ -537,3 +537,94 @@ it("Escape with a modal dialog open leaves Layers open", async () => {
     expect(sidebar().getAttribute("data-state")).toBe("expanded");
   } finally { dialog.remove(); }
 });
+
+// Open Layers on a phone covers the editor: what it covers goes inert, so the
+// keyboard and the screen reader stay in Layers. Its toggle stays reachable.
+const inert = (el: Element | null | undefined) => !!el?.closest("[inert]");
+const menuButton = () => [...container.querySelectorAll("header button")].find((b) => b.textContent?.trim() === "Menu");
+/** Every element this change made inert. (A collapsed sidebar's own panel is
+ *  inert by design, sidebar.tsx; that one is not counted.) */
+const inertLeft = () => [...document.querySelectorAll("[inert]")].filter((el) => el.getAttribute("data-slot") !== "sidebar-container");
+/** What Tab can land on, in document order: focusable, not disabled, not
+ *  tabindex -1, not hidden, not inside anything inert. */
+const tabStops = () => [...document.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex], [contenteditable='true']")]
+  .filter((el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && !el.closest("[hidden], [inert]")
+    && !(el instanceof HTMLInputElement && el.type === "hidden"));
+/** Opens Layers with a layer selected, so the inspector is open behind it. */
+const openOverSelection = async () => {
+  await mount(390, 844);
+  await openLayers();
+  await tap(rowButton()); // selects (inspector opens) and closes Layers
+  await openLayers();
+};
+
+it("with Layers open on a phone, only Layers and its toggle take focus", async () => {
+  await openOverSelection();
+  expect(inert(container.querySelector("section"))).toBe(true);
+  expect(inert(document.querySelector('[data-slot="sheet-content"]'))).toBe(true);
+  expect(inert(headerButton("Undo"))).toBe(true);
+  expect(inert(menuButton())).toBe(true);
+  expect(inert(slot("sidebar-trigger"))).toBe(false);
+  expect(inert(rowButton())).toBe(false);
+  await tap(slot("sidebar-backdrop"));
+  expect(inertLeft()).toEqual([]);
+  expect(inert(document.querySelector('[data-slot="sheet-content"]'))).toBe(false);
+});
+
+it("with Layers open on a phone, Tab from the toggle goes into Layers and never reaches the editor", async () => {
+  await openOverSelection();
+  const toggle = slot("sidebar-trigger") as HTMLElement;
+  const panel = slot("sidebar-container")!;
+  const stops = tabStops();
+  // Only the toggle and the panel's own controls are left in the Tab order...
+  expect(stops.filter((el) => el !== toggle && !panel.contains(el))).toEqual([]);
+  expect(stops.length).toBeGreaterThan(1);
+  // ...so the stop after the toggle, wrapping round, is in the panel.
+  expect(panel.contains(stops[(stops.indexOf(toggle) + 1) % stops.length])).toBe(true);
+});
+
+it("the Layers toggle stays operable with Layers open on a phone, and closing by it leaves nothing inert", async () => {
+  await openOverSelection();
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await act(async () => { (slot("sidebar-trigger") as HTMLElement).focus(); });
+  expect(document.activeElement).toBe(slot("sidebar-trigger"));
+  await openLayers();
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(inertLeft()).toEqual([]);
+});
+
+it("closing Layers by Escape leaves nothing inert", async () => {
+  await openOverSelection();
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await act(async () => { (slot("sidebar-trigger") as HTMLElement).focus(); });
+  await escapeOn(slot("sidebar-trigger")!);
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(inertLeft()).toEqual([]);
+});
+
+it("closing Layers by a row tap leaves nothing inert", async () => {
+  await openOverSelection();
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await tap(rowButton("collabLead"));
+  expect(sidebar().getAttribute("data-state")).toBe("collapsed");
+  expect(inertLeft()).toEqual([]);
+});
+
+it("Layers left open as the window grows past a phone leaves nothing inert", async () => {
+  await openOverSelection();
+  // Turned sideways first: still a phone, so still inert. (happy-dom's
+  // matchMedia misses the direct jump from 390x844 to 1280x800; with the
+  // sideways step between, it reports the change as a browser does.)
+  await act(async () => setViewport(844, 390));
+  expect(inertLeft().length).toBeGreaterThan(0);
+  await act(async () => setViewport(1280, 800));
+  expect(slot("sidebar-backdrop")).toBeNull();
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+});
+
+it("leaves nothing inert on a desktop with Layers open", async () => {
+  await mount(1280, 800);
+  expect(sidebar().getAttribute("data-state")).toBe("expanded");
+  expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+});
