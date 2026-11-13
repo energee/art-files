@@ -12,9 +12,9 @@ import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "./legacy/layout";
 import { ART, PAGE, SHIPPED_BLEED_IN, setBleed } from "../src/layout";
-import { planText } from "../src/planLayers";
+import { planLayers, planText } from "../src/planLayers";
 import type { TextLayer } from "../src/model/layers";
-import { assets, contentStreamText, fillOps, lolevPlan, onePxPng, pageRectPath } from "./fixtures";
+import { assets, contentStreamText, fillOps, lolevLayers, lolevPlan, onePxPng, pageRectPath, planAssets } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
 // the thing an image whose item is not in the list must NOT contribute.
@@ -308,6 +308,13 @@ it("rejects unsupported print glyphs in the actual family and face (#340)", asyn
     expect(m("Ale™ ½ é", 10, face)).toBeGreaterThan(0);
     expect(() => m("Ale → 🍺 啤酒", 10, face)).toThrow(/Cannot print .*→.*🍺.*啤.*酒.*Poppins/);
   }
+});
+
+it("plans a name with decomposed accents in Poppins (#788)", async () => {
+  const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
+  // Poppins has "\u00e9" but no combining acute: the pair must reach the PDF composed.
+  const layers = lolevLayers({ values: { name: [{ text: "Cafe\u0301 Ole\u0301", fill: L.GOLD, layer: "metallic" }] } });
+  expect(() => planLayers(layers, m, planAssets)).not.toThrow();
 });
 
 it("accepts variation selectors the emoji picker appends (™️ ©️ ®️)", async () => {
