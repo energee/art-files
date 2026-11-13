@@ -55,7 +55,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "fflate": "^0.8.3",
-    "i18next": "^26.5.11",
+    "i18next": "^27.1.1",
     "lucide-react": "^1.71.0",
     "pdf-lib": "^1.17.1",
     "qrcode-generator": "^2.0.4",
