@@ -84,7 +84,7 @@ export function useCachedT(): TFunction {
       if (options) return lookup(key, options);
       if (!seen.has(key)) seen.set(key, lookup(key));
       return seen.get(key);
-    }) as TFunction;
+    }) as unknown as TFunction; // i18next 27 brands TFunction, so a plain function needs the double cast
   }, [lookup]);
 }
 

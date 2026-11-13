@@ -17,6 +17,7 @@
 //
 // Presentational: it reports which promote rows were ticked and lets the
 // caller do the writing (edit.ts's applyPromotions).
+import type { TFunction } from "i18next";
 import { useMemo, useState } from "react";
 import { useTranslation } from "@/i18n";
 import type { MasterChange } from "@/model/edit";
@@ -80,7 +81,7 @@ function listText(from: readonly unknown[], to: readonly unknown[]): string {
  *  model's. Structural rows are a sentence; a property or promote row is a
  *  path and a before/after, set in mono because that is literally what they
  *  are — a key path and its values. */
-function rowText(c: MasterChange, t: (key: string, options?: Record<string, unknown>) => string): React.ReactNode {
+function rowText(c: MasterChange, t: TFunction): React.ReactNode {
   switch (c.kind) {
     case "added": return t("Added to the master");
     case "removed": return t("Removed from the master");
