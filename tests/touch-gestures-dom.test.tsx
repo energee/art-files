@@ -782,3 +782,12 @@ it("a finger resizes nothing until it has travelled past the 10px slop", async (
   expect(layer("description")).not.toEqual(start);
   finger(t, "pointerup", 1, 112, 100);
 }, 60_000);
+
+it("a tap on a handle between two taps on a layer breaks the double-tap", async () => {
+  tapAt("name", 1000);
+  const { x, y } = pastNameCorner();
+  finger(tick("1,1"), "pointerdown", 1, x, y);
+  finger(tick("1,1"), "pointerup", 1, x, y);
+  tapAt("name", 1200);
+  expect(anyEditor()).toBeNull();
+}, 60_000);

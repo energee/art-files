@@ -306,7 +306,7 @@ export const PreviewCompare = forwardRef<
     // finger's own position: on any layer it goes on to the sheet, which
     // moves and picks that layer; only on bare stock does it resize.
     if (e.pointerType === "touch" && hitOf(e)) return;
-    e.stopPropagation(); tapFrom.current = null; // a resize is no tap
+    e.stopPropagation(); tapFrom.current = lastTap.current = null; // a resize is no tap, and breaks a double-tap
     resize.current = {
       id, handle, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false,
       last: { x: e.clientX, y: e.clientY },
