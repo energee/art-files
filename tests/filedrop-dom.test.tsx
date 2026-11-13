@@ -311,3 +311,25 @@ describe("FileDrop remove cue (#426)", () => {
     expect(container.querySelector('[role="status"]')!.textContent).toBe("");
   });
 });
+
+// Phone layout, Phase 5 (Task 5.4): a phone has no file drag, so each well's
+// Browse is how a finger loads art. It opens the well's own file input
+// (react-dropzone's, not the File System Access picker), which lists the
+// well's image types. Measured in Task 5.1: every Browse 50x44, chooser opened.
+it("Browse opens the well's own file input, asking for the well's image types", () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const wellRoot = createRoot(host);
+  onTestFinished(() => { act(() => wellRoot.unmount()); host.remove(); });
+  act(() => {
+    wellRoot.render(createElement(FileDrop, {
+      label: "Texture", onFile: vi.fn(),
+      accept: { "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] },
+    }));
+  });
+  const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+  const click = vi.spyOn(input, "click").mockImplementation(() => {});
+  act(() => { (host.querySelector('button[aria-label="Browse Texture"]') as HTMLButtonElement).click(); });
+  expect(click).toHaveBeenCalledTimes(1);
+  for (const type of ["image/png", ".png", "image/jpeg", ".jpg", "image/webp"]) expect(input.accept).toContain(type);
+});
