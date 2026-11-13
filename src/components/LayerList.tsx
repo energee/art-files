@@ -62,6 +62,10 @@ export interface LayerListProps {
    *  switched to, the base master otherwise. It used to offer a submenu per
    *  variant; the Select decides now, so there is one Add layer. */
   onAdd: (kind: LayerKind) => void;
+  /** Where focus goes when the Add layer menu closes; its own button when
+   *  unset. App sets the Layers toggle on a phone, where adding closes the
+   *  Layers overlay and that button goes inert with it. */
+  addFocus?: React.RefObject<HTMLElement | null>;
   /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
   /** The row menu's Reset to Master: drop this label's design overrides on
@@ -92,9 +96,10 @@ function iconFor(layer: Layer): LucideIcon {
   }
 }
 
-/** Every row control keeps a 24px keyboard/pointer target in its fixed column. */
+/** Every row control keeps a 24px keyboard/pointer target in its fixed column
+ *  (44px on a touch screen). */
 const control = cn(
-  "mx-auto grid size-[24px] shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
+  "mx-auto grid size-[24px] touch:size-tap shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
   "hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
   "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3.5",
 );
@@ -483,7 +488,7 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
       {/* Title, then Add layer. Variants used to sit here as toggle chips;
           they live in the master Select now, which names the version the
           canvas is drawing. */}
-      <SidebarGroupLabel className="gap-1.5">
+      <SidebarGroupLabel className="gap-1.5 touch:h-auto">
         <span className="flex-1">{t("Layers")}</span>
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -491,13 +496,13 @@ function LayerListView(props: LayerListProps): React.JSX.Element {
               <button
                 type="button"
                 data-add-layer aria-label={t("Add layer")}
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] touch:min-h-tap text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
                 <Plus className="size-3" /> {t("Add layer")}
               </button>
             }
           />
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" finalFocus={props.addFocus}>
             {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
               <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
                 <Icon className="size-3.5" /> {t(label)}

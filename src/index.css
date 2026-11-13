@@ -26,6 +26,11 @@
 /* `titlebar:` applies only under the macOS desktop overlay title bar, outside
    full screen (no traffic lights there); src/titlebar.ts sets the attributes. */
 @custom-variant titlebar (:root[data-titlebar="overlay"]:not([data-fullscreen]) &);
+/* `touch:` applies where the PRIMARY pointer is a finger: phones and tablets,
+   in either layout. Never a mouse, whatever the window size, and not a touch
+   laptop, whose primary pointer is its trackpad. It pairs with the `tap` size
+   and text tokens below; the root stays 13px, so they are px, not rem. */
+@custom-variant touch (@media (pointer: coarse));
 
 /* The app chrome's heading face (h1-h3 via --font-heading), fetched only when
    a heading renders. Label text never uses it: label families load through
@@ -40,6 +45,13 @@
   /* Both schemes supported → light-dark() resolves, and native widgets
      (scrollbars, form controls) follow along. */
   color-scheme: light dark;
+  /* The inspector's height when it rises from the bottom (under 768px wide,
+     src/App.tsx). The sheet and the preview's bottom margin both read it, so
+     the toolbar always rests on the sheet. 45svh, but it yields on a short
+     screen so the preview keeps 150px above it, down to a 180px sheet: 345px
+     is the header and tab strip (102) plus a toolbar wrapped to two rows (up
+     to 93) plus that 150, all measured at 320-390px wide with touch. */
+  --bottom-sheet-height: clamp(180px, calc(100svh - 345px), 45svh);
   --background: light-dark(#fafaf7, #18191f);
   --foreground: light-dark(#1e1f1a, #ececf1);
   --muted: light-dark(#ece8df, #24252d);
@@ -136,6 +148,10 @@
 :root[data-theme="dark"] { color-scheme: dark; }
 
 @theme inline {
+  /* Finger sizes for `touch:`: a 44px tap target (min-h-tap, size-tap) and
+     16px field text (text-tap), below which iOS zooms into a focused field. */
+  --spacing-tap: 44px;
+  --text-tap: 16px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
@@ -285,8 +301,10 @@ h1, h2, h3 { font-family: var(--font-heading); }
    buttons in the tab order and the screen reader's reach: visibility:hidden
    takes it out of both, once Sonner's .4s fade-out has finished (the
    transition list is Sonner's own plus the delayed visibility). A toast that
-   comes back is visible at once. The visible toasts keep their animations. */
-[data-sonner-toaster][data-x-position="center"] {
+   comes back is visible at once. The visible toasts keep their animations.
+   Only the bottom stack is moved: the top one (under 768px wide, sonner.tsx)
+   keeps Sonner's own placement, full width inside its 16px phone margins. */
+[data-sonner-toaster][data-x-position="center"][data-y-position="bottom"] {
   left: var(--toast-center-x, 50%) !important;
   bottom: var(--toast-bottom, 16px) !important;
 }

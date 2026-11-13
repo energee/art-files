@@ -148,18 +148,23 @@ function SidebarProvider({
   )
 }
 
-function Sidebar({ className, children, ...props }: React.ComponentProps<"div">) {
-  const { state } = useSidebar()
+// `overlay` (App.tsx sets it on a phone): the sidebar slides over the content
+// instead of taking room beside it, with a backdrop that closes it, no resize
+// handle, and at most 85% of the screen wide.
+function Sidebar({ overlay = false, className, children, ...props }: React.ComponentProps<"div"> & { overlay?: boolean }) {
+  const { state, open, setOpen } = useSidebar()
   return (
     <div className="group peer block text-sidebar-foreground" data-state={state}
       data-collapsible={state === "collapsed" ? "offcanvas" : ""} data-side="left" data-slot="sidebar">
-      <div data-slot="sidebar-gap"
-        className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:w-0" />
+      {!overlay && <div data-slot="sidebar-gap"
+        className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:w-0" />}
+      {overlay && open && <div data-slot="sidebar-backdrop" aria-hidden="true"
+        className="fixed inset-0 z-40 bg-black/30" onClick={() => setOpen(false)} />}
       <div data-slot="sidebar-container" data-side="left" inert={state === "collapsed"}
-        className={cn("fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]", className)}
+        className={cn("fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear in-data-resizing:transition-none group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]", overlay && "z-40 max-w-[85vw]", className)}
         {...props}>
         <div data-sidebar="sidebar" data-slot="sidebar-inner" className="flex size-full flex-col bg-sidebar">{children}</div>
-        <SidebarResizeHandle />
+        {!overlay && <SidebarResizeHandle />}
       </div>
     </div>
   )
@@ -245,15 +250,19 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { open, toggleSidebar } = useSidebar()
   const { t } = useTranslation()
   return (
+    // aria-expanded tells a screen reader whether the panel is open. The
+    // ghost button paints aria-expanded like a hover; the two classes before
+    // the caller's undo that, so the toggle looks as it did without it.
     <Button
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn(className)}
+      aria-expanded={open}
+      className={cn("aria-expanded:bg-transparent aria-expanded:hover:bg-muted", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
@@ -372,9 +381,9 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
       },
       size: {
-        default: "h-8 text-sm",
-        sm: "h-7 text-xs",
-        lg: "h-12 text-sm",
+        default: "h-8 text-sm touch:min-h-tap",
+        sm: "h-7 text-xs touch:min-h-tap",
+        lg: "h-12 text-sm touch:min-h-tap",
       },
     },
     defaultVariants: {

@@ -1,9 +1,11 @@
 // ui/sonner.tsx — the shadcn Sonner Toaster (`npx shadcn add sonner`, base-nova),
 // with a few changes. The theme comes from useTheme() (src/theme.ts) instead of
 // next-themes, which this app doesn't have. The stack sits at the bottom centre
-// and shows four toasts, all expanded: Sonner's default folds older toasts into
-// slivers behind the newest, and a persistent warning or error must stay
-// readable. Callers can override all three.
+// (the top centre under 768px wide, where the inspector rises from the bottom
+// and toasts would cover its lowest fields) and shows four toasts, all
+// expanded: Sonner's default folds older toasts into slivers behind the
+// newest, and a persistent warning or error must stay readable. Callers can
+// override all three.
 //
 // Up to four toasts show at once. With a fifth, the oldest is hidden until a
 // newer one closes (index.css also takes it out of the tab order). Four fits
@@ -27,16 +29,18 @@ import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { useTranslation } from "@/i18n";
 import { useTheme } from "@/theme";
+import { usePhoneLayout } from "@/usePhoneLayout";
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const [theme] = useTheme();
   const { t } = useTranslation();
+  const { narrow } = usePhoneLayout();
 
   return (
     <Sonner
       theme={theme}
       className="toaster group"
-      position="bottom-center"
+      position={narrow ? "top-center" : "bottom-center"}
       visibleToasts={4}
       expand
       hotkey={[]}

@@ -73,10 +73,11 @@ export function NumberRoot(props: {
 
 /** The input and its unit addon; render inside a NumberRoot. Wider for the
  *  length units whose readings run to more digits than points (0.0139 in,
- *  0.353 mm, 4800.25 px). `compact` fills the rest of its row instead, for
- *  a FieldPair cell too narrow for either fixed width. */
+ *  0.353 mm, 4800.25 px), and wider again on a touch screen, where the
+ *  value is 16px. `compact` fills the rest of its row instead, for a
+ *  FieldPair cell too narrow for either fixed width. */
 export function UnitInput(props: { unit: string; unitTitle?: string; placeholder?: string; compact?: boolean }) {
-  const width = props.compact ? "min-w-0 flex-1" : WIDE_UNITS.has(props.unit) ? "w-28" : "w-24";
+  const width = props.compact ? "min-w-0 flex-1" : WIDE_UNITS.has(props.unit) ? "w-28 touch:w-32" : "w-24 touch:w-30";
   return (
     <InputGroup className={`h-6 ${width}`}>
       <NumberField.Input

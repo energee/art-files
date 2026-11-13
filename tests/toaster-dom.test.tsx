@@ -14,6 +14,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { setLanguage } from "@/i18n";
 import { notify } from "@/notify";
 import { EXIT_MS, advance, mount, settleDismissal, setupToastHarness, show, text, toastCount } from "./toast-harness";
+import { setViewport } from "./viewport";
 
 setupToastHarness();
 
@@ -87,6 +88,21 @@ it("sits at the bottom centre", () => {
   const toaster = document.querySelector("[data-sonner-toaster]")!;
   expect(toaster.getAttribute("data-y-position")).toBe("bottom");
   expect(toaster.getAttribute("data-x-position")).toBe("center");
+});
+
+// Under 768px wide the inspector rises from the bottom; toasts there would
+// cover its lowest fields, so they drop from the top instead.
+it("sits at the top centre under 768px wide", () => {
+  setViewport(390, 844);
+  try {
+    mount();
+    show(() => notify.success("Saved"));
+    const toaster = document.querySelector("[data-sonner-toaster]")!;
+    expect(toaster.getAttribute("data-y-position")).toBe("top");
+    expect(toaster.getAttribute("data-x-position")).toBe("center");
+  } finally {
+    setViewport(1024, 768);
+  }
 });
 
 it("follows the app theme", () => {

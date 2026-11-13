@@ -497,6 +497,7 @@ const fr: Record<keyof typeof en, string> = {
   "Locate .master…": "Localiser le .master…",
   "Use “{{name}}”": "Utiliser “{{name}}”",
   "Layers ({{shortcut}})": "Calques ({{shortcut}})",
+  "Menu": "Menu",
   "Export blocked: {{reason}}": "Exportation bloquée : {{reason}}",
   "Can't export yet": "Impossible d’exporter pour le moment",
   "Show layer": "Afficher le calque",

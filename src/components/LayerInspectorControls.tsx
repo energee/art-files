@@ -112,7 +112,7 @@ export function Heading(props: {
 }) {
   const { more } = props;
   return (
-    <div className="group/reset mb-2 mt-7 flex items-center justify-between">
+    <div className="group/reset mb-2 mt-7 flex items-center justify-between touch:min-h-tap">
       <h2 className="text-xs font-medium text-foreground">{props.children}</h2>
       <span className="flex items-center gap-1.5">
         {props.control}
@@ -148,10 +148,11 @@ export function FieldPair(props: { children: [ReactNode, ReactNode] }) {
 }
 
 /** A label on the left, a compact control on the right — the layout every
- *  non-ScrubField row here shares (ScrubField draws its own label). */
+ *  non-ScrubField row here shares (ScrubField draws its own label). 44px
+ *  tall on a touch screen, so a Switch's widened hit area stays in its row. */
 export function Field(props: { id?: string; label: string; badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className="group/reset flex items-center justify-between gap-2">
+    <div className="group/reset flex items-center justify-between gap-2 touch:min-h-tap">
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
       <span className="flex items-center gap-1.5">
         <BadgeSlot badge={props.badge} />
@@ -199,7 +200,10 @@ export function Badge(props: {
           type="button"
           className={cn(
             "flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            "opacity-0 focus-visible:opacity-100 group-hover/reset:opacity-100 group-focus-within/reset:opacity-100", m.cls,
+            "opacity-0 focus-visible:opacity-100 group-hover/reset:opacity-100 group-focus-within/reset:opacity-100",
+            // Opacity doesn't stop a tap: on touch a hidden reset takes none (under 44px when shown, sized in Phase 4).
+            // Each state that shows it lets taps back in, hover too: a tablet with a hover-capable pen still shows it on hover.
+            "touch:pointer-events-none touch:focus-visible:pointer-events-auto touch:group-focus-within/reset:pointer-events-auto touch:group-hover/reset:pointer-events-auto", m.cls,
           )}
           title={m.title}
           aria-label={m.aria}

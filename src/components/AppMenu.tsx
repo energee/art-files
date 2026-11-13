@@ -9,6 +9,7 @@ import { defaultWindowIcon } from "@tauri-apps/api/app";
 import type {
   CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
+import { MenuIcon } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
 import { commitFieldDraft, dialogOpen, isTypingTarget } from "@/keys";
 import { clearRecent, openRecent, recentLabels, recentTitles, subscribeRecent } from "@/recent";
@@ -18,6 +19,7 @@ import {
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
 import { errMsg } from "@/lib/utils";
+import { usePhoneLayout } from "@/usePhoneLayout";
 
 type ActionEntry = {
   kind: "action";
@@ -270,6 +272,26 @@ function WebEntries(props: {
 }
 
 function WebMenu(props: { commands: CommandIndex; checked: CheckedState; menus: SubmenuEntry[] }) {
+  const { phone } = usePhoneLayout();
+  const { t } = useTranslation();
+  // On a phone the same menus fold under one ☰ trigger, each a submenu with
+  // every row it has on the desktop (spec, The layout, item 3).
+  if (phone) {
+    return (
+      <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
+        <MenubarMenu>
+          <MenubarTrigger className={MENU_TRIGGER}>
+            {/* Sized: the trigger has no svg size rule of its own. */}
+            <MenuIcon className="size-4" />
+            <span className="sr-only">{t("Menu")}</span>
+          </MenubarTrigger>
+          <MenubarContent align="start" className={MENU_ITEMS}>
+            <WebEntries entries={props.menus} commands={props.commands} checked={props.checked} />
+          </MenubarContent>
+        </MenubarMenu>
+      </Menubar>
+    );
+  }
   return (
     <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
       {props.menus.map((menu) => (

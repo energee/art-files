@@ -186,8 +186,10 @@ export function LayerInspector(props: {
 
   return (
     <div className="space-y-1 px-4 py-3">
-      <div className="group/reset flex items-center gap-2">
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      {/* On a touch screen the four 44px actions leave the name too little
+          room in a 300px sheet: the name takes its own line under them. */}
+      <div className="group/reset flex items-center gap-2 touch:flex-wrap">
+        <Icon className="size-3.5 shrink-0 text-muted-foreground touch:mr-auto" aria-hidden="true" />
         {multi ? (
           // A name is one layer's: the count stands in, and names the dialog.
           <h2 id={`${layer.id}-name`} className="flex-1 truncate text-xs font-medium">
@@ -197,7 +199,7 @@ export function LayerInspector(props: {
           // Also names the inspector dialog (App.tsx, #616).
           id={`${layer.id}-name`}
           aria-label={t("Layer name")}
-          className="h-7 flex-1 text-xs font-medium"
+          className="h-7 flex-1 text-xs font-medium touch:order-last touch:basis-full"
           value={nameDraft ?? layer.name}
           data-draft={nameDraft !== null ? "" : undefined}
           aria-invalid={(nameDraft !== null && !nameDraft.trim()) || undefined}

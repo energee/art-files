@@ -174,8 +174,9 @@ export function ColorField(props: {
         onKeyDown={(e) => { if (e.key === "Enter") commitText(); }}
         onBlur={commitText}
         // w-24/px-2.5 = a ScrubField's value box, so the hex lands in the
-        // same right-hand column as every numeric field in the panel.
-        className="h-6 w-24 px-2.5 font-mono text-xs"
+        // same right-hand column as every numeric field in the panel. On a
+        // touch screen the hex is 16px, so the box widens to fit #rrggbb.
+        className="h-6 w-24 px-2.5 font-mono text-xs touch:w-28"
       />
     </div>
   );

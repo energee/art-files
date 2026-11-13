@@ -30,6 +30,7 @@
 // file-open routing, render settings, and the updater.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Redo2, Undo2 } from "lucide-react";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { SettingsNav } from "@/components/SettingsNav";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
@@ -119,6 +120,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { baseName, cn, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
+import { usePhoneLayout } from "@/usePhoneLayout";
 import { loadLabelFaces } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import type { PlanAssets } from "@/plan";
@@ -252,10 +254,10 @@ export const viewState = (mode: ViewMode, split: number) =>
 /** The status bar's clickable readouts (zoom, trim size): a faint idle
  *  border so they read as controls, not as text like the readouts beside them.
  *  Zoom puts it on a wrapping label so the "%" sits inside the border. */
-const STATUS_CONTROL = "rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
+const STATUS_CONTROL = "touch:min-h-tap rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
 /** One segment of a status-bar segmented control (the view and the 1|4 can count). */
 const segmentClass = (on: boolean) =>
-  `px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+  `px-2 py-0.5 text-xs touch:min-h-tap touch:min-w-tap outline-none focus-visible:ring-2 focus-visible:ring-ring ${
     on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`;
 /** The four preview views in keys-1–4 order, as the status bar lists them. */
 const VIEWS = [
@@ -427,9 +429,37 @@ export const DocumentEditor = memo(function DocumentEditor({
   // resolve per master/label change; the inspector reads the same rows.
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
+  const { phone, narrow } = usePhoneLayout();
   /** Controlled so View → Layers and the palette can toggle and check it;
-   *  ⌘B stays the provider's guarded listener. */
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+   *  ⌘B stays the provider's guarded listener. Starts closed on a phone,
+   *  where it covers the preview; later size changes leave it as it is. */
+  const [sidebarOpen, setSidebarOpen] = useState(!phone);
+  const layersToggle = useRef<HTMLButtonElement>(null);
+  /** Close Layers. Focus inside the panel moves to the Layers toggle: the
+   *  panel goes inert as it closes, and focus would fall to the page. (The
+   *  Add layer menu hands focus to the toggle itself, LayerList's addFocus.) */
+  const closeLayers = useStableCallback(() => {
+    if (document.activeElement?.closest('[data-slot="sidebar-container"]')) layersToggle.current?.focus();
+    setSidebarOpen(false);
+  });
+  // Escape closes the Layers overlay. Heard on <html> as it bubbles: after
+  // React's handlers, so Escape a field, the list's drag or anything else
+  // already handled (defaultPrevented) stays theirs; and before the inspector
+  // Sheet's listener on the document, which keeps the layer selected for an
+  // Escape marked handled (see its onOpenChange). An open menu or list and a
+  // modal dialog keep their own Escape too.
+  useEffect(() => {
+    if (!active || !phone || !sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target) || dialogOpen()) return;
+      if (e.target instanceof Element && e.target.closest('[role="menu"], [role="listbox"]')) return;
+      e.preventDefault();
+      closeLayers();
+    };
+    const html = document.documentElement;
+    html.addEventListener("keydown", onKey);
+    return () => html.removeEventListener("keydown", onKey);
+  }, [active, phone, sidebarOpen, closeLayers]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Leaving the Settings page from the keyboard, wherever focus is: ⌘, again
   // (the command itself is blocked while the page is up, see the page), or
@@ -842,7 +872,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
       if (dialogOpen()) return;
       // Looked up again after the commit: a draft can dirty the document and
-      // enable the command, and it must run against the committed doc.
+      // enable the command, and it must run against the committed doc. (The
+      // phone header's Undo and Redo do the same, through runAfterDraft.)
       commitFieldDraft();
       const cmd = lookup();
       if (cmd && !cmd.disabled) cmd.run();
@@ -2264,6 +2295,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
+  /** Run command `id` the way its ⌘ key does: commit the focused field's
+   *  held typing, then look the command up again, since the commit can
+   *  change what it acts on and whether it is enabled. */
+  const runAfterDraft = (id: string) => {
+    commitFieldDraft();
+    const cmd = commandsRef.current.find((c) => c.id === id);
+    if (cmd && !cmd.disabled) cmd.run();
+  };
 
   /** The layer a fill field shows: a value the resolver rejected (errors[id])
    *  is shown as STORED, not as the master fallback the resolved layer
@@ -2406,7 +2445,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const listRename = useStableCallback((id: string, name: string) => patch(id, { name }));
   const listReorder = useStableCallback((id: string, delta: number) =>
     editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta)));
-  const listAdd = useStableCallback(onAddLayer);
+  // On a phone a new layer opens its inspector, which Layers would cover.
+  const listAdd = useStableCallback((kind: LayerKind) => {
+    onAddLayer(kind);
+    if (phone) closeLayers();
+  });
   const listRemove = useStableCallback(onRemoveLayer);
   /** The row menu's Reset to Master: drops this label's design overrides on
    *  the layer and the rest of the selection, as one undo step. Content
@@ -2466,9 +2509,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         </Suspense>
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
-          preview center, inspector sheet right. */}
+          preview center, inspector sheet right. On a phone Layers slides
+          over the preview instead of sitting beside it. */}
       <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
-        <Sidebar>
+        <Sidebar overlay={phone}>
           {/* macOS overlay title bar (src/titlebar.ts): the traffic lights sit
               in the sidebar's top corner, so its content starts below this
               strip, which drags the window. Header height, so the first row
@@ -2480,7 +2524,12 @@ export const DocumentEditor = memo(function DocumentEditor({
           {/* The Settings page takes the sidebar for its groups. */}
           {settingsOpen ? <SidebarContent><SettingsNav onBack={() => setSettingsOpen(false)} /></SidebarContent> : <SidebarContent onClick={(event) => {
             const target = event.target;
-            if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+            if (!(target instanceof Element && event.currentTarget.contains(target))) return;
+            if (!target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+            // Picking a layer on a phone uncovers the preview. Here, not in
+            // onSelect: that also runs on a long-press, which opens the row menu.
+            // A modifier click is building a multi-selection, so Layers stays.
+            if (phone && target.closest("[data-layer-id]") && !(event.shiftKey || event.metaKey || event.ctrlKey)) closeLayers();
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master}
@@ -2495,7 +2544,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onToggle={listToggle}
               onRename={listRename}
               onReorder={listReorder}
-              onAdd={listAdd} onRemove={listRemove} invalid={flaggedLayers}
+              onAdd={listAdd} addFocus={phone ? layersToggle : undefined} onRemove={listRemove} invalid={flaggedLayers}
               onReset={listReset}
               />
           </SidebarContent>}
@@ -2512,7 +2561,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             the sidebar is collapsed. */}
         <header data-tauri-drag-region={overlayTitlebar() ? "" : undefined}
           className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2 titlebar:h-10">
-          <SidebarTrigger className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
+          <SidebarTrigger ref={layersToggle} className="size-6 titlebar:fixed titlebar:top-[6px] titlebar:left-24 titlebar:z-20"
             title={t("Layers ({{shortcut}})", { shortcut: shortcutLabel("⌘B") })} aria-label={t("Layers")} />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
@@ -2534,6 +2583,23 @@ export const DocumentEditor = memo(function DocumentEditor({
               void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
                 .catch((err) => reportLoadError(t("Could not open master: {{error}}", { error: errMsg(err) })));
             }} />
+          {/* A phone has no keyboard for ⌘Z: Undo and Redo get buttons. At
+              the right end only when upright: sideways, the right-hand
+              inspector would cover them. Like the ⌘ commands they land a
+              field's held typing first and then run the command as it stands
+              after that (runAfterDraft). */}
+          {phone && (
+            <div className={cn("flex items-center gap-1", narrow && "ml-auto")}>
+              <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("undo").label}
+                disabled={byId("undo").disabled} onClick={() => runAfterDraft("undo")}>
+                <Undo2 />
+              </Button>
+              <Button variant="ghost" size="icon-sm" className="size-6" aria-label={byId("redo").label}
+                disabled={byId("redo").disabled} onClick={() => runAfterDraft("redo")}>
+                <Redo2 />
+              </Button>
+            </div>
+          )}
         </header>
       {/* The slot under the menubar for the workspace tab strip and the
           plain bars (recovery, the updater). The strip is hidden, not
@@ -2565,7 +2631,13 @@ export const DocumentEditor = memo(function DocumentEditor({
         </section>
       )}
       <div className={cn("flex min-h-0 flex-1", settingsOpen && "invisible")} inert={settingsOpen}>
-        <section className="flex min-w-0 flex-1 flex-col">
+        {/* Under 768px wide the inspector rises from the bottom: the section
+            (preview pane and toolbar) keeps the sheet's height clear, so the
+            toolbar rests on the sheet. Both read --bottom-sheet-height
+            (index.css), which yields on a short screen to keep the preview. */}
+        <section className={cn("flex min-w-0 flex-1 flex-col",
+          narrow && "transition-[margin] duration-200 motion-reduce:transition-none",
+          narrow && active && inspected && "mb-(--bottom-sheet-height)")}>
           <div
             ref={previewPane}
             // The inspector sheet is non-modal and portals over the window,
@@ -2575,11 +2647,12 @@ export const DocumentEditor = memo(function DocumentEditor({
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
             // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
-            // The preview toolbar under the pane carries the same margin and
-            // transition, or its right end would sit under the sheet.
+            // When the sheet is at the bottom the section above makes room.
+            // The preview toolbar under the pane carries the same right margin
+            // and transition, or its right end would sit under the sheet.
             className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border bg-background",
               "transition-[margin] duration-200",
-              active && inspected && "mr-[300px]",
+              active && inspected && !narrow && "mr-[300px]",
               panning && "cursor-grabbing")}
             onContextMenu={(e) => viewMode === "2d" && e.preventDefault()}
             // Clicking the pasteboard — the pane around the label sheet —
@@ -2685,10 +2758,13 @@ export const DocumentEditor = memo(function DocumentEditor({
             )}
           </div>
           {/* Preview toolbar, in every view. It makes the same room for the
-              inspector sheet as the pane above. */}
-          <div className={cn("flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2",
-            "transition-[margin] duration-200",
-            active && inspected && "mr-[300px]")}>
+              inspector sheet as the pane above. On a phone it wraps onto a
+              second row instead of scrolling sideways, its fixed height
+              becoming a minimum to fit it, mouse or finger; on a touch screen it
+              also grows to fit its 44px controls. */}
+          <div className={cn("flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2 touch:h-auto",
+            phone && "h-auto min-h-8 flex-wrap", "transition-[margin] duration-200",
+            active && inspected && !narrow && "mr-[300px]")}>
             {/* The "%" sits inside the border so the readout is one control;
                 clicking it focuses the input. */}
             <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
@@ -2704,7 +2780,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               }}
               title={t("Type a zoom percentage. 100 fits the view.")}
               aria-label={t("Zoom percentage")}
-              className="w-8 bg-transparent text-right tabular-nums outline-none" />
+              className="w-8 bg-transparent text-right tabular-nums outline-none touch:w-10 touch:text-tap" />
             %
             </label>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
@@ -2743,7 +2819,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 {t("Lighting")}
                 <input type="range" aria-label={t("Lighting")} min={-180} max={180} step={5}
                   value={lightDeg} onChange={(e) => setLightDeg(Number(e.target.value))}
-                  className="w-24 accent-primary" />
+                  className="w-24 accent-primary touch:min-h-tap" />
                 <span className="w-10 tabular-nums">{lightDeg}°</span>
               </label>
             )}
@@ -2753,14 +2829,15 @@ export const DocumentEditor = memo(function DocumentEditor({
                 {t("Curve")}
                 <input type="range" aria-label={t("Curve")} min={0} max={100} step={1}
                   value={curvePct} onChange={(e) => setCurvePct(Number(e.target.value))}
-                  className="w-24 accent-primary" />
+                  className="w-24 accent-primary touch:min-h-tap" />
                 <span className="w-8 tabular-nums">{curvePct}%</span>
               </label>
             )}
             {active && <div ref={updateStatusHost} className="ml-auto shrink-0 pl-3" />}
           </div>
         </section>
-        {/* Right inspector: a shadcn Sheet driven by the selection — open
+        {/* Inspector: a shadcn Sheet driven by the selection — on the right,
+            or rising from the bottom under 768px wide — open
             while a layer is selected, closed (Esc, the inspector's close button
             or a click on the empty pasteboard) by clearing it. Non-modal and
             overlay-free so the preview and the Layers list stay clickable
@@ -2782,7 +2859,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               else clearSelection();
             } else if (details.reason === "close-press") clearSelection();
           }}>
-          <SheetContent side="right" showOverlay={false} showCloseButton={false}
+          <SheetContent side={narrow ? "bottom" : "right"} showOverlay={false} showCloseButton={false}
             // Opening follows a selection, so focus stays where the user
             // selected: Base UI's default would land in the rename box and
             // turn Backspace/arrows into text edits instead of delete/nudge.
@@ -2793,8 +2870,14 @@ export const DocumentEditor = memo(function DocumentEditor({
             // Sized on the base's own `data-[side=right]:` variant so
             // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
             // at the 13px root); an unprefixed w-[300px] lost to both on
-            // specificity and left the sheet at 75% below 640px (#132).
-            className="gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none">
+            // specificity and left the sheet at 75% below 640px (#132). The
+            // bottom height (--bottom-sheet-height, which the section above
+            // reserves too) replaces the base's data-[side=bottom]:h-auto the
+            // same way. On a phone z-30 puts the sheet under the Layers
+            // overlay (z-40), which would otherwise open behind it; sideways
+            // too, where a wide saved Layers overlay reaches the right sheet.
+            className={cn("gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none data-[side=bottom]:h-(--bottom-sheet-height)",
+              phone && "z-30")}>
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
                 unit={unit}

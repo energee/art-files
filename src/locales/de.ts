@@ -497,6 +497,7 @@ const de: Record<keyof typeof en, string> = {
   "Locate .master…": ".master suchen…",
   "Use “{{name}}”": "„{{name}}“ verwenden",
   "Layers ({{shortcut}})": "Ebenen ({{shortcut}})",
+  "Menu": "Menü",
   "Export blocked: {{reason}}": "Export blockiert: {{reason}}",
   "Can't export yet": "Export noch nicht möglich",
   "Show layer": "Ebene anzeigen",

@@ -638,6 +638,28 @@ describe("LayerInspector override badges", () => {
     expect($("#name-size")!.closest(".group\\/reset")!.innerHTML).not.toContain("min-w-6");
   });
 
+  // Opacity does not stop a tap: on a touch screen a hidden reset takes no
+  // taps, so a first tap into a field cannot land on it and reset the value.
+  // It takes them again in each state that shows it: its row holding focus,
+  // or hover (a tablet with a hover-capable pen).
+  it("lets a touch screen tap a reset only while its row shows it", () => {
+    render(text(), { overridden: from([], ["size", "x"]) });
+    for (const name of ["Size", "X"]) {
+      const reset = byLabel(`Reset ${name} to this label's master value`)!;
+      const classes = reset.className.split(" ");
+      expect(classes).toContain("touch:pointer-events-none");
+      expect(classes).toContain("touch:group-focus-within/reset:pointer-events-auto");
+      expect(classes).toContain("touch:focus-visible:pointer-events-auto");
+      expect(classes).toContain("touch:group-hover/reset:pointer-events-auto");
+      // Mouse behaviour: nothing turns pointer events off without touch:.
+      expect(classes).not.toContain("pointer-events-none");
+      // Its size and spacing are as they were before Task 2.6's hit-area
+      // change: no touch-only box or margin to push a fill-the-rest input.
+      expect(reset.className).not.toContain("touch:after:");
+      expect(reset.parentElement!.className).not.toMatch(/(^|\s)(touch:)?-?m[trblxy]?-/);
+    }
+  });
+
   it("colours the override mark info, not primary (docs/plans/template-switch.md, Task 3)", () => {
     render(text(), { overridden: from(["style.fill"]) });
     const badge = byLabel("Reset Fill to the master")!;
