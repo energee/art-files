@@ -8,6 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Smoother typing into fields that feed the QR.** The preview keeps the last QR while you type and updates it when you pause. Exports always use what you typed.
+- **Labels with two QR codes no longer slow down every edit.** With two QR layers holding different values, both codes were rebuilt on every keystroke, nudge and drag step. Each is now built once and reused until its value or style changes.
 - **Replaced images are released.** An image you replaced is freed once undo and redo can no longer reach it, instead of staying in memory until the tab closes.
 - **Resizing an SVG layer no longer builds up memory.** Only the last few sizes stay cached instead of every size the drag passed through.
 - **Hidden tabs use less memory.** A tab you are not looking at no longer holds its rendered preview.
