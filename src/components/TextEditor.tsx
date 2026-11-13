@@ -684,7 +684,7 @@ export function ChoiceBox(props: {
             <li key={c.value} id={`${id}-opt-${i}`} role="option" data-choice aria-selected={i === active}
               // The list is dismissed by blur, so take the press before it.
               onMouseDown={(e) => { e.preventDefault(); commit(c.value); }}
-              className={cn("cursor-default rounded-sm px-2 py-1 text-xs",
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs touch:flex touch:min-h-tap touch:items-center",
                 i === active ? "bg-accent" : "hover:bg-accent")}>
               {c.title ?? c.value}
             </li>
@@ -692,7 +692,7 @@ export function ChoiceBox(props: {
           {novel && (
             <li key="__novel" id={`${id}-opt-${shown.length}`} role="option" data-novel aria-selected={active === shown.length}
               onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
-              className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground touch:flex touch:min-h-tap touch:items-center",
                 active === shown.length ? "bg-accent" : "hover:bg-accent")}>
               {t("Use “{{value}}”", { value: typed.trim() })}
             </li>
