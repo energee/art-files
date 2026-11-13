@@ -8,7 +8,7 @@ import {
   defaultConfig, displayAbv, exportBaseName, legacyCollabEnabled, parseConfigFile,
   WARNING_TEXT,
 } from "../src/defaults";
-import { markedWords, parseDescription, parseInfoLine, parseRuns } from "../src/description";
+import { markedWords, parseDescription, parseInfoLine, parseRuns, printableText } from "../src/description";
 import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
   PREVIEW_RASTER_MAX_EDGE, PREVIEW_RASTER_MAX_SCALE,
@@ -202,6 +202,11 @@ describe("description markdown", () => {
   it("interprets a body line wrapped in _ as white ink, markers stripped — mirrors the renderer", () => {
     const d = parseDescription("_Galaxy_");
     expect(d.lines).toEqual([{ text: "Galaxy", bold: false, fill: GOLD, layer: "white" }]);
+  });
+
+  it("printableText composes a decomposed accent (#788)", () => {
+    // "Cafe" + U+0301, as a name copied from macOS Finder arrives.
+    expect(printableText("Cafe\u0301")).toBe("Caf\u00e9");
   });
 });
 

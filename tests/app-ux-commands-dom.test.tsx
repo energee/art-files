@@ -170,14 +170,14 @@ it("offers the combined PDF and its As… row while the preview is still renderi
   expect(items.some((el) => el.textContent?.startsWith("Export PSDs"))).toBe(false);
 });
 
-// Settings → Two-file export: ⌘E / ⇧⌘E move to the pairs, the single PDF
+// Settings → Export as (Art + mask): ⌘E / ⇧⌘E move to the pairs, the single PDF
 // plates show, and the one-file exports go.
 it("with two-file export on, ⌘E and ⇧⌘E export the pairs", async () => {
   await mount({ render: { ...DEFAULT_RENDER, twoFilePdfExport: true } });
   await paletteRows();
   const rows = paletteGroups().Export;
   expect(rows.map((r) => r.replace(/(⇧?⌘|Ctrl).*$/, ""))).toEqual([
-    "Export PDFs", "Export PDFs As…", "Export Artwork PDF", "Export Mask PDF", "Export PSDs", "Export PSDs As…",
+    "Export PDFs", "Export PDFs As…", "Export Label PDF", "Export Mask PDF", "Export PSDs", "Export PSDs As…",
   ]);
   expect(rows[0]).toMatch(/^Export PDFs.+E$/);
   expect(rows[4]).toMatch(/^Export PSDs.+E$/);

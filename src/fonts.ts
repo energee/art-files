@@ -24,7 +24,7 @@ type Face = "regular" | "semibold" | "bold";
 
 /** The ?url side of the catalog: Vite needs static imports, so this is the
  *  one place a family's face URLs are wired up. */
-export const FONT_URLS: Record<FontFamilyId, Record<Face, string>> = {
+const FONT_URLS: Record<FontFamilyId, Record<Face, string>> = {
   poppins: { regular: poppinsRegular, semibold: poppinsSemiBold, bold: poppinsBold },
   "barlow-condensed": { regular: barlowRegular, semibold: barlowSemiBold, bold: barlowBold },
 };

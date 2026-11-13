@@ -88,12 +88,13 @@ export const PreviewCompare = forwardRef<
   PreviewCompareHandle,
   {
     /** The render source: fonts + decoded bitmaps for drawPlate. Null means
-     *  "not ready yet / a 3D view is up" — the canvases keep their last
-     *  frame, and hit-testing is skipped rather than guessed. */
+     *  "not ready yet / a 3D view is up / a hidden tab" — nothing shows, so
+     *  the canvases empty, and hit-testing is skipped rather than guessed. */
     canvasRender: CanvasRenderSource | null;
     /** The resolved layers that draw (enabled, values applied), in draw
      *  order — what the display list, the hit boxes and the drag targets are
-     *  all computed from, so they cannot disagree. */
+     *  all computed from, so they cannot disagree. A QR's value trails the
+     *  typing (useSettledQr). */
     layers: Layer[];
     /** Maps a resolved layer to the one the in-place editor opens on (App:
      *  its stored value, if the resolver rejected it — see shownLayer). */
@@ -193,7 +194,7 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
   }), [changeSplit]);
 
-  // The display list and boxes, measured once per layers/source change. A throw here
+  // The display list and boxes, measured once per layers/source/Bleed change. A throw here
   // (a bad binding, an unparsable payload) is caught by the paint effect
   // below, so the last frame stays up.
   const plan = useMemo<ReturnType<typeof planLayerScene> | Error | null>(() => {
@@ -203,7 +204,9 @@ export const PreviewCompare = forwardRef<
     } catch (err) {
       return err instanceof Error ? err : new Error(String(err));
     }
-  }, [layers, canvasRender]);
+    // bleedIn is unused in here, but the plan reads the page size it sets (#789).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers, canvasRender, bleedIn]);
 
   const hitBoxes = useMemo(() => plan && !(plan instanceof Error)
     ? hitBoxesFromLayout(layers, plan.boxes) : [], [layers, plan]);
@@ -211,8 +214,7 @@ export const PreviewCompare = forwardRef<
 
   // The one render path: repaint the visible plates (platesToPaint) straight from the display list
   // on every change, on a rAF so a burst of keystrokes coalesces into one
-  // paint per frame. null canvasRender (assets still assembling, or a 3D
-  // view is up) paints nothing and the canvases keep their last frame.
+  // paint per frame. null canvasRender paints nothing: see the effect below.
   useEffect(() => {
     if (!canvasRender || !plan) return;
     const raf = requestAnimationFrame(() => {
@@ -408,7 +410,14 @@ export const PreviewCompare = forwardRef<
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onDragCancel]);
 
-  useEffect(() => { if (!canvasRender) setEditing(null); }, [canvasRender]);
+  // No source, no preview: end the session and free both plates' backing
+  // stores, up to 51MB each on a zoomed tab. The paint effect above resizes
+  // them when a source returns (#734).
+  useEffect(() => {
+    if (canvasRender) return;
+    setEditing(null);
+    for (const c of [artCanvas.current, maskCanvas.current]) if (c) c.width = c.height = 0;
+  }, [canvasRender]);
 
   // Report the open session so App can skip the layer from the render for
   // its duration, and COMMIT the one that just ended if it changed anything.

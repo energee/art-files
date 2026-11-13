@@ -427,6 +427,29 @@ describe("TextEditor with a vocabulary", () => {
     expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
   });
 
+  // #784: focus stays in the input, so the highlight only reaches a screen
+  // reader through aria-activedescendant, and the list takes the field's name.
+  it("ties the input to the list, the highlighted option and the field's label", () => {
+    renderEditor({ lines: [], choices: STYLES, label: "Style line", title: "Style" });
+    const box = openList();
+    key(box, "ArrowDown");
+    const list = document.querySelector('[role="listbox"]')!;
+    const selected = list.querySelector('[role="option"][aria-selected="true"]')!;
+    expect(selected.id).not.toBe("");
+    expect(box.getAttribute("aria-activedescendant")).toBe(selected.id);
+    expect(list.id).not.toBe("");
+    expect(box.getAttribute("aria-controls")).toBe(list.id);
+    expect(list.hasAttribute("aria-label")).toBe(false);
+    expect(document.getElementById(list.getAttribute("aria-labelledby")!))
+      .toBe(container.querySelector('label[for="layer"]'));
+  });
+
+  it("ties a choice field's error text to its input (#784)", () => {
+    renderEditor({ lines: [line("12345")], choices: TIERS, input: "code", symbology: "upc-a" });
+    const box = container.querySelector("#layer")!;
+    expect(document.getElementById(box.getAttribute("aria-describedby")!)?.textContent).toMatch(/12 digits/);
+  });
+
   it("closes on Escape without committing", () => {
     const { onChange } = renderEditor({ lines: [], choices: STYLES });
     const box = openList();

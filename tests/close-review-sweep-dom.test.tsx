@@ -62,6 +62,7 @@ vi.mock("../src/App", async () => {
 
 const { emit } = await import("@tauri-apps/api/event");
 const { default: TabsShell } = await import("../src/TabsShell");
+const { discardCount } = await import("../src/recovery");
 
 let root: ReturnType<typeof createRoot>;
 afterEach(async () => {
@@ -108,8 +109,11 @@ async function twoTabsClosingWindow() {
   await twoUnsavedTabs();
   await act(async () => { await emit("tauri://close-requested"); });
   await vi.waitFor(() => expect(summary()).not.toBeNull());
+  // Both are locking bars under the title bar, not centred boxes.
+  expect(summary()!.hasAttribute("data-bar")).toBe(true);
   await act(async () => { button("Review Changes…", summary()).click(); });
   await vi.waitFor(() => expect(prompt()?.textContent).toContain("“A”"));
+  expect(prompt()!.hasAttribute("data-bar")).toBe(true);
 }
 
 /** Clicks Save on the prompt for tab A (master edits), resolving the stub
@@ -206,9 +210,11 @@ it("Discard All quits without a prompt per tab", async () => {
   await twoUnsavedTabs();
   await act(async () => { await emit("tauri://close-requested"); });
   await vi.waitFor(() => expect(summary()).not.toBeNull());
+  const discards = discardCount();
   await act(async () => { button("Discard All", summary()).click(); });
   await vi.waitFor(() => expect(destroyed()).toBe(true));
   expect(prompt()).toBeNull();
+  expect(discardCount()).toBe(discards + 1); // armed snapshot timers stand down (#697)
 });
 
 it("Cancel on the one-time prompt keeps the window and every tab", async () => {

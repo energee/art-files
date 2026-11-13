@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   dropped: [] as string[], opened: [] as unknown[], tauri: false, mtime: 0 as number | null, statFails: false,
   snaps: [] as Record<string, unknown>[], openProject: null as null | (() => void),
 }));
-const ALPHA = { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label", fileModifiedAt: 4 };
+const MASTER = { edited: new Uint8Array([2]), base: new Uint8Array([3]) };
+const ALPHA = { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label", fileModifiedAt: 4, master: MASTER };
 vi.mock("../src/recovery", async (importOriginal) => ({
   canRebind: (await importOriginal<typeof import("../src/recovery")>()).canRebind,
   recoveryKey: (id: number) => `now:${id}`,
@@ -58,6 +59,7 @@ afterEach(async () => {
   container.remove();
 });
 
+import { dialogOpen } from "../src/keys";
 const dialog = () => Array.from(document.querySelectorAll('[role="dialog"]'))
   .find((d) => d.textContent?.includes("Recover unsaved work?")) ?? null;
 const press = async (label: string) => {
@@ -65,11 +67,17 @@ const press = async (label: string) => {
   await act(async () => { button.click(); });
 };
 
+it("is a plain bar: nothing dims and the label's shortcuts keep working", () => {
+  expect(dialog()!.getAttribute("data-bar")).toBe("plain");
+  expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
+  expect(dialogOpen()).toBe(false);
+});
+
 it("Restore opens each snapshot with its key and leaves the drop to the editor", async () => {
   expect(dialog()!.textContent).toContain("alpha.label");
   await press("Restore");
   expect(mocks.opened).toHaveLength(1);
-  expect(mocks.opened[0]).toMatchObject({ recovered: "old:1" });
+  expect(mocks.opened[0]).toMatchObject({ recovered: "old:1", recoveredMaster: MASTER });
   expect(mocks.dropped).not.toContain("old:1");
 });
 

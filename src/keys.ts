@@ -5,10 +5,12 @@
 // field's typing before a command reads the document (#684).
 import { flushSync } from "react-dom";
 
-/** A modal dialog (shadcn's DialogContent: Settings, the Save Master review,
- *  the unsaved-tab prompt, the updater, the command palette). It blocks the
- *  canvas behind it, so not even ⌘Z may change that canvas. */
-const DIALOG = '[data-slot="dialog-content"]';
+/** A modal dialog (shadcn's DialogContent: the Save Master review, the
+ *  unsaved-tab prompt, the updater, the command palette), or the Settings
+ *  page, which carries the same marker. It blocks the canvas behind it, so
+ *  not even ⌘Z may change that canvas. A plain bar (recovery, the updater)
+ *  blocks nothing and doesn't count. */
+const DIALOG = '[data-slot="dialog-content"]:not([data-bar="plain"])';
 
 /** Any overlay or panel holding focus: a dialog, a popover, a menu, a Select
  *  (trigger or list), the inspector Sheet (role "dialog"). Every BARE key
