@@ -1,6 +1,6 @@
 // main.rs — Label Lab's desktop shell: the updater gate, the OS
 // file-open delivery (.label paths from Finder / Explorer / argv), the
-// installed-font listing (system_fonts.rs), and the macOS app-quit hook
+// installed-font listing and reading (system_fonts.rs), and the macOS app-quit hook
 // (terminate.rs).
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -234,6 +234,7 @@ fn main() {
             relaunch_app,
             take_opened_file,
             system_fonts::list_system_fonts,
+            system_fonts::read_system_font,
             terminate::set_unsaved
         ])
         // macOS: Dock → Quit, logout and AppleScript `quit` bypass the

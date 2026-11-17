@@ -1,6 +1,8 @@
 // system_fonts.rs — the installed fonts the desktop Font menu offers to
-// import. Lists single-font, upright .ttf/.otf files only, and remembers the
-// listed paths so read_system_font (next) can refuse any other file.
+// import. list_system_fonts lists single-font, upright .ttf/.otf files only
+// and remembers their canonical paths; read_system_font returns one listed
+// file's bytes and refuses any other path (`..` and symlinks are resolved
+// before the check).
 
 use std::{
     collections::HashSet,
@@ -97,6 +99,32 @@ pub fn list_system_fonts(state: tauri::State<'_, SystemFontPaths>) -> Vec<System
     fonts
 }
 
+/** The canonical path of `requested` when it is one of the listed fonts,
+ * else None (also when it does not exist). Canonicalising first resolves `..`
+ * and symlinks, so a roundabout path to a listed file is that file and is
+ * allowed, while anything that resolves elsewhere is refused. */
+fn allowed(set: &HashSet<PathBuf>, requested: &Path) -> Option<PathBuf> {
+    let canonical = dunce::canonicalize(requested).ok()?;
+    set.contains(&canonical).then_some(canonical)
+}
+
+/** The bytes of one font the last list_system_fonts returned; any other path
+ * is refused so the webview cannot read arbitrary files. Sent as a raw IPC
+ * body, so `invoke` resolves to an ArrayBuffer rather than a JSON array. */
+#[tauri::command(async)]
+pub fn read_system_font(
+    path: String,
+    state: tauri::State<'_, SystemFontPaths>,
+) -> Result<tauri::ipc::Response, String> {
+    let file = allowed(
+        &state.0.lock().unwrap_or_else(PoisonError::into_inner),
+        Path::new(&path),
+    )
+    .ok_or("not a listed system font")?;
+    let bytes = std::fs::read(&file).map_err(|err| err.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +209,81 @@ mod tests {
             json,
             serde_json::json!({"family":"Poppins","postscript":"Poppins-Bold","weight":700,"path":"/f/p.ttf"})
         );
+    }
+
+    /** A fresh temp dir holding `fonts/listed.ttf` and `other/secret.ttf`,
+     * removed on drop, with the listed file's canonical path in `set`. */
+    struct Fixture {
+        root: PathBuf,
+        set: HashSet<PathBuf>,
+    }
+
+    impl Fixture {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "label-lab-system-fonts-{name}-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("fonts")).unwrap();
+            std::fs::create_dir_all(root.join("other")).unwrap();
+            std::fs::write(root.join("fonts/listed.ttf"), b"listed").unwrap();
+            std::fs::write(root.join("other/secret.ttf"), b"secret").unwrap();
+            let listed = dunce::canonicalize(root.join("fonts/listed.ttf")).unwrap();
+            Fixture {
+                root,
+                set: HashSet::from([listed]),
+            }
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn allows_a_listed_path() {
+        let f = Fixture::new("listed");
+        let got = allowed(&f.set, &f.root.join("fonts/listed.ttf"));
+        assert_eq!(got.as_ref(), f.set.iter().next());
+    }
+
+    #[test]
+    fn refuses_an_unlisted_path() {
+        let f = Fixture::new("unlisted");
+        assert_eq!(allowed(&f.set, &f.root.join("other/secret.ttf")), None);
+    }
+
+    #[test]
+    fn refuses_a_dotdot_path_that_leaves_the_listed_file() {
+        let f = Fixture::new("dotdot-out");
+        let sneaky = f.root.join("fonts/../other/secret.ttf");
+        assert_eq!(allowed(&f.set, &sneaky), None);
+    }
+
+    /** `..` is resolved before the check, so a path that lands on the listed
+     * file is that file and is allowed. */
+    #[test]
+    fn allows_a_dotdot_path_that_resolves_to_the_listed_file() {
+        let f = Fixture::new("dotdot-same");
+        let roundabout = f.root.join("other/../fonts/listed.ttf");
+        assert_eq!(allowed(&f.set, &roundabout).as_ref(), f.set.iter().next());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_symlink_to_an_unlisted_file() {
+        let f = Fixture::new("symlink");
+        let link = f.root.join("fonts/link.ttf");
+        std::os::unix::fs::symlink(f.root.join("other/secret.ttf"), &link).unwrap();
+        assert_eq!(allowed(&f.set, &link), None);
+    }
+
+    #[test]
+    fn refuses_a_missing_path() {
+        let f = Fixture::new("missing");
+        assert_eq!(allowed(&f.set, &f.root.join("fonts/gone.ttf")), None);
     }
 }
