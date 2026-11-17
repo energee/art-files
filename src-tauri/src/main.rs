@@ -1,9 +1,11 @@
 // main.rs — Label Lab's desktop shell: the updater gate, the OS
-// file-open delivery (.label paths from Finder / Explorer / argv), and the
-// macOS app-quit hook (terminate.rs).
+// file-open delivery (.label paths from Finder / Explorer / argv), the
+// installed-font listing (system_fonts.rs), and the macOS app-quit hook
+// (terminate.rs).
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod system_fonts;
 mod terminate;
 
 use std::{
@@ -226,10 +228,12 @@ fn main() {
 
     builder
         .manage(OpenedFile::new(opened_at_launch))
+        .manage(system_fonts::SystemFontPaths::default())
         .invoke_handler(tauri::generate_handler![
             updater_enabled,
             relaunch_app,
             take_opened_file,
+            system_fonts::list_system_fonts,
             terminate::set_unsaved
         ])
         // macOS: Dock → Quit, logout and AppleScript `quit` bypass the
