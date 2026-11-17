@@ -8,6 +8,7 @@
 // them untouched keeps the file lossless and byte-identical on round-trip.
 import { strFromU8, Unzip, UnzipInflate, type Zippable } from "fflate";
 import { t } from "@/i18n";
+import type { Face } from "./plan";
 
 /** The project file's suffix — owned here with the format itself, so the
  *  pickers, the hidden input, and the download names can't drift apart. */
@@ -21,6 +22,12 @@ export type LabelAsset = { name: string; bytes: Uint8Array };
 /** A custom-layer image asset — an alias of LabelAsset, named separately
  *  since it's stored one per assetId rather than one per fixed role. */
 type CustomImageAsset = LabelAsset;
+/** One imported font file (TTF/OTF) — an alias of LabelAsset. */
+export type FontAsset = LabelAsset;
+/** A font family imported into a file: its display name and the file each
+ *  label face draws with (one file may fill several faces). Built by
+ *  readImportedFont in fontImport.ts. */
+export type ImportedFont = { family: string; faces: Record<Face, FontAsset> };
 export type LabelAssets = {
   texture?: LabelAsset;
   mask?: LabelAsset;
