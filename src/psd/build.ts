@@ -34,7 +34,7 @@
 // and throws "Buffer not supported on this platform" in the browser.
 import { writePsdUint8Array, type BezierPath, type BooleanOperation, type Layer, type Psd } from "ag-psd";
 import type { Fill } from "../types";
-import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
+import { fontFamily, type FontFamilyId } from "../fontCatalog";
 import type { Font } from "@pdf-lib/fontkit";
 import { openFont } from "../fontkit";
 import { glyphPaths } from "../pdf/outline";
@@ -545,7 +545,7 @@ function buildLayers(
     const children: Layer[] = [];
     const texts = its.filter((r): r is PlacedText => r.kind === "text");
     if (texts.length) {
-      const ps = FONT_FAMILIES[texts[0].fontFamily ?? assets.fontFamily ?? "poppins"].ps;
+      const ps = fontFamily(texts[0].fontFamily ?? assets.fontFamily ?? "poppins").ps;
       if (layer?.kind === "text" && layer.align === "justify") {
         // Photoshop point text cannot reproduce variable word gaps. Keep the
         // planned runs as editable type layers so export placement is exact.

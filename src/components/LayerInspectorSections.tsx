@@ -32,7 +32,7 @@ import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
 import { BadgeSlot, ScrubField } from "./ScrubField";
 import { CharacterHeight } from "./CharacterHeight";
-import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
+import { FONT_FAMILIES, fontFamily, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import {
   BlankableField, DimensionField, Field, FieldPair, Heading, PT, Segmented, SelectField, SwitchRow,
   ignoringContent, ignoringContentAndPlacement, useInspectorOptions, type Ctx,
@@ -213,10 +213,10 @@ const TextFace = memo(function TextFace(props: TextProps) {
         <Select value={layer.fontFamily ?? "inherit"}
           onValueChange={(value) => set({ fontFamily: value === "inherit" ? undefined : value as FontFamilyId })}>
           <SelectTrigger size="sm" aria-label={t("Font")} className="h-7 w-40 text-xs">
-            <SelectValue>{layer.fontFamily ? FONT_FAMILIES[layer.fontFamily].label : t("Default ({{font}})", { font: FONT_FAMILIES[fontFamilyOf(props)].label })}</SelectValue>
+            <SelectValue>{layer.fontFamily ? fontFamily(layer.fontFamily).label : t("Default ({{font}})", { font: fontFamily(fontFamilyOf(props)).label })}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="inherit">{t("Default ({{font}})", { font: FONT_FAMILIES[fontFamilyOf(props)].label })}</SelectItem>
+            <SelectItem value="inherit">{t("Default ({{font}})", { font: fontFamily(fontFamilyOf(props)).label })}</SelectItem>
             {Object.entries(FONT_FAMILIES).map(([value, font]) => (
               <SelectItem key={value} value={value}>{font.label}</SelectItem>
             ))}

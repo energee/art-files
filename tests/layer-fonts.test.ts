@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { PDFDocument, PDFName } from "pdf-lib";
 import { readPsd } from "ag-psd";
-import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
+import { FONT_FAMILIES, type BundledFontId } from "../src/fontCatalog";
 import { planText } from "../src/planLayers";
 import type { Face, MeasureFace } from "../src/plan";
 import { createHeightMeasure } from "../src/textheight";
@@ -15,7 +15,7 @@ import { parseLabel, serializeLabel, serializeMaster } from "../src/model/files"
 import { setLabelOverride } from "../src/model/edit";
 import { resolveLayers } from "../src/model/resolveLayers";
 
-const bytes = (family: FontFamilyId): Record<Face, Uint8Array> => {
+const bytes = (family: BundledFontId): Record<Face, Uint8Array> => {
   const read = (face: Face) => readFileSync(new URL(`../src/assets/fonts/${FONT_FAMILIES[family].files[face]}`, import.meta.url));
   return { regular: read("regular"), semibold: read("semibold"), bold: read("bold") };
 };
@@ -44,7 +44,7 @@ it("uses the selected family's actual metrics and carries it through normal, rot
   expect(planText(text, measure).every((r) => !("fontFamily" in r))).toBe(true);
   expect(createHeightMeasure(condensed)(narrow)).not.toEqual(createHeightMeasure(poppins)(text));
   for (const [family, faces] of Object.entries(parsed)) for (const [face, font] of Object.entries(faces)) {
-    expect((font as { postscriptName: string }).postscriptName).toBe(FONT_FAMILIES[family as FontFamilyId].ps[face as Face]);
+    expect((font as { postscriptName: string }).postscriptName).toBe(FONT_FAMILIES[family as BundledFontId].ps[face as Face]);
   }
 });
 

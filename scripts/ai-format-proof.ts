@@ -19,7 +19,7 @@ import type { Font } from "@pdf-lib/fontkit";
 import { buildPrintPdf, pdfMeasureFace, type Assets } from "../src/pdf/build";
 import { outlineText } from "../src/pdf/outline";
 import { openFont } from "../src/fontkit";
-import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
+import { FONT_FAMILIES, isImportedFontId, type BundledFontId, type FontFamilyId } from "../src/fontCatalog";
 import { digitStartX } from "../src/plan";
 import { planLayers, type PlacedLayer } from "../src/planLayers";
 import { svgAspect } from "../src/logo";
@@ -28,7 +28,7 @@ import type { Layer } from "../src/model/layers";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fontDir = join(root, "src", "assets", "fonts");
-const pack = (id: FontFamilyId): Assets["fonts"] => {
+const pack = (id: BundledFontId): Assets["fonts"] => {
   const f = FONT_FAMILIES[id].files;
   const read = (n: string) => new Uint8Array(readFileSync(join(fontDir, n)));
   return { regular: read(f.regular), semibold: read(f.semibold), bold: read(f.bold) };
@@ -143,6 +143,7 @@ export async function buildAiFormatProof(): Promise<Uint8Array> {
   });
   const opened = new Map<Uint8Array, Font>();
   const font = (face: "regular" | "semibold" | "bold", family: FontFamilyId = "poppins") => {
+    if (isImportedFontId(family)) throw new Error(`The proof draws only bundled families, not ${family}.`);
     const bytes = fontFamilies[family][face];
     if (!opened.has(bytes)) opened.set(bytes, openFont(bytes));
     return opened.get(bytes)!;

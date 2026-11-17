@@ -9,7 +9,7 @@ import { PNG } from "pngjs";
 import { EMBEDDABLE_RASTER, rasterKind, tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
-import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
+import { FONT_FAMILIES, fontFamily, isImportedFontId, type FontFamilyId } from "../src/fontCatalog";
 import { setBleed } from "../src/layout";
 import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
@@ -444,7 +444,9 @@ function readAsset(assetRoot: string, ...parts: string[]): Buffer {
   return b;
 }
 
+/** A bundled family's three faces, read from the asset root. */
 function fontPack(assetRoot: string, id: FontFamilyId): Assets["fonts"] {
+  if (isImportedFontId(id)) throw new Error(`Imported font family ${id} is not supported by the CLI yet.`);
   const files = FONT_FAMILIES[id].files;
   const file = (n: string) => readAsset(assetRoot, "fonts", n);
   return { regular: file(files.regular), semibold: file(files.semibold), bold: file(files.bold) };
@@ -798,7 +800,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       if (l.kind !== "text") continue;
       const family = l.fontFamily ?? master.fontFamily ?? "poppins";
       const missing = missingGlyphs(l, family);
-      if (missing.length) errors.push(`${l.id}: cannot print ${describeCodepoints(missing)} in ${FONT_FAMILIES[family].label}`);
+      if (missing.length) errors.push(`${l.id}: cannot print ${describeCodepoints(missing)} in ${fontFamily(family).label}`);
     }
     const stem = exportBase(resolved.layers);
     for (const name of outputNames(stem, args.format, args.twoFile)) {

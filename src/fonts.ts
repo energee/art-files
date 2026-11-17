@@ -15,7 +15,7 @@ import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
 import barlowRegular from "./assets/fonts/BarlowCondensed-Regular.ttf?url";
 import barlowSemiBold from "./assets/fonts/BarlowCondensed-SemiBold.ttf?url";
 import barlowBold from "./assets/fonts/BarlowCondensed-Bold.ttf?url";
-import type { FontFamilyId } from "./fontCatalog";
+import { isImportedFontId, type BundledFontId, type FontFamilyId } from "./fontCatalog";
 import type { MeasureFace } from "./plan";
 import type { Assets } from "./pdf/build";
 import { t } from "@/i18n";
@@ -24,7 +24,7 @@ type Face = "regular" | "semibold" | "bold";
 
 /** The ?url side of the catalog: Vite needs static imports, so this is the
  *  one place a family's face URLs are wired up. */
-const FONT_URLS: Record<FontFamilyId, Record<Face, string>> = {
+const FONT_URLS: Record<BundledFontId, Record<Face, string>> = {
   poppins: { regular: poppinsRegular, semibold: poppinsSemiBold, bold: poppinsBold },
   "barlow-condensed": { regular: barlowRegular, semibold: barlowSemiBold, bold: barlowBold },
 };
@@ -60,6 +60,8 @@ const fontsPromises = new Map<FontFamilyId, Promise<Assets["fonts"]>>();
 export function loadFonts(id: FontFamilyId = "poppins"): Promise<Assets["fonts"]> {
   const cached = fontsPromises.get(id);
   if (cached) return cached;
+  // Imported families register from the file's own bytes (font-import plan, task 5).
+  if (isImportedFontId(id)) return Promise.reject(new Error(`Imported font family ${id} cannot be loaded yet.`));
   const urls = FONT_URLS[id];
   const get = async (url: string) => new Uint8Array(await (await fetch(url)).arrayBuffer());
   const p = Promise.all([get(urls.regular), get(urls.semibold), get(urls.bold)])

@@ -440,6 +440,7 @@ async function newDoc(assets: Assets, items: readonly PlacedLayer[]): Promise<{ 
     const embed = (bytes: Assets["fonts"]): Promise<Fonts> => embedFaces(doc, bytes, true, features);
     const fonts = await embed(assets.fonts);
     for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
+      if (!bytes) continue;
       (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
     }
     return fonts;
