@@ -88,14 +88,14 @@ describe("packAssets contract (#430)", () => {
   it("writes an imported font as fonts/<hex>/family.txt plus one level-0 file per face", () => {
     const zip: Zippable = {};
     const bold = { name: "SVN-Poppins-Bold.ttf", bytes: png() };
-    packAssets(zip, { fonts: { "imported:abc123": { family: "SVN-Poppins", faces: { regular: bold, semibold: bold, bold } } } });
+    packAssets(zip, { fonts: { "imported:abc123def456": { family: "SVN-Poppins", faces: { regular: bold, semibold: bold, bold } } } });
     expect(Object.keys(zip).sort()).toEqual([
-      "fonts/abc123/bold/SVN-Poppins-Bold.ttf",
-      "fonts/abc123/family.txt",
-      "fonts/abc123/regular/SVN-Poppins-Bold.ttf",
-      "fonts/abc123/semibold/SVN-Poppins-Bold.ttf",
+      "fonts/abc123def456/bold/SVN-Poppins-Bold.ttf",
+      "fonts/abc123def456/family.txt",
+      "fonts/abc123def456/regular/SVN-Poppins-Bold.ttf",
+      "fonts/abc123def456/semibold/SVN-Poppins-Bold.ttf",
     ]);
-    expect(zip["fonts/abc123/bold/SVN-Poppins-Bold.ttf"]).toEqual([png(), { level: 0 }]);
+    expect(zip["fonts/abc123def456/bold/SVN-Poppins-Bold.ttf"]).toEqual([png(), { level: 0 }]);
   });
 
   it("reads no fonts key from an archive without fonts/", () => {
@@ -107,34 +107,41 @@ describe("packAssets contract (#430)", () => {
     const full = (): Zippable => ({
       "config.json": strToU8("{}"),
       "fonts/": new Uint8Array(0),
-      "fonts/abc/": new Uint8Array(0),
-      "fonts/abc/family.txt": strToU8("SVN-Poppins"),
-      "fonts/abc/regular/a.ttf": png(),
-      "fonts/abc/semibold/a.ttf": png(),
-      "fonts/abc/bold/a.ttf": png(),
+      "fonts/0123456789ab/": new Uint8Array(0),
+      "fonts/0123456789ab/family.txt": strToU8("SVN-Poppins"),
+      "fonts/0123456789ab/regular/a.ttf": png(),
+      "fonts/0123456789ab/semibold/a.ttf": png(),
+      "fonts/0123456789ab/bold/a.ttf": png(),
     });
 
     it("accepts the complete directory, skipping re-zip directory entries (#100)", () => {
       const { assets } = unpackLabel(zipSync(full()));
       const a = { name: "a.ttf", bytes: png() };
-      expect(assets.fonts).toEqual({ "imported:abc": { family: "SVN-Poppins", faces: { regular: a, semibold: a, bold: a } } });
+      expect(assets.fonts).toEqual({ "imported:0123456789ab": { family: "SVN-Poppins", faces: { regular: a, semibold: a, bold: a } } });
     });
 
     it("missing a face", () => {
       const z = full();
-      delete z["fonts/abc/semibold/a.ttf"];
-      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/abc\//);
+      delete z["fonts/0123456789ab/semibold/a.ttf"];
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/0123456789ab\//);
     });
 
     it("missing family.txt", () => {
       const z = full();
-      delete z["fonts/abc/family.txt"];
-      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/abc\//);
+      delete z["fonts/0123456789ab/family.txt"];
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/0123456789ab\//);
     });
 
     it("with two files in one face", () => {
-      const z = { ...full(), "fonts/abc/bold/b.ttf": png() };
-      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/abc\/bold\//);
+      const z = { ...full(), "fonts/0123456789ab/bold/b.ttf": png() };
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/0123456789ab\/bold\//);
+    });
+
+    it("whose name is not 12 lowercase hex digits", () => {
+      for (const hex of ["abc", "0123456789AB", "0123456789abc", "..23456789ab"]) {
+        const z = Object.fromEntries(Object.entries(full()).map(([k, v]) => [k.replace("0123456789ab", hex), v]));
+        expect(() => unpackLabel(zipSync(z)), hex).toThrow(/Archive is malformed/);
+      }
     });
   });
 

@@ -2089,9 +2089,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       // the list or inspector past the open — so each resolved layer must
       // pass the master's own layer check (an off variant's raw diff rows
       // were checked by parseMaster already).
+      // An imported font may be carried by the label or by its master.
+      const importedFonts = new Set([...Object.keys(unpacked.assets.fonts ?? {}), ...Object.keys(masterAssets.fonts ?? {})]);
       for (const { layer, variant } of layerRows(next.master, next.label).rows) {
         if (variant && !variant.enabled) continue;
-        try { validateLayer(structuredClone(layer), "label"); }
+        try { validateLayer(structuredClone(layer), "label", importedFonts); }
         catch (err) {
           // validateLayer's message carries the translated master prefix.
           const prefix = translate("Invalid master file: {{message}}", { message: "" });

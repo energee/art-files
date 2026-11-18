@@ -346,7 +346,10 @@ export function linesProblem(lines: unknown): string | undefined {
 const layerMessage = (context: string, id: unknown, detail: string) =>
   t("{{context}} layer \"{{id}}\" {{detail}}", { context, id, detail });
 
-export function validateLayer(l: Layer, ctx: string): void {
+/** Throws on a malformed layer. A text layer's fontFamily must be bundled or
+ *  one of `importedFonts` — the imported ids the file being opened (or, for
+ *  a label, it and its master) carries. */
+export function validateLayer(l: Layer, ctx: string, importedFonts?: ReadonlySet<string>): void {
   if (!l || typeof l !== "object") fail(t("{{context}} layer is not an object", { context: ctx }));
   if (!l.id || typeof l.id !== "string") fail(t("{{context}} layer missing id", { context: ctx }));
   const detail = (message: string) => layerMessage(ctx, l.id, message);
@@ -372,7 +375,7 @@ export function validateLayer(l: Layer, ctx: string): void {
   if (l.rotation !== undefined && l.rotation !== 0 && l.rotation !== 90) fail(detail(t("has invalid rotation")));
   const typed = (kind: string, message: string) => layerMessage(kind, l.id, message);
   if (l.kind === "text") {
-    if (l.fontFamily !== undefined && !Object.hasOwn(FONT_FAMILIES, l.fontFamily)) fail(typed("text", t("has unknown font family \"{{family}}\"", { family: l.fontFamily })));
+    if (l.fontFamily !== undefined && !Object.hasOwn(FONT_FAMILIES, l.fontFamily) && !importedFonts?.has(l.fontFamily)) fail(typed("text", t("has unknown font family \"{{family}}\"", { family: l.fontFamily })));
     if (!Array.isArray(l.lines)) fail(typed("text", t("missing lines")));
     const lines = linesProblem(l.lines);
     if (lines) fail(detail(lines));
@@ -452,7 +455,9 @@ export function foldScale(p: ScaledSize, base?: ScaledSize): void {
   else if (pin && p.h === undefined && typeof base?.h === "number") p.h = base.h * s;
 }
 
-export function parseMaster(json: unknown): Master {
+/** Validates a v3 master.json. `importedFonts` are the imported font ids the
+ *  .master carries; a layer naming any other non-bundled family is refused. */
+export function parseMaster(json: unknown, importedFonts?: ReadonlySet<string>): Master {
   const m = json as Master;
   if (!m || typeof m !== "object") fail(t("not an object"));
   if (m.formatVersion !== 3) fail(t("unsupported formatVersion (expected 3)"));
@@ -466,7 +471,7 @@ export function parseMaster(json: unknown): Master {
   if (!Array.isArray(m.variants)) fail(t("missing variants"));
   const ids = new Set<string>();
   for (const l of m.layers) {
-    validateLayer(l, "master");
+    validateLayer(l, "master", importedFonts);
     if (ids.has(l.id)) fail(t("duplicate layer id \"{{id}}\"", { id: l.id }));
     ids.add(l.id);
   }
@@ -487,7 +492,7 @@ export function parseMaster(json: unknown): Master {
       const i = merged.findIndex((l) => l.id === id);
       const layer = i >= 0 ? deepMerge(merged[i], patch) : { ...patch, id } as Layer;
       if (layer.id !== id) fail(t("variant \"{{variant}}\" cannot change layer id \"{{id}}\"", { variant: v.id, id }));
-      validateLayer(layer, t("variant \"{{id}}\"", { id: v.id }));
+      validateLayer(layer, t("variant \"{{id}}\"", { id: v.id }), importedFonts);
       if (i >= 0) merged[i] = layer;
       else merged.push(layer);
     }

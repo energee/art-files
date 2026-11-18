@@ -189,7 +189,8 @@ function concat(chunks: Uint8Array[], size: number): Uint8Array {
  *  as the asset (#100). Each role directory, each custom/<id>/ and each font
  *  face directory holds exactly one file; a second one throws rather than
  *  silently picking either (#430). A fonts/<hex>/ missing family.txt (or
- *  holding an empty one) or any face throws too. `fonts` is set only when
+ *  holding an empty one) or any face throws too, as does a <hex> that is not
+ *  12 lowercase hex digits (the shape readImportedFont mints). `fonts` is set only when
  *  the archive carries at least one font. */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
@@ -224,7 +225,7 @@ export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets 
   if (fontParts.size) {
     const fonts: Record<ImportedFontId, ImportedFont> = {};
     for (const [hex, { family, faces }] of fontParts) {
-      if (!family || !FACES.every((face) => faces[face])) throw incompleteFont(`${FONTS_DIR}/${hex}/`);
+      if (!/^[0-9a-f]{12}$/.test(hex) || !family || !FACES.every((face) => faces[face])) throw incompleteFont(`${FONTS_DIR}/${hex}/`);
       fonts[`${IMPORTED_PREFIX}${hex}`] = { family, faces: faces as Record<Face, FontAsset> };
     }
     assets.fonts = fonts;
