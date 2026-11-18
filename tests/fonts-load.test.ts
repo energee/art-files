@@ -72,14 +72,14 @@ describe("loadLabelFaces", () => {
 
     it("rejects an imported id that was never registered", async () => {
       const { fetched, fonts } = await fresh();
-      await expect(fonts.loadFonts("imported:0123456789ab")).rejects.toThrow("An imported font this label uses is not loaded.");
+      await expect(fonts.loadFonts("imported:0123456789abcdef0123456789abcdef")).rejects.toThrow("An imported font this label uses is not loaded.");
       expect(fetched).toHaveLength(0);
     });
 
     it("names an imported family with a valid unquoted CSS identifier", async () => {
       const { fonts } = await fresh();
-      const css = fonts.labelFontCss("imported:0123456789ab");
-      expect(css).toBe("LabelFont-imported-0123456789ab");
+      const css = fonts.labelFontCss("imported:0123456789abcdef0123456789abcdef");
+      expect(css).toBe("LabelFont-imported-0123456789abcdef0123456789abcdef");
       expect(css).not.toContain(":");
       expect(css).toMatch(/^[A-Za-z][\w-]*$/);
     });

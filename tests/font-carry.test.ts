@@ -6,7 +6,7 @@
 // carries. The App-level open, save and recovery flows are in
 // font-carry-dom.test.tsx.
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { importedFontId, readImportedFont } from "../src/fontImport";
 import { importedFontBundle, importedFamilies, registerImportedFont, registerImportedFonts } from "../src/fonts";
 import type { FontAsset } from "../src/labelfile";
@@ -32,8 +32,8 @@ describe("importedFontId", () => {
 describe("registerImportedFont", () => {
   it("refuses a font whose bytes do not hash to its id", async () => {
     const { font } = await svn();
-    await expect(registerImportedFont("imported:0123456789ab", font)).rejects.toThrow(`This file's font ${font.family} is damaged.`);
-    expect(importedFamilies().has("imported:0123456789ab")).toBe(false);
+    await expect(registerImportedFont("imported:0123456789abcdef0123456789abcdef", font)).rejects.toThrow(`This file's font ${font.family} is damaged.`);
+    expect(importedFamilies().has("imported:0123456789abcdef0123456789abcdef")).toBe(false);
   });
 
   // A crafted file naming a REGISTERED id with other bytes is refused too:
@@ -43,6 +43,27 @@ describe("registerImportedFont", () => {
     await registerImportedFont(id, font);
     const regular = await readImportedFont([fixture("SVN-Poppins-Regular.ttf")]);
     await expect(registerImportedFonts({ [id]: regular.font })).rejects.toThrow("is damaged");
+  });
+
+  // A real SHA-256 collision can't be built, so the hash is stubbed to give
+  // two different fonts one id: the second must still be refused.
+  it("refuses a font whose hash collides with a registered font's", async () => {
+    vi.resetModules();
+    vi.doMock("../src/fontImport", async (real) => ({
+      ...await real<typeof import("../src/fontImport")>(),
+      importedFontId: async () => "imported:0123456789abcdef0123456789abcdef",
+    }));
+    try {
+      const fonts = await import("../src/fonts");
+      const id = "imported:0123456789abcdef0123456789abcdef";
+      await fonts.registerImportedFont(id, (await svn()).font);
+      const regular = await readImportedFont([fixture("SVN-Poppins-Regular.ttf")]);
+      await expect(fonts.registerImportedFont(id, regular.font)).rejects.toThrow("is damaged");
+      await expect(fonts.registerImportedFont(id, (await svn()).font)).resolves.toBeUndefined();
+    } finally {
+      vi.doUnmock("../src/fontImport");
+      vi.resetModules();
+    }
   });
 
   it("registers a font whose bytes match, and bundles it back for a save", async () => {

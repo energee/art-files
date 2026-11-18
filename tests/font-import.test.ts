@@ -52,7 +52,7 @@ describe("readImportedFont", () => {
     const a = await readImportedFont([svnRegular, svnBold]);
     const b = await readImportedFont([svnBold, svnRegular]);
     expect(a.id).toBe(b.id);
-    expect(a.id).toMatch(/^imported:[0-9a-f]{12}$/);
+    expect(a.id).toMatch(/^imported:[0-9a-f]{32}$/);
     expect((await readImportedFont([svnBold])).id).not.toBe(a.id);
   });
 

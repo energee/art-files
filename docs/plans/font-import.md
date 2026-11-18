@@ -27,7 +27,7 @@ has installed. A system font is only a source to import from.
 
 ## Decisions taken by default (say if any is wrong)
 
-- **Family id** is content-addressed: `imported:<first 12 hex of SHA-256 of
+- **Family id** is content-addressed: `imported:<first 32 hex (128 bits) of SHA-256 of
   the sorted face bytes>`. The same font imported in two tabs or two files gets
   one id, so tabs share a loaded face and a master and its labels agree.
 - **Faces.** Labels use three faces: regular (400), semibold (600) and bold

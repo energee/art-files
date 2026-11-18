@@ -120,7 +120,7 @@ it("leaves out of the save a font whose last layer was removed", async () => {
 
 it("refuses a file whose font bytes don't match the id they are stored under", async () => {
   const { font } = await svn();
-  const forged = "imported:0123456789ab";
+  const forged = "imported:0123456789abcdef0123456789abcdef";
   const bytes = packLabel(labelWith({ name: { fontFamily: forged } }), { fonts: { [forged]: font } });
   await open({ seq: 1, file: file(bytes, "forged.label") });
   await shown(`Could not open forged.label: This file's font ${font.family} is damaged.`);

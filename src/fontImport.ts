@@ -89,8 +89,8 @@ export async function readImportedFont(files: FontAsset[]): Promise<{ id: Import
   return { id: await importedFontId(font), font };
 }
 
-/** A font's content id: `imported:` plus the first 12 hex digits of the
- *  SHA-256 of its face bytes in face order (regular, semibold, bold). The one
+/** A font's content id: `imported:` plus the first 32 hex digits (128 bits) of
+ *  the SHA-256 of its face bytes in face order (regular, semibold, bold). The one
  *  spelling of the hash: readImportedFont mints ids with it, and the font gate
  *  (fonts.ts registerImportedFont) re-checks an opened file's fonts against
  *  it, so a file can't store other bytes under a font's id. */
@@ -99,7 +99,7 @@ export async function importedFontId(font: Pick<ImportedFont, "faces">): Promise
   const all = new Uint8Array(ordered.reduce((n, b) => n + b.length, 0));
   ordered.reduce((at, b) => (all.set(b, at), at + b.length), 0);
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", all));
-  const hex = Array.from(digest.subarray(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
+  const hex = Array.from(digest.subarray(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
   return `imported:${hex}`;
 }
 

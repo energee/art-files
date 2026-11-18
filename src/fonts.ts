@@ -55,7 +55,15 @@ let families: ReadonlyMap<ImportedFontId, FontFamily> = new Map();
  *  file's font. */
 export async function registerImportedFont(id: ImportedFontId, font: ImportedFont): Promise<void> {
   if (await importedFontId(font) !== id) throw new Error(t("This file's font {{family}} is damaged.", { family: font.family }));
-  if (importedFonts.has(id)) return;
+  const known = importedFonts.get(id);
+  // Same id, other bytes: only a hash collision gets here, so refuse it
+  // rather than let the first font registered stand in for the second.
+  if (known) {
+    const same = (a: Uint8Array, b: Uint8Array) => a === b || (a.length === b.length && a.every((v, i) => v === b[i]));
+    if (!(["regular", "semibold", "bold"] as const).every((f) => same(known.faces[f].bytes, font.faces[f].bytes)))
+      throw new Error(t("This file's font {{family}} is damaged.", { family: font.family }));
+    return;
+  }
   importedFonts.set(id, font);
   families = new Map(families).set(id, importedFamily(font));
 }
