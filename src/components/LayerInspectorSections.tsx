@@ -38,7 +38,7 @@ import { MetallicToggle } from "./MetallicToggle";
 import { BadgeSlot, ScrubField } from "./ScrubField";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamily, fontFamilyOf, type FontFamilyId, type ImportedFontId } from "@/fontCatalog";
-import { importedFamilies, registerImportedFont } from "@/fonts";
+import { importedFamilies, labelFontCss, loadLabelFaces, registerImportedFont } from "@/fonts";
 import { readImportedFont } from "@/fontImport";
 import type { ImportedFont } from "@/labelfile";
 import { importSystemFamily, listSystemFonts, type SystemFamily } from "@/systemFonts";
@@ -254,6 +254,16 @@ const TextFace = memo(function TextFace(props: TextProps) {
     return () => { live = false; };
   }, [open, desktop]);
 
+  // Each row draws its name in its own font: register the bundled and
+  // imported faces when the list opens (a family a layer already uses is
+  // registered; the rest load here, once a session). Until a face arrives
+  // its row shows in the interface font.
+  useEffect(() => {
+    if (!open) return;
+    for (const family of [...Object.keys(FONT_FAMILIES), ...importedFamilies().keys()])
+      loadLabelFaces(family as FontFamilyId).catch(() => {});
+  }, [open]);
+
   /** Register a read font and set it as one patch (with several layers
    *  selected, the parent writes it to each text layer in one undo step).
    *  Any refusal is an error toast; the layer keeps its font. */
@@ -279,11 +289,17 @@ const TextFace = memo(function TextFace(props: TextProps) {
       refuse(err); // the picker itself failed
     }
   }
-  /** One row; picking it closes the list, then runs `pick`. */
-  const row = (value: string, label: string, pick: () => void) => (
+  /** One row; picking it closes the list, then runs `pick`. `font` is the
+   *  CSS font-family its name is drawn in, when it names a font. */
+  const row = (value: string, label: string, pick: () => void, font?: string) => (
     <CommandItem key={value} value={value} keywords={[label]} data-checked={value === current}
       onSelect={() => { setOpen(false); pick(); }}>
-      <span className="truncate" title={label}>{label}</span>
+      {/* The row's line keeps the interface font's height; the name sits on
+          its baseline with no line height of its own, so a font declaring a
+          huge ascent (STIX Size: 2.6 em) can't push it out of the row. */}
+      <span className="truncate" title={label}>
+        {font ? <span style={{ fontFamily: font, lineHeight: 0 }}>{label}</span> : label}
+      </span>
     </CommandItem>
   );
   const setFont = (value: FontFamilyId | undefined) => () => set({ fontFamily: value });
@@ -310,10 +326,10 @@ const TextFace = memo(function TextFace(props: TextProps) {
               <CommandInput placeholder={t("Search fonts")} />
               <CommandList>
                 <CommandGroup>
-                  {row("inherit", defaultFont, setFont(undefined))}
+                  {row("inherit", defaultFont, setFont(undefined), labelFontCss(fontFamilyOf(props, imported)))}
                   {Object.entries(FONT_FAMILIES).map(([value, font]) =>
-                    row(value, font.label, setFont(value as FontFamilyId)))}
-                  {[...imported].map(([value, font]) => row(value, font.label, setFont(value)))}
+                    row(value, font.label, setFont(value as FontFamilyId), labelFontCss(value as FontFamilyId)))}
+                  {[...imported].map(([value, font]) => row(value, font.label, setFont(value), labelFontCss(value)))}
                 </CommandGroup>
                 <CommandSeparator />
                 <CommandGroup>
@@ -323,8 +339,10 @@ const TextFace = memo(function TextFace(props: TextProps) {
                   <>
                     <CommandSeparator />
                     <CommandGroup heading={t("System Fonts")}>
+                      {/* An installed font draws by its own name; the
+                          interface font stands in if the webview has none. */}
                       {system.map((family) => row(`system:${family.family}`, family.family,
-                        () => void applyFont(importSystemFamily(family))))}
+                        () => void applyFont(importSystemFamily(family)), `${JSON.stringify(family.family)}, system-ui, sans-serif`))}
                     </CommandGroup>
                   </>
                 )}

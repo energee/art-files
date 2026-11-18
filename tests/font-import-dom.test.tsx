@@ -171,6 +171,15 @@ it("on desktop lists system families, filters by typing, and imports a picked on
   const texts = options().map((el) => el.textContent);
   expect(texts.slice(0, 3)).toEqual(["Default (Poppins)", "Poppins", "Barlow Condensed"]);
   expect(texts.slice(-3)).toEqual(["Import Font…", "Arial", "SVN-Poppins"]);
+  // Each name is drawn in its own font; Import Font… is not a font.
+  const face = (label: string) =>
+    options().find((el) => el.textContent === label)?.querySelector<HTMLElement>("span[style]")?.style.fontFamily ?? "";
+  // (labelFontCss is stubbed to "sans-serif" in this file; the real CSS
+  // names are covered by fonts-load.test.ts.)
+  expect(face("Barlow Condensed")).toBe("sans-serif");
+  expect(face("Default (Poppins)")).toBe("sans-serif");
+  expect(face("Arial")).toMatch(/^"?Arial"?, system-ui, sans-serif$/);
+  expect(face("Import Font…")).toBe("");
 
   await search("svn");
   await vi.waitFor(() => expect(systemRows().map((el) => el.textContent)).toEqual(["SVN-Poppins"]));

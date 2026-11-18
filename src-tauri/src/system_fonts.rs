@@ -45,7 +45,14 @@ pub struct SystemFontPaths(pub Mutex<HashSet<PathBuf>>);
 pub fn listable_fonts(faces: impl IntoIterator<Item = ScannedFace>) -> Vec<SystemFont> {
     let mut fonts: Vec<SystemFont> = faces
         .into_iter()
-        .filter(|face| face.index == 0 && !face.italic && is_single_font_file(&face.path))
+        // A family starting with "." (".SF NS", ".New York") is one macOS
+        // keeps for its own interface and hides from font menus.
+        .filter(|face| {
+            face.index == 0
+                && !face.italic
+                && !face.family.starts_with('.')
+                && is_single_font_file(&face.path)
+        })
         .filter_map(|face| {
             Some(SystemFont {
                 path: face.path.into_os_string().into_string().ok()?,
@@ -175,6 +182,12 @@ mod tests {
         let mut italic = face("A", 400, "/f/a-italic.ttf");
         italic.italic = true;
         let fonts = listable_fonts([italic, face("A", 400, "/f/a.ttf")]);
+        assert_eq!(paths(&fonts), ["/f/a.ttf"]);
+    }
+
+    #[test]
+    fn drops_hidden_macos_families() {
+        let fonts = listable_fonts([face(".SF NS", 400, "/f/sf.ttf"), face("A", 400, "/f/a.ttf")]);
         assert_eq!(paths(&fonts), ["/f/a.ttf"]);
     }
 
