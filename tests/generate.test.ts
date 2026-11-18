@@ -2,7 +2,7 @@
 // master+values builds. Pure against scripts/generate-lib.ts; no process spawn.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PDFDocument } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
   parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants, buildLabel,
@@ -11,6 +11,9 @@ import {
 import { PNG } from "pngjs";
 import { defaultConfig } from "../src/defaults";
 import { packLabel, packMaster } from "../src/model/files";
+import type { ImportedFontId } from "../src/fontCatalog";
+import { readImportedFont } from "../src/fontImport";
+import type { LabelAssets } from "../src/labelfile";
 import { lolevMaster } from "./fixtures/lolevMaster";
 import { lolevAssets } from "./fixtures";
 
@@ -669,4 +672,70 @@ it("CLI validates a label override against the layer its enabled variants produc
   io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
   expect(await io.run(["--master", "/m.master", "--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(0);
   expect(io.stderr.join("")).toBe("");
+});
+
+// Task 11: the CLI prints a font the .master or .label carries, read from the
+// file itself; one neither carries is an error naming the layer.
+describe("runGenerate imported fonts", () => {
+  const svn = () => readImportedFont([{
+    name: "SVN-Poppins-Bold.ttf",
+    bytes: new Uint8Array(readFileSync(join(import.meta.dirname, "fixtures", "fonts", "SVN-Poppins-Bold.ttf"))),
+  }]);
+  /** Every BaseFont the PDF's font dictionaries name. */
+  const baseFonts = async (bytes: Uint8Array) => (await PDFDocument.load(bytes)).context.enumerateIndirectObjects()
+    .flatMap(([, obj]) => obj instanceof PDFDict && obj.get(PDFName.of("Type")) === PDFName.of("Font")
+      ? [String(obj.get(PDFName.of("BaseFont")))] : []);
+  const printPdf = (io: ReturnType<typeof memIo>) =>
+    [...io.files].find(([p]) => p.startsWith("/out/") && p.endsWith(".pdf") && !p.endsWith("-mask.pdf"))![1];
+  /** A .label whose name layer picks `fontFamily` and reads "RỒNG" (Ồ is not in Poppins). */
+  const rongLabel = (fontFamily: ImportedFontId, fonts: LabelAssets["fonts"]) => {
+    const lab = lolevMaster();
+    return packLabel({
+      formatVersion: 3, masterId: lab.id, enabledVariants: [],
+      values: coerceValues(lab, { name: "RỒNG", barcode: "850051366224" }, []).values,
+      overrides: { name: { fontFamily } },
+    }, { fonts });
+  };
+
+  it("a .label's own imported font prints RỒNG and embeds SVN-Poppins", async () => {
+    const { id, font } = await svn();
+    const io = memIo();
+    io.files.set("/x.label", rongLabel(id, { [id]: font }));
+    expect(await io.runLolev(["--label", "/x.label", "--out", "/out", "--format", "all"]), io.stderr.join("")).toBe(0);
+    expect(io.stderr.join("")).toBe("");
+    expect((await baseFonts(printPdf(io))).some((n) => n.includes("SVN-Poppins"))).toBe(true);
+  });
+
+  it("a .master's imported font prints too", async () => {
+    const { id, font } = await svn();
+    const io = memIo();
+    const master = lolevMaster();
+    Object.assign(master.layers.find((l) => l.id === "name")!, { fontFamily: id });
+    io.files.set("/m.master", packMaster(master, { ...lolevAssets(), fonts: { [id]: font } }));
+    io.files.set("/v.json", json({ name: "RỒNG", barcode: "850051366224" }));
+    expect(await io.run(["--master", "/m.master", "--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect((await baseFonts(printPdf(io))).some((n) => n.includes("SVN-Poppins"))).toBe(true);
+  });
+
+  it("an imported font neither file carries fails, naming the layer", async () => {
+    const { id } = await svn();
+    const io = memIo();
+    io.files.set("/x.label", rongLabel(id, undefined));
+    expect(await io.runLolev(["--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(1);
+    expect(io.stderr.join("")).toBe(`name: imported font family ${id} is not in the master or label\n`);
+    expect([...io.files.keys()].some((p) => p.startsWith("/out/"))).toBe(false);
+  });
+
+  it("names the imported family when it cannot print a character", async () => {
+    const { id, font } = await svn();
+    const io = memIo();
+    const lab = lolevMaster();
+    io.files.set("/x.label", packLabel({
+      formatVersion: 3, masterId: lab.id, enabledVariants: [],
+      values: coerceValues(lab, { name: "Ale \u{1F37A}" }, []).values,
+      overrides: { name: { fontFamily: id } },
+    }, { fonts: { [id]: font } }));
+    expect(await io.runLolev(["--label", "/x.label", "--check"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/name: cannot print .*U\+1F37A.* in SVN-Poppins/);
+  });
 });
