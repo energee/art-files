@@ -34,7 +34,7 @@
 // and throws "Buffer not supported on this platform" in the browser.
 import { writePsdUint8Array, type BezierPath, type BooleanOperation, type Layer, type Psd } from "ag-psd";
 import type { Fill } from "../types";
-import { fontFamily, type FontFamilyId } from "../fontCatalog";
+import { fontFamily, type FontFamily, type FontFamilyId, type ImportedFontId } from "../fontCatalog";
 import type { Font } from "@pdf-lib/fontkit";
 import { openFont } from "../fontkit";
 import { glyphPaths } from "../pdf/outline";
@@ -57,6 +57,10 @@ export interface PsdAssets {
   /** The typeface the type layers name (PostScript names from
    *  fontCatalog.ts) — the master's fontFamily. Absent = "poppins". */
   fontFamily?: FontFamilyId;
+  /** The imported families (fonts.ts importedFamilies()), so a type layer in
+   *  an imported font names its PostScript names. Absent, or an id missing
+   *  here, names Poppins. A Map survives the worker's structured clone. */
+  importedFamilies?: ReadonlyMap<ImportedFontId, FontFamily>;
   /** Decoded RGBA by asset id — the id every `image` and `page` item
    *  carries in `asset`. Raster art resamples to its placed box (see
    *  resizeRGBA), since a layer's box can differ from its asset's native
@@ -545,7 +549,7 @@ function buildLayers(
     const children: Layer[] = [];
     const texts = its.filter((r): r is PlacedText => r.kind === "text");
     if (texts.length) {
-      const ps = fontFamily(texts[0].fontFamily ?? assets.fontFamily ?? "poppins").ps;
+      const ps = fontFamily(texts[0].fontFamily ?? assets.fontFamily ?? "poppins", assets.importedFamilies).ps;
       if (layer?.kind === "text" && layer.align === "justify") {
         // Photoshop point text cannot reproduce variable word gaps. Keep the
         // planned runs as editable type layers so export placement is exact.
