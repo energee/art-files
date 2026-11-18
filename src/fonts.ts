@@ -1,11 +1,13 @@
 // fonts.ts — the ONE gate between the label's font files and the app. Fetches
-// each family's bundled TTFs once (loadFonts: the bytes the PDF/PSD builds
-// embed and the inspector's glyph checks parse), registers those same bytes
+// each bundled family's TTFs once, or takes an imported family's bytes from
+// registerImportedFont (loadFonts: the bytes the PDF/PSD builds embed and the
+// inspector's glyph checks parse), registers those same bytes
 // as document faces under labelFontCss(id), and hands back the face-aware
 // canvas measure that hit-testing and the in-place editor share. Measurement
 // is unkerned, matching the PDF's drawText (#86). Text layers may override
 // the master family; the same family choice reaches measurement, drawing,
-// the editor and export. Loaded faces are cached.
+// the editor and export. Loaded faces are cached. importedFamilies() names
+// the registered imported families for fontFamily/fontFamilyOf.
 // Parsing font bytes with fontkit (glyph outlines and metrics) goes through
 // fontkit.ts instead: it must stay Node-safe, and this module's ?url imports
 // are not.
@@ -15,7 +17,9 @@ import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
 import barlowRegular from "./assets/fonts/BarlowCondensed-Regular.ttf?url";
 import barlowSemiBold from "./assets/fonts/BarlowCondensed-SemiBold.ttf?url";
 import barlowBold from "./assets/fonts/BarlowCondensed-Bold.ttf?url";
-import { isImportedFontId, type BundledFontId, type FontFamilyId } from "./fontCatalog";
+import { isImportedFontId, type BundledFontId, type FontFamily, type FontFamilyId, type ImportedFontId } from "./fontCatalog";
+import { importedFamily } from "./fontImport";
+import type { ImportedFont } from "./labelfile";
 import type { MeasureFace } from "./plan";
 import type { Assets } from "./pdf/build";
 import { t } from "@/i18n";
@@ -30,8 +34,27 @@ const FONT_URLS: Record<BundledFontId, Record<Face, string>> = {
 };
 
 /** The CSS font-family a family's faces register under — one distinct name
- *  per family, so two families' faces never collide in `document.fonts`. */
-export const labelFontCss = (id: FontFamilyId) => "LabelFont-" + id;
+ *  per family, so two families' faces never collide in `document.fonts`.
+ *  Anything but [A-Za-z0-9_-] becomes "-" (`imported:<hex>` gives
+ *  `LabelFont-imported-<hex>`), so the name is a valid unquoted CSS
+ *  identifier whatever id a file carries. */
+export const labelFontCss = (id: FontFamilyId) => "LabelFont-" + id.replace(/[^\w-]/g, "-");
+
+const importedFonts = new Map<ImportedFontId, ImportedFont>();
+let families: ReadonlyMap<ImportedFontId, FontFamily> = new Map();
+
+/** Make an imported family loadable: loadFonts serves its bytes from here.
+ *  Its names are parsed now, once, so importedFamilies() never re-parses on a
+ *  render. Ids are content hashes, so registering an id again is a no-op. */
+export function registerImportedFont(id: ImportedFontId, font: ImportedFont): void {
+  if (importedFonts.has(id)) return;
+  importedFonts.set(id, font);
+  families = new Map(families).set(id, importedFamily(font));
+}
+
+/** The registered imported families, for fontFamily/fontFamilyOf. A new map
+ *  after each registration, the same map otherwise. */
+export const importedFamilies = (): ReadonlyMap<ImportedFontId, FontFamily> => families;
 
 /** CSS weight per plan face. Measure and draw MUST agree on this mapping —
  *  a mismatch silently mismeasures or misdraws — so it lives once, beside
@@ -54,14 +77,20 @@ function unkernedContext(): CanvasRenderingContext2D {
 const fontsPromises = new Map<FontFamilyId, Promise<Assets["fonts"]>>();
 
 /** A family's three face files, fetched once per page (the app window, the
- *  dev strokecap page). Memoized per family; a failed load clears
+ *  dev strokecap page), or for an imported family the registered bytes with
+ *  no fetch. Memoized per family; a failed load clears
  *  that family's memo so the next caller retries rather than replaying the
  *  rejection forever. */
 export function loadFonts(id: FontFamilyId = "poppins"): Promise<Assets["fonts"]> {
   const cached = fontsPromises.get(id);
   if (cached) return cached;
-  // Imported families register from the file's own bytes (font-import plan, task 5).
-  if (isImportedFontId(id)) return Promise.reject(new Error(`Imported font family ${id} cannot be loaded yet.`));
+  if (isImportedFontId(id)) {
+    const font = importedFonts.get(id);
+    if (!font) return Promise.reject(new Error(t("An imported font this label uses is not loaded.")));
+    const p = Promise.resolve({ regular: font.faces.regular.bytes, semibold: font.faces.semibold.bytes, bold: font.faces.bold.bytes });
+    fontsPromises.set(id, p);
+    return p;
+  }
   const urls = FONT_URLS[id];
   const get = async (url: string) => new Uint8Array(await (await fetch(url)).arrayBuffer());
   const p = Promise.all([get(urls.regular), get(urls.semibold), get(urls.bold)])
@@ -82,8 +111,8 @@ function registerFaces(id: FontFamilyId = "poppins"): Promise<void> {
   const cached = registrationPromises.get(id);
   if (cached) return cached;
   const css = labelFontCss(id);
-  // Assets types the bytes over ArrayBufferLike; loadFonts' come from fetch,
-  // never a SharedArrayBuffer, which is all FontFace rules out.
+  // Assets types the bytes over ArrayBufferLike; loadFonts' come from fetch
+  // or a read file, never a SharedArrayBuffer, which is all FontFace rules out.
   const face = (bytes: Uint8Array, weight: string) => new FontFace(css, bytes as Uint8Array<ArrayBuffer>, { weight }).load();
   const p = loadFonts(id).then((bytes) => Promise.all([
     face(bytes.regular, "400"), face(bytes.semibold, "600"), face(bytes.bold, "700"),
