@@ -29,6 +29,11 @@ function scopedPaths(identifier: string): string[] {
     typeof p === "object" && p.identifier === identifier ? (p.allow ?? []).map((a) => a.path) : []);
 }
 
+/** Import Font… reads the .ttf/.otf files picked in its dialog, read-only. */
+const FONT_READS = ["**/*.[tT][tT][fF]", "**/*.[oO][tT][fF]"];
+/** The .label/.master paths the app reads, and so also writes, renames and removes. */
+const documentReads = () => scopedPaths("fs:allow-read-file").filter((p) => !FONT_READS.includes(p));
+
 describe("desktop master-file access", () => {
   it("can re-read .master files from disk", () => {
     expect(scopedPaths("fs:allow-read-file")).toContain("**/*.[mM][aA][sS][tT][eE][rR]");
@@ -38,7 +43,7 @@ describe("desktop master-file access", () => {
   // added to the runtime scope, so Save to an OS-opened .label or a remembered
   // .master failed with "forbidden path". Write must cover what read covers.
   it("can write back to every .label/.master path it can read", () => {
-    const read = scopedPaths("fs:allow-read-file");
+    const read = documentReads();
     expect(read.length).toBeGreaterThan(0);
     expect(scopedPaths("fs:allow-write-file")).toEqual(expect.arrayContaining(read));
   });
@@ -57,7 +62,7 @@ describe("desktop master-file access", () => {
   // #390: the atomic save writes a temp .label/.master beside the target,
   // renames it over the original and removes it on failure.
   it("can rename and remove the atomic-save temp wherever it can read", () => {
-    const read = scopedPaths("fs:allow-read-file");
+    const read = documentReads();
     expect(scopedPaths("fs:allow-rename")).toEqual(read);
     expect(scopedPaths("fs:allow-remove")).toEqual(read);
   });
@@ -65,7 +70,7 @@ describe("desktop master-file access", () => {
   // File → Open Recent checks a remembered .label still exists before
   // opening it, so a moved file gets a readable error.
   it("can check whether a readable .label/.master still exists", () => {
-    expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(scopedPaths("fs:allow-read-file")));
+    expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(documentReads()));
   });
 
   // Crash recovery reads a .label's modified time before handing a restored
@@ -78,6 +83,12 @@ describe("desktop master-file access", () => {
   // .label under ~/.something/ was forbidden for both read and write.
   it("matches .label/.master files inside hidden folders", () => {
     expect(tauriConf.plugins?.fs?.requireLiteralLeadingDot).toBe(false);
+  });
+
+  it("can read a picked font file, and never write, rename or remove one", () => {
+    expect(scopedPaths("fs:allow-read-file")).toEqual(expect.arrayContaining(FONT_READS));
+    for (const id of ["fs:allow-write-file", "fs:allow-rename", "fs:allow-remove", "fs:allow-exists", "fs:allow-stat"])
+      expect(scopedPaths(id).filter((p) => FONT_READS.includes(p))).toEqual([]);
   });
 
   it("can open a native file dialog", () => {

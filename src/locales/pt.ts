@@ -254,6 +254,8 @@ const pt: Record<keyof typeof en, string> = {
   "Not a .master file: missing master.json": "Não é um arquivo .master: falta master.json",
   "Invalid label file: {{message}}": "Arquivo de rótulo inválido: {{message}}",
   "Unknown label font family: {{family}}": "Família de fonte do rótulo desconhecida: {{family}}",
+  "Import Font…": "Importar fonte…",
+  "Could not import font: {{error}}": "Não foi possível importar a fonte: {{error}}",
   "Choose one to three font files.": "Escolha de um a três arquivos de fonte.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} não é um arquivo de fonte TTF ou OTF.",
   "The license of {{name}} does not allow embedding it in a PDF.": "A licença de {{name}} não permite incorporá-la em um PDF.",

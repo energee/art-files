@@ -254,6 +254,8 @@ const de: Record<keyof typeof en, string> = {
   "Not a .master file: missing master.json": "Keine .master-Datei: master.json fehlt",
   "Invalid label file: {{message}}": "Ungültige Etikettdatei: {{message}}",
   "Unknown label font family: {{family}}": "Unbekannte Schriftfamilie für Etiketten: {{family}}",
+  "Import Font…": "Schriftart importieren…",
+  "Could not import font: {{error}}": "Schriftart konnte nicht importiert werden: {{error}}",
   "Choose one to three font files.": "Wählen Sie eine bis drei Schriftdateien.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} ist keine TTF- oder OTF-Schriftdatei.",
   "The license of {{name}} does not allow embedding it in a PDF.": "Die Lizenz von {{name}} erlaubt kein Einbetten in ein PDF.",

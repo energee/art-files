@@ -253,6 +253,8 @@ const en = {
   "Not a .master file: missing master.json": "Not a .master file: missing master.json",
   "Invalid label file: {{message}}": "Invalid label file: {{message}}",
   "Unknown label font family: {{family}}": "Unknown label font family: {{family}}",
+  "Import Font…": "Import Font…",
+  "Could not import font: {{error}}": "Could not import font: {{error}}",
   "Choose one to three font files.": "Choose one to three font files.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} is not a TTF or OTF font file.",
   "The license of {{name}} does not allow embedding it in a PDF.": "The license of {{name}} does not allow embedding it in a PDF.",

@@ -4,7 +4,7 @@
 // through `set` with a minimal patch (LayerInspector.tsx's header). Split out
 // of LayerInspector.tsx (#433). Each is memoized on the part of the layer it
 // reads, so typing or dragging re-renders only the sections it changes (#715).
-import { memo, useCallback, type ReactNode } from "react";
+import { memo, useCallback, useRef, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
 import { Link2, Link2Off, RotateCcw } from "lucide-react";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
@@ -23,7 +23,7 @@ import {
   DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -33,7 +33,14 @@ import { MetallicToggle } from "./MetallicToggle";
 import { BadgeSlot, ScrubField } from "./ScrubField";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamily, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
-import { importedFamilies } from "@/fonts";
+import { importedFamilies, registerImportedFont } from "@/fonts";
+import { readImportedFont } from "@/fontImport";
+import type { FontAsset } from "@/labelfile";
+import { fileAsset, openThrough, readTarget } from "@/files";
+import { fontFilter, fontTypes } from "@/filePickers";
+import { notify } from "@/notify";
+import { errMsg } from "@/lib/utils";
+import { COARSE, useMedia } from "@/usePhoneLayout";
 import {
   BlankableField, DimensionField, Field, FieldPair, Heading, PT, Segmented, SelectField, SwitchRow,
   ignoringContent, ignoringContentAndPlacement, useInspectorOptions, type Ctx,
@@ -203,19 +210,59 @@ export function TextGeometry(props: TextProps) {
   );
 }
 
+/** The Font menu's Import Font… row. A command, never written to a layer. */
+const IMPORT_FONT = "import-font";
+/** One toast for Import Font…'s refusals, so a retry replaces the last. */
+const FONT_IMPORT_TOAST = "font-import-error";
+
+/** The Font menu: Default (the master's family), the bundled families, every
+ *  imported family registered this session (the registry is shared by tabs;
+ *  a save carries only the fonts its layers use), then Import Font…. */
 const TextFace = memo(function TextFace(props: TextProps) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const id = layer.id;
+  const coarse = useMedia(COARSE);
+  const fontInput = useRef<HTMLInputElement>(null);
   // Registered imported families, so an imported font shows its own name.
   const imported = importedFamilies();
   const defaultFont = t("Default ({{font}})", { font: fontFamily(fontFamilyOf(props, imported), imported).label });
+
+  /** Check and register the picked files as one family, then set it as one
+   *  patch (with several layers selected, the parent writes it to each text
+   *  layer in one undo step). Any refusal is an error toast; the layer keeps
+   *  its font. */
+  const refuse = (err: unknown) =>
+    notify.error(t("Could not import font: {{error}}", { error: errMsg(err) }), { id: FONT_IMPORT_TOAST });
+  async function importFont(read: Promise<FontAsset[]>) {
+    try {
+      const { id: fontId, font } = await readImportedFont(await read);
+      await registerImportedFont(fontId, font);
+      set({ fontFamily: fontId });
+    } catch (err) {
+      refuse(err);
+    }
+  }
+  /** Import Font…: the native dialog on desktop, the browser's picker, or
+   *  the hidden input where the browser has none. A cancel does nothing. */
+  async function pickFont() {
+    try {
+      const targets = await openThrough({ filter: fontFilter(), types: fontTypes(), multiple: true });
+      if (targets === undefined) fontInput.current?.click();
+      else if (targets) await importFont(Promise.all(targets.map(readTarget)));
+    } catch (err) {
+      refuse(err); // the picker itself failed
+    }
+  }
   return (
     <>
       <Heading>{t("Typography")}</Heading>
       <Field label={t("Font")} badge={badge(["fontFamily"], t("Font"))}>
         <Select value={layer.fontFamily ?? "inherit"}
-          onValueChange={(value) => set({ fontFamily: value === "inherit" ? undefined : value as FontFamilyId })}>
+          onValueChange={(value) => {
+            if (value === IMPORT_FONT) void pickFont();
+            else set({ fontFamily: value === "inherit" ? undefined : value as FontFamilyId });
+          }}>
           <SelectTrigger size="sm" aria-label={t("Font")} className="h-7 w-40 text-xs">
             <SelectValue>{layer.fontFamily ? fontFamily(layer.fontFamily, imported).label : defaultFont}</SelectValue>
           </SelectTrigger>
@@ -224,8 +271,22 @@ const TextFace = memo(function TextFace(props: TextProps) {
             {Object.entries(FONT_FAMILIES).map(([value, font]) => (
               <SelectItem key={value} value={value}>{font.label}</SelectItem>
             ))}
+            {[...imported].map(([value, font]) => (
+              <SelectItem key={value} value={value}>{font.label}</SelectItem>
+            ))}
+            <SelectSeparator />
+            <SelectItem value={IMPORT_FONT}>{t("Import Font…")}</SelectItem>
           </SelectContent>
         </Select>
+        {/* Import Font…'s fallback where the browser has no open picker. No
+            `accept` on a touch screen, where a phone's picker can grey out a
+            font it has no type for; readImportedFont refuses a wrong file. */}
+        <input ref={fontInput} type="file" multiple accept={coarse ? undefined : ".ttf,.otf"} hidden
+          onChange={(e) => {
+            const files = [...e.target.files ?? []];
+            e.target.value = "";
+            if (files.length) void importFont(Promise.all(files.map(fileAsset)));
+          }} />
       </Field>
       <ScrubField badge={badge(["size"], t("Size"))}
         id={`${id}-size`} label={t("Size")} unit="pt" unitTitle={t("Type size is always points")} value={layer.size}

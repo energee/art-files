@@ -254,6 +254,8 @@ const fr: Record<keyof typeof en, string> = {
   "Not a .master file: missing master.json": "Ce n’est pas un fichier .master : master.json est manquant",
   "Invalid label file: {{message}}": "Fichier d’étiquette non valide : {{message}}",
   "Unknown label font family: {{family}}": "Famille de polices d’étiquette inconnue : {{family}}",
+  "Import Font…": "Importer une police…",
+  "Could not import font: {{error}}": "Impossible d’importer la police : {{error}}",
   "Choose one to three font files.": "Choisissez un à trois fichiers de police.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} n’est pas un fichier de police TTF ou OTF.",
   "The license of {{name}} does not allow embedding it in a PDF.": "La licence de {{name}} n’autorise pas son incorporation dans un PDF.",
