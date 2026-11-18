@@ -260,6 +260,7 @@ const pt: Record<keyof typeof en, string> = {
   "{{name}} is a bitmap-only font, which cannot be printed.": "{{name}} é uma fonte somente bitmap e não pode ser impressa.",
   "{{first}} and {{second}} are different font families. Import one family at a time.": "{{first}} e {{second}} são famílias de fonte diferentes. Importe uma família por vez.",
   "An imported font this label uses is not loaded.": "Uma fonte importada usada por este rótulo não está carregada.",
+  "This file's font {{family}} is damaged.": "A fonte {{family}} deste arquivo está danificada.",
   "Not a label file.": "Não é um arquivo de rótulo.",
   "Unsupported label formatVersion: {{version}}": "formatVersion do rótulo incompatível: {{version}}",
   "Label file is missing its masterId.": "O arquivo de rótulo não tem masterId.",

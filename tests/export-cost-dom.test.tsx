@@ -22,6 +22,7 @@ vi.mock("../src/files", () => ({
   nativeExists: async () => false,
 }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   labelFontCss: () => "sans-serif",
   loadLabelFaces: async () => {},
   loadFonts: async (id: string) => {

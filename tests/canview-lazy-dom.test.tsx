@@ -18,6 +18,7 @@ vi.mock("../src/components/CanView", () => {
 });
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
   labelFontCss: () => "sans-serif",
 }));

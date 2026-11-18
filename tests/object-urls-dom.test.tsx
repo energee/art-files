@@ -29,6 +29,7 @@ vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 const menu = vi.hoisted(() => ({ actions: [] as Command[] }));
 vi.mock("../src/components/AppMenu", () => ({ AppMenu: (p: { actions: Command[] }) => { menu.actions = p.actions; return null; } }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
   labelFontCss: () => "sans-serif",
 }));

@@ -32,6 +32,7 @@ vi.mock("../src/components/AppMenu", () => ({
   },
 }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
   labelFontCss: () => "sans-serif",
 }));

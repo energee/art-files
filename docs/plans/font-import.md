@@ -43,8 +43,13 @@ has installed. A system font is only a source to import from.
   imported font already refuses it with "Unknown label font family: …".
 - **Removing a font.** An imported font is dropped from the file when no layer
   uses it at save time. There is no font manager.
-- **Where it is stored.** A font a master layer uses goes in the `.master`; a
-  font only a label's own layers use goes in the `.label`, like custom images.
+- **Where it is stored.** A font a master layer uses goes in the `.master`. A
+  `.label` carries every font it draws with, its master's included, as it
+  already carries the master's images, so it opens against a copy of the master
+  that lacks the font. (Changed during task 9 from "label-only fonts".)
+- **Integrity.** A font's id is its content hash, and every font from a file is
+  re-hashed before it is registered; a mismatch refuses the open, so a crafted
+  file cannot replace another tab's font.
 - **PSD.** Type layers name the imported font's PostScript name; Photoshop
   shows the text live when that font is installed, as it does for Poppins today.
 - **The Illustrator export draft (#769)** reads `FONT_FAMILIES` directly and

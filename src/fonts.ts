@@ -7,7 +7,8 @@
 // is unkerned, matching the PDF's drawText (#86). Text layers may override
 // the master family; the same family choice reaches measurement, drawing,
 // the editor and export. Loaded faces are cached. importedFamilies() names
-// the registered imported families for fontFamily/fontFamilyOf.
+// the registered imported families for fontFamily/fontFamilyOf, and
+// importedFontBundle hands their bytes back to a save.
 // Parsing font bytes with fontkit (glyph outlines and metrics) goes through
 // fontkit.ts instead: it must stay Node-safe, and this module's ?url imports
 // are not.
@@ -18,7 +19,7 @@ import barlowRegular from "./assets/fonts/BarlowCondensed-Regular.ttf?url";
 import barlowSemiBold from "./assets/fonts/BarlowCondensed-SemiBold.ttf?url";
 import barlowBold from "./assets/fonts/BarlowCondensed-Bold.ttf?url";
 import { isImportedFontId, type BundledFontId, type FontFamily, type FontFamilyId, type ImportedFontId } from "./fontCatalog";
-import { importedFamily } from "./fontImport";
+import { importedFamily, importedFontId } from "./fontImport";
 import type { ImportedFont } from "./labelfile";
 import type { MeasureFace } from "./plan";
 import type { Assets } from "./pdf/build";
@@ -45,11 +46,36 @@ let families: ReadonlyMap<ImportedFontId, FontFamily> = new Map();
 
 /** Make an imported family loadable: loadFonts serves its bytes from here.
  *  Its names are parsed now, once, so importedFamilies() never re-parses on a
- *  render. Ids are content hashes, so registering an id again is a no-op. */
-export function registerImportedFont(id: ImportedFontId, font: ImportedFont): void {
+ *  render. Ids are content hashes, so registering an id again is a no-op.
+ *
+ *  The one door every font from a file comes through, so it checks the bytes
+ *  hash to `id` (importedFontId) first and refuses them if not, even when the
+ *  id is already registered: every tab shares this registry, so a crafted file
+ *  must not be able to put its glyphs, or its bytes in a save, under another
+ *  file's font. */
+export async function registerImportedFont(id: ImportedFontId, font: ImportedFont): Promise<void> {
+  if (await importedFontId(font) !== id) throw new Error(t("This file's font {{family}} is damaged.", { family: font.family }));
   if (importedFonts.has(id)) return;
   importedFonts.set(id, font);
   families = new Map(families).set(id, importedFamily(font));
+}
+
+/** registerImportedFont for every font a file carries. Rejects if any font is
+ *  damaged; an open awaits it before its first render, and fails on that. */
+export async function registerImportedFonts(fonts: Record<ImportedFontId, ImportedFont> | undefined): Promise<void> {
+  await Promise.all(Object.entries(fonts ?? {}).map(([id, font]) => registerImportedFont(id as ImportedFontId, font)));
+}
+
+/** The registered fonts for `ids`, which a .label or .master save packs, or
+ *  undefined when none are. Ids not registered are skipped. The registry
+ *  never drops a font, so one an undo brings back is still here to save. */
+export function importedFontBundle(ids: Iterable<ImportedFontId>): Record<ImportedFontId, ImportedFont> | undefined {
+  const out: Record<ImportedFontId, ImportedFont> = {};
+  for (const id of ids) {
+    const font = importedFonts.get(id);
+    if (font) out[id] = font;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** The registered imported families, for fontFamily/fontFamilyOf. A new map

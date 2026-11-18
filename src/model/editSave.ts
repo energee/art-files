@@ -281,12 +281,15 @@ export function pinPromoted(label: LabelFile, promote: readonly MasterChange[]):
  *
  *  `target` is the working version, as in masterChanges: undefined writes the
  *  base master, a variant id writes that variant's diff (Task 12).
+ *  `importedFonts` are the imported font ids the tab carries, so a label's
+ *  imported font can be promoted onto a master layer.
  *
  *  ponytail: a `null` value (setLabelOverride's wire spelling of "unset this
  *  key") only unsets a TOP-LEVEL key, matching patchLayer's own clear rule —
  *  the inspector clears nothing deeper. */
 export function applyPromotions(
   master: Master, label: LabelFile, promote: readonly MasterChange[], target?: string,
+  importedFonts?: ReadonlySet<string>,
 ): { master: Master; label: LabelFile } {
   return promote.reduce((acc, c) => {
     if (c.kind !== "promote" || c.path === undefined) return acc;
@@ -305,8 +308,8 @@ export function applyPromotions(
     setPath(patch, c.path, clears && target === undefined ? undefined : c.to);
     return {
       master: target === undefined
-        ? patchLayer(acc.master, c.layerId, patch as LayerPatch)
-        : patchLayerIn(acc.master, target, c.layerId, patch as LayerPatch),
+        ? patchLayer(acc.master, c.layerId, patch as LayerPatch, importedFonts)
+        : patchLayerIn(acc.master, target, c.layerId, patch as LayerPatch, importedFonts),
       label: c.source === "value"
         ? clearValue(acc.label, c.layerId)
         : clearLabelOverride(acc.label, c.layerId, c.path),

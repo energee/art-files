@@ -50,6 +50,7 @@ vi.mock("../src/components/AppMenu", () => ({
   AppMenu: (p: { actions: Command[] }) => { held.actions = p.actions; return null; },
 }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async () => { await held.faces; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
 }));

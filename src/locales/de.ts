@@ -260,6 +260,7 @@ const de: Record<keyof typeof en, string> = {
   "{{name}} is a bitmap-only font, which cannot be printed.": "{{name}} ist eine reine Bitmap-Schrift und kann nicht gedruckt werden.",
   "{{first}} and {{second}} are different font families. Import one family at a time.": "{{first}} und {{second}} sind verschiedene Schriftfamilien. Importieren Sie jeweils eine Familie.",
   "An imported font this label uses is not loaded.": "Eine importierte Schrift, die dieses Etikett verwendet, ist nicht geladen.",
+  "This file's font {{family}} is damaged.": "Die Schrift {{family}} in dieser Datei ist beschädigt.",
   "Not a label file.": "Keine Etikettdatei.",
   "Unsupported label formatVersion: {{version}}": "Nicht unterstützte formatVersion für Etiketten: {{version}}",
   "Label file is missing its masterId.": "In der Etikettdatei fehlt die masterId.",

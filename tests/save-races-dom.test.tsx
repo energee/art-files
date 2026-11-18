@@ -58,6 +58,7 @@ vi.mock("../src/components/AppMenu", () => ({
   },
 }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async () => {
     if (menu.fontError) throw new Error(menu.fontError);
     return (t: string, s: number) => t.length * s * 0.55;

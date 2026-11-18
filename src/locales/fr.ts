@@ -260,6 +260,7 @@ const fr: Record<keyof typeof en, string> = {
   "{{name}} is a bitmap-only font, which cannot be printed.": "{{name}} est une police bitmap uniquement, impossible à imprimer.",
   "{{first}} and {{second}} are different font families. Import one family at a time.": "{{first}} et {{second}} sont des familles de polices différentes. Importez une famille à la fois.",
   "An imported font this label uses is not loaded.": "Une police importée utilisée par cette étiquette n’est pas chargée.",
+  "This file's font {{family}} is damaged.": "La police {{family}} de ce fichier est endommagée.",
   "Not a label file.": "Ce n’est pas un fichier d’étiquette.",
   "Unsupported label formatVersion: {{version}}": "formatVersion d’étiquette non pris en charge : {{version}}",
   "Label file is missing its masterId.": "Le fichier d’étiquette ne contient pas son masterId.",

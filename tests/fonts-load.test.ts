@@ -64,7 +64,7 @@ describe("loadLabelFaces", () => {
     it("loads a registered font's own bytes without fetching", async () => {
       const { fetched, fonts } = await fresh();
       const { id, font } = await readImportedFont([svnBold()]);
-      fonts.registerImportedFont(id, font);
+      await fonts.registerImportedFont(id, font);
       const bytes = await fonts.loadFonts(id);
       expect(fetched).toHaveLength(0);
       expect(bytes).toEqual({ regular: font.faces.regular.bytes, semibold: font.faces.semibold.bytes, bold: font.faces.bold.bytes });
@@ -87,7 +87,7 @@ describe("loadLabelFaces", () => {
     it("registers an imported layer family's faces under its CSS name", async () => {
       const { loaded, sources, fonts } = await fresh();
       const { id, font } = await readImportedFont([svnBold()]);
-      fonts.registerImportedFont(id, font);
+      await fonts.registerImportedFont(id, font);
       await fonts.loadLabelFaces("poppins", [id]);
       expect(new Set(loaded)).toEqual(new Set([fonts.labelFontCss("poppins"), fonts.labelFontCss(id)]));
       expect(sources).toContain(font.faces.bold.bytes);
@@ -97,7 +97,7 @@ describe("loadLabelFaces", () => {
       const { fonts } = await fresh();
       const { id, font } = await readImportedFont([svnBold()]);
       expect(fonts.importedFamilies().has(id)).toBe(false);
-      fonts.registerImportedFont(id, font);
+      await fonts.registerImportedFont(id, font);
       expect(fonts.importedFamilies().get(id)?.label).toBe(font.family);
     });
   });

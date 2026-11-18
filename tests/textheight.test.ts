@@ -109,7 +109,7 @@ describe("imported families", () => {
     const fonts = await import("../src/fonts");
     const { loadTextChecks } = await import("../src/textheight");
     const { id, font } = await readImportedFont([svnBold()]);
-    fonts.registerImportedFont(id, font);
+    await fonts.registerImportedFont(id, font);
     const checks = await loadTextChecks(id);
     expect(checks.missingGlyphs(text("RỒNG"))).toEqual([]);
     expect(checks.measure(text("RỒNG"))).not.toBeNull();
@@ -123,7 +123,7 @@ describe("imported families", () => {
     const { loadTextChecks } = await import("../src/textheight");
     const { id, font } = await readImportedFont([svnBold()]);
     await expect(loadTextChecks(id)).rejects.toThrow("An imported font this label uses is not loaded.");
-    fonts.registerImportedFont(id, font);
+    await fonts.registerImportedFont(id, font);
     await expect(loadTextChecks(id)).resolves.toMatchObject({ missingGlyphs: expect.any(Function) });
   });
 });

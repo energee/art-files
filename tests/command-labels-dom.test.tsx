@@ -17,6 +17,7 @@ vi.mock("../src/components/CommandMenu", async (importOriginal) => ({
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: () => null }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
   labelFontCss: () => "sans-serif",
   FONT_URLS: { poppins: {}, "barlow-condensed": {} },

@@ -259,6 +259,7 @@ const en = {
   "{{name}} is a bitmap-only font, which cannot be printed.": "{{name}} is a bitmap-only font, which cannot be printed.",
   "{{first}} and {{second}} are different font families. Import one family at a time.": "{{first}} and {{second}} are different font families. Import one family at a time.",
   "An imported font this label uses is not loaded.": "An imported font this label uses is not loaded.",
+  "This file's font {{family}} is damaged.": "This file's font {{family}} is damaged.",
   "Not a label file.": "Not a label file.",
   "Unsupported label formatVersion: {{version}}": "Unsupported label formatVersion: {{version}}",
   "Label file is missing its masterId.": "Label file is missing its masterId.",

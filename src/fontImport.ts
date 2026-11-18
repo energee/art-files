@@ -59,9 +59,8 @@ function readFile(file: FontAsset): { file: FontAsset; family: string; weight: n
  *  same face keep the closer one, and a face with no file of its own takes
  *  the nearest file given.
  *
- *  The id is `imported:` plus the first 12 hex digits of the SHA-256 of the
- *  face bytes in face order (regular, semibold, bold), so file order doesn't
- *  change it. Async only because crypto.subtle.digest is. */
+ *  The id is importedFontId's content hash over the placed faces, so file
+ *  order doesn't change it. Async only because crypto.subtle.digest is. */
 export async function readImportedFont(files: FontAsset[]): Promise<{ id: ImportedFontId; font: ImportedFont }> {
   if (files.length < 1 || files.length > 3) throw new Error(t("Choose one to three font files."));
   const read = files.map(readFile);
@@ -81,12 +80,22 @@ export async function readImportedFont(files: FontAsset[]): Promise<{ id: Import
     bold: nearest(FACE_WEIGHTS.bold),
   };
 
-  const ordered = [faces.regular, faces.semibold, faces.bold].map((f) => f.bytes);
+  const font = { family: read[0].family, faces };
+  return { id: await importedFontId(font), font };
+}
+
+/** A font's content id: `imported:` plus the first 12 hex digits of the
+ *  SHA-256 of its face bytes in face order (regular, semibold, bold). The one
+ *  spelling of the hash: readImportedFont mints ids with it, and the font gate
+ *  (fonts.ts registerImportedFont) re-checks an opened file's fonts against
+ *  it, so a file can't store other bytes under a font's id. */
+export async function importedFontId(font: Pick<ImportedFont, "faces">): Promise<ImportedFontId> {
+  const ordered = [font.faces.regular, font.faces.semibold, font.faces.bold].map((f) => f.bytes);
   const all = new Uint8Array(ordered.reduce((n, b) => n + b.length, 0));
   ordered.reduce((at, b) => (all.set(b, at), at + b.length), 0);
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", all));
   const hex = Array.from(digest.subarray(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
-  return { id: `imported:${hex}`, font: { family: read[0].family, faces } };
+  return `imported:${hex}`;
 }
 
 /** The family's menu label and each face's PostScript name, read from the
