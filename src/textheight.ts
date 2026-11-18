@@ -121,8 +121,10 @@ export function sizeForMinimum(size: number, currentMin: number, targetMm: numbe
 export interface TextChecks { measure: HeightMeasure; missingGlyphs: (layer: TextLayer) => number[] }
 
 const cached = new Map<FontFamilyId, Promise<TextChecks>>();
-/** The inspector's checks for one family, loaded once. The DOM font loader is
- *  imported here, on demand, so Node callers can import this module. */
+/** The inspector's checks for one family (bundled or imported), loaded once.
+ *  A failed load is not cached, so an imported family that was not yet
+ *  registered loads on the next call. The DOM font loader is imported here,
+ *  on demand, so Node callers can import this module. */
 export function loadTextChecks(family: FontFamilyId): Promise<TextChecks> {
   let result = cached.get(family);
   if (!result) {
