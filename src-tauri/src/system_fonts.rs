@@ -30,6 +30,8 @@ pub struct ScannedFace {
     pub path: PathBuf,
     /** Face index inside the file; non-zero only in a collection. */
     pub index: u32,
+    /** Whether the face has the letters A–Z and a–z. */
+    pub latin: bool,
 }
 
 /** Paths the last list_system_fonts returned, canonicalised (dunce): the
@@ -51,6 +53,7 @@ pub fn listable_fonts(faces: impl IntoIterator<Item = ScannedFace>) -> Vec<Syste
             face.index == 0
                 && !face.italic
                 && !face.family.starts_with('.')
+                && face.latin
                 && is_single_font_file(&face.path)
         })
         .filter_map(|face| {
@@ -68,6 +71,17 @@ pub fn listable_fonts(faces: impl IntoIterator<Item = ScannedFace>) -> Vec<Syste
     fonts
 }
 
+/** Whether a face maps every letter A–Z and a–z to a glyph. A font for one
+ * other script (macOS ships a Noto Sans for each) can't print Latin label
+ * text or show its own name, so the list leaves it out. */
+fn has_latin_letters(data: &[u8], index: u32) -> bool {
+    ttf_parser::Face::parse(data, index).is_ok_and(|face| {
+        ('A'..='Z')
+            .chain('a'..='z')
+            .all(|c| face.glyph_index(c).is_some())
+    })
+}
+
 fn is_single_font_file(path: &Path) -> bool {
     path.extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("ttf") || ext.eq_ignore_ascii_case("otf"))
@@ -83,6 +97,9 @@ fn scan_system_faces() -> Vec<ScannedFace> {
             let fontdb::Source::File(path) = &face.source else {
                 return None;
             };
+            let latin = db
+                .with_face_data(face.id, |data, index| has_latin_letters(data, index))
+                .unwrap_or(false);
             Some(ScannedFace {
                 family: face.families.first()?.0.clone(),
                 postscript: face.post_script_name.clone(),
@@ -90,6 +107,7 @@ fn scan_system_faces() -> Vec<ScannedFace> {
                 italic: face.style != fontdb::Style::Normal,
                 path: dunce::canonicalize(path).unwrap_or_else(|_| path.clone()),
                 index: face.index,
+                latin,
             })
         })
         .collect()
@@ -144,6 +162,7 @@ mod tests {
             italic: false,
             path: PathBuf::from(path),
             index: 0,
+            latin: true,
         }
     }
 
@@ -182,6 +201,14 @@ mod tests {
         let mut italic = face("A", 400, "/f/a-italic.ttf");
         italic.italic = true;
         let fonts = listable_fonts([italic, face("A", 400, "/f/a.ttf")]);
+        assert_eq!(paths(&fonts), ["/f/a.ttf"]);
+    }
+
+    #[test]
+    fn drops_faces_without_latin_letters() {
+        let mut adlam = face("Noto Sans Adlam", 400, "/f/adlam.ttf");
+        adlam.latin = false;
+        let fonts = listable_fonts([adlam, face("A", 400, "/f/a.ttf")]);
         assert_eq!(paths(&fonts), ["/f/a.ttf"]);
     }
 
