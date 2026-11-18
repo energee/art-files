@@ -4,9 +4,10 @@
 // through `set` with a minimal patch (LayerInspector.tsx's header). Split out
 // of LayerInspector.tsx (#433). Each is memoized on the part of the layer it
 // reads, so typing or dragging re-renders only the sections it changes (#715).
-import { memo, useCallback, useRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "@/i18n";
-import { Link2, Link2Off, RotateCcw } from "lucide-react";
+import { ChevronDownIcon, Link2, Link2Off, RotateCcw } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
 import type {
   BindingSide, BarcodeLayer, ImageLayer, Layer, QrLayer, Symbology, TextLayer,
@@ -23,8 +24,12 @@ import {
   DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Toggle } from "@/components/ui/toggle";
@@ -32,10 +37,11 @@ import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
 import { BadgeSlot, ScrubField } from "./ScrubField";
 import { CharacterHeight } from "./CharacterHeight";
-import { FONT_FAMILIES, fontFamily, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
+import { FONT_FAMILIES, fontFamily, fontFamilyOf, type FontFamilyId, type ImportedFontId } from "@/fontCatalog";
 import { importedFamilies, registerImportedFont } from "@/fonts";
 import { readImportedFont } from "@/fontImport";
-import type { FontAsset } from "@/labelfile";
+import type { ImportedFont } from "@/labelfile";
+import { importSystemFamily, listSystemFonts, type SystemFamily } from "@/systemFonts";
 import { fileAsset, openThrough, readTarget } from "@/files";
 import { fontFilter, fontTypes } from "@/filePickers";
 import { notify } from "@/notify";
@@ -210,33 +216,52 @@ export function TextGeometry(props: TextProps) {
   );
 }
 
-/** The Font menu's Import Font… row. A command, never written to a layer. */
-const IMPORT_FONT = "import-font";
 /** One toast for Import Font…'s refusals, so a retry replaces the last. */
 const FONT_IMPORT_TOAST = "font-import-error";
 
-/** The Font menu: Default (the master's family), the bundled families, every
- *  imported family registered this session (the registry is shared by tabs;
- *  a save carries only the fonts its layers use), then Import Font…. */
+/** The Font list matches what you type against each row's shown name only
+ *  (its keywords), never its value (a family id). */
+const matchName = (_value: string, search: string, keywords?: string[]) =>
+  keywords?.some((k) => k.toLowerCase().includes(search.trim().toLowerCase())) ? 1 : 0;
+
+/** The Font control: a searchable list opened from the Font field. Rows:
+ *  Default (the master's family), the bundled families, every imported
+ *  family registered this session (the registry is shared by tabs; a save
+ *  carries only the fonts its layers use), Import Font…, and on desktop a
+ *  System Fonts group of installed families, listed when the list first
+ *  opens. Picking a system family imports it into the file like Import Font…. */
 const TextFace = memo(function TextFace(props: TextProps) {
   const { layer, set, badge } = props;
   const { t } = useTranslation();
   const id = layer.id;
   const coarse = useMedia(COARSE);
   const fontInput = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const desktop = isTauri();
+  const [system, setSystem] = useState<SystemFamily[]>([]);
   // Registered imported families, so an imported font shows its own name.
   const imported = importedFamilies();
   const defaultFont = t("Default ({{font}})", { font: fontFamily(fontFamilyOf(props, imported), imported).label });
+  const current = layer.fontFamily ?? "inherit";
 
-  /** Check and register the picked files as one family, then set it as one
-   *  patch (with several layers selected, the parent writes it to each text
-   *  layer in one undo step). Any refusal is an error toast; the layer keeps
-   *  its font. */
+  // The installed families, scanned once a session (systemFonts.ts). Until
+  // they arrive the group is simply absent; a failed scan leaves it absent
+  // and the next open tries again.
+  useEffect(() => {
+    if (!open || !desktop) return;
+    let live = true;
+    listSystemFonts().then((families) => { if (live) setSystem(families); }, () => {});
+    return () => { live = false; };
+  }, [open, desktop]);
+
+  /** Register a read font and set it as one patch (with several layers
+   *  selected, the parent writes it to each text layer in one undo step).
+   *  Any refusal is an error toast; the layer keeps its font. */
   const refuse = (err: unknown) =>
     notify.error(t("Could not import font: {{error}}", { error: errMsg(err) }), { id: FONT_IMPORT_TOAST });
-  async function importFont(read: Promise<FontAsset[]>) {
+  async function applyFont(read: Promise<{ id: ImportedFontId; font: ImportedFont }>) {
     try {
-      const { id: fontId, font } = await readImportedFont(await read);
+      const { id: fontId, font } = await read;
       await registerImportedFont(fontId, font);
       set({ fontFamily: fontId });
     } catch (err) {
@@ -249,35 +274,64 @@ const TextFace = memo(function TextFace(props: TextProps) {
     try {
       const targets = await openThrough({ filter: fontFilter(), types: fontTypes(), multiple: true });
       if (targets === undefined) fontInput.current?.click();
-      else if (targets) await importFont(Promise.all(targets.map(readTarget)));
+      else if (targets) await applyFont(Promise.all(targets.map(readTarget)).then(readImportedFont));
     } catch (err) {
       refuse(err); // the picker itself failed
     }
   }
+  /** One row; picking it closes the list, then runs `pick`. */
+  const row = (value: string, label: string, pick: () => void) => (
+    <CommandItem key={value} value={value} keywords={[label]} data-checked={value === current}
+      onSelect={() => { setOpen(false); pick(); }}>
+      <span className="truncate" title={label}>{label}</span>
+    </CommandItem>
+  );
+  const setFont = (value: FontFamilyId | undefined) => () => set({ fontFamily: value });
   return (
     <>
       <Heading>{t("Typography")}</Heading>
       <Field label={t("Font")} badge={badge(["fontFamily"], t("Font"))}>
-        <Select value={layer.fontFamily ?? "inherit"}
-          onValueChange={(value) => {
-            if (value === IMPORT_FONT) void pickFont();
-            else set({ fontFamily: value === "inherit" ? undefined : value as FontFamilyId });
-          }}>
-          <SelectTrigger size="sm" aria-label={t("Font")} className="h-7 w-40 text-xs">
-            <SelectValue>{layer.fontFamily ? fontFamily(layer.fontFamily, imported).label : defaultFont}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="inherit">{defaultFont}</SelectItem>
-            {Object.entries(FONT_FAMILIES).map(([value, font]) => (
-              <SelectItem key={value} value={value}>{font.label}</SelectItem>
-            ))}
-            {[...imported].map(([value, font]) => (
-              <SelectItem key={value} value={value}>{font.label}</SelectItem>
-            ))}
-            <SelectSeparator />
-            <SelectItem value={IMPORT_FONT}>{t("Import Font…")}</SelectItem>
-          </SelectContent>
-        </Select>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger render={
+            <Button type="button" variant="outline" size="sm" aria-label={t("Font")}
+              className="h-7 w-40 justify-between px-2.5 text-xs font-normal" />
+          }>
+            <span data-slot="font-value" className="truncate">
+              {layer.fontFamily ? fontFamily(layer.fontFamily, imported).label : defaultFont}
+            </span>
+            <ChevronDownIcon className="size-4 text-muted-foreground" />
+          </PopoverTrigger>
+          {/* Sized to the longest name, at least the field's width; a name
+              past max-w-80 truncates and keeps its full text as a title.
+              A touch open leaves focus alone, so no keyboard covers the list. */}
+          <PopoverContent align="start" initialFocus={(openType) => openType !== "touch"}
+            className="w-auto min-w-(--anchor-width) max-w-80 gap-0 p-0">
+            <Command filter={matchName}>
+              <CommandInput placeholder={t("Search fonts")} />
+              <CommandList>
+                <CommandGroup>
+                  {row("inherit", defaultFont, setFont(undefined))}
+                  {Object.entries(FONT_FAMILIES).map(([value, font]) =>
+                    row(value, font.label, setFont(value as FontFamilyId)))}
+                  {[...imported].map(([value, font]) => row(value, font.label, setFont(value)))}
+                </CommandGroup>
+                <CommandSeparator />
+                <CommandGroup>
+                  {row("import-font", t("Import Font…"), () => void pickFont())}
+                </CommandGroup>
+                {desktop && system.length > 0 && (
+                  <>
+                    <CommandSeparator />
+                    <CommandGroup heading={t("System Fonts")}>
+                      {system.map((family) => row(`system:${family.family}`, family.family,
+                        () => void applyFont(importSystemFamily(family))))}
+                    </CommandGroup>
+                  </>
+                )}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
         {/* Import Font…'s fallback where the browser has no open picker. No
             `accept` on a touch screen, where a phone's picker can grey out a
             font it has no type for; readImportedFont refuses a wrong file. */}
@@ -285,7 +339,7 @@ const TextFace = memo(function TextFace(props: TextProps) {
           onChange={(e) => {
             const files = [...e.target.files ?? []];
             e.target.value = "";
-            if (files.length) void importFont(Promise.all(files.map(fileAsset)));
+            if (files.length) void applyFont(Promise.all(files.map(fileAsset)).then(readImportedFont));
           }} />
       </Field>
       <ScrubField badge={badge(["size"], t("Size"))}

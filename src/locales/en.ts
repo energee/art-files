@@ -254,6 +254,8 @@ const en = {
   "Invalid label file: {{message}}": "Invalid label file: {{message}}",
   "Unknown label font family: {{family}}": "Unknown label font family: {{family}}",
   "Import Font…": "Import Font…",
+  "System Fonts": "System Fonts",
+  "Search fonts": "Search fonts",
   "Could not import font: {{error}}": "Could not import font: {{error}}",
   "Choose one to three font files.": "Choose one to three font files.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} is not a TTF or OTF font file.",

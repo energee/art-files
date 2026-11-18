@@ -255,6 +255,8 @@ const de: Record<keyof typeof en, string> = {
   "Invalid label file: {{message}}": "Ungültige Etikettdatei: {{message}}",
   "Unknown label font family: {{family}}": "Unbekannte Schriftfamilie für Etiketten: {{family}}",
   "Import Font…": "Schriftart importieren…",
+  "System Fonts": "Systemschriften",
+  "Search fonts": "Schriften suchen",
   "Could not import font: {{error}}": "Schriftart konnte nicht importiert werden: {{error}}",
   "Choose one to three font files.": "Wählen Sie eine bis drei Schriftdateien.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} ist keine TTF- oder OTF-Schriftdatei.",

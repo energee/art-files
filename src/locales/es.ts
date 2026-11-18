@@ -255,6 +255,8 @@ const es: Record<keyof typeof en, string> = {
   "Invalid label file: {{message}}": "Archivo de etiqueta no válido: {{message}}",
   "Unknown label font family: {{family}}": "Familia tipográfica de etiqueta desconocida: {{family}}",
   "Import Font…": "Importar fuente…",
+  "System Fonts": "Fuentes del sistema",
+  "Search fonts": "Buscar fuentes",
   "Could not import font: {{error}}": "No se pudo importar la fuente: {{error}}",
   "Choose one to three font files.": "Elige de uno a tres archivos de fuente.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} no es un archivo de fuente TTF u OTF.",

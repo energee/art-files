@@ -50,14 +50,26 @@ function readFile(file: FontAsset): { file: FontAsset; family: string; weight: n
   return { file, family, weight: os2.usWeightClass };
 }
 
-/** Read one to three files of one family into an ImportedFont.
- *
- *  Each face takes the file whose OS/2 weight is nearest the face's target
- *  (regular 400, semibold 600, bold 700). A tie goes to the HEAVIER file
- *  (Regular 400 + Bold 800 gives semibold the Bold), then to the earlier
- *  file. So one file fills all three faces, two files landing nearest the
- *  same face keep the closer one, and a face with no file of its own takes
- *  the nearest file given.
+/** The item whose weight is nearest each label face's target (regular 400,
+ *  semibold 600, bold 700). A tie goes to the HEAVIER item (Regular 400 +
+ *  Bold 800 gives semibold the Bold), then to the earlier one. So one item
+ *  fills all three faces, and a face with no item of its own takes the
+ *  nearest one given. readImportedFont places picked files with it, and
+ *  systemFonts.ts chooses which of a family's installed faces to read. */
+export function placeFaces<T extends { weight: number }>(items: T[]): Record<Face, T> {
+  const nearest = (target: number) => items.reduce((best, r) => {
+    const d = Math.abs(r.weight - target) - Math.abs(best.weight - target);
+    return d < 0 || (d === 0 && r.weight > best.weight) ? r : best;
+  });
+  return {
+    regular: nearest(FACE_WEIGHTS.regular),
+    semibold: nearest(FACE_WEIGHTS.semibold),
+    bold: nearest(FACE_WEIGHTS.bold),
+  };
+}
+
+/** Read one to three files of one family into an ImportedFont, each face
+ *  taking the file placeFaces puts there by its OS/2 weight.
  *
  *  The id is importedFontId's content hash over the placed faces, so file
  *  order doesn't change it. Async only because crypto.subtle.digest is. */
@@ -70,15 +82,8 @@ export async function readImportedFont(files: FontAsset[]): Promise<{ id: Import
       first: read[0].family, second: other.family,
     }));
   }
-  const nearest = (target: number) => read.reduce((best, r) => {
-    const d = Math.abs(r.weight - target) - Math.abs(best.weight - target);
-    return d < 0 || (d === 0 && r.weight > best.weight) ? r : best;
-  }).file;
-  const faces = {
-    regular: nearest(FACE_WEIGHTS.regular),
-    semibold: nearest(FACE_WEIGHTS.semibold),
-    bold: nearest(FACE_WEIGHTS.bold),
-  };
+  const placed = placeFaces(read);
+  const faces = { regular: placed.regular.file, semibold: placed.semibold.file, bold: placed.bold.file };
 
   const font = { family: read[0].family, faces };
   return { id: await importedFontId(font), font };

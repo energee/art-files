@@ -255,6 +255,8 @@ const fr: Record<keyof typeof en, string> = {
   "Invalid label file: {{message}}": "Fichier d’étiquette non valide : {{message}}",
   "Unknown label font family: {{family}}": "Famille de polices d’étiquette inconnue : {{family}}",
   "Import Font…": "Importer une police…",
+  "System Fonts": "Polices système",
+  "Search fonts": "Rechercher des polices",
   "Could not import font: {{error}}": "Impossible d’importer la police : {{error}}",
   "Choose one to three font files.": "Choisissez un à trois fichiers de police.",
   "{{name}} is not a TTF or OTF font file.": "{{name}} n’est pas un fichier de police TTF ou OTF.",
