@@ -11,6 +11,8 @@ import {
 import { lolevMaster as lolevV3 } from "./fixtures/lolevMaster";
 import { defaultConfig } from "../src/defaults";
 import type { LabelFile } from "../src/model/layers";
+import { readFileSync } from "node:fs";
+import { readImportedFont } from "../src/fontImport";
 
 const png = (b: number) => new Uint8Array([0x89, 0x50, 0x4e, 0x47, b]);
 
@@ -130,6 +132,31 @@ describe(".label v3 container", () => {
 
   it("rejects a ZIP without label.json or config.json", () => {
     expect(() => unpackLabel(zipSync({ "readme.txt": strToU8("hi") }))).toThrow(/label\.json\/config\.json/);
+  });
+});
+
+describe("imported fonts in the containers", () => {
+  const fixture = (name: string) => ({ name, bytes: new Uint8Array(readFileSync(`tests/fixtures/fonts/${name}`)) });
+  const svnPoppins = () => readImportedFont([fixture("SVN-Poppins-Regular.ttf"), fixture("SVN-Poppins-Bold.ttf")]);
+
+  it("a master round-trips an imported font's id, family and face bytes", async () => {
+    const { id, font } = await svnPoppins();
+    const { assets } = unpackMaster(packMaster(lolevV3(), { fonts: { [id]: font } }));
+    expect(Object.keys(assets.fonts!)).toEqual([id]);
+    expect(assets.fonts![id]).toEqual(font);
+    expect(assets.fonts![id].family).toBe("SVN-Poppins");
+  });
+
+  it("a label round-trips an imported font's id, family and face bytes", async () => {
+    const { id, font } = await svnPoppins();
+    const label: LabelFile = { formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} };
+    const { assets } = unpackLabel(packLabel(label, { fonts: { [id]: font } }));
+    expect(assets.fonts).toEqual({ [id]: font });
+  });
+
+  it("a file with no fonts/ unpacks with no fonts key", () => {
+    const { assets } = unpackMaster(packMaster(lolevV3(), { texture: { name: "rock.png", bytes: png(1) } }));
+    expect(assets).toEqual({ texture: { name: "rock.png", bytes: png(1) } });
   });
 });
 

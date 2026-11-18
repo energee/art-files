@@ -85,6 +85,59 @@ describe("packAssets contract (#430)", () => {
     expect(() => unpackLabel(zip)).toThrow(/Not a \.label file/);
   });
 
+  it("writes an imported font as fonts/<hex>/family.txt plus one level-0 file per face", () => {
+    const zip: Zippable = {};
+    const bold = { name: "SVN-Poppins-Bold.ttf", bytes: png() };
+    packAssets(zip, { fonts: { "imported:abc123": { family: "SVN-Poppins", faces: { regular: bold, semibold: bold, bold } } } });
+    expect(Object.keys(zip).sort()).toEqual([
+      "fonts/abc123/bold/SVN-Poppins-Bold.ttf",
+      "fonts/abc123/family.txt",
+      "fonts/abc123/regular/SVN-Poppins-Bold.ttf",
+      "fonts/abc123/semibold/SVN-Poppins-Bold.ttf",
+    ]);
+    expect(zip["fonts/abc123/bold/SVN-Poppins-Bold.ttf"]).toEqual([png(), { level: 0 }]);
+  });
+
+  it("reads no fonts key from an archive without fonts/", () => {
+    const { assets } = unpackLabel(zipSync({ "config.json": strToU8("{}"), "texture/rock.png": png() }));
+    expect("fonts" in assets).toBe(false);
+  });
+
+  describe("refuses a malformed font directory", () => {
+    const full = (): Zippable => ({
+      "config.json": strToU8("{}"),
+      "fonts/": new Uint8Array(0),
+      "fonts/abc/": new Uint8Array(0),
+      "fonts/abc/family.txt": strToU8("SVN-Poppins"),
+      "fonts/abc/regular/a.ttf": png(),
+      "fonts/abc/semibold/a.ttf": png(),
+      "fonts/abc/bold/a.ttf": png(),
+    });
+
+    it("accepts the complete directory, skipping re-zip directory entries (#100)", () => {
+      const { assets } = unpackLabel(zipSync(full()));
+      const a = { name: "a.ttf", bytes: png() };
+      expect(assets.fonts).toEqual({ "imported:abc": { family: "SVN-Poppins", faces: { regular: a, semibold: a, bold: a } } });
+    });
+
+    it("missing a face", () => {
+      const z = full();
+      delete z["fonts/abc/semibold/a.ttf"];
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/abc\//);
+    });
+
+    it("missing family.txt", () => {
+      const z = full();
+      delete z["fonts/abc/family.txt"];
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/abc\//);
+    });
+
+    it("with two files in one face", () => {
+      const z = { ...full(), "fonts/abc/bold/b.ttf": png() };
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/abc\/bold\//);
+    });
+  });
+
   it("rejects a .master with two files in one slot", () => {
     const zip = zipSync({
       "master.json": strToU8(serializeMaster(lolevMaster())),

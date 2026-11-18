@@ -2,7 +2,7 @@ import { FONT_FAMILIES } from "../fontCatalog";
 // src/model/files.ts — v3 .master / .label file containers. Same ZIP layout
 // as before: master.json or label.json plus the asset role directories
 // labelfile.ts's packAssets/extractAssets own (texture/<name>, mask/<name>,
-// custom/<assetId>/<name>), so the two containers cannot drift. Opening
+// custom/<assetId>/<name>, fonts/<hex>/...), so the two containers cannot drift. Opening
 // refuses a v1 master.json (Label Lab 0.1.116 is the last build that
 // converts one), hands a v2 label.json back as `v2` because it needs the
 // master to convert, returns a v1 config.json raw for parseConfigFile +
@@ -18,8 +18,9 @@ import { parseLabelFile } from "./labelfile";
 import { unpackArchive, extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
 
 /** The template assets a master carries: the master-owned subset of the
- *  .label roles. A label's own embedded art always wins over the master's. */
-export type MasterAssets = Pick<LabelAssets, "texture" | "mask" | "customImages">;
+ *  .label roles, plus the fonts its layers import. A label's own embedded art
+ *  always wins over the master's. */
+export type MasterAssets = Pick<LabelAssets, "texture" | "mask" | "customImages" | "fonts">;
 
 export const MASTER_EXT = ".master";
 
