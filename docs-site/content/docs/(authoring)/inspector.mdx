@@ -42,13 +42,21 @@ Sits right under the header, captioned by what it is (Text, Code, Link, Texture�
 
 ## Typography (text)
 
-- Font: Poppins or Barlow Condensed, or the master default
-- Size in points, and **printed character height** in millimetres (tallest letter or numeral at export size). A warning names any character the layer's font cannot print; export refuses those until they are replaced or the font changes
+- Font: a list you can type in to search. It holds the master default, Poppins, Barlow Condensed, fonts imported this session, **Import Font…**, and in the desktop app a **System Fonts** group (see [Fonts](#fonts))
+- Size in points, and **printed character height** in millimetres (tallest letter or numeral at export size). A warning names any character the layer's font cannot print; export refuses those until they are replaced or the font changes. To keep the text, import a font that has the characters
 - Align: left, centre, right, justify. A last or only justified line falls back to left
 - Wrap width. Blank means no wrap
 - Line spacing and heading scale
 - Letter spacing (tracking)
 - **Uppercase.** Display only. Stored text keeps its typed case so `{name|slug}` still reads the original
+
+### Fonts
+
+**Import Font…** takes one to three `.ttf` or `.otf` files of one family. A label uses three weights, regular, semibold and bold; each file fills the nearest one, and a weight with no file uses the nearest file given, so one Bold file fills all three. Two families at once, a font collection (`.ttc`), a font whose licence forbids embedding and a bitmap-only font are refused with a message.
+
+In the desktop app, **System Fonts** lists the fonts installed on your computer (upright `.ttf` and `.otf` files; collections are left out). Picking one imports it, exactly like Import Font….
+
+An imported font is saved inside the `.master` or `.label`, so the label looks and exports the same on desktop, in the browser, on a phone and on another computer without that font. A `.label` carries every font it draws with, its master's included. A font no layer uses is left out at the next save. Older versions of Label Lab refuse a file that uses an imported font ("Unknown label font family").
 
 ## Geometry
 
