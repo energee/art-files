@@ -85,5 +85,8 @@ registered. Static assets (fonts, the 2025 laurel) are bundled in `src/assets/`.
 
 ## Design docs
 
+The [state-machine map](docs/state-machines.md) lists workflow owners, transition
+guards and the tests to start with when changing editor or desktop behavior.
+
 Specs and implementation plans live under `docs/superpowers/`. They are
 engineering history, not the operator guide.

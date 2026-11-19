@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Fixed
+- **Crash recovery keeps the right artwork with your edits.** If saving replacement artwork to recovery storage fails, a later snapshot no longer restores the newest text with an older image.
+
 ### Changed
 - **Translation library update, no visible change.** i18next 27 and react-i18next 18; the app's text and languages behave as before.
 
