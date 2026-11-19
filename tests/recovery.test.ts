@@ -118,6 +118,23 @@ describe("a snapshot's art", () => {
     expect(art.pack).toHaveBeenCalledTimes(2);
   });
 
+  it("restores the newest label with its own art when the preceding queued write failed", async () => {
+    const key = recoveryKey(20);
+    await keepRecovery(key, snap("original"), packer([{}]));
+    const replacement = { name: "replacement.png", bytes: new Uint8Array([4, 5]) };
+    const art = { ids: [{}], pack: () => packLabel(label("replacement"), { texture: replacement }) };
+    refuseNext = true;
+    const first = keepRecovery(key, snap("first edit"), art);
+    const second = keepRecovery(key, snap("second edit"), art);
+    expect(await Promise.all([first, second])).toEqual([false, true]);
+
+    crash(key, "crashed:20");
+    const restored = (await earlierSnapshots()).find((r) => r.key === "crashed:20")!;
+    const { label: latest, assets } = unpackLabel(restored.bytes);
+    expect(latest?.values.name).toBe("second edit");
+    expect(assets.texture).toEqual(replacement);
+  });
+
   it("comes back joined to the newest label, offered as one snapshot", async () => {
     store.clear();
     const key = recoveryKey(14);

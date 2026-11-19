@@ -66,16 +66,16 @@ export type SnapshotArt = { ids: readonly unknown[]; pack: () => Uint8Array };
 const ART_SUFFIX = ":art";
 const artKey = (key: string) => key + ART_SUFFIX;
 
-/** Each key's stored art, by SnapshotArt ids. Set and cleared at call time, so
- *  a keep issued after a drop can't count on art the drop is deleting. */
-const heldArt = new Map<string, readonly unknown[]>();
+/** Art known to be on disk for each key. Only a queued operation may read or
+ *  change this: a pending put isn't evidence that another snapshot can reuse it. */
+const committedArt = new Map<string, readonly unknown[]>();
 
 // Writes run one at a time, in call order: each opens its own connection,
 // so without this a snapshot still in flight could land after the drop a
 // save just issued and be offered back as unsaved work.
 let writes: Promise<unknown> = Promise.resolve();
-const write = <T>(act: (s: IDBObjectStore) => IDBRequest<T>) => {
-  const done = writes.then(() => run("readwrite", act, RECOVERY_STORE));
+const enqueue = <T>(operation: () => Promise<T>) => {
+  const done = writes.then(operation, operation);
   writes = done;
   return done;
 };
@@ -84,19 +84,21 @@ const write = <T>(act: (s: IDBObjectStore) => IDBRequest<T>) => {
 export const recoveryWritten = () => writes;
 
 /** Store a snapshot; false when it could not be written. */
-export async function keepRecovery(key: string, snap: RecoverySnapshot, art?: SnapshotArt): Promise<boolean> {
-  const held = heldArt.get(key);
-  let packed: Uint8Array | undefined;
-  if (art && !(held?.length === art.ids.length && art.ids.every((id, i) => id === held[i]))) {
-    try { packed = art.pack(); } catch { return false; } // over the size caps: nothing Save could write either
-    heldArt.set(key, art.ids);
-  }
-  const kept = await write((s) => { // one transaction: a snapshot never lands without its art
-    if (packed) s.put(packed, artKey(key));
-    return s.put(art ? { ...snap, splitArt: true } : snap, key);
+export function keepRecovery(key: string, snap: RecoverySnapshot, art?: SnapshotArt): Promise<boolean> {
+  return enqueue(async () => {
+    const held = committedArt.get(key);
+    let packed: Uint8Array | undefined;
+    if (art && !(held?.length === art.ids.length && art.ids.every((id, i) => id === held[i]))) {
+      try { packed = art.pack(); } catch { return false; } // over the size caps: leave the last snapshot
+    }
+    const kept = await run("readwrite", (s) => {
+      if (packed) s.put(packed, artKey(key));
+      return s.put(art ? { ...snap, splitArt: true } : snap, key);
+    }, RECOVERY_STORE);
+    if (kept === null) return false;
+    if (packed && art) committedArt.set(key, art.ids);
+    return true;
   });
-  if (kept === null && packed) heldArt.delete(key);
-  return kept !== null;
 }
 
 /** Discard All bumps this: a snapshot timer armed before it must skip its
@@ -107,11 +109,13 @@ let discards = 0;
 export const discardCount = () => discards;
 export const noteDiscard = () => { discards += 1; };
 
-export async function dropRecovery(key: string): Promise<void> {
-  heldArt.delete(key);
-  await write((s) => {
-    s.delete(artKey(key));
-    return s.delete(key);
+export function dropRecovery(key: string): Promise<void> {
+  return enqueue(async () => {
+    committedArt.delete(key);
+    await run("readwrite", (s) => {
+      s.delete(artKey(key));
+      return s.delete(key);
+    }, RECOVERY_STORE);
   });
 }
 
