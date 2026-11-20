@@ -6,11 +6,17 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
-### Fixed
-- **Crash recovery keeps the right artwork with your edits.** If saving replacement artwork to recovery storage fails, a later snapshot no longer restores the newest text with an older image.
+### Added
+- **Use any font on a text layer.** The Font list now has **Import Font…**: pick one to three `.ttf` or `.otf` files of one family, and their weights fill the regular, semibold and bold faces by nearest weight (one Bold file fills all three). For a word the bundled fonts can't print, such as "RỒNG" in Poppins, import a build of the typeface that has those letters. A font whose licence forbids embedding, or that is bitmap-only, is refused with a message.
+- **Installed fonts on desktop.** In the desktop app the Font list also shows a **System Fonts** group of the fonts installed on your computer, and you can type to search it. Each name in the list is shown in its own font. Fonts macOS keeps for itself (names starting with "."), and fonts without the letters A to Z (such as the Noto Sans fonts macOS installs for other scripts), are not listed. Picking one imports it into the file, just like Import Font…. Font collections (`.ttc`) are not listed.
+- **Fonts travel inside the file.** An imported font is saved in the `.master` or `.label`, so the label previews and exports the same on desktop, in the browser, on a phone and on another computer that doesn't have the font. A `.label` carries every font it draws with, its master's included. A font no layer uses is left out at the next save. Export PDF embeds the font, PSD type layers name it (the text stays live in Photoshop where the font is installed), and `npm run generate` uses the fonts the master or label carries. A file whose font is damaged is refused on open. Older versions of Label Lab can't open a file that uses an imported font.
 
 ### Changed
+- **"Cannot print" names the font as you'd pick it.** When a character can't be exported, the message now says "in Poppins Bold" rather than "in Poppins-Bold".
 - **Translation library update, no visible change.** i18next 27 and react-i18next 18; the app's text and languages behave as before.
+
+### Fixed
+- **Crash recovery keeps the right artwork with your edits.** If saving replacement artwork to recovery storage fails, a later snapshot no longer restores the newest text with an older image.
 
 ## [0.1.121] - 2026-11-13
 

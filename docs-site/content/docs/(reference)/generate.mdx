@@ -17,6 +17,8 @@ npm run -s generate -- beer.master --inspect
 
 `values.json` is keyed by layer id (`name`, `abv`, `description`, `barcode`, …). Text layers take a string. Rich layers still understand the markdown subset: `# header`, `**bold**`, `_white ink_`.
 
+Fonts imported in the app (see [Fonts](/docs/inspector#fonts)) are read from the files: the `.label`'s own copy first, then the `.master`'s. A layer whose imported font neither file carries (for example a `fontFamily` override naming one) fails the run with an error naming the layer.
+
 ## Batches
 
 A JSON array is a batch, one output set per job. A job can also be `{values, variants, files, overrides}`. `overrides` patches layer fields and is type-checked against the layer before anything builds. Colours there, and in styled lines, take 3- or 6-digit hex (`#fff` reads as `#ffffff`), `cmyk(c,m,y,k)` percentages, or `none`; a named colour such as `gold` is an error. A batch is validated, read, and built whole before the first file is written. A bad job anywhere leaves nothing on disk.
@@ -56,7 +58,7 @@ The CLI always writes the PSD pair, with black flattened previews. The app's one
 
 ## Checking without building
 
-`--check` catches what a full run would reject: unknown layer ids, bad values and overrides, invalid barcodes, missing image files, two jobs writing the same file, and characters the layer's font has no glyph for (they would print as empty boxes, so export refuses them). It does not decode images, so a corrupt or unsupported image file still fails only in the full run.
+`--check` catches what a full run would reject: unknown layer ids, bad values and overrides, invalid barcodes, missing image files, two jobs writing the same file, characters the layer's font has no glyph for (they would print as empty boxes, so export refuses them), and imported fonts the master or label doesn't carry. It does not decode images, so a corrupt or unsupported image file still fails only in the full run.
 
 ```bash
 npm run generate -- beer.master batch.json --check

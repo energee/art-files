@@ -1,8 +1,8 @@
-import { FONT_FAMILIES } from "../fontCatalog";
+import { FONT_FAMILIES, isImportedFontId } from "../fontCatalog";
 // src/model/files.ts — v3 .master / .label file containers. Same ZIP layout
 // as before: master.json or label.json plus the asset role directories
 // labelfile.ts's packAssets/extractAssets own (texture/<name>, mask/<name>,
-// custom/<assetId>/<name>), so the two containers cannot drift. Opening
+// custom/<assetId>/<name>, fonts/<hex>/...), so the two containers cannot drift. Opening
 // refuses a v1 master.json (Label Lab 0.1.116 is the last build that
 // converts one), hands a v2 label.json back as `v2` because it needs the
 // master to convert, returns a v1 config.json raw for parseConfigFile +
@@ -18,8 +18,9 @@ import { parseLabelFile } from "./labelfile";
 import { unpackArchive, extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
 
 /** The template assets a master carries: the master-owned subset of the
- *  .label roles. A label's own embedded art always wins over the master's. */
-export type MasterAssets = Pick<LabelAssets, "texture" | "mask" | "customImages">;
+ *  .label roles, plus the fonts its layers import. A label's own embedded art
+ *  always wins over the master's. */
+export type MasterAssets = Pick<LabelAssets, "texture" | "mask" | "customImages" | "fonts">;
 
 export const MASTER_EXT = ".master";
 
@@ -41,13 +42,14 @@ export function serializeMaster(m: Master): string {
 
 /** A master.json → v3. A v1 file is refused with the release that still
  *  converts it, as is a newer format; anything else must already be v3 and
- *  goes through parseMaster's own loud fail(). */
-export function parseMasterJson(json: unknown): Master {
+ *  goes through parseMaster's own loud fail(). `importedFonts` are the
+ *  imported font ids the .master carries. */
+export function parseMasterJson(json: unknown, importedFonts?: ReadonlySet<string>): Master {
   const version = (json as { formatVersion?: unknown } | null)?.formatVersion;
   if (version === 1)
     throw new Error(t("This master is from Label Lab 0.1.36 or earlier. Open it in Label Lab 0.1.116 and save it to update it."));
   rejectNewerFormat(version, "master");
-  return parseMaster(json);
+  return parseMaster(json, importedFonts);
 }
 
 /** The display name a master forked by Save Master As… takes: the file the
@@ -72,7 +74,9 @@ export function unpackMaster(bytes: Uint8Array): { master: Master; assets: Maste
   const entries = unpackArchive(bytes);
   const entry = entries["master.json"];
   if (!entry) throw new Error(t("Not a .master file: missing master.json"));
-  return { master: parseMasterJson(JSON.parse(strFromU8(entry))), assets: extractAssets(entries) };
+  // Assets first: a layer may name an imported font only this file carries.
+  const assets = extractAssets(entries);
+  return { master: parseMasterJson(JSON.parse(strFromU8(entry)), new Set(Object.keys(assets.fonts ?? {}))), assets };
 }
 
 // --- .label ---------------------------------------------------------------
@@ -116,20 +120,24 @@ const NUMERIC_KEYS = ["x", "size", "leading", "headerScale", "width", "min", "ma
  *  layer: it must name its own id, and the layer resolveLayers builds from it
  *  (applyDiff, so a null-cleared optional field is simply absent) must pass
  *  validateLayer like a master's. Any other patch is a partial diff, so only
- *  its geometry and font are checked. */
+ *  its geometry and font are checked. A fontFamily must be bundled or a
+ *  well-formed imported id: whether the label or its master carries that
+ *  font is checked by openProject once the master is resolved (the label
+ *  alone can't see its master's fonts). */
 function parseOverrides(v: unknown): LabelFile["overrides"] {
   if (v == null) return undefined;
   if (!isRecord(v)) badLabel(t("overrides is not an object"));
   for (const [id, p] of Object.entries(v)) {
     if (!isRecord(p)) badLabel(t("override \"{{id}}\" is not an object", { id }));
     const family = p.fontFamily;
-    if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
+    if (family != null && (typeof family !== "string" || !(Object.hasOwn(FONT_FAMILIES, family) || isImportedFontId(family))))
       throw new Error(t("Unknown label font family: {{family}}", { family }));
     const problem = patchProblem(p);
     if (problem) badLabel(t("override \"{{id}}\" {{problem}}", { id, problem }));
     if (p.kind !== undefined) {
       if (p.id !== id) badLabel(t("added layer \"{{id}}\" has a mismatched id", { id }));
-      try { validateLayer(applyDiff({} as Layer, p as never), "label override"); }
+      // fontFamily was checked above; carrying it is openProject's check.
+      try { validateLayer(applyDiff({} as Layer, { ...p, fontFamily: undefined } as never), "label override"); }
       catch (err) {
         const prefix = t("Invalid master file: {{message}}", { message: "" });
         const message = (err as Error).message;

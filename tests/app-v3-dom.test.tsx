@@ -17,6 +17,7 @@ type PreviewProps = import("react").ComponentProps<typeof import("../src/compone
 const perf = vi.hoisted(() => ({ facesGate: null as Promise<void> | null, fontLoads: 0, fontArgs: [] as unknown[][], source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (n: number) => void }) => { perf.margin = props.onMarginChange; return null; } }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async (...args: unknown[]) => { perf.fontLoads++; perf.fontArgs.push(args); await perf.facesGate; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
   loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),

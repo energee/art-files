@@ -53,7 +53,7 @@ import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } 
 import { getPath, type DeepPartial } from "@/model/merge";
 import { isPage, sharedPatch, sharesPath, type Peer } from "@/model/multiEdit";
 import {
-  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, isLabelOnly,
+  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, masterFontIds, referencedFontIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, isLabelOnly,
   applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -122,7 +122,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { baseName, cn, errMsg } from "@/lib/utils";
 import { notify } from "@/notify";
 import { COARSE, useMedia, usePhoneLayout } from "@/usePhoneLayout";
-import { loadLabelFaces } from "@/fonts";
+import { importedFamilies, importedFontBundle, loadLabelFaces, registerImportedFonts } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import type { PlanAssets } from "@/plan";
 
@@ -828,7 +828,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // changes fontKey and loads it. The planner callers below each await
   // loadLabelFaces themselves, so nothing here is stored. Every listed row
   // counts, disabled ones too, since the inspector measures those boxes.
-  const family = fontFamilyOf(master);
+  const family = fontFamilyOf(master, importedFamilies());
   const fontKey = useMemo(() => usedFontFamilies(family, rows.map((r) => r.layer)).join(","), [family, rows]);
   const fontOverrides = useMemo(() => fontKey.split(",").slice(1) as FontFamilyId[], [fontKey]);
   useEffect(() => {
@@ -1494,11 +1494,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     masterHint: labelRelativeHint(
       saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path, labelPath),
   });
-  /** This document as .label bytes: the v3 label plus its embedded art — what
-   *  Save writes and what a crash-recovery snapshot stores as its art. */
+  /** This document as .label bytes: the v3 label plus its embedded art and
+   *  the imported fonts its layers name (a font no layer uses any more is
+   *  left out) — what Save writes and what a crash-recovery snapshot stores
+   *  as its art. */
   const packProject = (labelPath?: string) => packLabel(hintedLabel(labelPath), {
     texture: slotAsset(texture), mask: slotAsset(mask),
     customImages: imageBundle(customImages, Object.keys(liveImages)),
+    fonts: importedFontBundle(referencedFontIds(master, label)),
   });
 
   /** What a completed Save means here: the document reads saved unless it
@@ -1548,6 +1551,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Never dropped on unmount — a render crash unmounts too, and that is the
   // snapshot the next launch must find. The shell drops it on a tab close.
   const hasUnsaved = unsaved({ dirty, edited, masterUnsaved: templateMoved });
+  /** The imported fonts the art packs, as one string: the snapshot repacks its
+   *  art when this changes, like when an image does. */
+  const usedFonts = useMemo(() => [...referencedFontIds(master, label)].sort().join(","), [master, label]);
   useEffect(() => {
     if (!recoveryKey) return;
     if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
@@ -1558,13 +1564,15 @@ export const DocumentEditor = memo(function DocumentEditor({
       let edits: RecoveredMaster | undefined;
       try {
         bytes = packLabel(hintedLabel(), {});
-        if (templateMoved) edits = { edited: packMaster(master, {}), base: packMaster(pristineMaster.current, {}) };
+        // A master carries the fonts its layers name: unpackMaster refuses it without them.
+        const withFonts = (m: Master) => packMaster(m, { fonts: importedFontBundle(masterFontIds(m)) });
+        if (templateMoved) edits = { edited: withFonts(master), base: withFonts(pristineMaster.current) };
       } catch { return; } // over the size caps: nothing Save could write either
       void keepRecovery(recoveryKey, {
         name: exportBase + LABEL_EXT, bytes, savedAt: Date.now(),
         filePath: filePath ?? undefined, fileModifiedAt: filePath ? boundModifiedAt() : undefined,
         master: edits,
-      }, { ids: [texture, mask, liveImages], pack: packProject });
+      }, { ids: [texture, mask, liveImages, usedFonts], pack: packProject });
     }, 2000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
@@ -1574,7 +1582,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  (the art being authored IS the template art) plus the bytes of every
    *  image asset the master names — its layers and every variant entry,
    *  including a variant's `{ asset }` patch on an existing layer
-   *  (masterAssetIds). Label-only values stay label deltas. `m` is the
+   *  (masterAssetIds), and the imported fonts it names (masterFontIds).
+   *  Label-only values stay label deltas. `m` is the
    *  master being WRITTEN (promotions applied), so a promoted image value's
    *  bytes ride along instead of leaving the file naming an asset it lacks.
    *  `missing` counts ids the store has no bytes for (a label whose zip lacked
@@ -1582,7 +1591,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   function masterAssetBundle(m: Master): { assets: MasterAssets; missing: number } {
     const ids = [...masterAssetIds(m)];
     return {
-      assets: { texture: slotAsset(texture), mask: slotAsset(mask), customImages: imageBundle(customImages, ids) },
+      assets: {
+        texture: slotAsset(texture), mask: slotAsset(mask), customImages: imageBundle(customImages, ids),
+        fonts: importedFontBundle(masterFontIds(m)),
+      },
       missing: ids.filter((id) => !customImages[id]).length,
     };
   }
@@ -1638,7 +1650,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // rejection from the `void saveMasterInTurn(...)` caller (#92).
     let promoted: ReturnType<typeof applyPromotions>;
     try {
-      promoted = applyPromotions(master, label, promote, version ?? undefined);
+      promoted = applyPromotions(master, label, promote, version ?? undefined, new Set(importedFamilies().keys()));
     } catch (err) {
       reportLoadError(t("Could not save master: {{error}}", { error: errMsg(err) }));
       return false;
@@ -1678,7 +1690,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (ours) edit((d) => {
         if (d.master.id !== master.id) return d;
         const rebased = d.master === master ? m : promote.reduce((acc, c) => {
-          try { return applyPromotions(acc, label, [c], version ?? undefined).master; } catch { return acc; }
+          try { return applyPromotions(acc, label, [c], version ?? undefined, new Set(importedFamilies().keys())).master; } catch { return acc; }
         }, d.master);
         const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
         // Keep newer label edits, including a newly changed promoted field.
@@ -1802,6 +1814,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
+    await registerImportedFonts(r.assets.fonts); // before the switch renders with them
     await rememberMaster(r.master, name, bytes);
     refreshLibrary();
     commitRebind(r.master);
@@ -1816,6 +1829,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  already in the master cache (the picker resolved them from disk or the
    *  cache), so only the index / last-applied record needs touching. */
   async function pickLibraryMaster(target: Master, assets: MasterAssets) {
+    await registerImportedFonts(assets.fonts); // before the switch renders with them
     const path = masterIndex()[target.id]?.path ?? "";
     await rememberMaster(target, path);
     refreshLibrary();
@@ -1907,6 +1921,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (!untouched) return;
         const nextMaster = structureOnlyMaster(r.master);
         if (!masterDiff(current.master, nextMaster)) return;
+        await registerImportedFonts(r.assets.fonts);
+        if (claimed() || editedRef.current) return;
         restoringRef.current = true;
         try {
           resetDocument({ master: nextMaster, label: newLabel(nextMaster) });
@@ -1955,7 +1971,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     // same id (#405). That file is its own trust root (hintTrusted).
     if (choice === "current") {
       const own = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
-      return (await resolveMasterById(current.id, own, own)) ?? { master: current, assets: {} };
+      return (await resolveMasterById(current.id, own, own))
+        ?? { master: current, assets: { fonts: importedFontBundle(masterFontIds(current)) } };
     }
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
@@ -2005,8 +2022,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean | "cancelled"> {
     try {
       const unpacked = unpackLabel(f.bytes);
-      const recovered = f.master
-        && { edited: unpackMaster(f.master.edited).master, base: unpackMaster(f.master.base).master };
+      const recoveredEdited = f.master && unpackMaster(f.master.edited);
+      const recovered = f.master && { edited: recoveredEdited!.master, base: unpackMaster(f.master.base).master };
       let notes: string[] = [];
       let masterAssets: MasterAssets = {};
       let masterPath: string | undefined;
@@ -2036,7 +2053,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         const r = convertConfigV1(cfg, legacyCollabEnabled(unpacked.legacy), current);
         notes = r.warnings;
         // From the ref: this open's render can predate a boot restore's images (#706).
-        masterAssets = { customImages: imageBundle(savedAssetsRef.current.customImages, masterAssetIds(current)) };
+        masterAssets = {
+          customImages: imageBundle(savedAssetsRef.current.customImages, masterAssetIds(current)),
+          fonts: importedFontBundle(masterFontIds(current)),
+        };
         masterPath = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
         next = { master: current, label: adoptLegacyCollab(r.label) };
       } else {
@@ -2050,7 +2070,10 @@ export const DocumentEditor = memo(function DocumentEditor({
             ?? await missingMasterChoice(ref.masterId, hint, f.path);
         refreshLibrary(); // resolving (or the missing-master prompt) can remember or retire library rows
         if (!resolved) return "cancelled";
-        masterAssets = resolved.assets;
+        // A recovered master's fonts come from its snapshot, not the file found.
+        masterAssets = recoveredEdited
+          ? { ...resolved.assets, fonts: { ...resolved.assets.fonts, ...recoveredEdited.assets.fonts } }
+          : resolved.assets;
         masterPath = resolved.path;
         let l: LabelFile;
         // An old label's image scale folds into w/h against this master.
@@ -2089,9 +2112,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       // the list or inspector past the open — so each resolved layer must
       // pass the master's own layer check (an off variant's raw diff rows
       // were checked by parseMaster already).
+      // An imported font may be carried by the label or by its master. Each is
+      // checked against its id and registered here, before the first render
+      // that draws with it; a damaged one refuses the open.
+      const importedFonts = new Set([...Object.keys(unpacked.assets.fonts ?? {}), ...Object.keys(masterAssets.fonts ?? {})]);
+      await Promise.all([registerImportedFonts(masterAssets.fonts), registerImportedFonts(unpacked.assets.fonts)]);
       for (const { layer, variant } of layerRows(next.master, next.label).rows) {
         if (variant && !variant.enabled) continue;
-        try { validateLayer(structuredClone(layer), "label"); }
+        try { validateLayer(structuredClone(layer), "label", importedFonts); }
         catch (err) {
           // validateLayer's message carries the translated master prefix.
           const prefix = translate("Invalid master file: {{message}}", { message: "" });

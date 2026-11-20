@@ -51,6 +51,8 @@ The combined PDF title is `{Name} label`. All PDF exports declare the **TrimBox*
 
 While the label is invalid, Export builds nothing and shows a **Can't export yet** toast with the reason. **Show layer** opens the Layers sidebar, selects the first invalid layer and puts the cursor in its value field. In the Layers list an invalid layer's row turns red with a red dot; hover it to read the reason. A blank or turned-off barcode doesn't block export. A layer that runs past the label edge also gets a red dot, but still exports.
 
+Text with a character its font has no glyph for is refused too: **Cannot print … in Poppins Bold** names the character and the face. Replace the character, or import a font that has it in the layer's **Font** list (for Vietnamese in Poppins, a Vietnamese build of the typeface such as SVN-Poppins). See [Fonts](/docs/inspector#fonts). The PDF embeds an imported font like the bundled ones.
+
 ## Two-file export (art + mask) [#two-file-export]
 
 Set **Settings → Export as** to **Art + mask** and the export menu and palette swap the one-file exports for pairs:
@@ -69,7 +71,7 @@ The uploaded raster in the legacy mask PDF is embedded as-authored. The 3D previ
 
 ## Photoshop
 
-The PSD is the editable RGB handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
+The PSD is the editable RGB handoff. Text becomes type layers, naming the font by its PostScript name; Photoshop shows the text live where that font is installed, imported fonts included. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
 
 The PSD declares the export resolution (600 ppi unless you change PSD resolution in Settings). Photoshop may prompt to **Update** text layers on open: ag-psd writes text data without a rendered bitmap. Choose Update.
 

@@ -18,7 +18,8 @@ import { joinLabel } from "@/model/files";
 /** A tab's unsaved master edits as packMaster bytes: `edited` is the master
  *  the tab held, `base` the one it was last opened or saved as, which keeps
  *  the edits unsaved after a restore. Neither carries art: the snapshot's label
- *  packs every image the master names. */
+ *  packs every image the master names. Each does carry the imported fonts its
+ *  layers name, since unpackMaster refuses a master without them. */
 export type RecoveredMaster = { edited: Uint8Array; base: Uint8Array };
 
 /** `filePath`: the desktop file the tab was bound to, if any. Optional

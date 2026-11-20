@@ -35,6 +35,7 @@ vi.mock("../src/files", () => ({
   nativeExists: async () => false,
 }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   labelFontCss: () => "sans-serif",
   loadLabelFaces: async () => { race.fire("faces"); },
   loadFonts: async () => { race.fire("fonts"); return (await import("./fixtures")).assets.fonts; },

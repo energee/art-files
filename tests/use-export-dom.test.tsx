@@ -38,6 +38,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: save.revealItemIn
 // The real builders run (as save-races-dom does) on the fixture fonts; only
 // the save dialog is faked. An empty layer list still yields both plates.
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadFonts: async () => (await import("./fixtures")).assets.fonts,
 }));
 

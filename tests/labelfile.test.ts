@@ -85,6 +85,66 @@ describe("packAssets contract (#430)", () => {
     expect(() => unpackLabel(zip)).toThrow(/Not a \.label file/);
   });
 
+  it("writes an imported font as fonts/<hex>/family.txt plus one level-0 file per face", () => {
+    const zip: Zippable = {};
+    const bold = { name: "SVN-Poppins-Bold.ttf", bytes: png() };
+    packAssets(zip, { fonts: { "imported:abc123def456abc123def456abc123de": { family: "SVN-Poppins", faces: { regular: bold, semibold: bold, bold } } } });
+    expect(Object.keys(zip).sort()).toEqual([
+      "fonts/abc123def456abc123def456abc123de/bold/SVN-Poppins-Bold.ttf",
+      "fonts/abc123def456abc123def456abc123de/family.txt",
+      "fonts/abc123def456abc123def456abc123de/regular/SVN-Poppins-Bold.ttf",
+      "fonts/abc123def456abc123def456abc123de/semibold/SVN-Poppins-Bold.ttf",
+    ]);
+    expect(zip["fonts/abc123def456abc123def456abc123de/bold/SVN-Poppins-Bold.ttf"]).toEqual([png(), { level: 0 }]);
+  });
+
+  it("reads no fonts key from an archive without fonts/", () => {
+    const { assets } = unpackLabel(zipSync({ "config.json": strToU8("{}"), "texture/rock.png": png() }));
+    expect("fonts" in assets).toBe(false);
+  });
+
+  describe("refuses a malformed font directory", () => {
+    const full = (): Zippable => ({
+      "config.json": strToU8("{}"),
+      "fonts/": new Uint8Array(0),
+      "fonts/0123456789abcdef0123456789abcdef/": new Uint8Array(0),
+      "fonts/0123456789abcdef0123456789abcdef/family.txt": strToU8("SVN-Poppins"),
+      "fonts/0123456789abcdef0123456789abcdef/regular/a.ttf": png(),
+      "fonts/0123456789abcdef0123456789abcdef/semibold/a.ttf": png(),
+      "fonts/0123456789abcdef0123456789abcdef/bold/a.ttf": png(),
+    });
+
+    it("accepts the complete directory, skipping re-zip directory entries (#100)", () => {
+      const { assets } = unpackLabel(zipSync(full()));
+      const a = { name: "a.ttf", bytes: png() };
+      expect(assets.fonts).toEqual({ "imported:0123456789abcdef0123456789abcdef": { family: "SVN-Poppins", faces: { regular: a, semibold: a, bold: a } } });
+    });
+
+    it("missing a face", () => {
+      const z = full();
+      delete z["fonts/0123456789abcdef0123456789abcdef/semibold/a.ttf"];
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/0123456789abcdef0123456789abcdef\//);
+    });
+
+    it("missing family.txt", () => {
+      const z = full();
+      delete z["fonts/0123456789abcdef0123456789abcdef/family.txt"];
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/0123456789abcdef0123456789abcdef\//);
+    });
+
+    it("with two files in one face", () => {
+      const z = { ...full(), "fonts/0123456789abcdef0123456789abcdef/bold/b.ttf": png() };
+      expect(() => unpackLabel(zipSync(z))).toThrow(/fonts\/0123456789abcdef0123456789abcdef\/bold\//);
+    });
+
+    it("whose name is not 32 lowercase hex digits", () => {
+      for (const hex of ["abc", "0123456789AB", "0123456789abcdef0123456789abcdefc", "..23456789ab"]) {
+        const z = Object.fromEntries(Object.entries(full()).map(([k, v]) => [k.replace("0123456789abcdef0123456789abcdef", hex), v]));
+        expect(() => unpackLabel(zipSync(z)), hex).toThrow(/Archive is malformed/);
+      }
+    });
+  });
+
   it("rejects a .master with two files in one slot", () => {
     const zip = zipSync({
       "master.json": strToU8(serializeMaster(lolevMaster())),

@@ -14,6 +14,7 @@ vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare:
 vi.mock("../src/components/CanView", () => { throw new Error("chunk load failed"); });
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
   labelFontCss: () => "sans-serif",
 }));

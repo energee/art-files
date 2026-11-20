@@ -1,9 +1,10 @@
 // textheight.test.ts — printed heights against the bundled font's outline units.
 import { readFileSync } from "node:fs";
-import { expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { charactersPerInch, createHeightMeasure, createMissingGlyphCheck, sizeForMinimum } from "../src/textheight";
 import { OUTPUT_DPI, setOutputDpi } from "../src/layout";
 import type { TextLayer } from "../src/model/layers";
+import { readImportedFont } from "../src/fontImport";
 
 const bytes = (face: string) => readFileSync(new URL(`../src/assets/fonts/Poppins-${face}.ttf`, import.meta.url));
 const measure = createHeightMeasure({ regular: bytes("Regular"), semibold: bytes("SemiBold"), bold: bytes("Bold") });
@@ -95,4 +96,34 @@ it.each(["Poppins", "BarlowCondensed"])("measures plain letters the same after a
   session(text("Olé"));
   expect(session(text("Ale"))).toEqual(createHeightMeasure(pack)(text("Ale")));
   expect(session(text("e"))).not.toBeNull();
+});
+
+describe("imported families", () => {
+  const svnBold = () => ({
+    name: "SVN-Poppins-Bold.ttf",
+    bytes: new Uint8Array(readFileSync(new URL("./fixtures/fonts/SVN-Poppins-Bold.ttf", import.meta.url))),
+  });
+
+  it("checks glyphs in a registered imported family: RỒNG prints in SVN-Poppins, not in bundled Poppins", async () => {
+    vi.resetModules();
+    const fonts = await import("../src/fonts");
+    const { loadTextChecks } = await import("../src/textheight");
+    const { id, font } = await readImportedFont([svnBold()]);
+    await fonts.registerImportedFont(id, font);
+    const checks = await loadTextChecks(id);
+    expect(checks.missingGlyphs(text("RỒNG"))).toEqual([]);
+    expect(checks.measure(text("RỒNG"))).not.toBeNull();
+    const poppins = createMissingGlyphCheck({ regular: bytes("Regular"), semibold: bytes("SemiBold"), bold: bytes("Bold") });
+    expect(poppins(text("RỒNG"))).toEqual([0x1ED2]);
+  });
+
+  it("does not cache a rejected load for an imported id registered later", async () => {
+    vi.resetModules();
+    const fonts = await import("../src/fonts");
+    const { loadTextChecks } = await import("../src/textheight");
+    const { id, font } = await readImportedFont([svnBold()]);
+    await expect(loadTextChecks(id)).rejects.toThrow("An imported font this label uses is not loaded.");
+    await fonts.registerImportedFont(id, font);
+    await expect(loadTextChecks(id)).resolves.toMatchObject({ missingGlyphs: expect.any(Function) });
+  });
 });

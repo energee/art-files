@@ -15,7 +15,7 @@ import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
-import { labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
+import { importedFamilies, labelFontCss, loadFonts, loadLabelFaces } from "@/fonts";
 import { drawPlate } from "@/canvas/draw";
 import { liveGeometry, PSD_DOC, withGeometry, type Geometry } from "@/layout";
 import { usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
@@ -422,7 +422,7 @@ export function useExport({
         if (image.kind !== "svg") bitmaps[id] = await createImageBitmap(new Blob([image.bytes as BlobPart]));
       const pixels = Object.fromEntries(Object.entries(bitmaps).map(([id, bmp]) => [id, bitmapPixels(bmp)]));
       const plates = flattenPlates(plan, bitmaps, labelFontCss(family), geometry);
-      const assets: PsdAssets = { fonts, fontFamily: family, images: pixels };
+      const assets: PsdAssets = { fonts, fontFamily: family, importedFamilies: importedFamilies(), images: pixels };
       const build = (mode: "art" | "mask", opts: PsdOpts, transfer?: ArrayBuffer[]) =>
         buildPsdOffThread({ items: plan, assets, mode, geometry, opts: { layers: drawLayers, ...opts } }, transfer);
       return { plates, pixels, build };

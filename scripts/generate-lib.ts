@@ -9,7 +9,8 @@ import { PNG } from "pngjs";
 import { EMBEDDABLE_RASTER, rasterKind, tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
-import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
+import { FONT_FAMILIES, fontFamily, isImportedFontId, type FontFamily, type FontFamilyId, type ImportedFontId } from "../src/fontCatalog";
+import { importedFamily } from "../src/fontImport";
 import { setBleed } from "../src/layout";
 import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
@@ -374,7 +375,8 @@ export function inspectMaster(master: Master): InspectReport {
  *  with the layer id, instead of deep inside planning with no id at all.
  *  Fields the layer lacks pass — resolveLayers merges those as-is. A patch
  *  carrying `kind` for an id the master lacks is a whole label-only layer.
- *  Colours get patchProblem's check, which widens a 3-digit hex in place. */
+ *  Colours get patchProblem's check, which widens a 3-digit hex in place.
+ *  An imported fontFamily only has to be well-formed here. */
 export function checkOverrides(
   layers: Map<string, Layer>, overrides: LabelFile["overrides"],
 ): string[] {
@@ -397,7 +399,12 @@ export function checkOverrides(
     // PDF prints the colour the preview shows; a "gold" is refused.
     const problem = patchProblem(patch as Record<string, unknown>);
     if (problem) { errors.push(`override ${id} ${problem}`); continue; }
-    try { validateLayer(applyDiff(layer, patch), `override ${id}`); }
+    // A well-formed imported family passes here; whether the master or label
+    // carries it is runGenerateJob's glyph pass, which names the layer.
+    const merged = applyDiff(layer, patch);
+    const family = (merged as { fontFamily?: string }).fontFamily;
+    const imported = family && isImportedFontId(family) ? new Set([family]) : undefined;
+    try { validateLayer(merged, `override ${id}`, imported); }
     catch (err) { errors.push(String(err)); }
   }
   return errors;
@@ -444,11 +451,23 @@ function readAsset(assetRoot: string, ...parts: string[]): Buffer {
   return b;
 }
 
-function fontPack(assetRoot: string, id: FontFamilyId): Assets["fonts"] {
+/** A family's three faces: a bundled family's read from the asset root, an
+ *  imported one's from the fonts the .master/.label carry (the label's own
+ *  already merged over its master's by runGenerateJob). */
+function fontPack(assetRoot: string, id: FontFamilyId, imported: MasterAssets["fonts"]): Assets["fonts"] {
+  if (isImportedFontId(id)) {
+    const font = imported?.[id];
+    if (!font) throw new Error(`imported font family ${id} is not in the master or label`);
+    return { regular: font.faces.regular.bytes, semibold: font.faces.semibold.bytes, bold: font.faces.bold.bytes };
+  }
   const files = FONT_FAMILIES[id].files;
   const file = (n: string) => readAsset(assetRoot, "fonts", n);
   return { regular: file(files.regular), semibold: file(files.semibold), bold: file(files.bold) };
 }
+
+/** Each carried font's menu label and PostScript names, for messages and PSD type layers. */
+const importedFamilies = (imported: MasterAssets["fonts"]): Map<ImportedFontId, FontFamily> =>
+  new Map(Object.entries(imported ?? {}).map(([id, font]) => [id as ImportedFontId, importedFamily(font)]));
 
 function asImage(name: string, bytes: Uint8Array): CollabImage {
   if (/\.svg$/i.test(name)) return { kind: "svg", svg: new TextDecoder().decode(bytes) };
@@ -508,12 +527,13 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   for (const l of resolved.layers)
     if (l.kind === "text" && l.fontFamily) needed.add(l.fontFamily);
 
-  const fonts = fontPack(input.assetRoot, defaultFamily);
+  const imported = input.masterAssets.fonts;
+  const fonts = fontPack(input.assetRoot, defaultFamily, imported);
   // The default family is listed too, as the SAME pack: a text layer may
   // name it explicitly (plan runs are then tagged with it), and newDoc
   // reuses the base embed for an identical pack rather than embedding twice (#90).
   const fontFamilies: NonNullable<Assets["fontFamilies"]> = {};
-  for (const id of needed) fontFamilies[id] = id === defaultFamily ? fonts : fontPack(input.assetRoot, id);
+  for (const id of needed) fontFamilies[id] = id === defaultFamily ? fonts : fontPack(input.assetRoot, id, imported);
 
   const images: Record<string, CollabImage> = {};
   const planCustom: NonNullable<PlanAssets["custom"]> = {};
@@ -586,7 +606,9 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
       height: maskPng.height,
     },
   } : pdfAssets;
-  const psdAssets: PsdAssets = { fonts, fontFamily: defaultFamily, images: psdImages };
+  const psdAssets: PsdAssets = {
+    fonts, fontFamily: defaultFamily, images: psdImages, importedFamilies: importedFamilies(imported),
+  };
   const psdOpts = { layers: resolved.layers };
   const builds: [string, () => Promise<Uint8Array>][] = [];
   if (wantsPdf(input.format)) {
@@ -736,6 +758,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     if (unpacked.assets.mask) labelExtras.mask = unpacked.assets.mask;
     for (const [id, a] of Object.entries(unpacked.assets.customImages ?? {}))
       masterAssets.customImages = { ...masterAssets.customImages, [id]: a };
+    // The label's own fonts first, then its master's (same id = same bytes).
+    if (unpacked.assets.fonts) masterAssets.fonts = { ...masterAssets.fonts, ...unpacked.assets.fonts };
   } else {
     let raw: unknown = {};
     const valuesPath = args.source.path;
@@ -756,9 +780,11 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   const glyphChecks = new Map<FontFamilyId, ReturnType<typeof createMissingGlyphCheck>>();
   const missingGlyphs = (layer: TextLayer, family: FontFamilyId): number[] => {
     let fn = glyphChecks.get(family);
-    if (!fn) glyphChecks.set(family, fn = createMissingGlyphCheck(fontPack(assetRoot, family)));
+    if (!fn) glyphChecks.set(family, fn = createMissingGlyphCheck(fontPack(assetRoot, family, masterAssets.fonts)));
     return fn(layer);
   };
+  let families: Map<ImportedFontId, FontFamily> | undefined; // built on the first error that names one
+  const familyLabel = (id: FontFamilyId) => fontFamily(id, families ??= importedFamilies(masterAssets.fonts)).label;
   const fail = (e: unknown) => { errors.push(e instanceof Error ? e.message : String(e)); };
   const dests = new Set<string>();
   const prepared = jobs.map((job) => {
@@ -793,12 +819,15 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     // Without --check, buildLabel reports these warnings as it builds.
     if (args.check) for (const w of resolved.warnings) warn(w);
     // A character the font lacks would print as an empty box; the build
-    // refuses it, so name the layer now rather than mid-batch.
+    // refuses it, so name the layer now rather than mid-batch. So is a font
+    // neither the master nor the label carries.
     for (const l of resolved.layers) {
       if (l.kind !== "text") continue;
       const family = l.fontFamily ?? master.fontFamily ?? "poppins";
-      const missing = missingGlyphs(l, family);
-      if (missing.length) errors.push(`${l.id}: cannot print ${describeCodepoints(missing)} in ${FONT_FAMILIES[family].label}`);
+      let missing: number[];
+      try { missing = missingGlyphs(l, family); }
+      catch (e) { errors.push(`${l.id}: ${e instanceof Error ? e.message : e}`); continue; }
+      if (missing.length) errors.push(`${l.id}: cannot print ${describeCodepoints(missing)} in ${familyLabel(family)}`);
     }
     const stem = exportBase(resolved.layers);
     for (const name of outputNames(stem, args.format, args.twoFile)) {

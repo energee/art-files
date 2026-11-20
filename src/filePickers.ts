@@ -1,4 +1,4 @@
-// filePickers.ts — the .label and .master dialog surface: the browser File
+// filePickers.ts — the .label, .master and font dialog surface: the browser File
 // System Access helpers, typed once, plus the Tauri-native dialog filter they
 // must stay in sync with. The FS Access API is absent on Safari/Firefox, so
 // every caller branches on these and keeps a download/input fallback —
@@ -28,6 +28,12 @@ export const masterTypes = () => [
   { description: t("Label master"), accept: { "application/zip": [MASTER_EXT] } },
 ];
 export const masterFilter = () => ({ name: t("Label master"), extensions: [MASTER_EXT.slice(1)] });
+
+/** Import Font…'s picker options: one to three TrueType or OpenType files. */
+export const fontTypes = () => [
+  { description: t("Font"), accept: { "font/ttf": [".ttf"], "font/otf": [".otf"] } },
+];
+export const fontFilter = () => ({ name: t("Font"), extensions: ["ttf", "otf"] });
 
 export const savePicker = () => (window as {
   showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;

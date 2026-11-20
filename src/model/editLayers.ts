@@ -9,6 +9,7 @@ import type {
 } from "./layers";
 import type { Box } from "./place";
 import { parseMaster } from "./layers";
+import { isImportedFontId, type ImportedFontId } from "../fontCatalog";
 import { isPlain, deepMerge, unsafePath, type DeepPartial } from "./merge";
 import { resolveLayers } from "./resolveLayers";
 import { CENTER_X, GOLD } from "../layout";
@@ -270,16 +271,25 @@ export function unsetLayerKeys(master: Master, id: string, keys: readonly string
   });
 }
 
+/** parseMaster for `next`, an in-session edit of `before`. Imported fonts
+ *  allowed: the ones `before` already names (checked when they came in) plus
+ *  `importedFonts`, the tab's own, for an edit that can bring one in (a
+ *  promotion of a label's font). */
+function reparse(next: Master, before: Master, importedFonts?: ReadonlySet<string>): Master {
+  return parseMaster(next, new Set([...masterFontIds(before), ...importedFonts ?? []]));
+}
+
 /** setLayer plus the inspector's clear rule: an own-property `undefined` in
  *  `patch` DELETES that key from the layer's record instead of being skipped
  *  (LayerInspector emits `{ width: undefined }`, `{ h: undefined }`). The one
- *  write path App uses for every inspector / list / drag patch. */
-export function patchLayer(master: Master, id: string, patch: LayerPatch): Master {
+ *  write path App uses for every inspector / list / drag patch.
+ *  `importedFonts`: the imported font ids the tab carries (see reparse). */
+export function patchLayer(master: Master, id: string, patch: LayerPatch, importedFonts?: ReadonlySet<string>): Master {
   const p = patch as Record<string, unknown>;
   const unset = Object.keys(p).filter((k) => p[k] === undefined);
   const kept = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) as LayerPatch;
   const next = Object.keys(kept).length ? setLayer(master, id, kept) : master;
-  return parseMaster(unset.length ? unsetLayerKeys(next, id, unset) : next);
+  return reparse(unset.length ? unsetLayerKeys(next, id, unset) : next, master, importedFonts);
 }
 
 /** A variant's override of a MASTER layer (Collab moving the logo). The
@@ -293,13 +303,15 @@ export function setLayerIn(master: Master, variant: string, id: string, patch: L
 }
 
 /** Variant-targeted inspector edits use the same optional-key clear rule. */
-export function patchLayerIn(master: Master, variant: string, id: string, patch: LayerPatch): Master {
+export function patchLayerIn(
+  master: Master, variant: string, id: string, patch: LayerPatch, importedFonts?: ReadonlySet<string>,
+): Master {
   const next = setLayerIn(master, variant, id, patch);
   const entry = variantOf(next, variant).layers[id] as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) delete entry[key];
   }
-  return parseMaster(next);
+  return reparse(next, master, importedFonts);
 }
 
 /** Deletes one dot-path in place, pruning any object left empty above it.
@@ -443,6 +455,31 @@ export function referencedAssetIds(master: Master, label: LabelFile): Set<string
     if (a) ids.add(a);
   }
   for (const v of Object.values(label.values)) if (typeof v === "string") ids.add(v);
+  return ids;
+}
+
+/** Every imported font id the master names: its default family, a layer's
+ *  fontFamily, or any variant entry's — the fonts a .master must carry. */
+export function masterFontIds(master: Master): Set<ImportedFontId> {
+  const ids = new Set<ImportedFontId>();
+  addImportedFont(ids, master);
+  for (const l of master.layers) addImportedFont(ids, l);
+  for (const v of master.variants) Object.values(v.layers).forEach((e) => addImportedFont(ids, e));
+  return ids;
+}
+
+/** Add `entry`'s fontFamily to `ids` when it is an imported id. */
+function addImportedFont(ids: Set<ImportedFontId>, entry: unknown): void {
+  const family = (entry as { fontFamily?: unknown } | undefined)?.fontFamily;
+  if (typeof family === "string" && isImportedFontId(family)) ids.add(family);
+}
+
+/** masterFontIds plus the label overrides' — every imported font the document
+ *  draws with, so the fonts a .label packs (like its images, the master's
+ *  ones too: the label then opens even against a master copy without them). */
+export function referencedFontIds(master: Master, label: LabelFile): Set<ImportedFontId> {
+  const ids = masterFontIds(master);
+  Object.values(label.overrides ?? {}).forEach((e) => addImportedFont(ids, e));
   return ids;
 }
 

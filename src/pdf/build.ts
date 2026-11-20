@@ -397,7 +397,9 @@ async function embedFaces(
  *  and emits no kerning, so a kerned measure (canvas measureText's default)
  *  plans a kern-table family like Barlow Condensed up to ~8% short of the
  *  ink it prints (#86). A run with no family measures in `fallback`'s faces.
- *  Unsupported glyphs stop the export before any files are written. Shared by the App export and the CLI. */
+ *  Unsupported glyphs stop the export before any files are written, naming
+ *  the face by its full name. Packs may be bundled or imported families
+ *  (loadFonts serves both). Shared by the App export and the CLI. */
 export async function pdfMeasureFace(
   packs: Partial<Record<FontFamilyId, Assets["fonts"]>>,
   fallback: FontFamilyId,
@@ -406,10 +408,18 @@ export async function pdfMeasureFace(
   doc.registerFontkit(fontkit);
   const embedded: Partial<Record<FontFamilyId, Record<Face, PDFFont>>> = {};
   const coverage = new Map<PDFFont, Set<number>>();
+  const bytesOf = new Map<PDFFont, Uint8Array>();
   for (const [id, pack] of Object.entries(packs) as [FontFamilyId, Assets["fonts"]][]) {
     embedded[id] = await embedFaces(doc, pack);
-    for (const font of Object.values(embedded[id]!)) coverage.set(font, new Set(font.getCharacterSet()));
+    for (const [face, font] of Object.entries(embedded[id]!) as [Face, PDFFont][]) {
+      coverage.set(font, new Set(font.getCharacterSet()));
+      bytesOf.set(font, pack[face]);
+    }
   }
+  // The face's full name ("Poppins Bold", "SVN-Poppins Bold"), not pdf-lib's
+  // PostScript name ("Poppins-Bold"): the name a person picked. Parsed only
+  // when an export is about to stop.
+  const faceName = (font: PDFFont) => openFont(bytesOf.get(font)!).fullName ?? font.name;
   if (!embedded[fallback]) throw new Error(`Missing measure font family: ${fallback}`);
   return (text, size, face, family) => {
     const selected = embedded[family ?? fallback];
@@ -420,7 +430,7 @@ export async function pdfMeasureFace(
     // glyph by fontkit, so they are never missing.
     const missing = [...new Set([...text].filter((ch) =>
       !VARIATION_SELECTOR.test(ch) && !supported.has(ch.codePointAt(0)!)).map((ch) => ch.codePointAt(0)!))];
-    if (missing.length) throw new Error(`Cannot print ${describeCodepoints(missing)} in ${font.name}. Replace these characters or choose a font that supports them.`);
+    if (missing.length) throw new Error(`Cannot print ${describeCodepoints(missing)} in ${faceName(font)}. Replace these characters or choose a font that supports them.`);
     return font.widthOfTextAtSize(text, size);
   };
 }
@@ -440,6 +450,7 @@ async function newDoc(assets: Assets, items: readonly PlacedLayer[]): Promise<{ 
     const embed = (bytes: Assets["fonts"]): Promise<Fonts> => embedFaces(doc, bytes, true, features);
     const fonts = await embed(assets.fonts);
     for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
+      if (!bytes) continue;
       (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
     }
     return fonts;

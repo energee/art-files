@@ -26,6 +26,13 @@
       ]
     },
     {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        { "path": "**/*.[tT][tT][fF]" },
+        { "path": "**/*.[oO][tT][fF]" }
+      ]
+    },
+    {
       "identifier": "fs:allow-exists",
       "allow": [
         { "path": "**/*.[lL][aA][bB][eE][lL]" },

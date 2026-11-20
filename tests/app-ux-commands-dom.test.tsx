@@ -31,6 +31,7 @@ vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare:
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/fonts", () => ({
+  importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined,
   loadLabelFaces: () => {
     fonts.loads++;
     return fonts.fail ? Promise.reject(new Error("font file is gone")) : fonts.pending;

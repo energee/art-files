@@ -5,7 +5,7 @@
 // Inspects the actual PDF content stream pdf-lib emits rather than mocking
 // PDFPage.
 import { describe, expect, it } from "vitest";
-import { PDFDocument, PDFName } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
 import { readFileSync } from "node:fs";
 import { openFont } from "../src/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
@@ -14,6 +14,8 @@ import * as L from "./legacy/layout";
 import { ART, PAGE, SHIPPED_BLEED_IN, setBleed } from "../src/layout";
 import { planLayers, planText } from "../src/planLayers";
 import type { TextLayer } from "../src/model/layers";
+import type { FontFamilyId } from "../src/fontCatalog";
+import { readImportedFont } from "../src/fontImport";
 import { assets, contentStreamText, fillOps, lolevLayers, lolevPlan, onePxPng, pageRectPath, planAssets } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
@@ -308,6 +310,44 @@ it("rejects unsupported print glyphs in the actual family and face (#340)", asyn
     expect(m("Ale™ ½ é", 10, face)).toBeGreaterThan(0);
     expect(() => m("Ale → 🍺 啤酒", 10, face)).toThrow(/Cannot print .*→.*🍺.*啤.*酒.*Poppins/);
   }
+});
+
+describe("an imported family prints the glyphs its font has", () => {
+  const svn = async () => readImportedFont([{
+    name: "SVN-Poppins-Bold.ttf",
+    bytes: new Uint8Array(readFileSync(new URL("./fixtures/fonts/SVN-Poppins-Bold.ttf", import.meta.url))),
+  }]);
+  const rong = (fontFamily?: FontFamilyId): TextLayer => ({
+    id: "t", name: "T", kind: "text", enabled: true, x: 200, y: 100, anchor: "left", align: "left",
+    size: 20, fontFamily, style: { fill: "#000000", layer: "white" },
+    lines: [{ text: "R\u1ED2NG", fill: "#000000", layer: "white" }],
+  });
+  /** Every BaseFont the PDF's font dictionaries name. */
+  const baseFonts = async (bytes: Uint8Array) => (await PDFDocument.load(bytes)).context.enumerateIndirectObjects()
+    .flatMap(([, obj]) => obj instanceof PDFDict && obj.get(PDFName.of("Type")) === PDFName.of("Font")
+      ? [String(obj.get(PDFName.of("BaseFont")))] : []);
+
+  it("embeds the imported font for a layer that picks it", async () => {
+    const { id, font } = await svn();
+    // The packs useExport builds: loadFonts(id) hands back the registered face bytes.
+    const pack = { regular: font.faces.regular.bytes, semibold: font.faces.semibold.bytes, bold: font.faces.bold.bytes };
+    const items = planText(rong(id), await pdfMeasureFace({ poppins: assets.fonts, [id]: pack }, "poppins"));
+    const pdf = await buildArtPdf(items, { ...assets, fontFamilies: { [id]: pack } });
+    expect((await baseFonts(pdf)).some((name) => name.includes("SVN-Poppins"))).toBe(true);
+  });
+
+  it("still stops Poppins at Ồ, naming the face", async () => {
+    const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
+    expect(() => m("R\u1ED2NG", 20, "bold")).toThrow("Cannot print \u201c\u1ED2\u201d (U+1ED2) in Poppins Bold.");
+  });
+
+  it("names an imported face by its face name, not its PostScript name", async () => {
+    const { id, font } = await svn();
+    const pack = { regular: font.faces.regular.bytes, semibold: font.faces.semibold.bytes, bold: font.faces.bold.bytes };
+    const m = await pdfMeasureFace({ [id]: pack }, id);
+    expect(m("R\u1ED2NG", 20, "bold")).toBeGreaterThan(0);
+    expect(() => m("\u5564", 20, "bold")).toThrow(/ in SVN-Poppins Bold\./);
+  });
 });
 
 it("plans a name with decomposed accents in Poppins (#788)", async () => {

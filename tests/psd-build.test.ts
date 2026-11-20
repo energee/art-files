@@ -345,6 +345,29 @@ describe("added layers", () => {
   });
 });
 
+describe("imported font type layers", () => {
+  const svn = "imported:svn-poppins" as const;
+  const family = { label: "SVN-Poppins", ps: { regular: "SVN-Poppins", semibold: "SVN-PoppinsBold", bold: "SVN-PoppinsBold" } };
+  /** The Info layer's run fonts with its text set in the imported id. */
+  const infoFonts = async (psd: PsdAssets) => {
+    const plan = (await lolevPlan()).map((r) => (r.id === "handleAddress" && r.kind === "text" ? { ...r, fontFamily: svn } : r));
+    const doc = read(await buildPsd(plan, psd, "art", { layers: lolevLayers() }));
+    // Runs that name one font merge into the layer's style, so collect both.
+    const { style, styleRuns = [] } = layer(doc.children as any[], "Info").text;
+    return [...new Set([style.font?.name, ...styleRuns.map((r: any) => r.style.font.name)])].filter(Boolean).sort();
+  };
+
+  it("names the imported family's PostScript names", async () => {
+    // Bold and SemiBold share one face in this family: a single font name.
+    expect(await infoFonts({ ...assets, importedFamilies: new Map([[svn, family]]) }))
+      .toEqual(["SVN-PoppinsBold"]);
+  });
+
+  it("falls back to Poppins without the imported family map", async () => {
+    expect(await infoFonts(assets)).toEqual(["Poppins-Bold", "Poppins-SemiBold"]);
+  });
+});
+
 /** Issue #86, PSD side: the PDF draws barcode digits with pdf-lib's drawText,
  *  which places raw glyph advances and emits no kerning. The PSD's outlined
  *  digits must advance the same way, or a kern-table master font (Barlow

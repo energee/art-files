@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const loadLabelFaces = vi.fn();
-vi.mock("../src/fonts", () => ({ loadLabelFaces: (...a: unknown[]) => loadLabelFaces(...a), labelFontCss: () => "" }));
+vi.mock("../src/fonts", () => ({ importedFamilies: () => new Map(), registerImportedFonts: async () => {}, importedFontBundle: () => undefined, loadLabelFaces: (...a: unknown[]) => loadLabelFaces(...a), labelFontCss: () => "" }));
 
 const { useRenderSource } = await import("../src/useRenderSource");
 import type { CustomFile } from "../src/assets/io";

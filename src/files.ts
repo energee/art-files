@@ -7,13 +7,13 @@ import { COARSE } from "@/usePhoneLayout";
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
 // scope allows reading, writing, renaming and removing .label and .master
-// paths (rename/remove serve the atomic save), plus writing an export pair's
+// paths, reading picked .ttf/.otf fonts (Import Font…) (rename/remove serve the atomic save), plus writing an export pair's
 // `-mask.pdf`/`-mask.psd` beside the art file and checking whether a stale
 // `-mask.pdf` sits beside a print PDF.
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
- *  limits reads to .label and .master paths (including inside hidden folders:
+ *  limits reads to .label, .master, .ttf and .otf paths (including inside hidden folders:
  *  tauri.conf.json sets plugins.fs.requireLiteralLeadingDot false). */
 export async function readNativeFile(path: string): Promise<Uint8Array> {
   const { readFile } = await import("@tauri-apps/plugin-fs");
@@ -68,41 +68,70 @@ export async function nativeExists(path: string): Promise<boolean> {
   return exists(path);
 }
 
-/** Open a native file dialog and return the selected path. Null is an
- *  ordinary cancellation, matching saveThrough. */
-export async function openNativeFile(
-  options: { filter: { name: string; extensions: string[] } },
-): Promise<string | null> {
+type Filter = { name: string; extensions: string[] };
+
+/** Open a native file dialog and return the selected path, or with
+ *  `multiple` every selected path. Null is an ordinary cancellation,
+ *  matching saveThrough. */
+export async function openNativeFile(options: { filter: Filter; multiple?: false }): Promise<string | null>;
+export async function openNativeFile(options: { filter: Filter; multiple: true }): Promise<string[] | null>;
+export async function openNativeFile(options: { filter: Filter; multiple?: boolean }): Promise<string | string[] | null> {
   const { open } = await import("@tauri-apps/plugin-dialog");
-  const selected = await open({ multiple: false, filters: [options.filter] });
+  const multiple = options.multiple ?? false;
+  const selected = await open({ multiple, filters: [options.filter] });
+  if (multiple) return Array.isArray(selected) && selected.length ? selected : null;
   return typeof selected === "string" ? selected : null;
 }
 
 /** A reusable save destination; downloads deliberately have no destination. */
 export type FileTarget = { path: string } | { handle: FileSystemFileHandle };
 type FileOptions = {
-  filter: { name: string; extensions: string[] };
+  filter: Filter;
   types: { description: string; accept: Record<string, string[]> }[];
 };
 
 /** Null means cancelled; undefined means use the caller's file-input fallback.
+ *  With `multiple` the user may pick several files, and every one comes back.
  *  On a touch screen the browser picker is given no `types`: a phone's picker
  *  filters by MIME type and can grey out a .label or .master it has no type
  *  for. The loaders refuse a wrong file with a message. */
-export async function openThrough(options: FileOptions): Promise<FileTarget | null | undefined> {
+export async function openThrough(options: FileOptions & { multiple?: false }): Promise<FileTarget | null | undefined>;
+export async function openThrough(options: FileOptions & { multiple: true }): Promise<FileTarget[] | null | undefined>;
+export async function openThrough(options: FileOptions & { multiple?: boolean }): Promise<FileTarget | FileTarget[] | null | undefined> {
   try {
+    let targets: FileTarget[];
     if (isTauri()) {
-      const path = await openNativeFile(options);
-      return path ? { path } : null;
+      const picked = options.multiple
+        ? await openNativeFile({ filter: options.filter, multiple: true })
+        : await openNativeFile({ filter: options.filter });
+      targets = [picked ?? []].flat().map((path) => ({ path }));
+    } else {
+      const pick = openPicker();
+      if (!pick) return undefined;
+      const handles = await pick({
+        ...window.matchMedia(COARSE).matches ? {} : { types: options.types },
+        ...options.multiple ? { multiple: true } : {},
+      });
+      targets = handles.map((handle) => ({ handle }));
     }
-    const pick = openPicker();
-    if (!pick) return undefined;
-    const [handle] = await pick(window.matchMedia(COARSE).matches ? {} : { types: options.types });
-    return handle ? { handle } : null;
+    if (!targets.length) return null;
+    return options.multiple ? targets : targets[0];
   } catch (error) {
     if (isAbort(error)) return null;
     throw error;
   }
+}
+
+/** A picked file's name and bytes: read by path on desktop (within the read
+ *  scope in src-tauri/capabilities/default.json) or from the browser handle. */
+export async function readTarget(target: FileTarget): Promise<{ name: string; bytes: Uint8Array }> {
+  if ("path" in target) return { name: baseName(target.path), bytes: await readNativeFile(target.path) };
+  return fileAsset(await target.handle.getFile());
+}
+
+/** A browser File's name and bytes. */
+export async function fileAsset(file: File): Promise<{ name: string; bytes: Uint8Array }> {
+  return { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) };
 }
 
 /** Choose once, build bytes with the chosen name, and write once. Cancellation

@@ -16,7 +16,7 @@ const temp = (stem: string, ext: string) => expect.stringMatching(new RegExp(`^$
 let tauri = false;
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => tauri }));
 
-import { nativeModifiedAt, openNativeFile, openThrough, saveThrough } from "@/files";
+import { nativeModifiedAt, openNativeFile, openThrough, readTarget, saveThrough } from "@/files";
 
 // Crash recovery's rebind check (recovery.ts canRebind) reads this. The
 // desktop stat itself is smoke-tested by hand, not here.
@@ -153,6 +153,25 @@ describe("native file opening", () => {
       filter: { name: "Label master", extensions: ["master"] },
     })).resolves.toBeNull();
   });
+
+  // Import Font… takes one to three files of a family at once.
+  it("with `multiple`, returns every selected path", async () => {
+    open.mockResolvedValue(["/f/A-Regular.ttf", "/f/A-Bold.ttf"]);
+    const filter = { name: "Font", extensions: ["ttf", "otf"] };
+    await expect(openNativeFile({ filter, multiple: true })).resolves.toEqual(["/f/A-Regular.ttf", "/f/A-Bold.ttf"]);
+    expect(open).toHaveBeenCalledWith({ multiple: true, filters: [filter] });
+  });
+
+  it("openThrough with `multiple` gives a target per path, and reads each one's bytes", async () => {
+    tauri = true;
+    try {
+      open.mockResolvedValue(["/f/A-Bold.ttf"]);
+      readFile.mockResolvedValue(new Uint8Array([1, 2]));
+      const targets = await openThrough({ filter: { name: "Font", extensions: ["ttf"] }, types: [], multiple: true });
+      expect(targets).toEqual([{ path: "/f/A-Bold.ttf" }]);
+      await expect(readTarget(targets![0])).resolves.toEqual({ name: "A-Bold.ttf", bytes: new Uint8Array([1, 2]) });
+    } finally { tauri = false; }
+  });
 });
 
 describe("browser saveThrough", () => {
@@ -210,6 +229,12 @@ describe("browser openThrough", () => {
   it("a dismissed picker is a cancel, not an error", async () => {
     browser(true, vi.fn().mockRejectedValue(new DOMException("cancelled", "AbortError")));
     await expect(openThrough(options)).resolves.toBeNull();
+  });
+
+  it("with `multiple`, asks the picker for several files and returns them all", async () => {
+    const pick = browser(false, vi.fn().mockResolvedValue([{ name: "a.ttf" }, { name: "b.ttf" }]));
+    await expect(openThrough({ ...options, multiple: true })).resolves.toEqual([{ handle: { name: "a.ttf" } }, { handle: { name: "b.ttf" } }]);
+    expect(pick).toHaveBeenCalledWith({ types: options.types, multiple: true });
   });
 
   it("with no picker, hands the open to the caller's file input", async () => {
