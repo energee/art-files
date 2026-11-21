@@ -1990,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "label-lab"
-version = "0.1.121"
+version = "0.1.122"
 dependencies = [
  "dunce",
  "fontdb",

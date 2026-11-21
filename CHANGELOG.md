@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.122] - 2026-11-21
 
 ### Added
 - **Use any font on a text layer.** The Font list now has **Import Font…**: pick one to three `.ttf` or `.otf` files of one family, and their weights fill the regular, semibold and bold faces by nearest weight (one Bold file fills all three). For a word the bundled fonts can't print, such as "RỒNG" in Poppins, import a build of the typeface that has those letters. A font whose licence forbids embedding, or that is bitmap-only, is refused with a message.
