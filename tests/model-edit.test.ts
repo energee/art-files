@@ -6,7 +6,7 @@
 // input.
 import { describe, expect, it } from "vitest";
 import {
-  addLayer, addVariant, checkLabelBindings, clearLabelOverride, clearOverride, clearValue,
+  addLabelLayer, addLayer, addVariant, checkLabelBindings, clearLabelOverride, clearOverride, clearValue,
   masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, patchLayers, removeLayer,
   removeLayerIn, removeVariant, removeVariantIn, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
   structureOnlyMaster, toggleVariant, whereLayerLives, type Doc,
@@ -36,6 +36,26 @@ describe("mintLayerId", () => {
     expect(id).toMatch(/^text-[0-9a-f]{6}$/);
     const taken = new Set([id]);
     expect(mintLayerId("text", taken)).not.toBe(id);
+  });
+});
+
+// A layer added while editing a label must survive ⌘S alone: reopening
+// resolves the saved label against the master file, which Add layer never
+// wrote, so the layer has to travel in the label ("value benched").
+describe("addLabelLayer", () => {
+  it("adds the layer to the label, leaving the master untouched", () => {
+    const master = lolevMaster();
+    const doc: Doc = { master, label: label() };
+    const { doc: next, id } = addLabelLayer(doc, "text");
+    expect(next.master).toBe(master);
+    const filled = setValue(next.label, id, [{ text: "four years", fill: GOLD, layer: "metallic" }]);
+    const r = resolveLayers(master, [], filled.values, filled.overrides);
+    expect(r.warnings).toEqual([]);
+    expect(r.layers.at(-1)).toMatchObject({ id, kind: "text", lines: [{ text: "four years" }] });
+  });
+  it("never reuses an id the master or label already has", () => {
+    const { doc, id } = addLabelLayer({ master: lolevMaster(), label: label() }, "qr");
+    expect(addLabelLayer(doc, "qr").id).not.toBe(id);
   });
 });
 

@@ -53,7 +53,7 @@ import { exportBase as exportBaseOf, foldLabelScale, titleOf, withStoredValue } 
 import { getPath, type DeepPartial } from "@/model/merge";
 import { isPage, sharedPatch, sharesPath, type Peer } from "@/model/multiEdit";
 import {
-  addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, masterFontIds, referencedFontIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, isLabelOnly,
+  addLabelLayer, addLayer, addVariant, adoptMaster, heldAssetIds, referencedAssetIds, masterAssetIds, masterFontIds, referencedFontIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, isLabelOnly,
   applyPromotions, pinPromoted, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, learnValueIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -724,15 +724,21 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  the document dirty. */
   const mutating = (fn: () => void) => () => { markDirty(); fn(); };
 
-  /** Add layer: a default layer of `kind` at the end of the master's draw
-   *  order, selected. An image layer starts empty; its inspector well loads
-   *  the art. */
-  /** Add layer, into the version the master Select names: a variant while one
-   *  is switched to, the base master otherwise. */
+  /** Add layer: a default layer of `kind` on top, selected. An image layer
+   *  starts empty; its inspector well loads the art. On the base version it
+   *  goes into the LABEL (addLabelLayer), so ⌘S keeps it; while a variant is
+   *  switched to it goes into that variant's diff, which is template work
+   *  saved by Save Variant. */
   function onAddLayer(kind: LayerKind) {
-    const variant = version ?? undefined;
-    const { master: next, id } = addLayer(master, kind, { variant });
-    edit((d) => ({ ...d, master: d.master === master ? next : addLayer(d.master, kind, { variant }).master }));
+    if (version === null) {
+      const { doc, id } = addLabelLayer({ master, label }, kind);
+      const layer = doc.label.overrides![id];
+      edit((d) => ({ ...d, label: { ...d.label, overrides: { ...d.label.overrides, [id]: layer } } }));
+      setSelection({ ids: [id], anchor: id });
+      return;
+    }
+    const { master: next, id } = addLayer(master, kind, { variant: version });
+    edit((d) => ({ ...d, master: d.master === master ? next : addLayer(d.master, kind, { variant: version }).master }));
     setSelection({ ids: [id], anchor: id });
   }
   function onRemoveLayer(id: string) {

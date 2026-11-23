@@ -1342,3 +1342,14 @@ no status, no attempts, no delta.
 - evidence: Regression red before the fix: newest label restored `art.png` bytes [1,2,3] instead of `replacement.png` bytes [4,5] after the preceding store write was refused. Fixed tree: 52/52 tests in `recovery`, `recovery-open-dom`, `recovery-dialog-dom`, `close-review-sweep-dom`; `npm run build` and `node scripts/check-release.mjs e8955e98` passed. Map's Markdown destinations and table test names resolve.
 - evidence: Production web build in Orca's browser, isolated origin: loaded 32x32.png, replaced it with 64x64.png, named the label “Recovery proof”, reloaded, chose Restore, observed the unsaved named tab and 64x64.png in its texture well. Failed storage write was injected in the regression test, not in the browser. Native desktop not exercised.
 - release: binary-impacting; recovery correction queued under Unreleased, no version bump. Recommend including promptly in a patch because it prevents recovering mismatched artwork.
+
+## 2026-11-23 add-layer-to-label
+- finding: [data-loss/high] src/App.tsx onAddLayer — Add layer wrote the new layer into master.layers, but ⌘S writes only the .label. Reopening resolved the label against the on-disk master: "Label overrides unknown layer "text-8fb192"; skipped." and "1 value benched". User report, compass-jellyfish.label.
+- status: done
+- attempts: 1/3
+- observed-at: 90eed8e4
+- attempted-in: .agents/worktrees/layer-issues @ energee/layer-issues
+- delta: new editLayers.addLabelLayer puts the default layer in label.overrides (a label-only layer, #264). onAddLayer uses it on the base version; a switched-to variant still gets addLayer. Tests that used Add layer as their "master edit" now delete the Volume master layer instead.
+- evidence: red: tests/model-edit.test.ts addLabelLayer ("addLabelLayer is not a function"). green: that, plus app-v3-dom "Add layer is a label edit that the label save keeps". tsc and lint clean. All UI suites pass when run alone; under full parallel load they time out at random. generate-cli and golden-diff fail only because this worktree lacks node_modules/.bin/tsx.
+- open: Save Master review skips label-only layers (masterChanges `if (!l) continue`), so an added layer can't be promoted to the master. Layer copy/paste between files doesn't exist yet (plan pending).
+- release: binary-impacting; Fixed bullet queued under Unreleased, no version bump.
