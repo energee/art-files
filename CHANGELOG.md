@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+- **A layer you add is saved with the label.** Add layer now puts the new layer in the `.label`, so Save keeps it. Before, it went into the master, and reopening the label showed "Label overrides unknown layer …; skipped." and "1 value benched", without the layer. While you're switched to a variant, Add layer still adds to that variant.
+
 ## [0.1.122] - 2026-11-21
 
 ### Added

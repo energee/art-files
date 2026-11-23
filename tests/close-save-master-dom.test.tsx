@@ -63,18 +63,14 @@ async function mountEditor() {
   return { saveSlot, masterSaveSlot, onMeta };
 }
 
-/** base-ui's menu trigger opens on mousedown — send the whole press. */
-async function addTextLayer() {
-  const trigger = document.querySelector('[aria-label="Add layer"]')!;
+/** A master edit: select the Volume row, then Delete removes the layer from
+ *  the master (Add layer is a label edit since it lands in the .label). */
+async function editMaster() {
+  const row = document.querySelector('[data-layer-id="volume"] [data-slot="sidebar-menu-button"]') as HTMLElement;
+  await act(async () => { row.click(); });
   await act(async () => {
-    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
-      trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
-    (trigger as HTMLElement).click();
-    await Promise.resolve();
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
   });
-  const item = Array.from(document.querySelectorAll('[role="menuitem"]'))
-    .find((el) => el.textContent?.trim() === "Text") as HTMLElement;
-  await act(async () => { item.click(); await Promise.resolve(); });
 }
 
 const reviewOpen = () =>
@@ -89,7 +85,7 @@ it.each([true, false])(
   "close-prompt Save saves the label and lets the tab close (master edit: %s)",
   async (masterEdit) => {
     const { saveSlot, onMeta } = await mountEditor();
-    if (masterEdit) await addTextLayer();
+    if (masterEdit) await editMaster();
     expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: masterEdit });
     let result: boolean | undefined;
     await act(async () => { result = await saveSlot.current!(); });
@@ -102,7 +98,7 @@ it.each([true, false])(
 
 it("the close prompt offers Cancel, Discard and Save, with no master warning", async () => {
   await render(createElement(TabsShell));
-  await addTextLayer();
+  await editMaster();
   const close = document.querySelector('[role="tab"] + button') as HTMLElement;
   await act(async () => { close.click(); });
   const prompt = closePrompt();
@@ -140,20 +136,20 @@ async function pressCloseSave() {
 
 it("Save with master edits and nothing to promote writes the master, then the label, and closes", async () => {
   await render(createElement(TabsShell));
-  await addTextLayer();
+  await editMaster();
   const layersBefore = document.querySelectorAll('[data-layer-id]').length;
   await pressCloseSave();
   await vi.waitFor(() => expect(savedNames).toHaveLength(2));
   expect(savedNames).toEqual([expect.stringMatching(/\.master$/), expect.stringMatching(/\.label$/)]);
   expect(reviewOpen()).toBe(false);
   await nothingMounted();
-  // A fresh Untitled with no added layer replaces the closed tab.
-  expect(document.querySelectorAll('[data-layer-id]').length).toBeLessThan(layersBefore);
+  // A fresh Untitled, Volume and all, replaces the closed tab.
+  expect(document.querySelectorAll('[data-layer-id]').length).toBeGreaterThan(layersBefore);
 });
 
 async function openReviewFromPrompt() {
   await render(createElement(TabsShell));
-  await addTextLayer();
+  await editMaster();
   await overrideWarning();
   await pressCloseSave();
   // The review loads on first open (#410).
@@ -184,7 +180,7 @@ it("a saved review goes on to save the .label and close the tab", async () => {
 
 it("Save closes the tab after the master when the .label was already saved", async () => {
   await render(createElement(TabsShell));
-  await addTextLayer();
+  await editMaster();
   // ⌘S writes the .label; only the master edit is left unsaved.
   await act(async () => {
     document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "s", metaKey: true }));
@@ -198,7 +194,7 @@ it("Save closes the tab after the master when the .label was already saved", asy
 
 it("an editor that unmounts mid-review resolves the close prompt's review as not saved", async () => {
   const { masterSaveSlot } = await mountEditor();
-  await addTextLayer();
+  await editMaster();
   await overrideWarning();
   let result: boolean | undefined;
   await act(async () => { void masterSaveSlot.current!().then((saved) => { result = saved; }); });

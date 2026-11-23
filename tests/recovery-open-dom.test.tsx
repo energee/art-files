@@ -107,7 +107,7 @@ it("a restored snapshot opens unsaved and takes the snapshot over", async () => 
   }
 }, 30_000);
 
-/** Add a Text layer through the Add layer menu: a master edit. */
+/** Add a Text layer through the Add layer menu: a label edit. */
 async function addTextLayer(container: HTMLElement) {
   // base-ui's menu trigger opens on the full press, not click alone.
   const trigger = container.querySelector('[aria-label="Add layer"]')!;
@@ -121,6 +121,14 @@ async function addTextLayer(container: HTMLElement) {
     .find((el) => el.textContent?.trim() === "Text") as HTMLElement;
   await act(async () => { text.click(); await Promise.resolve(); });
 }
+/** A master edit: select the Volume row, then Delete removes the layer. */
+async function removeVolume(container: HTMLElement) {
+  const row = container.querySelector('[data-layer-id="volume"] [data-slot="sidebar-menu-button"]') as HTMLElement;
+  await act(async () => { row.click(); });
+  await act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+  });
+}
 const debounce = () => act(async () => { await new Promise((r) => setTimeout(r, 2500)); });
 
 // #692: a master edit is what makes a tab unsaved, so its snapshot must hold
@@ -131,7 +139,7 @@ it("a master edit survives a crash and stays an unsaved master edit", async () =
   const first = await restore({ seq: 1, file: snapshotFile(), recovered: "old:1" });
   let snap: (typeof snaps)[number];
   try {
-    await addTextLayer(first.container);
+    await removeVolume(first.container);
     expect(first.meta().masterUnsaved).toBe(true);
     await debounce();
     snap = snaps.at(-1)!;
@@ -140,7 +148,7 @@ it("a master edit survives a crash and stays an unsaved master edit", async () =
   }
   expect(snap.master).toBeDefined();
   const edited = unpackMaster(snap.master!.edited).master;
-  expect(edited.layers).toHaveLength(lolevMaster().layers.length + 1);
+  expect(edited.layers).toHaveLength(lolevMaster().layers.length - 1);
 
   snaps.length = 0;
   const { meta, unmount, container } = await restore({
@@ -148,7 +156,7 @@ it("a master edit survives a crash and stays an unsaved master edit", async () =
   });
   try {
     expect(meta().masterUnsaved).toBe(true);
-    expect(container.textContent).toContain(edited.layers.at(-1)!.name);
+    expect(container.querySelector('[data-layer-id="volume"]')).toBeNull();
     expect(snaps[0].master).toEqual(snap.master); // moved to this tab's key with the snapshot
   } finally {
     await unmount();

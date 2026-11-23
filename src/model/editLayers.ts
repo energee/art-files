@@ -92,6 +92,20 @@ export function addLayer(
   return { id, master: { ...master, layers } };
 }
 
+/** Add layer while editing a label: the whole default layer goes into the
+ *  label's overrides (a label-only layer, see isLabelOnly), so ⌘S saves it.
+ *  addLayer would put it in the master, which ⌘S never writes — the layer
+ *  then vanished on reopen with its value benched.
+ *  ponytail: Save Master's review skips label-only layers (masterChanges),
+ *  so this layer cannot be promoted into the template yet. */
+export function addLabelLayer(doc: Doc, kind: LayerKind): { doc: Doc; id: string } {
+  const taken = allIds(doc.master);
+  for (const k of Object.keys(doc.label.overrides ?? {})) taken.add(k);
+  const id = mintLayerId(kind, taken);
+  const label = { ...doc.label, overrides: { ...doc.label.overrides, [id]: defaultLayer(kind, id) } };
+  return { id, doc: { ...doc, label } };
+}
+
 /** Which record owns the layer: a variant if its diff ADDS the id (the
  *  master lacks it), else the master. Throws for an id nobody has. */
 export function whereLayerLives(master: Master, id: string): "master" | { variant: string } {

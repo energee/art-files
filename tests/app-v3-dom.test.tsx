@@ -35,16 +35,17 @@ async function mountEditor() {
   document.body.appendChild(container);
   const root = createRoot(container);
   const onMeta = vi.fn();
+  const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   await act(async () => {
     root.render(createElement(DocumentEditor, {
       active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-      saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+      saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
       onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
   const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); };
-  return { container, onMeta, unmount };
+  return { container, onMeta, saveSlot, unmount };
 }
 
 // #734: the last tab keeps its decoded source (#724), but a hidden tab still
@@ -113,24 +114,33 @@ it("selects a v3 text layer, edits its content through the inspector, and undoes
 });
 
 // Issue #77: File → Save writes only the .label, so a master edit made before
-// it (an added layer) is still unsaved — the editor must keep reporting it or
-// the close prompt and the updater's dirty check go quiet and the layer is lost.
+// it (a removed master layer) is still unsaved — the editor must keep
+// reporting it or the close prompt and the updater's dirty check go quiet.
 it("still reports an unsaved master edit after the label is saved", async () => {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  const onMeta = vi.fn();
-  const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
+  const { container, onMeta, saveSlot, unmount } = await mountEditor();
   try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, {
-        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-        saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
-        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-      }));
-    });
     expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: false });
+    const row = container.querySelector('[data-layer-id="volume"] [data-slot="sidebar-menu-button"]') as HTMLElement;
+    await act(async () => { row.click(); });
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+    });
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: true, masterUnsaved: true });
+    let saved = false;
+    await act(async () => { saved = await saveSlot.current!(); });
+    expect(saved).toBe(true);
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: true, masterUnsaved: true });
+  } finally {
+    await unmount();
+  }
+});
+
+// A layer added while editing a label goes into the .label, so ⌘S alone
+// saves it — before, it went into the master and was lost on reopen with
+// "Label overrides unknown layer …; skipped." and its value benched.
+it("Add layer is a label edit that the label save keeps", async () => {
+  const { container, onMeta, saveSlot, unmount } = await mountEditor();
+  try {
     // base-ui's menu trigger opens on the full press, not click alone.
     const trigger = container.querySelector('[aria-label="Add layer"]')!;
     await act(async () => {
@@ -142,14 +152,13 @@ it("still reports an unsaved master edit after the label is saved", async () => 
     const text = Array.from(document.querySelectorAll('[role="menuitem"]'))
       .find((el) => el.textContent?.trim() === "Text") as HTMLElement;
     await act(async () => { text.click(); await Promise.resolve(); });
-    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: true, masterUnsaved: true });
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true, masterUnsaved: false });
     let saved = false;
     await act(async () => { saved = await saveSlot.current!(); });
     expect(saved).toBe(true);
-    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: true, masterUnsaved: true });
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, masterUnsaved: false });
   } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
+    await unmount();
   }
 });
 
